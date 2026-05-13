@@ -12,6 +12,7 @@
 #include "colour_preview_provider.h"
 #include "colour_preview_conversion.h"
 #include "dag_executor.h"
+#include "plugin_safe_call.h"
 #include "logging.h"
 #include <algorithm>
 #include <cmath>
@@ -2169,7 +2170,17 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_stage_preview_outputs(
     ensure_node_executed(stage_node_id, false);
     
     // Get options from the stage
-    auto options = previewable.get_preview_options();
+    std::vector<PreviewOption> options;
+    std::string plugin_fault_error;
+    if (!core_internal::plugin_safe_call([&] {
+            options = previewable.get_preview_options();
+        }, plugin_fault_error)) {
+        ORC_LOG_ERROR(
+            "Stage node '{}' preview options faulted; suppressing outputs: {}",
+            stage_node_id.to_string(),
+            plugin_fault_error);
+        return outputs;
+    }
     
     if (options.empty()) {
         ORC_LOG_WARN("Stage node '{}' has no preview options after execution - cached output may be null", stage_node_id.to_string());
@@ -2199,16 +2210,21 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_stage_preview_outputs(
         // We do this by rendering field 0 and checking has_separate_channels()
         bool has_separate_channels = false;
         if (auto* previewable_ptr = const_cast<PreviewableStage*>(&previewable)) {
-            try {
-                auto preview_img = previewable_ptr->render_preview(options[0].id, 0, PreviewNavigationHint::Random);
+            PreviewImage preview_probe;
+            if (!core_internal::plugin_safe_call([&] {
+                    preview_probe = previewable_ptr->render_preview(options[0].id, 0, PreviewNavigationHint::Random);
+                }, plugin_fault_error)) {
+                ORC_LOG_ERROR(
+                    "Stage node '{}' preview probe faulted while deriving channel layout: {}",
+                    stage_node_id.to_string(),
+                    plugin_fault_error);
+                has_separate_channels = false;
+            } else {
                 // Now render field 0 to get the representation
                 auto result = field_renderer_->render_field_at_node(stage_node_id, FieldID(0));
                 if (result.representation) {
                     has_separate_channels = result.representation->has_separate_channels();
                 }
-            } catch (...) {
-                // Failed to check - assume false
-                has_separate_channels = false;
             }
         }
         
@@ -2270,8 +2286,21 @@ PreviewRenderResult PreviewRenderer::render_stage_preview(
     
     // Determine effective option ID (fallback if empty)
     std::string effective_option_id = requested_option_id;
+    std::string plugin_fault_error;
     if (effective_option_id.empty()) {
-        auto options = previewable.get_preview_options();
+        std::vector<PreviewOption> options;
+        if (!core_internal::plugin_safe_call([&] {
+                options = previewable.get_preview_options();
+            }, plugin_fault_error)) {
+            result.image = create_placeholder_image(type, "Rendering failed");
+            result.success = true;
+            result.error_message = "Stage preview options faulted: " + plugin_fault_error;
+            ORC_LOG_ERROR(
+                "Rendering aborted for node '{}' while querying preview options: {}",
+                stage_node_id.to_string(),
+                plugin_fault_error);
+            return result;
+        }
         if (!options.empty()) {
             // Prefer an option that matches the requested output type
             for (const auto& option : options) {
@@ -2290,7 +2319,22 @@ PreviewRenderResult PreviewRenderer::render_stage_preview(
     }
 
     // Get preview image from the stage
-    auto stage_result = previewable.render_preview(effective_option_id, index, hint);
+    PreviewImage stage_result;
+    if (!core_internal::plugin_safe_call([&] {
+            stage_result = previewable.render_preview(effective_option_id, index, hint);
+        }, plugin_fault_error)) {
+        result.image = create_placeholder_image(type, "Rendering failed");
+        result.success = true;
+        result.error_message = "Stage preview render faulted: " + plugin_fault_error;
+        ORC_LOG_ERROR(
+            "Rendering faulted for node '{}', type={}, index={}, option_id='{}': {}",
+            stage_node_id.to_string(),
+            static_cast<int>(type),
+            index,
+            effective_option_id,
+            plugin_fault_error);
+        return result;
+    }
     
     if (!stage_result.is_valid()) {
         result.image = create_placeholder_image(type, "Rendering failed");

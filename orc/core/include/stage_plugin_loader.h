@@ -25,6 +25,7 @@
 #include "dag_executor.h"
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -65,6 +66,7 @@ public:
 private:
     struct PluginHandleEntry {
         void* handle = nullptr;
+        std::shared_ptr<OrcPluginServices> services;
         LoadedStagePlugin plugin;
     };
 

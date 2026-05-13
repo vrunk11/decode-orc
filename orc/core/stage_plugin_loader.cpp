@@ -260,6 +260,12 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
 
     PluginHandleEntry entry;
     entry.handle = handle;
+    entry.services = std::make_shared<OrcPluginServices>();
+    if (!entry.services) {
+        close_shared_library(handle);
+        result.error_message = "Plugin '" + path + "' failed to allocate services table";
+        return result;
+    }
     entry.plugin.path = path;
     entry.plugin.plugin_id = sanitize_c_string(descriptor->plugin_id);
     entry.plugin.plugin_version = sanitize_c_string(descriptor->plugin_version);
@@ -270,7 +276,8 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
     // orc_register_stage_plugin().  Callbacks wrap host-internal functions via
     // stateless function pointers so that no host-internal symbols are resolved
     // directly via the dynamic linker from within the plugin.
-    OrcPluginServices services{};
+    OrcPluginServices& services = *entry.services;
+    services = {};
     static CoreStageServicesAdapter stage_services_adapter;
     services.services_size = static_cast<uint32_t>(sizeof(OrcPluginServices));
     services.log = [](OrcPluginLogLevel level, const char* message) {
@@ -296,7 +303,7 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
     const char* plugin_error = nullptr;
 
     bool register_ok = false;
-    if (!plugin_safe_call([&]{ register_ok = register_fn(&services, &context, &StagePluginLoader::register_stage_trampoline, &plugin_error); }, fault_error)) {
+    if (!plugin_safe_call([&]{ register_ok = register_fn(entry.services.get(), &context, &StagePluginLoader::register_stage_trampoline, &plugin_error); }, fault_error)) {
         close_shared_library(handle);
         result.error_message = "Plugin '" + path + "' crashed during stage registration: " + fault_error;
         return result;
