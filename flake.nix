@@ -117,6 +117,7 @@
             qt6.wrapQtAppsHook
           ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
             wrapGAppsHook3
+            autoPatchelfHook
           ];
 
           # Wrap Qt binaries and include gapps runtime settings on Linux.
@@ -212,6 +213,29 @@
           postInstall = pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
             mkdir -p $out/bin
             ln -s $out/orc-gui.app/Contents/MacOS/orc-gui $out/bin/orc-gui
+          '';
+
+          # Fix RPATH for standalone execution (nix profile, etc.)
+          postFixup = pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+            for binary in $out/bin/orc-*; do
+              if [ -f "$binary" ]; then
+                ${pkgs.patchelf}/bin/patchelf \
+                  --set-rpath "$out/lib:$out/lib/orc-stage-plugins:${pkgs.lib.makeLibraryPath [
+                    pkgs.stdenv.cc.cc
+                    pkgs.qt6.qtbase
+                    pkgs.curl
+                    pkgs.ffmpeg
+                    pkgs.soxr
+                    pkgs.fftw
+                    pkgs.yaml-cpp
+                    pkgs.sqlite
+                    pkgs.spdlog
+                    pkgs.libpng
+                  ]}" \
+                  --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" \
+                  "$binary" || true
+              fi
+            done
           '';
 
           meta = with pkgs.lib; {
