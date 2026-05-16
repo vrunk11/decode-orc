@@ -2044,7 +2044,9 @@ void MainWindow::onEditParameters(const orc::NodeID& node_id)
         auto new_values = dialog.get_values();
 
         try {
-            project_.presenter()->setNodeParameters(node_id, new_values);
+            if (!project_.presenter()->setNodeParameters(node_id, new_values)) {
+                throw std::runtime_error("Presenter rejected parameter update");
+            }
 
             // Rebuild DAG to pick up the new parameter values
             project_.rebuildDAG();

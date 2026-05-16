@@ -150,6 +150,9 @@
             # FFmpeg components
             ffmpeg
 
+            # High-quality sinc resampling for PAL CVBS fractional sample normalization
+            soxr
+
             # HTTP client for downloading remote plugins
             curl
 

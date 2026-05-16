@@ -12,6 +12,7 @@
     "fftw3",
     "pkgconf",
     "ffmpeg",
+    "soxr",
     "gtest",
     "curl"
   ]

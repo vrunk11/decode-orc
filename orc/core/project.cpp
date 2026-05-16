@@ -918,8 +918,11 @@ void set_node_parameters(Project& project, NodeID node_id,
         throw std::runtime_error("Node not found: " + node_id.to_string());
     }
     
-    // Special validation for source nodes_
-    if (node_it->node_type == NodeType::SOURCE) {
+    // Only TBC composite sources derive metadata from input_path at persist time.
+    const bool requires_tbc_metadata_sidecar =
+        (node_it->stage_name == "PAL_Comp_Source" || node_it->stage_name == "NTSC_Comp_Source");
+
+    if (requires_tbc_metadata_sidecar) {
         auto input_path_it = parameters.find("input_path");
         if (input_path_it != parameters.end() && std::holds_alternative<std::string>(input_path_it->second)) {
             std::string input_path = std::get<std::string>(input_path_it->second);

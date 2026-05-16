@@ -138,8 +138,7 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
-          cache: true
-          cache-key-prefix: qt-windows-msvc2022
+          cache: false
 
       - name: Download pre-built FFmpeg
         id: ffmpeg
