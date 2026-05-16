@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 
@@ -109,6 +110,29 @@ namespace orc_unit_test
         const auto dag = orc::project_to_dag(project);
         ASSERT_NE(dag, nullptr);
         EXPECT_NO_THROW(orc::validate_source_nodes(dag));
+    }
+
+    TEST(ProjectToDagContractTest, cvbsSourceParametersPersistWithoutTbcMetadataSidecar)
+    {
+        auto project = orc::project_io::create_empty_project(
+            "phase5-cvbs-params", orc::VideoSystem::PAL, orc::SourceType::Composite);
+
+        const auto source_id = orc::project_io::add_node(project, "PAL_CVBS_Source", 0.0, 0.0);
+
+        std::map<std::string, orc::ParameterValue> params = {
+            {"input_path", std::string("fixtures/test.composite")},
+            {"use_metadata", false},
+            {"sample_encoding", std::string("CVBS_TPG21_4FSC")}
+        };
+
+        EXPECT_NO_THROW(orc::project_io::set_node_parameters(project, source_id, params));
+
+        const auto& nodes = project.get_nodes();
+        const auto node_it = std::find_if(nodes.begin(), nodes.end(),
+            [source_id](const auto& node) { return node.node_id == source_id; });
+
+        ASSERT_NE(node_it, nodes.end());
+        EXPECT_EQ(node_it->parameters, params);
     }
 
     TEST(ProjectToDagContractTest, unknownStageInProjectFailsCleanly)

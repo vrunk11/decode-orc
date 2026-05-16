@@ -1473,8 +1473,9 @@ SourceField ChromaSinkStage::convertToSourceField(
             const auto& videoParams = videoParamsOpt.value();
             bool isPal = (videoParams.system == VideoSystem::PAL || videoParams.system == VideoSystem::PAL_M);
             bool isSecondField = (desc.parity == FieldParity::Bottom);
+            const bool isCvbsSource = (videoParams.decoder == "cvbs-source");
             
-            if (isPal && videoParams.is_subcarrier_locked && isSecondField) {
+            if (isPal && videoParams.is_subcarrier_locked && isSecondField && !isCvbsSource) {
                 // Shift second field left by 2 samples (remove first 2, add 2 black samples at end)
                 uint16_t black = static_cast<uint16_t>(videoParams.black_16b_ire);
                 
@@ -1530,8 +1531,9 @@ SourceField ChromaSinkStage::convertToSourceField(
             const auto& videoParams = videoParamsOpt.value();
             bool isPal = (videoParams.system == VideoSystem::PAL || videoParams.system == VideoSystem::PAL_M);
             bool isSecondField = (desc.parity == FieldParity::Bottom);
+            const bool isCvbsSource = (videoParams.decoder == "cvbs-source");
             
-            if (isPal && videoParams.is_subcarrier_locked && isSecondField) {
+            if (isPal && videoParams.is_subcarrier_locked && isSecondField && !isCvbsSource) {
                 // Shift second field left by 2 samples (remove first 2, add 2 black samples at end)
                 sf.data.erase(sf.data.begin(), sf.data.begin() + 2);
                 uint16_t black = static_cast<uint16_t>(videoParams.black_16b_ire);

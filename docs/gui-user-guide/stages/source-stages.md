@@ -72,6 +72,69 @@ This stage performs the same role as the PAL Composite Source, but enforces NTSC
 
 ---
 
+## PAL CVBS Source
+
+| | |
+|-|-|
+| **Stage id** | `PAL_CVBS_Source` |
+| **Stage name** | PAL CVBS Source |
+| **Connections** | No inputs -> 1 output |
+| **Purpose** | Load PAL `.composite` CVBS captures into the internal field representation |
+
+**Use this stage when:**
+
+* Your source is a PAL composite CVBS file rather than a LaserDisc `.tbc` capture
+* You have a matching `.meta` sidecar and want Decode-Orc to resolve the encoding automatically
+* You need to load synthetic or test-pattern CVBS captures that were stored in the CVBS file-format family
+
+**What it does**
+
+This stage reads PAL composite CVBS payloads from `.composite` files and emits the same internal field representation used by downstream transform and sink stages. It supports two operating modes:
+
+* **Manual mode**: you choose the sample encoding in the stage parameters
+* **Metadata-driven mode**: the stage reads the matching `.meta` sidecar and validates that the file is PAL composite CVBS
+
+Only the following sample encodings are accepted:
+
+* `CVBS_U16_4FSC`
+* `CVBS_TPG21_4FSC`
+
+Only the `STANDARD_TBC_LOCKED` signal-state preset is accepted in metadata-driven mode. Extension metadata is ignored by design.
+
+**User-facing inputs**
+
+* **CVBS file path** (`.composite`)
+* **Use Metadata** (optional)
+* **Sample Encoding** (`CVBS_U16_4FSC` or `CVBS_TPG21_4FSC` in manual mode)
+
+---
+
+## NTSC CVBS Source
+
+| | |
+|-|-|
+| **Stage id** | `NTSC_CVBS_Source` |
+| **Stage name** | NTSC CVBS Source |
+| **Connections** | No inputs -> 1 output |
+| **Purpose** | Load NTSC `.composite` CVBS captures into the internal field representation |
+
+**Use this stage when:**
+
+* Your source is an NTSC composite CVBS file stored in the CVBS file-format family
+* You want Decode-Orc to enforce NTSC field geometry while loading the capture
+
+**What it does**
+
+This stage behaves like the PAL CVBS Source, but validates NTSC metadata and uses NTSC field timing. It accepts the same two sample encodings and the same metadata-mode restriction to `STANDARD_TBC_LOCKED` composite captures.
+
+**User-facing inputs**
+
+* **CVBS file path** (`.composite`)
+* **Use Metadata** (optional)
+* **Sample Encoding** (`CVBS_U16_4FSC` or `CVBS_TPG21_4FSC` in manual mode)
+
+---
+
 ## PAL Y/C Source
 
 | | |

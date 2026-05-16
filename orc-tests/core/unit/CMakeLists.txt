@@ -46,6 +46,7 @@ function(orc_add_core_unit_tests target labels)
                         orc-stage-plugin-ntsc-yc-source
                         orc-stage-plugin-pal-comp-source
                         orc-stage-plugin-pal-yc-source
+                        orc-stage-plugin-cvbs-source
                         orc-stage-plugin-stacker
                         orc-stage-plugin-field-invert
                         orc-stage-plugin-field-map
@@ -92,6 +93,7 @@ orc_add_core_unit_tests(
         stages/ntsc_yc_source/ntsc_yc_source_stage_test.cpp
         stages/pal_comp_source/pal_comp_source_stage_test.cpp
         stages/pal_yc_source/pal_yc_source_stage_test.cpp
+        stages/cvbs_source/cvbs_source_stage_test.cpp
 )
 
 orc_add_core_unit_tests(

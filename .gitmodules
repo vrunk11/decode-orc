@@ -1,0 +1,3 @@
+[submodule "docs-tech/cvbs-file-format-specification"]
+	path = docs-tech/cvbs-file-format-specification
+	url = https://github.com/simoninns/cvbs-file-format-specification

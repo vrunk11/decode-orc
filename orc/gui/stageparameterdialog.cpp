@@ -626,12 +626,18 @@ bool StageParameterDialog::validate_values()
         return false;
     };
 
-    // Composite source stages: db_path is derived from input_path at runtime as input_path + ".db"
-    auto input_it = parameter_widgets_.find("input_path");
-    if (input_it != parameter_widgets_.end()) {
-        auto* edit = input_it->second.widget->findChild<QLineEdit*>("file_path_edit");
-        if (edit && !edit->text().isEmpty()) {
-            if (!check_db_file(resolve_path(edit->text()) + ".db")) return false;
+    // TBC composite source stages: db_path is derived from input_path at runtime as input_path + ".db".
+    // CVBS source stages also use input_path but do not require a .tbc.db sidecar.
+    const bool requires_derived_db_metadata =
+        (stage_name_ == "PAL_Comp_Source" || stage_name_ == "NTSC_Comp_Source");
+
+    if (requires_derived_db_metadata) {
+        auto input_it = parameter_widgets_.find("input_path");
+        if (input_it != parameter_widgets_.end()) {
+            auto* edit = input_it->second.widget->findChild<QLineEdit*>("file_path_edit");
+            if (edit && !edit->text().isEmpty()) {
+                if (!check_db_file(resolve_path(edit->text()) + ".db")) return false;
+            }
         }
     }
 
