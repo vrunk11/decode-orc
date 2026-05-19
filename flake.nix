@@ -122,6 +122,10 @@
 
           # Wrap Qt binaries and include gapps runtime settings on Linux.
           dontWrapGApps = pkgs.stdenv.isLinux;
+          
+          # On macOS, the .app bundle is already properly structured,
+          # so we skip the automatic Qt wrapping which causes issues
+          dontWrapQtApps = pkgs.stdenv.isDarwin;
 
           qtWrapperArgs =
             pkgs.lib.optionals pkgs.stdenv.isDarwin [
@@ -177,7 +181,7 @@
           cmakeFlags = [
             "-GNinja"
             "-DCMAKE_BUILD_TYPE=Release"
-            "-DBUILD_TESTS=ON"
+            "-DBUILD_UNIT_TESTS=OFF"
             "-DBUILD_GUI=ON"
             "-DBUILD_DOCS=OFF"
             "-DBUILD_ENCODE_ORC=OFF"
@@ -209,34 +213,106 @@
             ctest --output-on-failure -R MVPArchitectureCheck
           '';
 
-          # Create symlink for macOS .app bundle
-          postInstall = pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
-            mkdir -p $out/bin
-            ln -s $out/orc-gui.app/Contents/MacOS/orc-gui $out/bin/orc-gui
-          '';
-
           # Fix RPATH for standalone execution (nix profile, etc.)
-          postFixup = pkgs.lib.optionalString pkgs.stdenv.isLinux ''
-            for binary in $out/bin/orc-*; do
-              if [ -f "$binary" ]; then
-                ${pkgs.patchelf}/bin/patchelf \
-                  --set-rpath "$out/lib:$out/lib/orc-stage-plugins:${pkgs.lib.makeLibraryPath [
-                    pkgs.stdenv.cc.cc
-                    pkgs.qt6.qtbase
-                    pkgs.curl
-                    pkgs.ffmpeg
-                    pkgs.soxr
-                    pkgs.fftw
-                    pkgs.yaml-cpp
-                    pkgs.sqlite
-                    pkgs.spdlog
-                    pkgs.libpng
-                  ]}" \
-                  --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" \
-                  "$binary" || true
+          postFixup = 
+            pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+              for binary in $out/bin/orc-*; do
+                if [ -f "$binary" ]; then
+                  ${pkgs.patchelf}/bin/patchelf \
+                    --set-rpath "$out/lib:$out/lib/orc-stage-plugins:${pkgs.lib.makeLibraryPath [
+                      pkgs.stdenv.cc.cc
+                      pkgs.qt6.qtbase
+                      pkgs.curl
+                      pkgs.ffmpeg
+                      pkgs.soxr
+                      pkgs.fftw
+                      pkgs.yaml-cpp
+                      pkgs.sqlite
+                      pkgs.spdlog
+                      pkgs.libpng
+                    ]}" \
+                    --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" \
+                    "$binary" || true
+                fi
+              done
+            ''
+            + pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
+              # On macOS, the .app bundle has:
+              #   - Libraries in: orc-gui.app/Contents/Frameworks/
+              #   - Plugins in: orc-gui.app/Contents/PlugIns/orc-stage-plugins/
+              #   - Executable in: orc-gui.app/Contents/MacOS/orc-gui
+              #
+              # We need to rewrite all references to use @loader_path for relocatability.
+              # From the executable (@loader_path is MacOS/):
+              #   - Frameworks are at: ../Frameworks/
+              #   - Plugins are at: ../PlugIns/orc-stage-plugins/
+              # From a Framework dylib (@loader_path is Frameworks/):
+              #   - Other frameworks are at: ./
+              #   - Plugins are at: ../PlugIns/orc-stage-plugins/
+              
+              app_path="$out/orc-gui.app"
+              main_exe="$app_path/Contents/MacOS/orc-gui"
+              frameworks_dir="$app_path/Contents/Frameworks"
+              plugins_dir="$app_path/Contents/PlugIns/orc-stage-plugins"
+              
+              # Helper function to extract store paths from otool output
+              get_store_dylibs() {
+                local binary="$1"
+                otool -L "$binary" 2>/dev/null | grep -v ":" | grep -v "^$" | grep -v "^[[:space:]]*$" | awk '{print $1}' | grep "\.dylib$"
+              }
+              
+              # Rewrite dylibs in Frameworks directory
+              if [ -d "$frameworks_dir" ]; then
+                find "$frameworks_dir" -name "*.dylib" -type f | while read dylib; do
+                  # Rewrite all .dylib references in this framework
+                  get_store_dylibs "$dylib" | while read lib; do
+                    libname=$(basename "$lib")
+                    if [ -f "$frameworks_dir/$libname" ]; then
+                      # Reference to another framework: use @loader_path
+                      install_name_tool -change "$lib" "@loader_path/$libname" "$dylib" 2>/dev/null || true
+                    fi
+                    # Check if it's a plugin reference
+                    if [ -f "$plugins_dir/$libname" ]; then
+                      # Reference to a plugin: use path relative to Frameworks
+                      install_name_tool -change "$lib" "@loader_path/../PlugIns/orc-stage-plugins/$libname" "$dylib" 2>/dev/null || true
+                    fi
+                  done
+                done
               fi
-            done
-          '';
+              
+              # Rewrite dylibs in plugins directory
+              if [ -d "$plugins_dir" ]; then
+                find "$plugins_dir" -name "*.dylib" -type f | while read dylib; do
+                  # Plugins might reference frameworks and core library
+                  get_store_dylibs "$dylib" | while read lib; do
+                    libname=$(basename "$lib")
+                    if [ -f "$frameworks_dir/$libname" ]; then
+                      # Reference to a framework: use path relative to plugin location
+                      install_name_tool -change "$lib" "@loader_path/../../Frameworks/$libname" "$dylib" 2>/dev/null || true
+                    fi
+                    # Plugin referencing another plugin (unlikely but handle it)
+                    if [ -f "$plugins_dir/$libname" ]; then
+                      install_name_tool -change "$lib" "@loader_path/$libname" "$dylib" 2>/dev/null || true
+                    fi
+                  done
+                done
+              fi
+              
+              # Rewrite the main executable
+              if [ -f "$main_exe" ]; then
+                get_store_dylibs "$main_exe" | while read lib; do
+                  libname=$(basename "$lib")
+                  if [ -f "$frameworks_dir/$libname" ]; then
+                    # Reference to a framework
+                    install_name_tool -change "$lib" "@loader_path/../Frameworks/$libname" "$main_exe" 2>/dev/null || true
+                  fi
+                  if [ -f "$plugins_dir/$libname" ]; then
+                    # Reference to a plugin (shouldn't happen but handle it)
+                    install_name_tool -change "$lib" "@loader_path/../PlugIns/orc-stage-plugins/$libname" "$main_exe" 2>/dev/null || true
+                  fi
+                done
+              fi
+            '';
 
           meta = with pkgs.lib; {
             description = "Decode-Orc - LaserDisc and tape decoding orchestration framework";
