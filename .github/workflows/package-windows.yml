@@ -140,64 +140,6 @@ jobs:
           arch: 'win64_msvc2022_64'
           cache: false
 
-      - name: Download pre-built FFmpeg
-        id: ffmpeg
-        shell: pwsh
-        run: |
-          $releaseApi = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest"
-          $headers = @{
-            "Accept" = "application/vnd.github+json"
-            "X-GitHub-Api-Version" = "2022-11-28"
-            "Authorization" = "Bearer ${{ github.token }}"
-            "User-Agent" = "decode-orc-ci"
-          }
-
-          $release = Invoke-RestMethod -Uri $releaseApi -Headers $headers
-          $assets = @($release.assets)
-
-          # Prefer versioned win64 GPL shared bundles, then fallback to any win64 GPL shared bundle.
-          $asset = $assets |
-            Where-Object {
-              $_.name -match '^ffmpeg-n\d+\.\d+-latest-win64-gpl-shared.*\.zip$'
-            } |
-            Select-Object -First 1
-
-          if (-not $asset) {
-            $asset = $assets |
-              Where-Object {
-                $_.name -match '^ffmpeg-.*-win64-gpl-shared.*\.zip$'
-              } |
-              Select-Object -First 1
-          }
-
-          if (-not $asset) {
-            $available = $assets | ForEach-Object { $_.name } | Sort-Object
-            Write-Error "Could not find a win64 GPL shared FFmpeg zip in latest release. Available assets: $($available -join ', ')"
-            exit 1
-          }
-
-          Write-Host "Downloading FFmpeg asset: $($asset.name)"
-          $downloadHeaders = @{
-            "Accept" = "application/octet-stream"
-            "Authorization" = "Bearer ${{ github.token }}"
-            "X-GitHub-Api-Version" = "2022-11-28"
-            "User-Agent" = "decode-orc-ci"
-          }
-          Invoke-WebRequest -Uri $asset.url -Headers $downloadHeaders -OutFile ffmpeg.zip
-          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-dist -Force
-          $ffmpegDir = (Get-ChildItem ffmpeg-dist -Directory | Select-Object -First 1).FullName
-
-          # Fix .pc file prefix to the actual local path (BtbN uses a build-time prefix)
-          $pcDir = "$ffmpegDir\lib\pkgconfig"
-          $winPrefix = ($ffmpegDir -replace '\\', '/')
-          Get-ChildItem $pcDir -Filter "*.pc" | ForEach-Object {
-            (Get-Content $_.FullName -Raw) -replace '(?m)^prefix=.*$', "prefix=$winPrefix" |
-              Set-Content $_.FullName
-          }
-
-          echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
-          echo "ffmpeg_dir=$ffmpegDir" >> $env:GITHUB_OUTPUT
-
       - name: Fetch ezpwd-reed-solomon headers
         shell: pwsh
         run: |
@@ -234,8 +176,7 @@ jobs:
 
           $pkgConfigPaths = @(
             "$PWD\vcpkg_installed\x64-windows-release\lib\pkgconfig",
-            "$PWD\vcpkg_installed\x64-windows-release\share\pkgconfig",
-            "$($env:FFMPEG_DIR)\lib\pkgconfig"
+            "$PWD\vcpkg_installed\x64-windows-release\share\pkgconfig"
           ) -join ";"
 
           $env:PATH = "$PWD\vcpkg_installed\x64-windows-release\tools\pkgconf;$env:PATH"
@@ -326,9 +267,6 @@ jobs:
           } else {
             Write-Warning "vcpkg bin directory not found at $vcpkgBin"
           }
-
-          # Copy FFmpeg runtime DLLs (no longer from vcpkg_installed)
-          Copy-Item "$($env:FFMPEG_DIR)\bin\*.dll" $targetBin -Force
 
       - name: Convert PNG icon to ICO for WiX
         shell: pwsh
