@@ -1,3 +1,12 @@
+/*
+ * File:        disc_mapper_analysis.h
+ * Module:      analysis
+ * Purpose:     Disc mapper analysis tool: detects skipped, repeated, and missing fields
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #ifndef ORC_CORE_ANALYSIS_DISC_MAPPER_ANALYSIS_H
 #define ORC_CORE_ANALYSIS_DISC_MAPPER_ANALYSIS_H
 

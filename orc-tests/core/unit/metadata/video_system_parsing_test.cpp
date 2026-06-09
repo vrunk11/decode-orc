@@ -25,25 +25,25 @@ namespace orc {
 // SQLite should only accept the canonical "PAL_M" (underscore) form
 class VideoSystemFromStringTest : public ::testing::Test {};
 
-TEST_F(VideoSystemFromStringTest, AcceptsCanonicalPal) {
+TEST_F(VideoSystemFromStringTest, Accepts_CanonicalPal) {
   EXPECT_EQ(video_system_from_string("PAL"), VideoSystem::PAL);
 }
 
-TEST_F(VideoSystemFromStringTest, AcceptsCanonicalNtsc) {
+TEST_F(VideoSystemFromStringTest, Accepts_CanonicalNtsc) {
   EXPECT_EQ(video_system_from_string("NTSC"), VideoSystem::NTSC);
 }
 
-TEST_F(VideoSystemFromStringTest, AcceptsCanonicalPalM) {
+TEST_F(VideoSystemFromStringTest, Accepts_CanonicalPalM) {
   EXPECT_EQ(video_system_from_string("PAL_M"), VideoSystem::PAL_M);
 }
 
-TEST_F(VideoSystemFromStringTest, RejectsHyphenatedPalM) {
+TEST_F(VideoSystemFromStringTest, Rejects_HyphenatedPalM) {
   // SQLite uses only the canonical underscore form
   // This enforces that SQLite metadata must use "PAL_M" not "PAL-M"
   EXPECT_EQ(video_system_from_string("PAL-M"), VideoSystem::Unknown);
 }
 
-TEST_F(VideoSystemFromStringTest, RejectsUnknownFormat) {
+TEST_F(VideoSystemFromStringTest, Rejects_UnknownFormat) {
   EXPECT_EQ(video_system_from_string("SECAM"), VideoSystem::Unknown);
   EXPECT_EQ(video_system_from_string("PAL_L"), VideoSystem::Unknown);
   EXPECT_EQ(video_system_from_string(""), VideoSystem::Unknown);
@@ -51,7 +51,7 @@ TEST_F(VideoSystemFromStringTest, RejectsUnknownFormat) {
             VideoSystem::Unknown);  // case-sensitive
 }
 
-TEST_F(VideoSystemFromStringTest, SqliteOnlyAcceptsExactCanonicalForm) {
+TEST_F(VideoSystemFromStringTest, SqliteOnly_AcceptsExactCanonicalForm) {
   // This test enforces the strict requirement:
   // SQLite metadata must use exactly "PAL_M" (underscore, uppercase)
   // No variations like "PAL-M", "pal_m", "Pal_M" are accepted

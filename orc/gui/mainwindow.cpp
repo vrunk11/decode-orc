@@ -3103,8 +3103,6 @@ void MainWindow::updatePreviewRenderer() {
 
   // Check if current node is still valid, or if we need to switch
   bool need_to_switch = false;
-  std::string target_node;
-
   if (current_view_node_id_.is_valid() == false) {
     // No node selected yet - use suggestion
     need_to_switch = true;
@@ -4144,7 +4142,7 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
       current_output_type_ == orc::PreviewOutputType::Split) {
     // Determine which field based on sample position
     int frame_index = preview_dialog_->previewSlider()->value();
-    uint64_t field1 = static_cast<uint64_t>(frame_index * 2);
+    uint64_t field1 = static_cast<uint64_t>(frame_index) * 2;
     uint64_t field2 = frame_index * 2 + 1;
 
     if (center_sample >= samples_per_first_field) {
@@ -4713,7 +4711,7 @@ void MainWindow::onLineScopeRequested(int image_x, int image_y) {
   // but the field data may have a different width (no aspect ratio correction
   // in samples) We need to get the original field width to do proper mapping
   // For now, we'll pass image_x and let the backend handle clamping
-  // TODO: Get actual field descriptor to properly map coordinates
+  // TODO(sdi): Get actual field descriptor to properly map coordinates
   int sample_x = image_x;
 
   ORC_LOG_DEBUG(

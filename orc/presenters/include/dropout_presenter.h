@@ -31,9 +31,6 @@ class IProjectPresenter;
 
 namespace orc::presenters {
 
-// Forward declarations
-class Project;
-
 // Use public API DropoutRegion
 using DropoutRegion = orc::DropoutRegion;
 

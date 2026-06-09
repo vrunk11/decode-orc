@@ -1,3 +1,12 @@
+/*
+ * File:        analysis_context.h
+ * Module:      analysis
+ * Purpose:     Context object passed to analysis tools during execution
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #ifndef ORC_CORE_ANALYSIS_CONTEXT_H
 #define ORC_CORE_ANALYSIS_CONTEXT_H
 

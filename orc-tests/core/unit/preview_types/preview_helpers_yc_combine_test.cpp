@@ -122,7 +122,7 @@ uint8_t raw_scale_expected(uint16_t sample) {
 }  // namespace
 
 TEST(PreviewHelpersYCCombineTest,
-     fieldRawCompositeYcRemovesChromaMidCodeBeforeSumming) {
+     Field_RawCompositeYcRemovesChromaMidCodeBeforeSumming) {
   auto repr = std::make_shared<TestYCRepresentation>(
       std::vector<uint16_t>{40000, 10000}, std::vector<uint16_t>{32768, 40000},
       std::vector<uint16_t>{0, 0}, std::vector<uint16_t>{32768, 32768}, 2, 1);
@@ -145,7 +145,7 @@ TEST(PreviewHelpersYCCombineTest,
 }
 
 TEST(PreviewHelpersYCCombineTest,
-     splitRawCompositeYcUsesSameMidCodeRemovalAcrossFields) {
+     SplitRawCompositeYc_UsesSameMidCodeRemovalAcrossFields) {
   auto repr = std::make_shared<TestYCRepresentation>(
       std::vector<uint16_t>{33000, 20000}, std::vector<uint16_t>{32768, 34000},
       std::vector<uint16_t>{10000, 50000}, std::vector<uint16_t>{30000, 32768},

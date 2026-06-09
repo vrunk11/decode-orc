@@ -78,7 +78,7 @@ void init_app_logging(const std::string& level, const std::string& pattern,
           std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_file, true);
       file_sink->set_pattern(pattern);
       g_logger->sinks().push_back(file_sink);
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch)
       // If file sink creation fails, keep console logging only
     }
   }

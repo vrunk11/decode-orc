@@ -1,8 +1,8 @@
 /*
- * File:        phase_7d_skeleton_load_test.cpp
+ * File:        skeleton_plugin_registry_test.cpp
  * Module:      orc-core unit tests
- * Purpose:     Phase 7D contract verification for the canonical skeleton
- * repository
+ * Purpose:     Contract tests for the canonical skeleton plugin registry:
+ *              YAML parsing, artifact naming, and cache-path formation
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -15,19 +15,8 @@
 
 namespace orc_unit_test {
 
-/**
- * Phase 7D metadata contract test:
- * Verifies that the canonical skeleton release metadata is accepted by the
- * registry when a local precompiled artifact override is supplied.
- *
- * This test proves:
- * 1. Registry accepts the canonical GitHub release metadata fields.
- * 2. A local artifact override is sufficient for the allowed Phase 7D smoke
- * path.
- * 3. The artifact naming contract remains stable across platforms.
- */
-TEST(Phase7DSkeletonLoadTest,
-     registryAcceptsSkeletonReleaseMetadataWithLocalOverride) {
+TEST(SkeletonPluginRegistryTest,
+     Registry_AcceptsSkeletonReleaseMetadataWithLocalOverride) {
   const std::string skeleton_registry_yaml = R"yaml(
 version: 2
 plugins:
@@ -46,9 +35,9 @@ plugins:
 )yaml";
 
   const auto result = orc::StagePluginRegistry::parse_yaml(
-      skeleton_registry_yaml, "<phase-7d-skeleton-registry>");
+      skeleton_registry_yaml, "<skeleton-registry-test>");
 
-  EXPECT_EQ(result.registry_path, "<phase-7d-skeleton-registry>");
+  EXPECT_EQ(result.registry_path, "<skeleton-registry-test>");
   ASSERT_TRUE(result.warnings.empty());
   ASSERT_EQ(result.entries.size(), 1U);
   EXPECT_EQ(result.entries[0].plugin_id,
@@ -61,10 +50,7 @@ plugins:
             "/tmp/orc-plugin_skeleton_passthrough_linux.so");
 }
 
-/**
- * Verify skeleton artifact naming follows Phase 7D convention.
- */
-TEST(Phase7DSkeletonLoadTest, skeletonArtifactNamesMatchPhase7DConvention) {
+TEST(SkeletonPluginRegistryTest, SkeletonArtifactNames_MatchNamingConvention) {
   // These are the actual published artifacts on GitHub Releases
   const std::vector<std::string> artifacts = {
       "orc-plugin_skeleton_passthrough_linux.so",
@@ -81,10 +67,7 @@ TEST(Phase7DSkeletonLoadTest, skeletonArtifactNamesMatchPhase7DConvention) {
   }
 }
 
-/**
- * Verify cache-path formation remains aligned with the Phase 7D artifact names.
- */
-TEST(Phase7DSkeletonLoadTest, cachePathsMatchSkeletonArtifacts) {
+TEST(SkeletonPluginRegistryTest, CachePaths_MatchSkeletonArtifacts) {
   const std::vector<std::string> skeleton_artifacts = {
       "orc-plugin_skeleton_passthrough_linux.so",
       "orc-plugin_skeleton_passthrough_macos.dylib",

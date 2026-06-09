@@ -137,7 +137,7 @@ std::vector<std::array<uint8_t, 1536>> Ac3BlockHandler::handleCorrectedBlock(
           continue;
         }
         m_first_symbol_in_burst = block.global_symbol_index + symbol_in_block -
-                                  static_cast<size_t>(m_ac3_output_block_index * 4);
+                                  static_cast<size_t>(m_ac3_output_block_index) * 4;
 
         // Data doesn't arrive equally spaced.  Output blocks appear 31.25 times
         // per second and contain 2880 bytes.  4 output blocks are made from 5

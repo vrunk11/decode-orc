@@ -21,35 +21,35 @@ namespace gui_unit_test {
 // ThemeManager Constructor and Mode Parsing Tests
 // =============================================================================
 
-TEST(ThemeManagerTest, constructorAutoModeFromEmptyString) {
+TEST(ThemeManagerTest, Constructor_AutoModeFromEmptyString) {
   // Empty string should default to Auto mode
   ThemeManager manager("");
   EXPECT_EQ(manager.mode(), ThemeManager::Mode::Auto);
   EXPECT_FALSE(manager.hadInvalidMode());
 }
 
-TEST(ThemeManagerTest, constructorAutoModeFromAutoString) {
+TEST(ThemeManagerTest, Constructor_AutoModeFromAutoString) {
   // "auto" string should set Auto mode
   ThemeManager manager("auto");
   EXPECT_EQ(manager.mode(), ThemeManager::Mode::Auto);
   EXPECT_FALSE(manager.hadInvalidMode());
 }
 
-TEST(ThemeManagerTest, constructorLightMode) {
+TEST(ThemeManagerTest, Constructor_LightMode) {
   // "light" string should set Light mode
   ThemeManager manager("light");
   EXPECT_EQ(manager.mode(), ThemeManager::Mode::Light);
   EXPECT_FALSE(manager.hadInvalidMode());
 }
 
-TEST(ThemeManagerTest, constructorDarkMode) {
+TEST(ThemeManagerTest, Constructor_DarkMode) {
   // "dark" string should set Dark mode
   ThemeManager manager("dark");
   EXPECT_EQ(manager.mode(), ThemeManager::Mode::Dark);
   EXPECT_FALSE(manager.hadInvalidMode());
 }
 
-TEST(ThemeManagerTest, constructorLightModeCaseInsensitive) {
+TEST(ThemeManagerTest, Constructor_LightModeCaseInsensitive) {
   // Case variations should be accepted for "light"
   ThemeManager manager1("LIGHT");
   EXPECT_EQ(manager1.mode(), ThemeManager::Mode::Light);
@@ -60,7 +60,7 @@ TEST(ThemeManagerTest, constructorLightModeCaseInsensitive) {
   EXPECT_FALSE(manager2.hadInvalidMode());
 }
 
-TEST(ThemeManagerTest, constructorDarkModeCaseInsensitive) {
+TEST(ThemeManagerTest, Constructor_DarkModeCaseInsensitive) {
   // Case variations should be accepted for "dark"
   ThemeManager manager1("DARK");
   EXPECT_EQ(manager1.mode(), ThemeManager::Mode::Dark);
@@ -71,7 +71,7 @@ TEST(ThemeManagerTest, constructorDarkModeCaseInsensitive) {
   EXPECT_FALSE(manager2.hadInvalidMode());
 }
 
-TEST(ThemeManagerTest, constructorAutoModeCaseInsensitive) {
+TEST(ThemeManagerTest, Constructor_AutoModeCaseInsensitive) {
   // Case variations should be accepted for "auto"
   ThemeManager manager1("AUTO");
   EXPECT_EQ(manager1.mode(), ThemeManager::Mode::Auto);
@@ -82,7 +82,7 @@ TEST(ThemeManagerTest, constructorAutoModeCaseInsensitive) {
   EXPECT_FALSE(manager2.hadInvalidMode());
 }
 
-TEST(ThemeManagerTest, constructorInvalidModeRecordsError) {
+TEST(ThemeManagerTest, Constructor_InvalidModeRecordsError) {
   // Invalid mode string should be recorded
   ThemeManager manager("invalid_mode");
   EXPECT_EQ(manager.mode(), ThemeManager::Mode::Auto);  // Defaults to Auto
@@ -90,7 +90,7 @@ TEST(ThemeManagerTest, constructorInvalidModeRecordsError) {
   EXPECT_EQ(manager.invalidMode().toStdString(), "invalid_mode");
 }
 
-TEST(ThemeManagerTest, constructorInvalidModePreservesOriginal) {
+TEST(ThemeManagerTest, ConstructorInvalidMode_PreservesOriginal) {
   // Invalid mode should preserve the original string (including
   // leading/trailing spaces)
   ThemeManager manager("   Invalid   ");
@@ -103,34 +103,34 @@ TEST(ThemeManagerTest, constructorInvalidModePreservesOriginal) {
 // Mode and Name Queries Tests
 // =============================================================================
 
-TEST(ThemeManagerTest, modeNameReturnsCorrectNameForAuto) {
+TEST(ThemeManagerTest, ModeName_ReturnsCorrectNameForAuto) {
   ThemeManager manager("auto");
   EXPECT_EQ(manager.modeName().toStdString(), "auto");
 }
 
-TEST(ThemeManagerTest, modeNameReturnsCorrectNameForLight) {
+TEST(ThemeManagerTest, ModeName_ReturnsCorrectNameForLight) {
   ThemeManager manager("light");
   EXPECT_EQ(manager.modeName().toStdString(), "light");
 }
 
-TEST(ThemeManagerTest, modeNameReturnsCorrectNameForDark) {
+TEST(ThemeManagerTest, ModeName_ReturnsCorrectNameForDark) {
   ThemeManager manager("dark");
   EXPECT_EQ(manager.modeName().toStdString(), "dark");
 }
 
-TEST(ThemeManagerTest, shouldTrackSystemChangesTrueForAuto) {
+TEST(ThemeManagerTest, Should_TrackSystemChangesTrueForAuto) {
   // Auto mode should track system changes
   ThemeManager manager("auto");
   EXPECT_TRUE(manager.shouldTrackSystemChanges());
 }
 
-TEST(ThemeManagerTest, shouldTrackSystemChangesFalseForLight) {
+TEST(ThemeManagerTest, Should_TrackSystemChangesFalseForLight) {
   // Light mode should not track system changes (explicitly set)
   ThemeManager manager("light");
   EXPECT_FALSE(manager.shouldTrackSystemChanges());
 }
 
-TEST(ThemeManagerTest, shouldTrackSystemChangesFalseForDark) {
+TEST(ThemeManagerTest, Should_TrackSystemChangesFalseForDark) {
   // Dark mode should not track system changes (explicitly set)
   ThemeManager manager("dark");
   EXPECT_FALSE(manager.shouldTrackSystemChanges());
@@ -140,32 +140,32 @@ TEST(ThemeManagerTest, shouldTrackSystemChangesFalseForDark) {
 // Static String Conversion Tests
 // =============================================================================
 
-TEST(ThemeManagerTest, modeToStringAuto) {
+TEST(ThemeManagerTest, Mode_ToStringAuto) {
   QString result = ThemeManager::modeToString(ThemeManager::Mode::Auto);
   EXPECT_EQ(result.toStdString(), "auto");
 }
 
-TEST(ThemeManagerTest, modeToStringLight) {
+TEST(ThemeManagerTest, Mode_ToStringLight) {
   QString result = ThemeManager::modeToString(ThemeManager::Mode::Light);
   EXPECT_EQ(result.toStdString(), "light");
 }
 
-TEST(ThemeManagerTest, modeToStringDark) {
+TEST(ThemeManagerTest, Mode_ToStringDark) {
   QString result = ThemeManager::modeToString(ThemeManager::Mode::Dark);
   EXPECT_EQ(result.toStdString(), "dark");
 }
 
-TEST(ThemeManagerTest, colorSchemeToStringDark) {
+TEST(ThemeManagerTest, Color_SchemeToStringDark) {
   QString result = ThemeManager::colorSchemeToString(Qt::ColorScheme::Dark);
   EXPECT_EQ(result.toStdString(), "dark");
 }
 
-TEST(ThemeManagerTest, colorSchemeToStringLight) {
+TEST(ThemeManagerTest, Color_SchemeToStringLight) {
   QString result = ThemeManager::colorSchemeToString(Qt::ColorScheme::Light);
   EXPECT_EQ(result.toStdString(), "light");
 }
 
-TEST(ThemeManagerTest, colorSchemeToStringUnknown) {
+TEST(ThemeManagerTest, Color_SchemeToStringUnknown) {
   QString result = ThemeManager::colorSchemeToString(Qt::ColorScheme::Unknown);
   EXPECT_EQ(result.toStdString(), "unknown");
 }
@@ -174,7 +174,7 @@ TEST(ThemeManagerTest, colorSchemeToStringUnknown) {
 // Resolution Tests
 // =============================================================================
 
-TEST(ThemeManagerTest, resolveLightModeReturnsLight) {
+TEST(ThemeManagerTest, ResolveLightMode_ReturnsLight) {
   ThemeManager manager("light");
 
   // Create a minimal QApplication for testing
@@ -191,7 +191,7 @@ TEST(ThemeManagerTest, resolveLightModeReturnsLight) {
   EXPECT_EQ(resolution.source.toStdString(), "cli override");
 }
 
-TEST(ThemeManagerTest, resolveDarkModeReturnsDark) {
+TEST(ThemeManagerTest, ResolveDarkMode_ReturnsDark) {
   ThemeManager manager("dark");
 
   char* argv[] = {const_cast<char*>("test")};
@@ -207,7 +207,7 @@ TEST(ThemeManagerTest, resolveDarkModeReturnsDark) {
   EXPECT_EQ(resolution.source.toStdString(), "cli override");
 }
 
-TEST(ThemeManagerTest, resolveAutoModeUsesSystemScheme) {
+TEST(ThemeManagerTest, ResolveAutoMode_UsesSystemScheme) {
   ThemeManager manager("auto");
 
   char* argv[] = {const_cast<char*>("test")};
@@ -227,7 +227,7 @@ TEST(ThemeManagerTest, resolveAutoModeUsesSystemScheme) {
               resolution.source.contains("palette fallback"));
 }
 
-TEST(ThemeManagerTest, resolveLightModeNoFallback) {
+TEST(ThemeManagerTest, Resolve_LightModeNoFallback) {
   // Light mode should not use palette fallback (it's explicitly set)
   ThemeManager manager("light");
 
@@ -239,7 +239,7 @@ TEST(ThemeManagerTest, resolveLightModeNoFallback) {
   EXPECT_FALSE(resolution.usedPaletteFallback);
 }
 
-TEST(ThemeManagerTest, resolveDarkModeNoFallback) {
+TEST(ThemeManagerTest, Resolve_DarkModeNoFallback) {
   // Dark mode should not use palette fallback (it's explicitly set)
   ThemeManager manager("dark");
 
@@ -255,7 +255,7 @@ TEST(ThemeManagerTest, resolveDarkModeNoFallback) {
 // Resolution Structure Tests
 // =============================================================================
 
-TEST(ThemeManagerTest, resolutionIncludesAllFields) {
+TEST(ThemeManagerTest, Resolution_IncludesAllFields) {
   ThemeManager manager("light");
 
   char* argv[] = {const_cast<char*>("test")};
@@ -272,7 +272,7 @@ TEST(ThemeManagerTest, resolutionIncludesAllFields) {
   EXPECT_TRUE(resolution.usedPaletteFallback == false);
 }
 
-TEST(ThemeManagerTest, resolutionLightIsDarkIsFalse) {
+TEST(ThemeManagerTest, ResolutionLight_IsDarkIsFalse) {
   ThemeManager manager("light");
 
   char* argv[] = {const_cast<char*>("test")};
@@ -283,7 +283,7 @@ TEST(ThemeManagerTest, resolutionLightIsDarkIsFalse) {
   EXPECT_FALSE(resolution.isDark);
 }
 
-TEST(ThemeManagerTest, resolutionDarkIsDarkIsTrue) {
+TEST(ThemeManagerTest, ResolutionDark_IsDarkIsTrue) {
   ThemeManager manager("dark");
 
   char* argv[] = {const_cast<char*>("test")};

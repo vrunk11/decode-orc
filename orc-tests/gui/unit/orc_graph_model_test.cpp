@@ -34,7 +34,7 @@ static orc::presenters::NodeInfo makeNodeInfo(int32_t id,
       orc::NodeID(id), stage, label, x, y, true, true, false, "", "", ""};
 }
 
-TEST(OrcGraphModelTest, constructorBuildsMappingsAndProjectsNodeData) {
+TEST(OrcGraphModelTest, Constructor_BuildsMappingsAndProjectsNodeData) {
   NiceMock<orc::presenters::test::MockProjectPresenter> presenter;
 
   const auto source = makeNodeInfo(10, "PALYCSource", "Source A", 12.5, 4.0);
@@ -75,7 +75,7 @@ TEST(OrcGraphModelTest, constructorBuildsMappingsAndProjectsNodeData) {
   EXPECT_THAT(model.allConnectionIds(0), Contains(expected));
 }
 
-TEST(OrcGraphModelTest, connectionRoundTripDelegatesToPresenter) {
+TEST(OrcGraphModelTest, ConnectionRoundTrip_DelegatesToPresenter) {
   NiceMock<orc::presenters::test::MockProjectPresenter> presenter;
 
   EXPECT_CALL(presenter, getNodes())
@@ -102,7 +102,7 @@ TEST(OrcGraphModelTest, connectionRoundTripDelegatesToPresenter) {
 }
 
 TEST(OrcGraphModelTest,
-     connectionPossibleRejectsInvalidAndDuplicateConnections) {
+     ConnectionPossible_RejectsInvalidAndDuplicateConnections) {
   NiceMock<orc::presenters::test::MockProjectPresenter> presenter;
 
   EXPECT_CALL(presenter, getNodes())
@@ -126,7 +126,7 @@ TEST(OrcGraphModelTest,
   EXPECT_FALSE(model.connectionPossible(missing_node));
 }
 
-TEST(OrcGraphModelTest, setNodeDataCaptionAndPositionDelegateToPresenter) {
+TEST(OrcGraphModelTest, Set_NodeDataCaptionAndPositionDelegateToPresenter) {
   NiceMock<orc::presenters::test::MockProjectPresenter> presenter;
 
   EXPECT_CALL(presenter, getNodes())
@@ -149,7 +149,7 @@ TEST(OrcGraphModelTest, setNodeDataCaptionAndPositionDelegateToPresenter) {
                                 QVariant(QPointF(11.0, 22.0))));
 }
 
-TEST(OrcGraphModelTest, deleteNodeUnknownNodeFails) {
+TEST(OrcGraphModelTest, DeleteNodeUnknownNode_Fails) {
   NiceMock<orc::presenters::test::MockProjectPresenter> presenter;
 
   EXPECT_CALL(presenter, getNodes())

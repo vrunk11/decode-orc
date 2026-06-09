@@ -268,7 +268,7 @@ std::vector<orc::AnalysisToolInfo> AnalysisPresenter::getToolsForStage(
         }
       }
     }
-  } catch (const std::exception&) {
+  } catch (const std::exception&) {  // NOLINT(bugprone-empty-catch)
     // Missing/invalid stage registration should not block standard analysis
     // tool discovery.
   }

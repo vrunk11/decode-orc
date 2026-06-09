@@ -23,7 +23,7 @@ using testing::HasSubstr;
 }  // namespace
 
 TEST(ProjectPluginMetadataTest,
-     saveFiltersLoadedPluginMetadataToStillUsedStages) {
+     Save_FiltersLoadedPluginMetadataToStillUsedStages) {
   const std::string yaml_text = R"yaml(
 project:
   name: plugin-metadata-test
@@ -73,7 +73,7 @@ required_plugins:
 }
 
 TEST(ProjectPluginMetadataTest,
-     missingStageErrorReferencesSavedPluginMetadata) {
+     Missing_StageErrorReferencesSavedPluginMetadata) {
   const std::string yaml_text = R"yaml(
 project:
   name: plugin-metadata-test

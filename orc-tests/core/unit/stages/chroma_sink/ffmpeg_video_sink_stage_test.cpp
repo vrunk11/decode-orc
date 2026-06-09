@@ -33,7 +33,7 @@ bool has_string(const std::vector<std::string>& values,
 }
 }  // namespace
 
-TEST(FFmpegVideoSinkStageTest, parameterDescriptorsFilterOutRawOutputFormats) {
+TEST(FFmpegVideoSinkStageTest, ParameterDescriptorsFilterOutRawOutput_Formats) {
   orc::FFmpegVideoSinkStage stage;
   auto descriptors = stage.get_parameter_descriptors(
       orc::VideoSystem::NTSC, orc::SourceType::Composite);
@@ -56,7 +56,7 @@ TEST(FFmpegVideoSinkStageTest, parameterDescriptorsFilterOutRawOutputFormats) {
 }
 
 TEST(FFmpegVideoSinkStageTest,
-     decoderOptionsIncludeNtscPathsForCompositeAndYc) {
+     Decoder_OptionsIncludeNtscPathsForCompositeAndYc) {
   orc::FFmpegVideoSinkStage stage;
 
   for (const auto source_type :
@@ -98,7 +98,7 @@ TEST(FFmpegVideoSinkStageTest,
 }
 
 TEST(FFmpegVideoSinkStageTest,
-     decoderOptionsIncludePalPathsForCompositeAndYc) {
+     Decoder_OptionsIncludePalPathsForCompositeAndYc) {
   orc::FFmpegVideoSinkStage stage;
 
   for (const auto source_type :
@@ -140,7 +140,7 @@ TEST(FFmpegVideoSinkStageTest,
 }
 
 TEST(FFmpegVideoSinkStageTest,
-     decoderOptionsIncludePalPathsForPalMForCompositeAndYc) {
+     Decoder_OptionsIncludePalPathsForPalMForCompositeAndYc) {
   orc::FFmpegVideoSinkStage stage;
 
   for (const auto source_type :
@@ -181,7 +181,7 @@ TEST(FFmpegVideoSinkStageTest,
   }
 }
 
-TEST(FFmpegVideoSinkStageTest, setParametersRejectsRawOutputFormats) {
+TEST(FFmpegVideoSinkStageTest, SetParameters_RejectsRawOutputFormats) {
   orc::FFmpegVideoSinkStage stage;
 
   const bool ok = stage.set_parameters({{"output_format", std::string("rgb")}});
@@ -190,7 +190,7 @@ TEST(FFmpegVideoSinkStageTest, setParametersRejectsRawOutputFormats) {
 }
 
 TEST(FFmpegVideoSinkStageTest,
-     setParametersAcceptsOrRejectsMp4DependingOnFfmpegBuild) {
+     SetParameters_AcceptsOrRejectsMp4DependingOnFfmpegBuild) {
   orc::FFmpegVideoSinkStage stage;
 
   const bool ok =
@@ -203,7 +203,7 @@ TEST(FFmpegVideoSinkStageTest,
 #endif
 }
 
-TEST(FFmpegVideoSinkStageTest, getParametersKeepsFfmpegSpecificControls) {
+TEST(FFmpegVideoSinkStageTest, Get_ParametersKeepsFfmpegSpecificControls) {
   orc::FFmpegVideoSinkStage stage;
   const auto params = stage.get_parameters();
 

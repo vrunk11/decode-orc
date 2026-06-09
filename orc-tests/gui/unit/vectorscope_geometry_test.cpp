@@ -15,7 +15,7 @@
 
 namespace gui_unit_test {
 
-TEST(VectorscopeGeometryTest, plotGeometryMatchesVectorscopeRasterMapping) {
+TEST(VectorscopeGeometryTest, PlotGeometry_MatchesVectorscopeRasterMapping) {
   const orc::gui::VectorscopePlotGeometry geometry;
 
   EXPECT_EQ(geometry.canvas_size, 1024);
@@ -44,7 +44,7 @@ TEST(VectorscopeGeometryTest, plotGeometryMatchesVectorscopeRasterMapping) {
   EXPECT_DOUBLE_EQ(bottom_right.y(), 1008.0);
 }
 
-TEST(VectorscopeGeometryTest, ntscAndPalTargetsShareTheSameDecodedUvSpace) {
+TEST(VectorscopeGeometryTest, Ntsc_AndPalTargetsShareTheSameDecodedUvSpace) {
   constexpr double kIreRange = 50000.0;
 
   const orc::UVSample pal_target =
@@ -56,7 +56,7 @@ TEST(VectorscopeGeometryTest, ntscAndPalTargetsShareTheSameDecodedUvSpace) {
   EXPECT_DOUBLE_EQ(ntsc_target.v, pal_target.v);
 }
 
-TEST(VectorscopeGeometryTest, ntscDisplayTargetsApplyDecoderSpaceCalibration) {
+TEST(VectorscopeGeometryTest, Ntsc_DisplayTargetsApplyDecoderSpaceCalibration) {
   constexpr double kIreRange = 50000.0;
 
   const orc::UVSample raw_target =
@@ -70,7 +70,7 @@ TEST(VectorscopeGeometryTest, ntscDisplayTargetsApplyDecoderSpaceCalibration) {
               raw_target.v * orc::gui::kNtscDisplayTargetVScale, 1e-9);
 }
 
-TEST(VectorscopeGeometryTest, palDisplayTargetsRemainUnchanged) {
+TEST(VectorscopeGeometryTest, Pal_DisplayTargetsRemainUnchanged) {
   constexpr double kIreRange = 50000.0;
 
   const orc::UVSample raw_target =
@@ -83,7 +83,7 @@ TEST(VectorscopeGeometryTest, palDisplayTargetsRemainUnchanged) {
 }
 
 TEST(VectorscopeGeometryTest,
-     seventyFivePercentTargetScalesSampleSpaceMagnitude) {
+     Seventy_FivePercentTargetScalesSampleSpaceMagnitude) {
   constexpr double kIreRange = 65535.0;
 
   const orc::UVSample full_target =
@@ -98,7 +98,7 @@ TEST(VectorscopeGeometryTest,
   EXPECT_NEAR(partial_magnitude, full_magnitude * 0.75, 1e-9);
 }
 
-TEST(VectorscopeGeometryTest, standardDegreesMapToExpectedScreenQuadrants) {
+TEST(VectorscopeGeometryTest, StandardDegrees_MapToExpectedScreenQuadrants) {
   const orc::gui::VectorscopePlotGeometry geometry;
 
   const QPointF right = geometry.pointFromStandardDegrees(

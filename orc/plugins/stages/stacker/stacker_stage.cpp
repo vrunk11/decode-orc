@@ -1376,7 +1376,7 @@ void StackerStage::process_lines_range_yc(
 
 uint16_t StackerStage::stack_mode(
     const std::vector<uint16_t>& values,
-    const std::vector<uint16_t>& /*values_n*/,  // TODO: Implement neighbor
+    const std::vector<uint16_t>& /*values_n*/,  // TODO(sdi): Implement neighbor
                                                 // modes (3, 4)
     const std::vector<uint16_t>& /*values_s*/,
     const std::vector<uint16_t>& /*values_e*/,

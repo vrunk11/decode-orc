@@ -47,7 +47,7 @@ class MockSNRAnalysisSinkStageDeps : public orc::ISNRAnalysisSinkStageDeps {
               (override));
 };
 
-TEST(SNRAnalysisSinkStageTest, descriptorDefaultsIncludeExpectedModes) {
+TEST(SNRAnalysisSinkStageTest, Descriptor_DefaultsIncludeExpectedModes) {
   orc::SNRAnalysisSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
@@ -65,7 +65,7 @@ TEST(SNRAnalysisSinkStageTest, descriptorDefaultsIncludeExpectedModes) {
   EXPECT_EQ(mode_it->constraints.allowed_strings.size(), 3u);
 }
 
-TEST(SNRAnalysisSinkStageTest, triggerFailsWhenNoInputProvided) {
+TEST(SNRAnalysisSinkStageTest, Trigger_FailsWhenNoInputProvided) {
   orc::SNRAnalysisSinkStage stage;
   MockObservationContext observation_context;
 
@@ -76,7 +76,7 @@ TEST(SNRAnalysisSinkStageTest, triggerFailsWhenNoInputProvided) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(SNRAnalysisSinkStageTest, triggerSucceedsWhenInputRangeIsEmpty) {
+TEST(SNRAnalysisSinkStageTest, Trigger_SucceedsWhenInputRangeIsEmpty) {
   orc::SNRAnalysisSinkStage stage;
   orc::ObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -96,7 +96,7 @@ TEST(SNRAnalysisSinkStageTest, triggerSucceedsWhenInputRangeIsEmpty) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(SNRAnalysisSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
+TEST(SNRAnalysisSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   orc::SNRAnalysisSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockSNRAnalysisSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -142,7 +142,7 @@ TEST(SNRAnalysisSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(SNRAnalysisSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
+TEST(SNRAnalysisSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   orc::SNRAnalysisSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockSNRAnalysisSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -166,7 +166,7 @@ TEST(SNRAnalysisSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(SNRAnalysisSinkStageTest, triggerWritesCSVWhenDepsSucceeds) {
+TEST(SNRAnalysisSinkStageTest, Trigger_WritesCSVWhenDepsSucceeds) {
   orc::SNRAnalysisSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockSNRAnalysisSinkStageDeps>>();
   stage.set_deps_override(deps);

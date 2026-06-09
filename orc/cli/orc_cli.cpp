@@ -24,7 +24,7 @@
 
 namespace fs = std::filesystem;
 
-using namespace orc;
+using namespace orc;  // NOLINT(google-build-using-namespace)
 
 /**
  * @brief Print command-line usage information

@@ -37,7 +37,7 @@ bool AudioCorrection::isReady() const {
 }
 
 void AudioCorrection::processQueue() {
-  // TODO: this will never correct the very first and last sections
+  // TODO(sdi): this will never correct the very first and last sections
 
   // Pop a section from the input buffer
   m_correctionBuffer.push_back(m_inputBuffer.front());

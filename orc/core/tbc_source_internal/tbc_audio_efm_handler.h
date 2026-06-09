@@ -36,6 +36,7 @@ namespace orc {
  * - Efficient buffered I/O with precomputed offsets
  * - Thread-safe access to audio/EFM data
  */
+// Thread-safe: audio, EFM, and AC3-RF read accessors are each guarded by a dedicated mutex.
 class TBCAudioEFMHandler {
  public:
   /**

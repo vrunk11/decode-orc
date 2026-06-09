@@ -13,7 +13,7 @@
 
 namespace orc_unit_test {
 TEST(SourceFieldTest,
-     getOffsetReturnsTopForFirstFieldAndBottomForSecondField) {
+     GetOffset_ReturnsTopForFirstFieldAndBottomForSecondField) {
   SourceField first_field;
   first_field.is_first_field = true;
 
@@ -24,7 +24,7 @@ TEST(SourceFieldTest,
   EXPECT_EQ(second_field.getOffset(), 1);
 }
 
-TEST(SourceFieldTest, activeLineHelpersMapFrameLinesToFieldLines) {
+TEST(SourceFieldTest, ActiveLineHelpers_MapFrameLinesToFieldLines) {
   orc::SourceParameters video_params;
   video_params.first_active_frame_line = 0;
   video_params.last_active_frame_line = 5;

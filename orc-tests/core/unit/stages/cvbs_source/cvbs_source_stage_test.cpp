@@ -141,7 +141,7 @@ class CVBSSourceContractTest : public ::testing::Test {
 // Stage Identity Tests
 // ====================
 
-TEST_F(CVBSSourceContractTest, StageIdentityHasCorrectNodeType) {
+TEST_F(CVBSSourceContractTest, StageIdentity_HasCorrectNodeType) {
   auto node_type = stage_->get_node_type_info();
 
   // Verify node type
@@ -155,11 +155,11 @@ TEST_F(CVBSSourceContractTest, StageIdentityHasCorrectNodeType) {
   EXPECT_EQ(node_type.min_outputs, 1);
 }
 
-TEST_F(CVBSSourceContractTest, StageIdentityHasVersion) {
+TEST_F(CVBSSourceContractTest, StageIdentity_HasVersion) {
   EXPECT_EQ(stage_->version(), "1.0.0");
 }
 
-TEST_F(CVBSSourceContractTest, StageIdentityZeroRequiredInputs) {
+TEST_F(CVBSSourceContractTest, Stage_IdentityZeroRequiredInputs) {
   EXPECT_EQ(stage_->required_input_count(), 0);
 }
 
@@ -167,7 +167,7 @@ TEST_F(CVBSSourceContractTest, StageIdentityZeroRequiredInputs) {
 // Parameter Definition Tests
 // ====================
 
-TEST_F(CVBSSourceContractTest, ParametersInputPathDescriptor) {
+TEST_F(CVBSSourceContractTest, Parameters_InputPathDescriptor) {
   auto descriptors = stage_->get_parameter_descriptors();
   ASSERT_GT(descriptors.size(), 0);
 
@@ -190,7 +190,7 @@ TEST_F(CVBSSourceContractTest, ParametersInputPathDescriptor) {
   EXPECT_EQ(std::get<std::string>(*desc.constraints.default_value), "");
 }
 
-TEST_F(CVBSSourceContractTest, ParametersUseMetadataDescriptor) {
+TEST_F(CVBSSourceContractTest, Parameters_UseMetadataDescriptor) {
   auto descriptors = stage_->get_parameter_descriptors();
 
   // Find use_metadata parameter
@@ -211,7 +211,7 @@ TEST_F(CVBSSourceContractTest, ParametersUseMetadataDescriptor) {
   EXPECT_EQ(std::get<bool>(*desc.constraints.default_value), false);
 }
 
-TEST_F(CVBSSourceContractTest, ParametersSampleEncodingDescriptor) {
+TEST_F(CVBSSourceContractTest, Parameters_SampleEncodingDescriptor) {
   auto descriptors = stage_->get_parameter_descriptors();
 
   // Find sample_encoding parameter
@@ -244,7 +244,7 @@ TEST_F(CVBSSourceContractTest, ParametersSampleEncodingDescriptor) {
               desc.constraints.allowed_strings.end());
 }
 
-TEST_F(CVBSSourceContractTest, ParametersHasExactlyThreeParameters) {
+TEST_F(CVBSSourceContractTest, Parameters_HasExactlyThreeParameters) {
   auto descriptors = stage_->get_parameter_descriptors();
 
   EXPECT_EQ(descriptors.size(), 3);
@@ -264,7 +264,7 @@ TEST_F(CVBSSourceContractTest, ParametersHasExactlyThreeParameters) {
 // Parameter Setter/Getter Tests
 // ====================
 
-TEST_F(CVBSSourceContractTest, ParameterSetGetInputPath) {
+TEST_F(CVBSSourceContractTest, Parameter_SetGetInputPath) {
   std::map<std::string, ParameterValue> params;
   params["input_path"] = std::string("/path/to/file.cvbs");
 
@@ -275,7 +275,7 @@ TEST_F(CVBSSourceContractTest, ParameterSetGetInputPath) {
             "/path/to/file.cvbs");
 }
 
-TEST_F(CVBSSourceContractTest, ParameterSetGetUseMetadata) {
+TEST_F(CVBSSourceContractTest, Parameter_SetGetUseMetadata) {
   std::map<std::string, ParameterValue> params;
   params["use_metadata"] = true;
 
@@ -285,7 +285,7 @@ TEST_F(CVBSSourceContractTest, ParameterSetGetUseMetadata) {
   EXPECT_TRUE(std::get<bool>(retrieved["use_metadata"]));
 }
 
-TEST_F(CVBSSourceContractTest, ParameterSetGetSampleEncoding) {
+TEST_F(CVBSSourceContractTest, Parameter_SetGetSampleEncoding) {
   std::map<std::string, ParameterValue> params;
   params["sample_encoding"] = std::string("CVBS_TPG21_4FSC");
 
@@ -296,7 +296,7 @@ TEST_F(CVBSSourceContractTest, ParameterSetGetSampleEncoding) {
             "CVBS_TPG21_4FSC");
 }
 
-TEST_F(CVBSSourceContractTest, ParameterSetGetAllParameters) {
+TEST_F(CVBSSourceContractTest, Parameter_SetGetAllParameters) {
   std::map<std::string, ParameterValue> params;
   params["input_path"] = std::string("/path/to/cvbs.cvbs");
   params["use_metadata"] = true;
@@ -316,7 +316,7 @@ TEST_F(CVBSSourceContractTest, ParameterSetGetAllParameters) {
 // Manual Mode Validation Tests
 // ====================
 
-TEST_F(CVBSSourceContractTest, ManualModeValidationValidPALStageU16) {
+TEST_F(CVBSSourceContractTest, Manual_ModeValidationValidPALStageU16) {
   std::map<std::string, ParameterValue> params;
   params["input_path"] = std::string("/valid/path.cvbs");
   params["use_metadata"] = false;
@@ -327,7 +327,7 @@ TEST_F(CVBSSourceContractTest, ManualModeValidationValidPALStageU16) {
   // implemented)
 }
 
-TEST(CVBSSourceNTSCContractTest, ManualModeValidationValidNTSCStageTPG21) {
+TEST(CVBSSourceNTSCContractTest, Manual_ModeValidationValidNTSCStageTPG21) {
   NTSCCVBSSourceStage stage;
   std::map<std::string, ParameterValue> params;
   params["input_path"] = std::string("/valid/path.cvbs");
@@ -337,7 +337,7 @@ TEST(CVBSSourceNTSCContractTest, ManualModeValidationValidNTSCStageTPG21) {
   EXPECT_TRUE(stage.set_parameters(params));
 }
 
-TEST_F(CVBSSourceContractTest, ManualModeValidationInvalidSampleEncoding) {
+TEST_F(CVBSSourceContractTest, Manual_ModeValidationInvalidSampleEncoding) {
   std::map<std::string, ParameterValue> params;
   params["input_path"] = std::string("/path.cvbs");
   params["use_metadata"] = false;
@@ -348,7 +348,7 @@ TEST_F(CVBSSourceContractTest, ManualModeValidationInvalidSampleEncoding) {
 }
 
 TEST(CVBSSourceValidationTest,
-     ManualModeRejectsInvalidSampleEncodingAtExecute) {
+     ManualMode_RejectsInvalidSampleEncodingAtExecute) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   PALCVBSSourceStage stage(deps);
 
@@ -364,7 +364,7 @@ TEST(CVBSSourceValidationTest,
 // Metadata Mode Tests (Phase 1 Framework Only)
 // ====================
 
-TEST(CVBSSourceValidationTest, MetadataModeConstructsBasenameMetaPath) {
+TEST(CVBSSourceValidationTest, MetadataMode_ConstructsBasenameMetaPath) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   PALCVBSSourceStage stage(deps);
 
@@ -379,7 +379,7 @@ TEST(CVBSSourceValidationTest, MetadataModeConstructsBasenameMetaPath) {
   EXPECT_EQ(deps->last_metadata_path, "/path/to/video.meta");
 }
 
-TEST(CVBSSourceValidationTest, MetadataModeRejectsUnsupportedPreset) {
+TEST(CVBSSourceValidationTest, MetadataMode_RejectsUnsupportedPreset) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->metadata_record.preset = "PAL_M";
   PALCVBSSourceStage stage(deps);
@@ -391,7 +391,7 @@ TEST(CVBSSourceValidationTest, MetadataModeRejectsUnsupportedPreset) {
   expect_user_data_error_contains(stage, params, "Unsupported metadata preset");
 }
 
-TEST(CVBSSourceValidationTest, MetadataModeRejectsUnsupportedSampleEncoding) {
+TEST(CVBSSourceValidationTest, MetadataMode_RejectsUnsupportedSampleEncoding) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->metadata_record.sample_encoding_preset = "CVBS_U10_4FSC";
   PALCVBSSourceStage stage(deps);
@@ -404,7 +404,7 @@ TEST(CVBSSourceValidationTest, MetadataModeRejectsUnsupportedSampleEncoding) {
       stage, params, "Unsupported metadata sample_encoding_preset");
 }
 
-TEST(CVBSSourceValidationTest, MetadataModeRejectsUnsupportedSignalState) {
+TEST(CVBSSourceValidationTest, MetadataMode_RejectsUnsupportedSignalState) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->metadata_record.signal_state_preset = "STANDARD_TBC_UNLOCKED";
   PALCVBSSourceStage stage(deps);
@@ -417,7 +417,7 @@ TEST(CVBSSourceValidationTest, MetadataModeRejectsUnsupportedSignalState) {
                                   "Unsupported metadata signal_state_preset");
 }
 
-TEST(CVBSSourceValidationTest, MetadataModeRejectsNonCompositeSignalType) {
+TEST(CVBSSourceValidationTest, MetadataMode_RejectsNonCompositeSignalType) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->metadata_record.signal_type = "yc";
   PALCVBSSourceStage stage(deps);
@@ -430,7 +430,7 @@ TEST(CVBSSourceValidationTest, MetadataModeRejectsNonCompositeSignalType) {
                                   "Unsupported metadata signal_type");
 }
 
-TEST(CVBSSourceValidationTest, MetadataModeSurfacesMetadataReadFailure) {
+TEST(CVBSSourceValidationTest, MetadataMode_SurfacesMetadataReadFailure) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->metadata_available = false;
   deps->metadata_error = "metadata backend unavailable";
@@ -444,7 +444,7 @@ TEST(CVBSSourceValidationTest, MetadataModeSurfacesMetadataReadFailure) {
                                   "metadata backend unavailable");
 }
 
-TEST(CVBSSourceValidationTest, ManualModeSurfacesInputValidationFailure) {
+TEST(CVBSSourceValidationTest, ManualMode_SurfacesInputValidationFailure) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->input_file_valid = false;
   deps->input_file_error = "CVBS source file not found";
@@ -459,7 +459,7 @@ TEST(CVBSSourceValidationTest, ManualModeSurfacesInputValidationFailure) {
 }
 
 TEST(CVBSSourceValidationTest,
-     MetadataModeValidMetadataProducesRepresentation) {
+     MetadataModeValidMetadata_ProducesRepresentation) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->metadata_record = CVBSMetadataRecord{
       "NTSC", "CVBS_TPG21_4FSC", "STANDARD_TBC_LOCKED", "composite"};
@@ -487,7 +487,7 @@ TEST(CVBSSourceValidationTest,
   EXPECT_EQ(first_field.front(), static_cast<uint16_t>(300 * 64));
 }
 
-TEST(CVBSSourceValidationTest, MetadataModeAcceptsMatchingPalMetadata) {
+TEST(CVBSSourceValidationTest, MetadataMode_AcceptsMatchingPalMetadata) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->metadata_record = CVBSMetadataRecord{
       "PAL", "CVBS_U16_4FSC", "STANDARD_TBC_LOCKED", "composite"};
@@ -518,7 +518,7 @@ TEST(CVBSSourceValidationTest, MetadataModeAcceptsMatchingPalMetadata) {
   EXPECT_EQ(video_params->field_width, 1135);
 }
 
-TEST(CVBSSourceValidationTest, MetadataModeRejectsMismatchedVideoStandard) {
+TEST(CVBSSourceValidationTest, MetadataMode_RejectsMismatchedVideoStandard) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->metadata_record = CVBSMetadataRecord{
       "NTSC", "CVBS_U16_4FSC", "STANDARD_TBC_LOCKED", "composite"};
@@ -532,7 +532,7 @@ TEST(CVBSSourceValidationTest, MetadataModeRejectsMismatchedVideoStandard) {
                                   "Unsupported metadata preset 'NTSC'");
 }
 
-TEST(CVBSSourceDecodeTest, ManualModeDecodesU16IntoCommonDomain) {
+TEST(CVBSSourceDecodeTest, ManualMode_DecodesU16IntoCommonDomain) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->payload_words.assign(static_cast<size_t>(910 * 525),
                              static_cast<uint16_t>(252 * 64));
@@ -567,7 +567,7 @@ TEST(CVBSSourceDecodeTest, ManualModeDecodesU16IntoCommonDomain) {
   EXPECT_EQ(video_params->number_of_sequential_fields, 2);
 }
 
-TEST(CVBSSourceDecodeTest, ManualModeDecodesTPG21IntoCommonDomain) {
+TEST(CVBSSourceDecodeTest, ManualMode_DecodesTPG21IntoCommonDomain) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   const int16_t encoded = static_cast<int16_t>((300 - 508) * 64);
   deps->payload_words.assign(static_cast<size_t>(910 * 525),
@@ -593,7 +593,7 @@ TEST(CVBSSourceDecodeTest, ManualModeDecodesTPG21IntoCommonDomain) {
   EXPECT_EQ(first_field.front(), static_cast<uint16_t>(300 * 64));
 }
 
-TEST(CVBSSourceDecodeTest, ManualModeClampsLowTPG21SamplesIntoInternalDomain) {
+TEST(CVBSSourceDecodeTest, ManualMode_ClampsLowTPG21SamplesIntoInternalDomain) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   const int16_t encoded_below_zero = static_cast<int16_t>(-509 * 64);
   deps->payload_words.assign(static_cast<size_t>(910 * 525),
@@ -619,7 +619,7 @@ TEST(CVBSSourceDecodeTest, ManualModeClampsLowTPG21SamplesIntoInternalDomain) {
   EXPECT_EQ(first_field.front(), static_cast<uint16_t>(0));
 }
 
-TEST(CVBSSourceDecodeTest, ManualModeUsesPalFieldGeometry) {
+TEST(CVBSSourceDecodeTest, ManualMode_UsesPalFieldGeometry) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   // PAL frame: 355,257 (odd) + 354,122 (even) = 709,379 samples total
   // Odd field: 311 lines @ 1135 samples + 2 fractional lines (156, 312) @ 1136
@@ -654,7 +654,7 @@ TEST(CVBSSourceDecodeTest, ManualModeUsesPalFieldGeometry) {
   EXPECT_EQ(desc1->height, 312u);
 }
 
-TEST(CVBSSourceDecodeTest, ManualModeDropsIncompleteFrameTail) {
+TEST(CVBSSourceDecodeTest, ManualMode_DropsIncompleteFrameTail) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   const size_t ntsc_frame_samples = static_cast<size_t>(910 * 525);
   deps->payload_words.assign(ntsc_frame_samples + 100,
@@ -678,7 +678,7 @@ TEST(CVBSSourceDecodeTest, ManualModeDropsIncompleteFrameTail) {
 }
 
 TEST(CVBSSourceDecodeTest,
-     ManualModeNtscDescriptorParityMatchesTemporalOrder) {
+     ManualModeNtscDescriptorParity_MatchesTemporalOrder) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->payload_words.assign(static_cast<size_t>(910 * 525),
                              static_cast<uint16_t>(240 * 64));
@@ -720,7 +720,7 @@ TEST(CVBSSourceDecodeTest,
   EXPECT_FALSE(parity1->is_first_field);
 }
 
-TEST(CVBSSourceDecodeTest, ManualModeAlignsNtscLinesToSyncEdgeMidpoint) {
+TEST(CVBSSourceDecodeTest, ManualMode_AlignsNtscLinesToSyncEdgeMidpoint) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
 
   constexpr size_t kLineLength = 910;
@@ -772,7 +772,7 @@ TEST(CVBSSourceDecodeTest, ManualModeAlignsNtscLinesToSyncEdgeMidpoint) {
 }
 
 TEST(CVBSSourceDecodeTest,
-     ManualModePreservesSyncCenteredLinesWithoutActiveWrap) {
+     ManualMode_PreservesSyncCenteredLinesWithoutActiveWrap) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
 
   constexpr size_t kLineLength = 910;
@@ -823,7 +823,7 @@ TEST(CVBSSourceDecodeTest,
   EXPECT_EQ(video_params->active_video_end, 894);
 }
 
-TEST(CVBSSourceDecodeTest, ManualModePalMultiFrameAlignmentConsistent) {
+TEST(CVBSSourceDecodeTest, Manual_ModePalMultiFrameAlignmentConsistent) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
 
   // PAL frame with variable-length lines for 4fsc phase: 709,379 samples total
@@ -920,7 +920,7 @@ TEST(CVBSSourceDecodeTest, ManualModePalMultiFrameAlignmentConsistent) {
 // No-Input Tests
 // ====================
 
-TEST_F(CVBSSourceContractTest, ExecuteSourceStageHasNoInputs) {
+TEST_F(CVBSSourceContractTest, ExecuteSourceStage_HasNoInputs) {
   std::vector<ArtifactPtr> inputs;
   std::map<std::string, ParameterValue> parameters;
   // Empty file path -> no execution attempted
@@ -935,7 +935,7 @@ TEST_F(CVBSSourceContractTest, ExecuteSourceStageHasNoInputs) {
 // Empty Path Handling
 // ====================
 
-TEST_F(CVBSSourceContractTest, ExecuteEmptyInputPathReturnsEmpty) {
+TEST_F(CVBSSourceContractTest, ExecuteEmptyInputPath_ReturnsEmpty) {
   std::vector<ArtifactPtr> inputs;
   std::map<std::string, ParameterValue> parameters;
   parameters["input_path"] = std::string("");
@@ -949,7 +949,7 @@ TEST_F(CVBSSourceContractTest, ExecuteEmptyInputPathReturnsEmpty) {
 // Legacy Contract Behavior Tests
 // ====================
 
-TEST_F(CVBSSourceContractTest, ExecuteInvalidPathSurfacesUserDataError) {
+TEST_F(CVBSSourceContractTest, ExecuteInvalidPath_SurfacesUserDataError) {
   std::vector<ArtifactPtr> inputs;
   std::map<std::string, ParameterValue> parameters;
   parameters["input_path"] = std::string("/some/valid/path.cvbs");
@@ -962,12 +962,12 @@ TEST_F(CVBSSourceContractTest, ExecuteInvalidPathSurfacesUserDataError) {
                UserDataError);
 }
 
-TEST_F(CVBSSourceContractTest, PreviewEmptyBeforeExecute) {
+TEST_F(CVBSSourceContractTest, Preview_EmptyBeforeExecute) {
   EXPECT_FALSE(stage_->supports_preview());
   EXPECT_TRUE(stage_->get_preview_options().empty());
 }
 
-TEST(CVBSSourcePreviewTest, PreviewAvailableAfterSuccessfulExecute) {
+TEST(CVBSSourcePreviewTest, Preview_AvailableAfterSuccessfulExecute) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   deps->payload_words.assign(static_cast<size_t>(910 * 525),
                              static_cast<uint16_t>(252 * 64));
@@ -994,7 +994,7 @@ TEST(CVBSSourcePreviewTest, PreviewAvailableAfterSuccessfulExecute) {
   EXPECT_TRUE(has_field_option);
 }
 
-TEST(CVBSSourceReportTest, GenerateReportProvidesConfiguredFields) {
+TEST(CVBSSourceReportTest, GenerateReport_ProvidesConfiguredFields) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>();
   // PAL frame: 355,257 (odd) + 354,122 (even) = 709,379 samples total
   deps->payload_words.assign(static_cast<size_t>(709379),

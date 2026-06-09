@@ -26,17 +26,17 @@ class FakeArtifact : public orc::Artifact {
 };
 }  // namespace
 
-TEST(DropoutMapStageTest, requiredInputCountIsOne) {
+TEST(DropoutMapStageTest, RequiredInputCount_IsOne) {
   orc::DropoutMapStage stage;
   EXPECT_EQ(stage.required_input_count(), 1u);
 }
 
-TEST(DropoutMapStageTest, outputCountIsOne) {
+TEST(DropoutMapStageTest, OutputCount_IsOne) {
   orc::DropoutMapStage stage;
   EXPECT_EQ(stage.output_count(), 1u);
 }
 
-TEST(DropoutMapStageTest, nodeTypeInfoHasExpectedMetadata) {
+TEST(DropoutMapStageTest, NodeTypeInfo_HasExpectedMetadata) {
   orc::DropoutMapStage stage;
   auto info = stage.get_node_type_info();
 
@@ -45,7 +45,7 @@ TEST(DropoutMapStageTest, nodeTypeInfoHasExpectedMetadata) {
   EXPECT_EQ(info.compatible_formats, orc::VideoFormatCompatibility::ALL);
 }
 
-TEST(DropoutMapStageTest, descriptorDefaultMatchesRuntimeDefault) {
+TEST(DropoutMapStageTest, DescriptorDefault_MatchesRuntimeDefault) {
   orc::DropoutMapStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
@@ -66,7 +66,7 @@ TEST(DropoutMapStageTest, descriptorDefaultMatchesRuntimeDefault) {
             std::get<std::string>(params.at("dropout_map")));
 }
 
-TEST(DropoutMapStageTest, setParametersAcceptsDropoutMapString) {
+TEST(DropoutMapStageTest, SetParameters_AcceptsDropoutMapString) {
   orc::DropoutMapStage stage;
 
   const bool result = stage.set_parameters(
@@ -80,14 +80,14 @@ TEST(DropoutMapStageTest, setParametersAcceptsDropoutMapString) {
             "[{field:0,add:[{line:10,start:100,end:200}],remove:[]}]");
 }
 
-TEST(DropoutMapStageTest, executeThrowsWhenInputCountIsNotOne) {
+TEST(DropoutMapStageTest, Execute_ThrowsWhenInputCountIsNotOne) {
   orc::DropoutMapStage stage;
   orc::ObservationContext observation_context;
 
   EXPECT_THROW(stage.execute({}, {}, observation_context), std::runtime_error);
 }
 
-TEST(DropoutMapStageTest, executeThrowsWhenInputIsWrongArtifactType) {
+TEST(DropoutMapStageTest, Execute_ThrowsWhenInputIsWrongArtifactType) {
   orc::DropoutMapStage stage;
   orc::ObservationContext observation_context;
   std::vector<orc::ArtifactPtr> inputs = {std::make_shared<FakeArtifact>()};

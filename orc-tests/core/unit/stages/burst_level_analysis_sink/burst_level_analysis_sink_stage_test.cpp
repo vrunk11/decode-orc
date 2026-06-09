@@ -49,7 +49,7 @@ class MockBurstLevelAnalysisSinkStageDeps
 };
 
 TEST(BurstLevelAnalysisSinkStageTest,
-     descriptorDefaultsIncludeExpectedOutputAndWriteCsv) {
+     Descriptor_DefaultsIncludeExpectedOutputAndWriteCsv) {
   orc::BurstLevelAnalysisSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
@@ -75,7 +75,7 @@ TEST(BurstLevelAnalysisSinkStageTest,
   EXPECT_FALSE(std::get<bool>(*write_csv_it->constraints.default_value));
 }
 
-TEST(BurstLevelAnalysisSinkStageTest, triggerFailsWhenNoInputProvided) {
+TEST(BurstLevelAnalysisSinkStageTest, Trigger_FailsWhenNoInputProvided) {
   orc::BurstLevelAnalysisSinkStage stage;
   MockObservationContext observation_context;
 
@@ -86,7 +86,7 @@ TEST(BurstLevelAnalysisSinkStageTest, triggerFailsWhenNoInputProvided) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(BurstLevelAnalysisSinkStageTest, triggerSucceedsWhenInputRangeIsEmpty) {
+TEST(BurstLevelAnalysisSinkStageTest, Trigger_SucceedsWhenInputRangeIsEmpty) {
   orc::BurstLevelAnalysisSinkStage stage;
   orc::ObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -104,7 +104,7 @@ TEST(BurstLevelAnalysisSinkStageTest, triggerSucceedsWhenInputRangeIsEmpty) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(BurstLevelAnalysisSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
+TEST(BurstLevelAnalysisSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   orc::BurstLevelAnalysisSinkStage stage;
   auto deps =
       std::make_shared<StrictMock<MockBurstLevelAnalysisSinkStageDeps>>();
@@ -140,7 +140,7 @@ TEST(BurstLevelAnalysisSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
 }
 
 TEST(BurstLevelAnalysisSinkStageTest,
-     triggerUsesDepsSeamAndPropagatesFailure) {
+     Trigger_UsesDepsSeamAndPropagatesFailure) {
   orc::BurstLevelAnalysisSinkStage stage;
   auto deps =
       std::make_shared<StrictMock<MockBurstLevelAnalysisSinkStageDeps>>();
@@ -165,7 +165,7 @@ TEST(BurstLevelAnalysisSinkStageTest,
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(BurstLevelAnalysisSinkStageTest, triggerWritesCSVWhenDepsSucceeds) {
+TEST(BurstLevelAnalysisSinkStageTest, Trigger_WritesCSVWhenDepsSucceeds) {
   orc::BurstLevelAnalysisSinkStage stage;
   auto deps =
       std::make_shared<StrictMock<MockBurstLevelAnalysisSinkStageDeps>>();

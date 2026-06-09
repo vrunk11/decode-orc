@@ -1,3 +1,12 @@
+/*
+ * File:        analysis_registry.cpp
+ * Module:      analysis
+ * Purpose:     Singleton registry that discovers and vends analysis tools
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #include "analysis_registry.h"
 
 #include "analysis_init.h"

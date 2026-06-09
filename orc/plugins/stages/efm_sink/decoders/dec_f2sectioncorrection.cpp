@@ -414,7 +414,7 @@ void F2SectionCorrection::waitingForSection(F2Section& f2Section) {
           expectedAbsoluteTime.toString(),
           f2Section.metadata.absoluteSectionTime().toString());
 
-      // TODO: This is not a good way to deal with this...
+      // TODO(sdi): This is not a good way to deal with this...
       outputSection = false;
       m_outOfOrderSections++;
     }
@@ -617,7 +617,7 @@ void F2SectionCorrection::processInternalBuffer() {
 // This function queues up the processed output sections and keeps track of the
 // statistics
 void F2SectionCorrection::outputSections() {
-  // TODO: There should probably be some checks here to ensure the internal
+  // TODO(sdi): There should probably be some checks here to ensure the internal
   // buffer is in a good state before outputting the sections
 
   // Pop
@@ -696,7 +696,7 @@ void F2SectionCorrection::outputSections() {
 void F2SectionCorrection::flush() {
   // Flush the internal buffer
 
-  // TODO: What about any remaining invalid sections in the internal buffer?
+  // TODO(sdi): What about any remaining invalid sections in the internal buffer?
 
   while (!m_internalBuffer.empty()) {
     outputSections();

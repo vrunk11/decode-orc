@@ -49,37 +49,37 @@ orc::SourceParameters make_ntsc_yc_source_parameters(orc::VideoSystem system) {
 // Parameter descriptor tests
 // =========================================================================
 
-TEST(NTSCYCSourceStageTest, parameterDescriptorsContainsYPath) {
+TEST(NTSCYCSourceStageTest, ParameterDescriptors_ContainsYPath) {
   orc::NTSCYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "y_path", ".tbcy");
 }
 
-TEST(NTSCYCSourceStageTest, parameterDescriptorsContainsCPath) {
+TEST(NTSCYCSourceStageTest, ParameterDescriptors_ContainsCPath) {
   orc::NTSCYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "c_path", ".tbcc");
 }
 
-TEST(NTSCYCSourceStageTest, parameterDescriptorsContainsDbPath) {
+TEST(NTSCYCSourceStageTest, ParameterDescriptors_ContainsDbPath) {
   orc::NTSCYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "db_path", ".db");
 }
 
-TEST(NTSCYCSourceStageTest, parameterDescriptorsContainsPcmPath) {
+TEST(NTSCYCSourceStageTest, ParameterDescriptors_ContainsPcmPath) {
   orc::NTSCYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "pcm_path", ".pcm");
 }
 
-TEST(NTSCYCSourceStageTest, parameterDescriptorsContainsEfmPath) {
+TEST(NTSCYCSourceStageTest, ParameterDescriptors_ContainsEfmPath) {
   orc::NTSCYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "efm_path", ".efm");
 }
 
-TEST(NTSCYCSourceStageTest, descriptorDefaultsAllPathsAreEmptyString) {
+TEST(NTSCYCSourceStageTest, Descriptor_DefaultsAllPathsAreEmptyString) {
   orc::NTSCYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
 
@@ -96,7 +96,7 @@ TEST(NTSCYCSourceStageTest, descriptorDefaultsAllPathsAreEmptyString) {
   }
 }
 
-TEST(NTSCYCSourceStageTest, parameterDescriptorsAllParametersAreOptional) {
+TEST(NTSCYCSourceStageTest, ParameterDescriptorsAllParameters_AreOptional) {
   orc::NTSCYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_all_descriptors_optional(descriptors);
@@ -106,7 +106,7 @@ TEST(NTSCYCSourceStageTest, parameterDescriptorsAllParametersAreOptional) {
 // get_parameters / parity tests
 // =========================================================================
 
-TEST(NTSCYCSourceStageTest, getParametersDefaultYPathIsEmptyString) {
+TEST(NTSCYCSourceStageTest, GetParametersDefaultYPath_IsEmptyString) {
   orc::NTSCYCSourceStage stage;
   auto params = stage.get_parameters();
 
@@ -116,7 +116,7 @@ TEST(NTSCYCSourceStageTest, getParametersDefaultYPathIsEmptyString) {
   EXPECT_EQ(std::get<std::string>(it->second), "");
 }
 
-TEST(NTSCYCSourceStageTest, getParametersDefaultCPathIsEmptyString) {
+TEST(NTSCYCSourceStageTest, GetParametersDefaultCPath_IsEmptyString) {
   orc::NTSCYCSourceStage stage;
   auto params = stage.get_parameters();
 
@@ -126,7 +126,7 @@ TEST(NTSCYCSourceStageTest, getParametersDefaultCPathIsEmptyString) {
   EXPECT_EQ(std::get<std::string>(it->second), "");
 }
 
-TEST(NTSCYCSourceStageTest, getParametersDefaultDbPathIsEmptyString) {
+TEST(NTSCYCSourceStageTest, GetParametersDefaultDbPath_IsEmptyString) {
   orc::NTSCYCSourceStage stage;
   auto params = stage.get_parameters();
 
@@ -140,7 +140,7 @@ TEST(NTSCYCSourceStageTest, getParametersDefaultDbPathIsEmptyString) {
 // set_parameters validation tests
 // =========================================================================
 
-TEST(NTSCYCSourceStageTest, setParametersAcceptsValidStringMap) {
+TEST(NTSCYCSourceStageTest, SetParameters_AcceptsValidStringMap) {
   orc::NTSCYCSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"y_path", std::string("/some/file.tbcy")},
@@ -152,7 +152,7 @@ TEST(NTSCYCSourceStageTest, setParametersAcceptsValidStringMap) {
   EXPECT_TRUE(stage.set_parameters(params));
 }
 
-TEST(NTSCYCSourceStageTest, setParametersRejectsNonStringYPath) {
+TEST(NTSCYCSourceStageTest, SetParameters_RejectsNonStringYPath) {
   orc::NTSCYCSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"y_path", static_cast<int32_t>(99)}};
@@ -160,7 +160,7 @@ TEST(NTSCYCSourceStageTest, setParametersRejectsNonStringYPath) {
   EXPECT_FALSE(stage.set_parameters(params));
 }
 
-TEST(NTSCYCSourceStageTest, setParametersRejectsNonStringCPath) {
+TEST(NTSCYCSourceStageTest, SetParameters_RejectsNonStringCPath) {
   orc::NTSCYCSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"c_path", static_cast<int32_t>(99)}};
@@ -168,7 +168,7 @@ TEST(NTSCYCSourceStageTest, setParametersRejectsNonStringCPath) {
   EXPECT_FALSE(stage.set_parameters(params));
 }
 
-TEST(NTSCYCSourceStageTest, setParametersPersistsValues) {
+TEST(NTSCYCSourceStageTest, Set_ParametersPersistsValues) {
   orc::NTSCYCSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"y_path", std::string("/luma.tbcy")},
@@ -181,7 +181,7 @@ TEST(NTSCYCSourceStageTest, setParametersPersistsValues) {
   EXPECT_EQ(std::get<std::string>(persisted.at("c_path")), "/chroma.tbcc");
 }
 
-TEST(NTSCYCSourceStageTest, setParametersAcceptsEmptyMap) {
+TEST(NTSCYCSourceStageTest, SetParameters_AcceptsEmptyMap) {
   orc::NTSCYCSourceStage stage;
   EXPECT_TRUE(stage.set_parameters({}));
 }
@@ -190,7 +190,7 @@ TEST(NTSCYCSourceStageTest, setParametersAcceptsEmptyMap) {
 // execute() contract tests
 // =========================================================================
 
-TEST(NTSCYCSourceStageTest, executeThrowsWhenInputProvided) {
+TEST(NTSCYCSourceStageTest, Execute_ThrowsWhenInputProvided) {
   orc::NTSCYCSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -198,7 +198,7 @@ TEST(NTSCYCSourceStageTest, executeThrowsWhenInputProvided) {
                std::runtime_error);
 }
 
-TEST(NTSCYCSourceStageTest, executeReturnsEmptyWhenYPathMissing) {
+TEST(NTSCYCSourceStageTest, Execute_ReturnsEmptyWhenYPathMissing) {
   orc::NTSCYCSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -208,7 +208,7 @@ TEST(NTSCYCSourceStageTest, executeReturnsEmptyWhenYPathMissing) {
   EXPECT_TRUE(outputs.empty());
 }
 
-TEST(NTSCYCSourceStageTest, executeReturnsEmptyWhenCPathMissing) {
+TEST(NTSCYCSourceStageTest, Execute_ReturnsEmptyWhenCPathMissing) {
   orc::NTSCYCSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -219,7 +219,7 @@ TEST(NTSCYCSourceStageTest, executeReturnsEmptyWhenCPathMissing) {
 }
 
 TEST(NTSCYCSourceStageTest,
-     executeLoadsNtscRepresentationThroughInjectedLoader) {
+     Execute_LoadsNtscRepresentationThroughInjectedLoader) {
   auto loader = std::make_shared<StrictMock<MockNTSCYCSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -248,7 +248,7 @@ TEST(NTSCYCSourceStageTest,
   EXPECT_TRUE(stage.supports_preview());
 }
 
-TEST(NTSCYCSourceStageTest, executeThrowsWhenLoadedMetadataIsNotNtsc) {
+TEST(NTSCYCSourceStageTest, Execute_ThrowsWhenLoadedMetadataIsNotNtsc) {
   auto loader = std::make_shared<StrictMock<MockNTSCYCSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();

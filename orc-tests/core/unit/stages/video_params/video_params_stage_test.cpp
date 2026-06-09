@@ -35,17 +35,17 @@ const orc::ParameterDescriptor* find_descriptor(
 }
 }  // namespace
 
-TEST(VideoParamsStageTest, requiredInputCountIsOne) {
+TEST(VideoParamsStageTest, RequiredInputCount_IsOne) {
   orc::VideoParamsStage stage;
   EXPECT_EQ(stage.required_input_count(), 1u);
 }
 
-TEST(VideoParamsStageTest, outputCountIsOne) {
+TEST(VideoParamsStageTest, OutputCount_IsOne) {
   orc::VideoParamsStage stage;
   EXPECT_EQ(stage.output_count(), 1u);
 }
 
-TEST(VideoParamsStageTest, nodeTypeInfoHasExpectedMetadata) {
+TEST(VideoParamsStageTest, NodeTypeInfo_HasExpectedMetadata) {
   orc::VideoParamsStage stage;
   auto info = stage.get_node_type_info();
 
@@ -54,7 +54,7 @@ TEST(VideoParamsStageTest, nodeTypeInfoHasExpectedMetadata) {
   EXPECT_EQ(info.compatible_formats, orc::VideoFormatCompatibility::ALL);
 }
 
-TEST(VideoParamsStageTest, descriptorDefaultsMatchRuntimeDefaults) {
+TEST(VideoParamsStageTest, Descriptor_DefaultsMatchRuntimeDefaults) {
   orc::VideoParamsStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
@@ -78,7 +78,7 @@ TEST(VideoParamsStageTest, descriptorDefaultsMatchRuntimeDefaults) {
   }
 }
 
-TEST(VideoParamsStageTest, setParametersAcceptsInt32Overrides) {
+TEST(VideoParamsStageTest, SetParameters_AcceptsInt32Overrides) {
   orc::VideoParamsStage stage;
 
   const bool result = stage.set_parameters(
@@ -90,18 +90,18 @@ TEST(VideoParamsStageTest, setParametersAcceptsInt32Overrides) {
   EXPECT_EQ(std::get<int32_t>(params.at("black16bIRE")), 1200);
 }
 
-TEST(VideoParamsStageTest, setParametersRejectsUnknownParameter) {
+TEST(VideoParamsStageTest, SetParameters_RejectsUnknownParameter) {
   orc::VideoParamsStage stage;
   EXPECT_FALSE(stage.set_parameters({{"unknown", int32_t(1)}}));
 }
 
-TEST(VideoParamsStageTest, setParametersRejectsWrongType) {
+TEST(VideoParamsStageTest, SetParameters_RejectsWrongType) {
   orc::VideoParamsStage stage;
   EXPECT_FALSE(
       stage.set_parameters({{"activeVideoStart", std::string("120")}}));
 }
 
-TEST(VideoParamsStageTest, processAppliesConfiguredOverrides) {
+TEST(VideoParamsStageTest, Process_AppliesConfiguredOverrides) {
   orc::VideoParamsStage stage;
   auto source =
       std::make_shared<testing::NiceMock<MockVideoFieldRepresentation>>();
@@ -132,7 +132,7 @@ TEST(VideoParamsStageTest, processAppliesConfiguredOverrides) {
   EXPECT_EQ(overridden->white_16b_ire, 50000);
 }
 
-TEST(VideoParamsStageTest, processPreservesPalVideoSystem) {
+TEST(VideoParamsStageTest, Process_PreservesPalVideoSystem) {
   orc::VideoParamsStage stage;
   auto source =
       std::make_shared<testing::NiceMock<MockVideoFieldRepresentation>>();
@@ -160,7 +160,7 @@ TEST(VideoParamsStageTest, processPreservesPalVideoSystem) {
   EXPECT_EQ(overridden->last_active_field_line, 310);
 }
 
-TEST(VideoParamsStageTest, processPreservesPalMVideoSystem) {
+TEST(VideoParamsStageTest, Process_PreservesPalMVideoSystem) {
   orc::VideoParamsStage stage;
   auto source =
       std::make_shared<testing::NiceMock<MockVideoFieldRepresentation>>();
@@ -196,7 +196,7 @@ TEST(VideoParamsStageTest, processPreservesPalMVideoSystem) {
   EXPECT_EQ(overridden->white_16b_ire, 65535);
 }
 
-TEST(VideoParamsStageTest, executeThrowsWhenInputMissing) {
+TEST(VideoParamsStageTest, Execute_ThrowsWhenInputMissing) {
   orc::VideoParamsStage stage;
   orc::ObservationContext observation_context;
 

@@ -51,7 +51,7 @@ static bool waitForCount(QSignalSpy& spy, int expected, int timeout_ms = 2000) {
   return spy.count() >= expected;
 }
 
-TEST(RenderCoordinatorTest, triggerRequestRoundTripEmitsTriggerComplete) {
+TEST(RenderCoordinatorTest, TriggerRequestRoundTrip_EmitsTriggerComplete) {
   (void)kMetatypesRegistered;
 
   auto mock_presenter =
@@ -85,7 +85,7 @@ TEST(RenderCoordinatorTest, triggerRequestRoundTripEmitsTriggerComplete) {
   coordinator.stop();
 }
 
-TEST(RenderCoordinatorTest, workerLifecycleStartStopIsStable) {
+TEST(RenderCoordinatorTest, WorkerLifecycleStartStop_IsStable) {
   (void)kMetatypesRegistered;
 
   auto mock_presenter =
@@ -104,7 +104,7 @@ TEST(RenderCoordinatorTest, workerLifecycleStartStopIsStable) {
   coordinator.stop();
 }
 
-TEST(RenderCoordinatorTest, triggerRequestsAreProcessedInOrder) {
+TEST(RenderCoordinatorTest, TriggerRequests_AreProcessedInOrder) {
   (void)kMetatypesRegistered;
 
   auto mock_presenter =
@@ -151,7 +151,7 @@ TEST(RenderCoordinatorTest, triggerRequestsAreProcessedInOrder) {
   coordinator.stop();
 }
 
-TEST(RenderCoordinatorTest, stalePreviewResponsesAreSuppressed) {
+TEST(RenderCoordinatorTest, StalePreviewResponses_AreSuppressed) {
   (void)kMetatypesRegistered;
 
   auto mock_presenter =
@@ -203,7 +203,7 @@ TEST(RenderCoordinatorTest, stalePreviewResponsesAreSuppressed) {
 }
 
 TEST(RenderCoordinatorTest,
-     applyStageParametersRequestEmitsPreviewReadyForSameRequestId) {
+     ApplyStageParametersRequest_EmitsPreviewReadyForSameRequestId) {
   (void)kMetatypesRegistered;
 
   auto mock_presenter =

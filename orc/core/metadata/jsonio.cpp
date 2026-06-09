@@ -1,3 +1,12 @@
+/*
+ * File:        jsonio.cpp
+ * Module:      metadata
+ * Purpose:     JSON I/O utilities for TBC metadata serialisation
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 /************************************************************************
 
     jsonio.cpp

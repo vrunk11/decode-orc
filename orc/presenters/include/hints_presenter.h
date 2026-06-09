@@ -21,16 +21,7 @@
 
 #include "hints_view_models.h"
 
-// Forward declare core Project type
-namespace orc {
-class Project;
-class DAG;
-}  // namespace orc
-
 namespace orc::presenters {
-
-// Forward declarations
-class Project;
 
 /**
  * @brief Hint type enumeration

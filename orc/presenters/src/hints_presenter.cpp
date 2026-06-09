@@ -296,7 +296,7 @@ HintsPresenter::FieldHintsView HintsPresenter::getHintsForField(
     if (auto params = result.representation->get_video_parameters()) {
       out.video_params = toVideoParametersView(*params);
     }
-  } catch (const std::exception&) {
+  } catch (const std::exception&) {  // NOLINT(bugprone-empty-catch)
     // Swallow and return empty hints; GUI will clear
   }
 

@@ -95,7 +95,7 @@ std::optional<std::pair<std::string, std::string>> find_many_to_one_pair() {
 }
 }  // namespace
 
-TEST(StageRegistryContractTest, allPublicStagesAreRegistered) {
+TEST(StageRegistryContractTest, AllPublicStages_AreRegistered) {
   auto& registry = orc::StageRegistry::instance();
   const auto registered_stage_names = registry.get_registered_stages();
   const std::set<std::string> registered(registered_stage_names.begin(),
@@ -111,7 +111,7 @@ TEST(StageRegistryContractTest, allPublicStagesAreRegistered) {
   }
 }
 
-TEST(StageRegistryContractTest, eachPublicStageCanBeCreatedFromRegistry) {
+TEST(StageRegistryContractTest, EachPublicStage_CanBeCreatedFromRegistry) {
   auto& registry = orc::StageRegistry::instance();
 
   for (const auto& spec : public_stage_specs()) {
@@ -126,13 +126,13 @@ TEST(StageRegistryContractTest, eachPublicStageCanBeCreatedFromRegistry) {
   }
 }
 
-TEST(StageRegistryContractTest, unknownStageFailsCleanly) {
+TEST(StageRegistryContractTest, UnknownStage_FailsCleanly) {
   auto& registry = orc::StageRegistry::instance();
-  EXPECT_THROW(registry.create_stage("phase5_missing_stage"),
+  EXPECT_THROW(registry.create_stage("unregistered_stage"),
                orc::StageRegistryError);
 }
 
-TEST(StageRegistryContractTest, duplicateRegistrationIsRejected) {
+TEST(StageRegistryContractTest, DuplicateRegistration_IsRejected) {
   auto& registry = orc::StageRegistry::instance();
   const auto existing_name =
       public_stage_specs().front().create()->get_node_type_info().stage_name;
@@ -146,7 +146,7 @@ TEST(StageRegistryContractTest, duplicateRegistrationIsRejected) {
       orc::StageRegistryError);
 }
 
-TEST(StageRegistryContractTest, migratedStagesLoadFromRuntimePlugins) {
+TEST(StageRegistryContractTest, Migrated_StagesLoadFromRuntimePlugins) {
   auto& registry = orc::StageRegistry::instance();
   const auto& loaded_plugins = registry.get_loaded_plugins();
 
@@ -184,7 +184,7 @@ TEST(StageRegistryContractTest, migratedStagesLoadFromRuntimePlugins) {
   EXPECT_TRUE(loaded_stage_names.count("daphne_vbi_sink") > 0);
 }
 
-TEST(NodeTypeContractTest, allPublicStagesAppearInNodeTypeDiscovery) {
+TEST(NodeTypeContractTest, All_PublicStagesAppearInNodeTypeDiscovery) {
   const auto& all_node_types = orc::get_all_node_types();
   std::set<std::string> discovered_names;
 
@@ -204,7 +204,7 @@ TEST(NodeTypeContractTest, allPublicStagesAppearInNodeTypeDiscovery) {
 }
 
 TEST(NodeTypeContractTest,
-     representativeSourceTransformSinkConnectionsAreDiscoverable) {
+     RepresentativeSourceTransformSinkConnections_AreDiscoverable) {
   const auto chain = find_representative_chain();
   if (!chain.has_value()) {
     FAIL() << "Expected chain to have a value";
@@ -218,7 +218,7 @@ TEST(NodeTypeContractTest,
   EXPECT_TRUE(orc::is_connection_valid(chain->middle, chain->sink));
 }
 
-TEST(NodeTypeContractTest, manyOutputToSingleInputIsRejectedWhenAvailable) {
+TEST(NodeTypeContractTest, ManyOutputToSingleInput_IsRejectedWhenAvailable) {
   const auto pair = find_many_to_one_pair();
   if (!pair.has_value()) {
     GTEST_SKIP()
@@ -228,10 +228,10 @@ TEST(NodeTypeContractTest, manyOutputToSingleInputIsRejectedWhenAvailable) {
   EXPECT_FALSE(orc::is_connection_valid(pair->first, pair->second));
 }
 
-TEST(NodeTypeContractTest, unknownStagesAreRejected) {
-  EXPECT_EQ(orc::get_node_type_info("phase5_missing_stage"), nullptr);
+TEST(NodeTypeContractTest, UnknownStages_AreRejected) {
+  EXPECT_EQ(orc::get_node_type_info("unregistered_stage"), nullptr);
   EXPECT_FALSE(orc::is_connection_valid(
-      "phase5_missing_stage",
+      "unregistered_stage",
       public_stage_specs().front().create()->get_node_type_info().stage_name));
 }
 }  // namespace orc_unit_test

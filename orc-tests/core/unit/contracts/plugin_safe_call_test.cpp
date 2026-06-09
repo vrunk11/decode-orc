@@ -41,7 +41,7 @@ using orc::core_internal::plugin_safe_call;
 // Basic success path
 // ---------------------------------------------------------------------------
 
-TEST(PluginSafeCallTest, returnsTrueWhenCallableSucceeds) {
+TEST(PluginSafeCallTest, ReturnsTrueWhenCallable_Succeeds) {
   std::string error;
   bool called = false;
   const bool result = plugin_safe_call([&called] { called = true; }, error);
@@ -51,7 +51,7 @@ TEST(PluginSafeCallTest, returnsTrueWhenCallableSucceeds) {
   EXPECT_TRUE(error.empty());
 }
 
-TEST(PluginSafeCallTest, callableReturnValueIsIgnoredWhenVoidCallable) {
+TEST(PluginSafeCallTest, CallableReturnValue_IsIgnoredWhenVoidCallable) {
   std::string error;
   int side_effect = 0;
   const bool result =
@@ -65,7 +65,7 @@ TEST(PluginSafeCallTest, callableReturnValueIsIgnoredWhenVoidCallable) {
 // Repeated invocations on the same thread
 // ---------------------------------------------------------------------------
 
-TEST(PluginSafeCallTest, canBeCalledRepeatedlyOnSameThread) {
+TEST(PluginSafeCallTest, Can_BeCalledRepeatedlyOnSameThread) {
   std::string error;
   int count = 0;
 
@@ -82,7 +82,7 @@ TEST(PluginSafeCallTest, canBeCalledRepeatedlyOnSameThread) {
 // Thread-local state isolation across threads
 // ---------------------------------------------------------------------------
 
-TEST(PluginSafeCallTest, concurrentCallsOnSeparateThreadsDoNotInterfere) {
+TEST(PluginSafeCallTest, Concurrent_CallsOnSeparateThreadsDoNotInterfere) {
   constexpr int kThreads = 8;
   constexpr int kIterations = 100;
 
@@ -128,7 +128,7 @@ TEST(PluginSafeCallTest, concurrentCallsOnSeparateThreadsDoNotInterfere) {
 // C++ exceptions are NOT caught (only CPU faults are)
 // ---------------------------------------------------------------------------
 
-TEST(PluginSafeCallTest, cppExceptionsPropagateThroughWrapper) {
+TEST(PluginSafeCallTest, Cpp_ExceptionsPropagateThroughWrapper) {
   // plugin_safe_call does not handle C++ exceptions.  The caller is
   // responsible for wrapping plugin calls that might throw.
   std::string error;

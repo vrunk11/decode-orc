@@ -27,9 +27,6 @@ class AnalysisTool;
 
 namespace orc::presenters {
 
-// Forward declarations
-class Project;
-
 /**
  * @brief Analysis type enumeration
  */

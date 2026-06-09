@@ -77,7 +77,7 @@ static PreviewImage create_placeholder_image(PreviewOutputType type,
     placeholder.height = 313;
   }
 
-  placeholder.rgb_data.resize(static_cast<size_t>(placeholder.width * placeholder.height * 3));
+  placeholder.rgb_data.resize(static_cast<size_t>(placeholder.width) * placeholder.height * 3);
 
   // Fill with black background
   for (size_t i = 0; i < placeholder.rgb_data.size(); ++i) {
@@ -553,7 +553,7 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_available_outputs(
     }
   }
 
-  // TODO: Future output types
+  // TODO(sdi): Future output types
   // - Luma (luma component only)
   // - Chroma (requires chroma decoder)
   // - Composite (requires full signal reconstruction)
@@ -829,7 +829,7 @@ PreviewImage PreviewRenderer::render_field(
     // Initialize image
     image.width = static_cast<uint32_t>(desc.width);
     image.height = static_cast<uint32_t>(desc.height);
-    image.rgb_data.resize(static_cast<size_t>(image.width * image.height * 3));
+    image.rgb_data.resize(static_cast<size_t>(image.width) * image.height * 3);
 
     // Convert 16-bit RGB to 8-bit RGB
     for (size_t i = 0; i < image.rgb_data.size(); ++i) {
@@ -864,7 +864,7 @@ PreviewImage PreviewRenderer::render_field(
   // Initialize image
   image.width = static_cast<uint32_t>(desc.width);
   image.height = static_cast<uint32_t>(desc.height);
-  image.rgb_data.resize(static_cast<size_t>(image.width * image.height * 3));
+  image.rgb_data.resize(static_cast<size_t>(image.width) * image.height * 3);
 
   // Convert 16-bit samples to 8-bit RGB grayscale
   for (size_t y = 0; y < desc.height; ++y) {
@@ -929,7 +929,7 @@ PreviewImage PreviewRenderer::render_frame(
     // Initialize image
     image.width = static_cast<uint32_t>(desc.width);
     image.height = static_cast<uint32_t>(desc.height);
-    image.rgb_data.resize(static_cast<size_t>(image.width * image.height * 3));
+    image.rgb_data.resize(static_cast<size_t>(image.width) * image.height * 3);
 
     ORC_LOG_DEBUG("render_frame: Converting RGB frame {}x{}, {} bytes",
                   image.width, image.height, field_data.size());
@@ -971,7 +971,7 @@ PreviewImage PreviewRenderer::render_frame(
   // + 263 = 525)
   image.width = static_cast<uint32_t>(desc_a.width);
   image.height = static_cast<uint32_t>(desc_a.height + desc_b.height);
-  image.rgb_data.resize(static_cast<size_t>(image.width * image.height * 3));
+  image.rgb_data.resize(static_cast<size_t>(image.width) * image.height * 3);
 
   // Weave fields together
   // If first_field_first: field_a on even lines, field_b on odd lines
@@ -1081,7 +1081,7 @@ PreviewImage PreviewRenderer::render_split_frame(
   image.width = static_cast<uint32_t>(desc_a.width);
   image.height = static_cast<uint32_t>(
       desc_a.height + desc_b.height);  // Sum of field heights (can differ)
-  image.rgb_data.resize(static_cast<size_t>(image.width * image.height * 3));
+  image.rgb_data.resize(static_cast<size_t>(image.width) * image.height * 3);
 
   // Copy field_a to top half
   for (size_t field_y = 0; field_y < desc_a.height; ++field_y) {
@@ -1237,7 +1237,7 @@ bool PreviewRenderer::save_png(const PreviewImage& image,
 
   // Write image data row by row
   for (uint32_t y = 0; y < image.height; ++y) {
-    png_bytep row = const_cast<png_bytep>(&image.rgb_data[static_cast<size_t>(y * image.width * 3)]);
+    png_bytep row = const_cast<png_bytep>(&image.rgb_data[static_cast<size_t>(y) * image.width * 3]);
     png_write_row(png, row);
   }
 
@@ -1328,9 +1328,9 @@ void PreviewRenderer::render_dropouts(PreviewImage& image) const {
     }
 
     // Draw horizontal line at this scanline
-    size_t row_offset = static_cast<size_t>(region.line * image.width * 3);
+    size_t row_offset = static_cast<size_t>(region.line) * image.width * 3;
     for (uint32_t x = start_x; x < end_x; ++x) {
-      size_t pixel_offset = row_offset + static_cast<size_t>(x * 3);
+      size_t pixel_offset = row_offset + static_cast<size_t>(x) * 3;
       if (pixel_offset + 2 < image.rgb_data.size()) {
         // Blend with red (75% red, 25% original)
         image.rgb_data[pixel_offset + 0] = static_cast<uint8_t>(

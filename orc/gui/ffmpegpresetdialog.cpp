@@ -530,6 +530,8 @@ void FFmpegPresetDialog::update_preset_list() {
       case 6:  // Hardware Accelerated
         include = preset.supports_hardware;
         break;
+      default:
+        break;
     }
 
     if (include) {

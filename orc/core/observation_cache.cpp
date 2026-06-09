@@ -139,7 +139,7 @@ ObservationCache::get_field(NodeID node_id, FieldID field_id) {
   CacheKey key{node_id, field_id};
   auto cached = cache_.get(key);
   if (cached.has_value()) {
-    return cached.value();
+    return cached;
   }
 
   // Not cached - render and cache

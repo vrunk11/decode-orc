@@ -27,7 +27,7 @@ namespace orc_unit_test {
 // VideoDataType — taxonomy enum coverage
 // =============================================================================
 
-TEST(VideoDataTypeTest, allSixValuesAreDistinct) {
+TEST(VideoDataTypeTest, AllSixValues_AreDistinct) {
   using T = orc::VideoDataType;
   EXPECT_NE(T::CompositeNTSC, T::CompositePAL);
   EXPECT_NE(T::YC_NTSC, T::YC_PAL);
@@ -37,7 +37,7 @@ TEST(VideoDataTypeTest, allSixValuesAreDistinct) {
   EXPECT_NE(T::YC_NTSC, T::ColourNTSC);
 }
 
-TEST(VideoDataTypeTest, signalDomainTypesAreDistinctFromColourDomainTypes) {
+TEST(VideoDataTypeTest, SignalDomainTypes_AreDistinctFromColourDomainTypes) {
   // Signal-domain types (Composite*, YC_*) must be distinguishable
   // from colour-domain types (Colour*).
   using T = orc::VideoDataType;
@@ -51,7 +51,7 @@ TEST(VideoDataTypeTest, signalDomainTypesAreDistinctFromColourDomainTypes) {
   EXPECT_NE(T::YC_PAL, T::ColourPAL);
 }
 
-TEST(VideoDataTypeTest, ntscVariantsAreDistinctFromPalVariants) {
+TEST(VideoDataTypeTest, NtscVariants_AreDistinctFromPalVariants) {
   using T = orc::VideoDataType;
   EXPECT_NE(T::CompositeNTSC, T::CompositePAL);
   EXPECT_NE(T::YC_NTSC, T::YC_PAL);
@@ -63,14 +63,14 @@ TEST(VideoDataTypeTest, ntscVariantsAreDistinctFromPalVariants) {
 // =============================================================================
 
 TEST(ColorimetricMatrixCoefficientsTest,
-     unspecifiedIsDistinctFromAllConcreteValues) {
+     Unspecified_IsDistinctFromAllConcreteValues) {
   using M = orc::ColorimetricMatrixCoefficients;
   EXPECT_NE(M::Unspecified, M::NTSC1953_FCC);
   EXPECT_NE(M::Unspecified, M::BT601_625);
   EXPECT_NE(M::Unspecified, M::BT601_525);
 }
 
-TEST(ColorimetricMatrixCoefficientsTest, ntscAndPalMatricesAreDistinct) {
+TEST(ColorimetricMatrixCoefficientsTest, NtscAndPalMatrices_AreDistinct) {
   using M = orc::ColorimetricMatrixCoefficients;
   EXPECT_NE(M::BT601_525, M::BT601_625);
 }
@@ -79,7 +79,7 @@ TEST(ColorimetricMatrixCoefficientsTest, ntscAndPalMatricesAreDistinct) {
 // ColorimetricPrimaries — enum sanity
 // =============================================================================
 
-TEST(ColorimetricPrimariesTest, unspecifiedIsDistinctFromAllConcreteValues) {
+TEST(ColorimetricPrimariesTest, Unspecified_IsDistinctFromAllConcreteValues) {
   using P = orc::ColorimetricPrimaries;
   EXPECT_NE(P::Unspecified, P::NTSC1953);
   EXPECT_NE(P::Unspecified, P::SMPTE_C);
@@ -87,7 +87,7 @@ TEST(ColorimetricPrimariesTest, unspecifiedIsDistinctFromAllConcreteValues) {
   EXPECT_NE(P::Unspecified, P::BT709);
 }
 
-TEST(ColorimetricPrimariesTest, ntscAndPalPrimariesAreDistinct) {
+TEST(ColorimetricPrimariesTest, NtscAndPalPrimaries_AreDistinct) {
   EXPECT_NE(orc::ColorimetricPrimaries::SMPTE_C,
             orc::ColorimetricPrimaries::EBU_BT470_PAL);
 }
@@ -97,7 +97,7 @@ TEST(ColorimetricPrimariesTest, ntscAndPalPrimariesAreDistinct) {
 // =============================================================================
 
 TEST(ColorimetricTransferCharacteristicsTest,
-     unspecifiedIsDistinctFromAllConcreteValues) {
+     Unspecified_IsDistinctFromAllConcreteValues) {
   using TC = orc::ColorimetricTransferCharacteristics;
   EXPECT_NE(TC::Unspecified, TC::Gamma22);
   EXPECT_NE(TC::Unspecified, TC::Gamma28);
@@ -106,7 +106,7 @@ TEST(ColorimetricTransferCharacteristicsTest,
   EXPECT_NE(TC::Unspecified, TC::BT1886App1);
 }
 
-TEST(ColorimetricTransferCharacteristicsTest, ntscAndPalGammasAreDistinct) {
+TEST(ColorimetricTransferCharacteristicsTest, NtscAndPalGammas_AreDistinct) {
   EXPECT_NE(orc::ColorimetricTransferCharacteristics::Gamma22,
             orc::ColorimetricTransferCharacteristics::Gamma28);
 }
@@ -116,53 +116,53 @@ TEST(ColorimetricTransferCharacteristicsTest, ntscAndPalGammasAreDistinct) {
 // =============================================================================
 
 TEST(ColorimetricMetadataTest,
-     defaultConstructedHasUnspecifiedMatrixCoefficients) {
+     DefaultConstructed_HasUnspecifiedMatrixCoefficients) {
   orc::ColorimetricMetadata meta{};
   EXPECT_EQ(meta.matrix_coefficients,
             orc::ColorimetricMatrixCoefficients::Unspecified);
 }
 
-TEST(ColorimetricMetadataTest, defaultConstructedHasUnspecifiedPrimaries) {
+TEST(ColorimetricMetadataTest, DefaultConstructed_HasUnspecifiedPrimaries) {
   orc::ColorimetricMetadata meta{};
   EXPECT_EQ(meta.primaries, orc::ColorimetricPrimaries::Unspecified);
 }
 
 TEST(ColorimetricMetadataTest,
-     defaultConstructedHasUnspecifiedTransferCharacteristics) {
+     DefaultConstructed_HasUnspecifiedTransferCharacteristics) {
   orc::ColorimetricMetadata meta{};
   EXPECT_EQ(meta.transfer_characteristics,
             orc::ColorimetricTransferCharacteristics::Unspecified);
 }
 
-TEST(ColorimetricMetadataTest, defaultNtscHasExpectedMatrixCoefficients) {
+TEST(ColorimetricMetadataTest, DefaultNtsc_HasExpectedMatrixCoefficients) {
   auto meta = orc::ColorimetricMetadata::default_ntsc();
   EXPECT_EQ(meta.matrix_coefficients,
             orc::ColorimetricMatrixCoefficients::BT601_525);
 }
 
-TEST(ColorimetricMetadataTest, defaultNtscHasExpectedPrimaries) {
+TEST(ColorimetricMetadataTest, DefaultNtsc_HasExpectedPrimaries) {
   auto meta = orc::ColorimetricMetadata::default_ntsc();
   EXPECT_EQ(meta.primaries, orc::ColorimetricPrimaries::SMPTE_C);
 }
 
-TEST(ColorimetricMetadataTest, defaultNtscHasExpectedTransferCharacteristics) {
+TEST(ColorimetricMetadataTest, DefaultNtsc_HasExpectedTransferCharacteristics) {
   auto meta = orc::ColorimetricMetadata::default_ntsc();
   EXPECT_EQ(meta.transfer_characteristics,
             orc::ColorimetricTransferCharacteristics::Gamma22);
 }
 
-TEST(ColorimetricMetadataTest, defaultPalHasExpectedMatrixCoefficients) {
+TEST(ColorimetricMetadataTest, DefaultPal_HasExpectedMatrixCoefficients) {
   auto meta = orc::ColorimetricMetadata::default_pal();
   EXPECT_EQ(meta.matrix_coefficients,
             orc::ColorimetricMatrixCoefficients::BT601_625);
 }
 
-TEST(ColorimetricMetadataTest, defaultPalHasExpectedPrimaries) {
+TEST(ColorimetricMetadataTest, DefaultPal_HasExpectedPrimaries) {
   auto meta = orc::ColorimetricMetadata::default_pal();
   EXPECT_EQ(meta.primaries, orc::ColorimetricPrimaries::EBU_BT470_PAL);
 }
 
-TEST(ColorimetricMetadataTest, defaultPalHasExpectedTransferCharacteristics) {
+TEST(ColorimetricMetadataTest, DefaultPal_HasExpectedTransferCharacteristics) {
   auto meta = orc::ColorimetricMetadata::default_pal();
   EXPECT_EQ(meta.transfer_characteristics,
             orc::ColorimetricTransferCharacteristics::Gamma28);
@@ -172,23 +172,23 @@ TEST(ColorimetricMetadataTest, defaultPalHasExpectedTransferCharacteristics) {
 // ColorimetricMetadata — equality and round-trip
 // =============================================================================
 
-TEST(ColorimetricMetadataTest, defaultNtscAndDefaultPalAreNotEqual) {
+TEST(ColorimetricMetadataTest, DefaultNtscAndDefaultPal_AreNotEqual) {
   EXPECT_NE(orc::ColorimetricMetadata::default_ntsc(),
             orc::ColorimetricMetadata::default_pal());
 }
 
-TEST(ColorimetricMetadataTest, equalityIsReflexive) {
+TEST(ColorimetricMetadataTest, Equality_IsReflexive) {
   auto meta = orc::ColorimetricMetadata::default_ntsc();
   EXPECT_EQ(meta, meta);
 }
 
-TEST(ColorimetricMetadataTest, copyPreservesAllFields) {
+TEST(ColorimetricMetadataTest, Copy_PreservesAllFields) {
   auto original = orc::ColorimetricMetadata::default_pal();
   auto copy = original;
   EXPECT_EQ(copy, original);
 }
 
-TEST(ColorimetricMetadataTest, modifiedMatrixIsNotEqualToOriginal) {
+TEST(ColorimetricMetadataTest, ModifiedMatrix_IsNotEqualToOriginal) {
   auto original = orc::ColorimetricMetadata::default_ntsc();
   auto modified = original;
   modified.matrix_coefficients =
@@ -196,14 +196,14 @@ TEST(ColorimetricMetadataTest, modifiedMatrixIsNotEqualToOriginal) {
   EXPECT_NE(modified, original);
 }
 
-TEST(ColorimetricMetadataTest, modifiedPrimariesIsNotEqualToOriginal) {
+TEST(ColorimetricMetadataTest, ModifiedPrimaries_IsNotEqualToOriginal) {
   auto original = orc::ColorimetricMetadata::default_ntsc();
   auto modified = original;
   modified.primaries = orc::ColorimetricPrimaries::NTSC1953;
   EXPECT_NE(modified, original);
 }
 
-TEST(ColorimetricMetadataTest, modifiedTransferIsNotEqualToOriginal) {
+TEST(ColorimetricMetadataTest, ModifiedTransfer_IsNotEqualToOriginal) {
   auto original = orc::ColorimetricMetadata::default_ntsc();
   auto modified = original;
   modified.transfer_characteristics =
@@ -211,7 +211,7 @@ TEST(ColorimetricMetadataTest, modifiedTransferIsNotEqualToOriginal) {
   EXPECT_NE(modified, original);
 }
 
-TEST(ColorimetricMetadataTest, unspecifiedInstanceIsNotEqualToDefaultNtsc) {
+TEST(ColorimetricMetadataTest, UnspecifiedInstance_IsNotEqualToDefaultNtsc) {
   orc::ColorimetricMetadata unspecified{};
   EXPECT_NE(unspecified, orc::ColorimetricMetadata::default_ntsc());
 }
@@ -220,29 +220,29 @@ TEST(ColorimetricMetadataTest, unspecifiedInstanceIsNotEqualToDefaultNtsc) {
 // PreviewCoordinate — construction and defaults
 // =============================================================================
 
-TEST(PreviewCoordinateTest, defaultConstructedHasZeroFieldIndex) {
+TEST(PreviewCoordinateTest, DefaultConstructed_HasZeroFieldIndex) {
   orc::PreviewCoordinate coord{};
   EXPECT_EQ(coord.field_index, 0u);
 }
 
-TEST(PreviewCoordinateTest, defaultConstructedHasZeroLineIndex) {
+TEST(PreviewCoordinateTest, DefaultConstructed_HasZeroLineIndex) {
   orc::PreviewCoordinate coord{};
   EXPECT_EQ(coord.line_index, 0u);
 }
 
-TEST(PreviewCoordinateTest, defaultConstructedHasZeroSampleOffset) {
+TEST(PreviewCoordinateTest, DefaultConstructed_HasZeroSampleOffset) {
   orc::PreviewCoordinate coord{};
   EXPECT_EQ(coord.sample_offset, 0u);
 }
 
 TEST(PreviewCoordinateTest,
-     defaultConstructedHasCompositeNtscDataTypeContext) {
+     DefaultConstructed_HasCompositeNtscDataTypeContext) {
   orc::PreviewCoordinate coord{};
   EXPECT_EQ(coord.data_type_context, orc::VideoDataType::CompositeNTSC);
 }
 
 TEST(PreviewCoordinateTest,
-     defaultConstructedVectorscopeDefaultsToActiveAreaOnly) {
+     DefaultConstructedVectorscope_DefaultsToActiveAreaOnly) {
   orc::PreviewCoordinate coord{};
   EXPECT_TRUE(coord.vectorscope_active_area_only);
 }
@@ -251,30 +251,30 @@ TEST(PreviewCoordinateTest,
 // PreviewCoordinate — validity / bounds
 // =============================================================================
 
-TEST(PreviewCoordinateTest, defaultConstructedIsValid) {
+TEST(PreviewCoordinateTest, DefaultConstructed_IsValid) {
   orc::PreviewCoordinate coord{};
   EXPECT_TRUE(coord.is_valid());
 }
 
-TEST(PreviewCoordinateTest, representativeFieldIndexIsValid) {
+TEST(PreviewCoordinateTest, RepresentativeFieldIndex_IsValid) {
   orc::PreviewCoordinate coord{};
   coord.field_index = 1000u;
   EXPECT_TRUE(coord.is_valid());
 }
 
-TEST(PreviewCoordinateTest, maxFieldIndexIsNotValid) {
+TEST(PreviewCoordinateTest, MaxFieldIndex_IsNotValid) {
   orc::PreviewCoordinate coord{};
   coord.field_index = UINT64_MAX;
   EXPECT_FALSE(coord.is_valid());
 }
 
-TEST(PreviewCoordinateTest, maxLineIndexIsNotValid) {
+TEST(PreviewCoordinateTest, MaxLineIndex_IsNotValid) {
   orc::PreviewCoordinate coord{};
   coord.line_index = UINT32_MAX;
   EXPECT_FALSE(coord.is_valid());
 }
 
-TEST(PreviewCoordinateTest, maxSampleOffsetIsNotValid) {
+TEST(PreviewCoordinateTest, MaxSampleOffset_IsNotValid) {
   orc::PreviewCoordinate coord{};
   coord.sample_offset = UINT32_MAX;
   EXPECT_FALSE(coord.is_valid());
@@ -284,43 +284,43 @@ TEST(PreviewCoordinateTest, maxSampleOffsetIsNotValid) {
 // PreviewCoordinate — equality
 // =============================================================================
 
-TEST(PreviewCoordinateTest, equalityIsReflexive) {
+TEST(PreviewCoordinateTest, Equality_IsReflexive) {
   orc::PreviewCoordinate coord{42u, 10u, 200u, orc::VideoDataType::YC_PAL};
   EXPECT_EQ(coord, coord);
 }
 
-TEST(PreviewCoordinateTest, differentFieldIndexIsNotEqual) {
+TEST(PreviewCoordinateTest, DifferentFieldIndex_IsNotEqual) {
   orc::PreviewCoordinate a{1u, 10u, 0u, orc::VideoDataType::CompositeNTSC};
   orc::PreviewCoordinate b{2u, 10u, 0u, orc::VideoDataType::CompositeNTSC};
   EXPECT_NE(a, b);
 }
 
-TEST(PreviewCoordinateTest, differentLineIndexIsNotEqual) {
+TEST(PreviewCoordinateTest, DifferentLineIndex_IsNotEqual) {
   orc::PreviewCoordinate a{0u, 10u, 0u, orc::VideoDataType::CompositePAL};
   orc::PreviewCoordinate b{0u, 20u, 0u, orc::VideoDataType::CompositePAL};
   EXPECT_NE(a, b);
 }
 
-TEST(PreviewCoordinateTest, differentSampleOffsetIsNotEqual) {
+TEST(PreviewCoordinateTest, DifferentSampleOffset_IsNotEqual) {
   orc::PreviewCoordinate a{0u, 0u, 100u, orc::VideoDataType::YC_NTSC};
   orc::PreviewCoordinate b{0u, 0u, 200u, orc::VideoDataType::YC_NTSC};
   EXPECT_NE(a, b);
 }
 
-TEST(PreviewCoordinateTest, differentDataTypeContextIsNotEqual) {
+TEST(PreviewCoordinateTest, DifferentDataTypeContext_IsNotEqual) {
   orc::PreviewCoordinate a{0u, 0u, 0u, orc::VideoDataType::CompositeNTSC};
   orc::PreviewCoordinate b{0u, 0u, 0u, orc::VideoDataType::CompositePAL};
   EXPECT_NE(a, b);
 }
 
-TEST(PreviewCoordinateTest, copyPreservesAllFields) {
+TEST(PreviewCoordinateTest, Copy_PreservesAllFields) {
   orc::PreviewCoordinate original{100u, 50u, 300u,
                                   orc::VideoDataType::ColourPAL};
   auto copy = original;
   EXPECT_EQ(copy, original);
 }
 
-TEST(PreviewCoordinateTest, differentVectorscopeAreaPreferenceIsNotEqual) {
+TEST(PreviewCoordinateTest, DifferentVectorscopeAreaPreference_IsNotEqual) {
   orc::PreviewCoordinate active_only{0u, 0u, 0u, orc::VideoDataType::ColourNTSC,
                                      true};
   orc::PreviewCoordinate full_frame{0u, 0u, 0u, orc::VideoDataType::ColourNTSC,
@@ -332,32 +332,32 @@ TEST(PreviewCoordinateTest, differentVectorscopeAreaPreferenceIsNotEqual) {
 // PreviewNavigationExtent — validity
 // =============================================================================
 
-TEST(PreviewNavigationExtentTest, defaultConstructedIsNotValid) {
+TEST(PreviewNavigationExtentTest, DefaultConstructed_IsNotValid) {
   orc::PreviewNavigationExtent ext{};
   EXPECT_FALSE(ext.is_valid());
 }
 
-TEST(PreviewNavigationExtentTest, withPositiveItemCountAndLabelIsValid) {
+TEST(PreviewNavigationExtentTest, WithPositiveItemCountAndLabel_IsValid) {
   orc::PreviewNavigationExtent ext{100, 1, "field"};
   EXPECT_TRUE(ext.is_valid());
 }
 
-TEST(PreviewNavigationExtentTest, withZeroItemCountIsNotValid) {
+TEST(PreviewNavigationExtentTest, WithZeroItemCount_IsNotValid) {
   orc::PreviewNavigationExtent ext{0, 1, "field"};
   EXPECT_FALSE(ext.is_valid());
 }
 
-TEST(PreviewNavigationExtentTest, withZeroGranularityIsNotValid) {
+TEST(PreviewNavigationExtentTest, WithZeroGranularity_IsNotValid) {
   orc::PreviewNavigationExtent ext{100, 0, "field"};
   EXPECT_FALSE(ext.is_valid());
 }
 
-TEST(PreviewNavigationExtentTest, withEmptyLabelIsNotValid) {
+TEST(PreviewNavigationExtentTest, WithEmptyLabel_IsNotValid) {
   orc::PreviewNavigationExtent ext{100, 1, ""};
   EXPECT_FALSE(ext.is_valid());
 }
 
-TEST(PreviewNavigationExtentTest, frameGranularityIsValid) {
+TEST(PreviewNavigationExtentTest, FrameGranularity_IsValid) {
   // Frame-navigating stages expose every-other-field, so granularity == 2
   orc::PreviewNavigationExtent ext{50, 2, "frame"};
   EXPECT_TRUE(ext.is_valid());
@@ -367,37 +367,37 @@ TEST(PreviewNavigationExtentTest, frameGranularityIsValid) {
 // PreviewGeometry — validity
 // =============================================================================
 
-TEST(PreviewGeometryTest, defaultConstructedIsNotValid) {
+TEST(PreviewGeometryTest, DefaultConstructed_IsNotValid) {
   orc::PreviewGeometry geo{};
   EXPECT_FALSE(geo.is_valid());
 }
 
-TEST(PreviewGeometryTest, withValidPalDimensionsIsValid) {
+TEST(PreviewGeometryTest, WithValidPalDimensions_IsValid) {
   orc::PreviewGeometry geo{910, 313, 4.0 / 3.0, 0.7};
   EXPECT_TRUE(geo.is_valid());
 }
 
-TEST(PreviewGeometryTest, withValidNtscDimensionsIsValid) {
+TEST(PreviewGeometryTest, WithValidNtscDimensions_IsValid) {
   orc::PreviewGeometry geo{760, 263, 4.0 / 3.0, 0.7};
   EXPECT_TRUE(geo.is_valid());
 }
 
-TEST(PreviewGeometryTest, withZeroWidthIsNotValid) {
+TEST(PreviewGeometryTest, WithZeroWidth_IsNotValid) {
   orc::PreviewGeometry geo{0, 313, 4.0 / 3.0, 0.7};
   EXPECT_FALSE(geo.is_valid());
 }
 
-TEST(PreviewGeometryTest, withZeroHeightIsNotValid) {
+TEST(PreviewGeometryTest, WithZeroHeight_IsNotValid) {
   orc::PreviewGeometry geo{910, 0, 4.0 / 3.0, 0.7};
   EXPECT_FALSE(geo.is_valid());
 }
 
-TEST(PreviewGeometryTest, withZeroDisplayAspectRatioIsNotValid) {
+TEST(PreviewGeometryTest, WithZeroDisplayAspectRatio_IsNotValid) {
   orc::PreviewGeometry geo{910, 313, 0.0, 0.7};
   EXPECT_FALSE(geo.is_valid());
 }
 
-TEST(PreviewGeometryTest, withZeroDarCorrectionFactorIsNotValid) {
+TEST(PreviewGeometryTest, WithZeroDarCorrectionFactor_IsNotValid) {
   orc::PreviewGeometry geo{910, 313, 4.0 / 3.0, 0.0};
   EXPECT_FALSE(geo.is_valid());
 }
@@ -406,21 +406,21 @@ TEST(PreviewGeometryTest, withZeroDarCorrectionFactorIsNotValid) {
 // PreviewTweakableParameter — tweak class values
 // =============================================================================
 
-TEST(PreviewTweakableParameterTest, displayPhaseClassIsPreserved) {
+TEST(PreviewTweakableParameterTest, DisplayPhaseClass_IsPreserved) {
   orc::PreviewTweakableParameter param{"chroma_matrix",
                                        orc::PreviewTweakClass::DisplayPhase};
   EXPECT_EQ(param.parameter_name, "chroma_matrix");
   EXPECT_EQ(param.tweak_class, orc::PreviewTweakClass::DisplayPhase);
 }
 
-TEST(PreviewTweakableParameterTest, decodePhaseClassIsPreserved) {
+TEST(PreviewTweakableParameterTest, DecodePhaseClass_IsPreserved) {
   orc::PreviewTweakableParameter param{"chroma_gain",
                                        orc::PreviewTweakClass::DecodePhase};
   EXPECT_EQ(param.parameter_name, "chroma_gain");
   EXPECT_EQ(param.tweak_class, orc::PreviewTweakClass::DecodePhase);
 }
 
-TEST(PreviewTweakableParameterTest, displayPhaseAndDecodePhaseAreDistinct) {
+TEST(PreviewTweakableParameterTest, DisplayPhaseAndDecodePhase_AreDistinct) {
   EXPECT_NE(orc::PreviewTweakClass::DisplayPhase,
             orc::PreviewTweakClass::DecodePhase);
 }
@@ -429,12 +429,12 @@ TEST(PreviewTweakableParameterTest, displayPhaseAndDecodePhaseAreDistinct) {
 // StagePreviewCapability — schema and validity
 // =============================================================================
 
-TEST(StagePreviewCapabilityTest, defaultConstructedIsNotValid) {
+TEST(StagePreviewCapabilityTest, DefaultConstructed_IsNotValid) {
   orc::StagePreviewCapability cap{};
   EXPECT_FALSE(cap.is_valid());
 }
 
-TEST(StagePreviewCapabilityTest, withNoDataTypesIsNotValid) {
+TEST(StagePreviewCapabilityTest, WithNoDataTypes_IsNotValid) {
   orc::StagePreviewCapability cap{};
   cap.navigation_extent = {100, 1, "field"};
   cap.geometry = {910, 313, 4.0 / 3.0, 0.7};
@@ -442,7 +442,7 @@ TEST(StagePreviewCapabilityTest, withNoDataTypesIsNotValid) {
   EXPECT_FALSE(cap.is_valid());
 }
 
-TEST(StagePreviewCapabilityTest, withZeroItemCountIsNotValid) {
+TEST(StagePreviewCapabilityTest, WithZeroItemCount_IsNotValid) {
   orc::StagePreviewCapability cap{};
   cap.supported_data_types = {orc::VideoDataType::CompositePAL};
   cap.navigation_extent = {0, 1, "field"};  // item_count == 0
@@ -450,7 +450,7 @@ TEST(StagePreviewCapabilityTest, withZeroItemCountIsNotValid) {
   EXPECT_FALSE(cap.is_valid());
 }
 
-TEST(StagePreviewCapabilityTest, withZeroGeometryWidthIsNotValid) {
+TEST(StagePreviewCapabilityTest, WithZeroGeometryWidth_IsNotValid) {
   orc::StagePreviewCapability cap{};
   cap.supported_data_types = {orc::VideoDataType::CompositePAL};
   cap.navigation_extent = {100, 1, "field"};
@@ -458,7 +458,7 @@ TEST(StagePreviewCapabilityTest, withZeroGeometryWidthIsNotValid) {
   EXPECT_FALSE(cap.is_valid());
 }
 
-TEST(StagePreviewCapabilityTest, minimumValidCapabilityIsValid) {
+TEST(StagePreviewCapabilityTest, MinimumValidCapability_IsValid) {
   orc::StagePreviewCapability cap{};
   cap.supported_data_types = {orc::VideoDataType::CompositePAL};
   cap.navigation_extent = {100, 1, "field"};
@@ -466,7 +466,7 @@ TEST(StagePreviewCapabilityTest, minimumValidCapabilityIsValid) {
   EXPECT_TRUE(cap.is_valid());
 }
 
-TEST(StagePreviewCapabilityTest, multipleDataTypesIsValid) {
+TEST(StagePreviewCapabilityTest, MultipleDataTypes_IsValid) {
   orc::StagePreviewCapability cap{};
   cap.supported_data_types = {orc::VideoDataType::YC_PAL,
                               orc::VideoDataType::ColourPAL};
@@ -477,7 +477,7 @@ TEST(StagePreviewCapabilityTest, multipleDataTypesIsValid) {
 }
 
 TEST(StagePreviewCapabilityTest,
-     emptyTweakableParametersDoesNotInvalidateCapability) {
+     EmptyTweakableParameters_DoesNotInvalidateCapability) {
   orc::StagePreviewCapability cap{};
   cap.supported_data_types = {orc::VideoDataType::CompositeNTSC};
   cap.navigation_extent = {200, 1, "field"};
@@ -486,7 +486,7 @@ TEST(StagePreviewCapabilityTest,
   EXPECT_TRUE(cap.tweakable_parameters.empty());
 }
 
-TEST(StagePreviewCapabilityTest, tweakableParametersAreIncluded) {
+TEST(StagePreviewCapabilityTest, TweakableParameters_AreIncluded) {
   orc::StagePreviewCapability cap{};
   cap.supported_data_types = {orc::VideoDataType::ColourNTSC,
                               orc::VideoDataType::YC_NTSC};
@@ -519,14 +519,14 @@ class MockPreviewCapabilityStage : public orc::IStagePreviewCapability {
 }  // anonymous namespace
 
 TEST(IStagePreviewCapabilityTest,
-     concreteImplementationReturnsValidCapability) {
+     ConcreteImplementation_ReturnsValidCapability) {
   MockPreviewCapabilityStage stage{};
   auto cap = stage.get_preview_capability();
   EXPECT_TRUE(cap.is_valid());
 }
 
 TEST(IStagePreviewCapabilityTest,
-     concreteImplementationReturnsExpectedDataType) {
+     ConcreteImplementation_ReturnsExpectedDataType) {
   MockPreviewCapabilityStage stage{};
   auto cap = stage.get_preview_capability();
   ASSERT_EQ(cap.supported_data_types.size(), 1u);
@@ -534,7 +534,7 @@ TEST(IStagePreviewCapabilityTest,
 }
 
 TEST(IStagePreviewCapabilityTest,
-     concreteImplementationReturnsExpectedItemCount) {
+     ConcreteImplementation_ReturnsExpectedItemCount) {
   MockPreviewCapabilityStage stage{};
   auto cap = stage.get_preview_capability();
   EXPECT_EQ(cap.navigation_extent.item_count, 400u);
@@ -556,13 +556,13 @@ orc::PreviewImage make_valid_preview_image() {
 
 }  // anonymous namespace
 
-TEST(PreviewViewDataResultTest, failedResultIsNotValid) {
+TEST(PreviewViewDataResultTest, FailedResult_IsNotValid) {
   orc::PreviewViewDataResult result{};
   result.success = false;
   EXPECT_FALSE(result.is_valid());
 }
 
-TEST(PreviewViewDataResultTest, successWithNoneKindIsNotValid) {
+TEST(PreviewViewDataResultTest, SuccessWithNoneKind_IsNotValid) {
   // A successful result with payload kind None has no useful payload.
   orc::PreviewViewDataResult result{};
   result.success = true;
@@ -570,7 +570,7 @@ TEST(PreviewViewDataResultTest, successWithNoneKindIsNotValid) {
   EXPECT_FALSE(result.is_valid());
 }
 
-TEST(PreviewViewDataResultTest, successWithImageKindAndValidImageIsValid) {
+TEST(PreviewViewDataResultTest, SuccessWithImageKindAndValidImage_IsValid) {
   orc::PreviewViewDataResult result{};
   result.success = true;
   result.payload_kind = orc::PreviewViewPayloadKind::Image;
@@ -578,7 +578,7 @@ TEST(PreviewViewDataResultTest, successWithImageKindAndValidImageIsValid) {
   EXPECT_TRUE(result.is_valid());
 }
 
-TEST(PreviewViewDataResultTest, successWithImageKindButEmptyImageIsNotValid) {
+TEST(PreviewViewDataResultTest, SuccessWithImageKindButEmptyImage_IsNotValid) {
   orc::PreviewViewDataResult result{};
   result.success = true;
   result.payload_kind = orc::PreviewViewPayloadKind::Image;
@@ -587,7 +587,7 @@ TEST(PreviewViewDataResultTest, successWithImageKindButEmptyImageIsNotValid) {
 }
 
 TEST(PreviewViewDataResultTest,
-     successWithImageKindButInvalidImageIsNotValid) {
+     SuccessWithImageKindButInvalidImage_IsNotValid) {
   orc::PreviewImage bad_image{};
   bad_image.width = 2;
   bad_image.height = 2;
@@ -600,7 +600,7 @@ TEST(PreviewViewDataResultTest,
   EXPECT_FALSE(result.is_valid());
 }
 
-TEST(PreviewViewDataResultTest, successWithVectorscopeKindAndDataIsValid) {
+TEST(PreviewViewDataResultTest, SuccessWithVectorscopeKindAndData_IsValid) {
   orc::VectorscopeData vs{};
   vs.width = 1;
   vs.height = 1;
@@ -613,7 +613,7 @@ TEST(PreviewViewDataResultTest, successWithVectorscopeKindAndDataIsValid) {
 }
 
 TEST(PreviewViewDataResultTest,
-     successWithVectorscopeKindButNoDataIsNotValid) {
+     SuccessWithVectorscopeKindButNoData_IsNotValid) {
   orc::PreviewViewDataResult result{};
   result.success = true;
   result.payload_kind = orc::PreviewViewPayloadKind::Vectorscope;
@@ -625,7 +625,7 @@ TEST(PreviewViewDataResultTest,
 // LiveTweakableParameterView — view-types mirror of PreviewTweakableParameter
 // =============================================================================
 
-TEST(LiveTweakableParameterViewTest, displayPhaseClassIsPreserved) {
+TEST(LiveTweakableParameterViewTest, DisplayPhaseClass_IsPreserved) {
   orc::LiveTweakableParameterView param;
   param.parameter_name = "chroma_matrix";
   param.tweak_class = orc::LiveTweakClass::DisplayPhase;
@@ -633,7 +633,7 @@ TEST(LiveTweakableParameterViewTest, displayPhaseClassIsPreserved) {
   EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DisplayPhase);
 }
 
-TEST(LiveTweakableParameterViewTest, decodePhaseClassIsPreserved) {
+TEST(LiveTweakableParameterViewTest, DecodePhaseClass_IsPreserved) {
   orc::LiveTweakableParameterView param;
   param.parameter_name = "chroma_gain";
   param.tweak_class = orc::LiveTweakClass::DecodePhase;
@@ -641,12 +641,12 @@ TEST(LiveTweakableParameterViewTest, decodePhaseClassIsPreserved) {
   EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DecodePhase);
 }
 
-TEST(LiveTweakableParameterViewTest, displayPhaseAndDecodePhaseAreDistinct) {
+TEST(LiveTweakableParameterViewTest, DisplayPhaseAndDecodePhase_AreDistinct) {
   EXPECT_NE(orc::LiveTweakClass::DisplayPhase,
             orc::LiveTweakClass::DecodePhase);
 }
 
-TEST(LiveTweakableParameterViewTest, defaultTweakClassIsDecodePhase) {
+TEST(LiveTweakableParameterViewTest, DefaultTweakClass_IsDecodePhase) {
   orc::LiveTweakableParameterView param;
   EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DecodePhase);
 }
@@ -655,26 +655,26 @@ TEST(LiveTweakableParameterViewTest, defaultTweakClassIsDecodePhase) {
 // rgb_to_uv — inline chrominance conversion
 // =============================================================================
 
-TEST(RgbToUvTest, neutralGrayProducesNearZeroChroma) {
+TEST(RgbToUvTest, NeutralGray_ProducesNearZeroChroma) {
   // Equal R=G=B should have near-zero U and V components.
   const auto sample = orc::rgb_to_uv(32768, 32768, 32768);
   EXPECT_NEAR(sample.u, 0.0, 1.0);
   EXPECT_NEAR(sample.v, 0.0, 1.0);
 }
 
-TEST(RgbToUvTest, fullBlueProducesPositiveU) {
+TEST(RgbToUvTest, FullBlue_ProducesPositiveU) {
   // Pure blue should have positive U (Cb) according to BT.601.
   const auto sample = orc::rgb_to_uv(0, 0, 65535);
   EXPECT_GT(sample.u, 0.0);
 }
 
-TEST(RgbToUvTest, fullRedProducesPositiveV) {
+TEST(RgbToUvTest, FullRed_ProducesPositiveV) {
   // Pure red should have positive V (Cr) according to BT.601.
   const auto sample = orc::rgb_to_uv(65535, 0, 0);
   EXPECT_GT(sample.v, 0.0);
 }
 
-TEST(RgbToUvTest, outputIsInSignedRange) {
+TEST(RgbToUvTest, Output_IsInSignedRange) {
   // U and V values should be in approximately [-32768, +32768] range.
   const auto sample = orc::rgb_to_uv(65535, 0, 0);
   EXPECT_GE(sample.u, -32768.0);
@@ -683,7 +683,7 @@ TEST(RgbToUvTest, outputIsInSignedRange) {
   EXPECT_LE(sample.v, 32768.0);
 }
 
-TEST(RgbToUvTest, fieldIdDefaultsToZero) {
+TEST(RgbToUvTest, FieldId_DefaultsToZero) {
   const auto sample = orc::rgb_to_uv(0, 0, 0);
   EXPECT_EQ(sample.field_id, 0u);
 }

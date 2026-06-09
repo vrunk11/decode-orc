@@ -1,3 +1,12 @@
+/*
+ * File:        lddecodemetadata.cpp
+ * Module:      metadata
+ * Purpose:     LD-Decode TBC file metadata model implementation
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 /************************************************************************
 
     lddecodemetadata.cpp
@@ -1278,8 +1287,8 @@ void LdDecodeMetaData::generatePcmAudioMap() {
       "LdDecodeMetaData::generatePcmAudioMap(): Generating PCM audio map...");
 
   int32_t numberOfFields = getVideoParameters().numberOfSequentialFields;
-  pcmAudioFieldStartSampleMap.resize(static_cast<size_t>(numberOfFields + 1));
-  pcmAudioFieldLengthMap.resize(static_cast<size_t>(numberOfFields + 1));
+  pcmAudioFieldStartSampleMap.resize(static_cast<size_t>(numberOfFields) + 1);
+  pcmAudioFieldLengthMap.resize(static_cast<size_t>(numberOfFields) + 1);
 
   for (int32_t fieldNo = 0; fieldNo < numberOfFields; fieldNo++) {
     pcmAudioFieldLengthMap[static_cast<size_t>(fieldNo)] =

@@ -54,7 +54,7 @@ class ComponentFrameTest : public ::testing::Test {
   std::vector<double> originalV_;
 };
 
-TEST_F(ComponentFrameTest, mergeLumaFromReplacesOnlyYPlane) {
+TEST_F(ComponentFrameTest, Merge_LumaFromReplacesOnlyYPlane) {
   uvFrame_.merge_luma_from(yFrame_);
 
   ASSERT_EQ(uvFrame_.getY()->size(), replacementY_.size());
@@ -66,7 +66,7 @@ TEST_F(ComponentFrameTest, mergeLumaFromReplacesOnlyYPlane) {
   EXPECT_EQ(*uvFrame_.getV(), originalV_);
 }
 
-TEST_F(ComponentFrameTest, mergeLumaFromIgnoresSourceUAndVPlanes) {
+TEST_F(ComponentFrameTest, MergeLumaFrom_IgnoresSourceUAndVPlanes) {
   std::vector<double> sourceU(originalU_.size(), 9.0);
   std::vector<double> sourceV(originalV_.size(), 8.0);
 
@@ -80,7 +80,7 @@ TEST_F(ComponentFrameTest, mergeLumaFromIgnoresSourceUAndVPlanes) {
   EXPECT_EQ(*uvFrame_.getV(), originalV_);
 }
 
-TEST_F(ComponentFrameTest, mergeLumaFromCopiesLumaDataByValue) {
+TEST_F(ComponentFrameTest, Merge_LumaFromCopiesLumaDataByValue) {
   uvFrame_.merge_luma_from(yFrame_);
 
   ASSERT_FALSE(yFrame_.getY()->empty());

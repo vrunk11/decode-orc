@@ -35,7 +35,7 @@ class MockRawEFMSinkStageDeps : public orc::IRawEFMSinkStageDeps {
               (override));
 };
 
-TEST(RawEFMSinkStageTest, descriptorDefaultsOutputPathIsEmptyEfm) {
+TEST(RawEFMSinkStageTest, Descriptor_DefaultsOutputPathIsEmptyEfm) {
   orc::RawEFMSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
@@ -54,7 +54,7 @@ TEST(RawEFMSinkStageTest, descriptorDefaultsOutputPathIsEmptyEfm) {
   EXPECT_EQ(std::get<std::string>(*it->constraints.default_value), "");
 }
 
-TEST(RawEFMSinkStageTest, triggerFailsWhenNoInputProvided) {
+TEST(RawEFMSinkStageTest, Trigger_FailsWhenNoInputProvided) {
   orc::RawEFMSinkStage stage;
   MockObservationContext observation_context;
 
@@ -66,7 +66,7 @@ TEST(RawEFMSinkStageTest, triggerFailsWhenNoInputProvided) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(RawEFMSinkStageTest, triggerFailsWhenInputHasNoEfm) {
+TEST(RawEFMSinkStageTest, Trigger_FailsWhenInputHasNoEfm) {
   orc::RawEFMSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -83,7 +83,7 @@ TEST(RawEFMSinkStageTest, triggerFailsWhenInputHasNoEfm) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(RawEFMSinkStageTest, triggerFailsWhenOutputPathMissing) {
+TEST(RawEFMSinkStageTest, Trigger_FailsWhenOutputPathMissing) {
   orc::RawEFMSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -98,7 +98,7 @@ TEST(RawEFMSinkStageTest, triggerFailsWhenOutputPathMissing) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(RawEFMSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
+TEST(RawEFMSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   orc::RawEFMSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockRawEFMSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -119,7 +119,7 @@ TEST(RawEFMSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(RawEFMSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
+TEST(RawEFMSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   orc::RawEFMSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockRawEFMSinkStageDeps>>();
   stage.set_deps_override(deps);

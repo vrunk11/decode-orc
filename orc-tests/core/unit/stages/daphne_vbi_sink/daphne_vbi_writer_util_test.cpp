@@ -41,7 +41,7 @@ class DaphneVBIWriterUtil : public ::testing::Test {
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-TEST_F(DaphneVBIWriterUtil, writeHeader) {
+TEST_F(DaphneVBIWriterUtil, Write_Header) {
   const std::vector<uint8_t> expected = {'1', 'V', 'B', 'I'};
 
   EXPECT_CALL(mockFileWriterUint8_, write(expected)).Times(1);
@@ -49,7 +49,7 @@ TEST_F(DaphneVBIWriterUtil, writeHeader) {
   instance_->write_header();
 }
 
-TEST_F(DaphneVBIWriterUtil, writeObservationsWithWhiteFlagAndVbiData) {
+TEST_F(DaphneVBIWriterUtil, Write_ObservationsWithWhiteFlagAndVbiData) {
   constexpr FieldID field_id(1);
 
   // Set up expectations for observation context
@@ -87,7 +87,7 @@ TEST_F(DaphneVBIWriterUtil, writeObservationsWithWhiteFlagAndVbiData) {
 }
 
 TEST_F(DaphneVBIWriterUtil,
-       writeObservationsWithNoWhiteflagAndParseErrors) {
+       Write_ObservationsWithNoWhiteflagAndParseErrors) {
   constexpr FieldID field_id(0);
 
   // Set up expectations for observation context

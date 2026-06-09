@@ -304,7 +304,7 @@ Comb::FrameBuffer::FrameBuffer(const ::orc::SourceParameters& videoParameters_,
 
   // Set the IRE scale
   irescale =
-      (videoParameters.white_16b_ire - videoParameters.black_16b_ire) / 100;
+      (videoParameters.white_16b_ire - videoParameters.black_16b_ire) / 100.0;
 }
 
 /*
@@ -817,7 +817,7 @@ void Comb::FrameBuffer::demodulateChromaLocked(const double* chromaLine,
     const auto tq = (lsin * burstInfo.bsin + lcos * burstInfo.bcos);
 
     // Invert Q and rotate to get the correct I/Q vector
-    // TODO: Needed to shift the chroma 1 sample to the right to get it to line
+    // TODO(sdi): Needed to shift the chroma 1 sample to the right to get it to line
     // up may not get the first pixel in each line correct because of this
     const int32_t outIndex = h + 1 - xOffset;
     if (h + 1 < videoParameters.active_video_end && outIndex >= 0 &&
@@ -1148,7 +1148,7 @@ void Comb::FrameBuffer::doCNR() {
   const int32_t delay = c_nrc_b.size() / 2;
 
   // High-pass result
-  // TODO: Cache arrays instead of reallocating every field.
+  // TODO(sdi): Cache arrays instead of reallocating every field.
   std::vector<double> hpI(videoParameters.active_video_end + delay);
   std::vector<double> hpQ(videoParameters.active_video_end + delay);
 

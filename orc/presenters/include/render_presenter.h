@@ -36,7 +36,6 @@ class DAG;
 namespace orc::presenters {
 
 // Forward declarations
-class Project;
 struct QualityMetrics;  // From metrics_presenter.h
 using ProgressCallback = std::function<void(
     size_t, size_t, const std::string&)>;  // From project_presenter.h

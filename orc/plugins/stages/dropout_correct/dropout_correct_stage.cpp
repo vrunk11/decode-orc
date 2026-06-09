@@ -294,7 +294,7 @@ DropoutCorrectStage::correct_field(
   // For now, this method creates a lazy corrected representation
   // The dropouts and decisions parameters are ignored since the source
   // should provide dropout hints
-  // TODO: Support explicit dropout list and decisions
+  // TODO(sdi): Support explicit dropout list and decisions
 
   auto corrected = std::make_shared<CorrectedVideoFieldRepresentation>(
       source, const_cast<DropoutCorrectStage*>(this),

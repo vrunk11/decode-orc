@@ -95,7 +95,7 @@ void clickOk(ConfigDialogBase& dialog) {
 
 }  // namespace
 
-TEST(ConfigDialogBaseTest, maskLineDialogAppliesPresetAndMaskLevelRules) {
+TEST(ConfigDialogBaseTest, MaskLineDialog_AppliesPresetAndMaskLevelRules) {
   (void)ensureApplication();
 
   MaskLineConfigDialog dialog;
@@ -127,7 +127,7 @@ TEST(ConfigDialogBaseTest, maskLineDialogAppliesPresetAndMaskLevelRules) {
   EXPECT_DOUBLE_EQ(std::get<double>(params.at("maskIRE")), 100.0);
 }
 
-TEST(ConfigDialogBaseTest, maskLineDialogAppliesCustomRangeRule) {
+TEST(ConfigDialogBaseTest, MaskLineDialog_AppliesCustomRangeRule) {
   (void)ensureApplication();
 
   MaskLineConfigDialog dialog;
@@ -186,7 +186,7 @@ TEST(ConfigDialogBaseTest, maskLineDialogAppliesCustomRangeRule) {
 }
 
 TEST(ConfigDialogBaseTest,
-     ffmpegDialogUpdatesFilenameExtensionWhenCategoryChanges) {
+     FfmpegDialog_UpdatesFilenameExtensionWhenCategoryChanges) {
   (void)ensureApplication();
 
   FFmpegPresetDialog dialog;
@@ -213,7 +213,7 @@ TEST(ConfigDialogBaseTest,
   EXPECT_TRUE(filename_edit->text().endsWith(".mxf"));
 }
 
-TEST(ConfigDialogBaseTest, ffmpegDialogAppliesPresetAndOptionRules) {
+TEST(ConfigDialogBaseTest, FfmpegDialog_AppliesPresetAndOptionRules) {
   (void)ensureApplication();
 
   FFmpegPresetDialog dialog;

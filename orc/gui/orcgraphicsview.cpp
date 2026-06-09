@@ -132,7 +132,7 @@ void OrcGraphicsView::wheelEvent(QWheelEvent* event) {
 
   // Reduced sensitivity: use 1.1 (10% per scroll) instead of default 1.2 (20%)
   double const step = 1.1;
-  double const d = delta.y() / std::abs(delta.y());
+  double const d = delta.y() / std::abs(delta.y());  // NOLINT(bugprone-integer-division)
   double const factor = std::pow(step, d);
 
   // Get current scale and apply limits
@@ -162,7 +162,7 @@ void OrcGraphicsView::contextMenuEvent(QContextMenuEvent* event) {
     // NodeGraphicsObject::contextMenuEvent() to emit nodeContextMenu(), handled
     // by OrcGraphicsScene::onNodeContextMenu() -- showing only the single ORC
     // context menu.
-    QGraphicsView::contextMenuEvent(event);
+    QGraphicsView::contextMenuEvent(event);  // NOLINT(bugprone-parent-virtual-call)
     return;
   }
 

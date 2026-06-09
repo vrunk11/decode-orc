@@ -1,3 +1,12 @@
+/*
+ * File:        lru_cache.h
+ * Module:      orc-core
+ * Purpose:     Thread-safe least-recently-used cache
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #pragma once
 
 #include <functional>
@@ -17,6 +26,7 @@ namespace orc {
  * @tparam Value Value type
  * @tparam Hash Hash function type (defaults to std::hash<Key>)
  */
+// Thread-safe: all public methods are guarded by mutex_.
 template <typename Key, typename Value, typename Hash = std::hash<Key>>
 class LRUCache {
  public:

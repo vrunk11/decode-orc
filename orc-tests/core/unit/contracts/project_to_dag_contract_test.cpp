@@ -73,7 +73,7 @@ std::string first_source_stage_name() {
 }
 }  // namespace
 
-TEST(ProjectToDagContractTest, convertsRepresentativePublicPipeline) {
+TEST(ProjectToDagContractTest, Converts_RepresentativePublicPipeline) {
   const auto chain = find_representative_chain();
   if (!chain.has_value()) {
     FAIL() << "Expected chain to have a value";
@@ -81,7 +81,7 @@ TEST(ProjectToDagContractTest, convertsRepresentativePublicPipeline) {
   }
 
   auto project = orc::project_io::create_empty_project(
-      "phase5-contract", orc::VideoSystem::Unknown, orc::SourceType::Unknown);
+      "contract-test-project", orc::VideoSystem::Unknown, orc::SourceType::Unknown);
   const auto source_id =
       orc::project_io::add_node(project, chain->source, 0.0, 0.0);
   const auto middle_id =
@@ -101,12 +101,12 @@ TEST(ProjectToDagContractTest, convertsRepresentativePublicPipeline) {
   EXPECT_EQ(dag->output_nodes().front(), sink_id);
 }
 
-TEST(ProjectToDagContractTest, placeholderSourcesPassSourceValidation) {
+TEST(ProjectToDagContractTest, Placeholder_SourcesPassSourceValidation) {
   const auto source_stage_name = first_source_stage_name();
   ASSERT_FALSE(source_stage_name.empty());
 
   auto project = orc::project_io::create_empty_project(
-      "phase5-placeholder", orc::VideoSystem::Unknown,
+      "placeholder-source-project", orc::VideoSystem::Unknown,
       orc::SourceType::Unknown);
   orc::project_io::add_node(project, source_stage_name, 0.0, 0.0);
 
@@ -116,9 +116,9 @@ TEST(ProjectToDagContractTest, placeholderSourcesPassSourceValidation) {
 }
 
 TEST(ProjectToDagContractTest,
-     cvbsSourceParametersPersistWithoutTbcMetadataSidecar) {
+     Cvbs_SourceParametersPersistWithoutTbcMetadataSidecar) {
   auto project = orc::project_io::create_empty_project(
-      "phase5-cvbs-params", orc::VideoSystem::PAL, orc::SourceType::Composite);
+      "cvbs-params-project", orc::VideoSystem::PAL, orc::SourceType::Composite);
 
   const auto source_id =
       orc::project_io::add_node(project, "PAL_CVBS_Source", 0.0, 0.0);
@@ -140,12 +140,12 @@ TEST(ProjectToDagContractTest,
   EXPECT_EQ(node_it->parameters, params);
 }
 
-TEST(ProjectToDagContractTest, unknownStageInProjectFailsCleanly) {
+TEST(ProjectToDagContractTest, UnknownStageInProject_FailsCleanly) {
   auto project = orc::project_io::create_empty_project(
-      "phase5-invalid", orc::VideoSystem::Unknown, orc::SourceType::Unknown);
+      "invalid-stage-project", orc::VideoSystem::Unknown, orc::SourceType::Unknown);
 
   std::vector<orc::ProjectDAGNode> nodes = {{orc::NodeID(1),
-                                             "phase5_missing_stage",
+                                             "unregistered_stage",
                                              orc::NodeType::TRANSFORM,
                                              "Missing",
                                              "Missing",
@@ -194,7 +194,7 @@ std::string decoder_type_from_dag(const orc::DAG& dag, orc::NodeID node_id) {
 }  // namespace
 
 TEST(ProjectToDagFormatDefaultsTest,
-     palProjectGivesFFmpegSinkPalDecodeDefault) {
+     Pal_ProjectGivesFFmpegSinkPalDecodeDefault) {
   // Simulate a PAL project that has an ffmpeg_video_sink node with NO
   // stored decoder_type (as would be the case for any project created
   // before the parameter was explicitly persisted).
@@ -214,7 +214,7 @@ TEST(ProjectToDagFormatDefaultsTest,
 }
 
 TEST(ProjectToDagFormatDefaultsTest,
-     ntscProjectGivesFFmpegSinkNtscDecodeDefault) {
+     Ntsc_ProjectGivesFFmpegSinkNtscDecodeDefault) {
   auto project = orc::project_io::create_empty_project(
       "ntsc-defaults", orc::VideoSystem::NTSC, orc::SourceType::Composite);
 
@@ -229,7 +229,7 @@ TEST(ProjectToDagFormatDefaultsTest,
 }
 
 TEST(ProjectToDagFormatDefaultsTest,
-     palProjectGivesRawVideoSinkPalDecodeDefault) {
+     Pal_ProjectGivesRawVideoSinkPalDecodeDefault) {
   auto project = orc::project_io::create_empty_project(
       "pal-raw-defaults", orc::VideoSystem::PAL, orc::SourceType::Composite);
 
@@ -244,7 +244,7 @@ TEST(ProjectToDagFormatDefaultsTest,
          "for raw_video_sink";
 }
 
-TEST(ProjectToDagFormatDefaultsTest, storedDecoderTypeOverridesFormatDefault) {
+TEST(ProjectToDagFormatDefaultsTest, Stored_DecoderTypeOverridesFormatDefault) {
   // If an explicit decoder_type IS stored (e.g. user changed it to "mono"),
   // it must win over the format-derived default.
   auto project = orc::project_io::create_empty_project(
@@ -266,7 +266,7 @@ TEST(ProjectToDagFormatDefaultsTest, storedDecoderTypeOverridesFormatDefault) {
 }
 
 TEST(ProjectToDagFormatDefaultsTest,
-     allRegistryStagesHaveDefaultsForPALFormat) {
+     AllRegistryStagesHave_DefaultsForPALFormat) {
   // Every parameter descriptor returned for VideoSystem::PAL must carry a
   // default_value so that project_to_dag() can seed any parameter that is
   // absent from the project file.  Parameters that only appear in NTSC
@@ -297,7 +297,7 @@ TEST(ProjectToDagFormatDefaultsTest,
 }
 
 TEST(ProjectToDagFormatDefaultsTest,
-     allRegistryStagesHaveDefaultsForNTSCFormat) {
+     AllRegistryStagesHave_DefaultsForNTSCFormat) {
   // Same check for VideoSystem::NTSC.
   for (const auto& spec : public_stage_specs()) {
     if (!spec.registry_backed) {

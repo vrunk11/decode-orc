@@ -14,7 +14,7 @@
 
 namespace orc_unit_test {
 
-TEST(ColourFrameCarrierTest, invalidWhenPlaneSizesDoNotMatchDimensions) {
+TEST(ColourFrameCarrierTest, InvalidWhenPlaneSizesDoNot_MatchDimensions) {
   orc::ColourFrameCarrier carrier{};
   carrier.width = 2;
   carrier.height = 2;
@@ -25,7 +25,7 @@ TEST(ColourFrameCarrierTest, invalidWhenPlaneSizesDoNotMatchDimensions) {
   EXPECT_FALSE(carrier.is_valid());
 }
 
-TEST(ColourFrameCarrierTest, validWhenAllPlanesMatchDimensions) {
+TEST(ColourFrameCarrierTest, ValidWhenAllPlanes_MatchDimensions) {
   orc::ColourFrameCarrier carrier{};
   carrier.width = 2;
   carrier.height = 2;
@@ -38,7 +38,7 @@ TEST(ColourFrameCarrierTest, validWhenAllPlanesMatchDimensions) {
   EXPECT_TRUE(carrier.is_valid());
 }
 
-TEST(ColourCarrierConversionTest, producesValidRgbImage) {
+TEST(ColourCarrierConversionTest, Produces_ValidRgbImage) {
   orc::ColourFrameCarrier carrier{};
   carrier.width = 2;
   carrier.height = 1;
@@ -64,7 +64,7 @@ TEST(ColourCarrierConversionTest, producesValidRgbImage) {
   EXPECT_LT(image.rgb_data[0], image.rgb_data[3]);
 }
 
-TEST(ColourCarrierConversionTest, matrixSelectionAffectsRgbResult) {
+TEST(ColourCarrierConversionTest, MatrixSelection_AffectsRgbResult) {
   orc::ColourFrameCarrier ntsc{};
   ntsc.width = 1;
   ntsc.height = 1;
@@ -96,7 +96,7 @@ TEST(ColourCarrierConversionTest, matrixSelectionAffectsRgbResult) {
 // ColourFrameCarrier — additional validity edge cases
 // =============================================================================
 
-TEST(ColourFrameCarrierTest, equalBlackAndWhiteLevelsIsNotValid) {
+TEST(ColourFrameCarrierTest, EqualBlackAndWhiteLevels_IsNotValid) {
   // If the signal range is zero the conversion denominator would be zero —
   // the carrier is considered invalid.
   orc::ColourFrameCarrier carrier{};
@@ -111,7 +111,7 @@ TEST(ColourFrameCarrierTest, equalBlackAndWhiteLevelsIsNotValid) {
   EXPECT_FALSE(carrier.is_valid());
 }
 
-TEST(ColourFrameCarrierTest, invertedBlackAndWhiteLevelsIsNotValid) {
+TEST(ColourFrameCarrierTest, InvertedBlackAndWhiteLevels_IsNotValid) {
   orc::ColourFrameCarrier carrier{};
   carrier.width = 1;
   carrier.height = 1;
@@ -128,7 +128,7 @@ TEST(ColourFrameCarrierTest, invertedBlackAndWhiteLevelsIsNotValid) {
 // render_preview_from_colour_carrier — transfer characteristic paths
 // =============================================================================
 
-TEST(ColourCarrierConversionTest, invalidCarrierReturnsInvalidImage) {
+TEST(ColourCarrierConversionTest, InvalidCarrier_ReturnsInvalidImage) {
   // render_preview_from_colour_carrier() should guard against an invalid
   // carrier and return an empty/invalid PreviewImage rather than crashing.
   orc::ColourFrameCarrier carrier{};
@@ -139,7 +139,7 @@ TEST(ColourCarrierConversionTest, invalidCarrierReturnsInvalidImage) {
   EXPECT_FALSE(image.is_valid());
 }
 
-TEST(ColourCarrierConversionTest, gamma28TransferProducesValidRgbImage) {
+TEST(ColourCarrierConversionTest, Gamma28Transfer_ProducesValidRgbImage) {
   // PAL recording using BT.601-625 matrix with 2.8 gamma transfer.
   orc::ColourFrameCarrier carrier{};
   carrier.width = 2;
@@ -165,7 +165,7 @@ TEST(ColourCarrierConversionTest, gamma28TransferProducesValidRgbImage) {
 }
 
 TEST(ColourCarrierConversionTest,
-     bt709TransferProducesDistinctOutputFromGamma22) {
+     Bt709Transfer_ProducesDistinctOutputFromGamma22) {
   // BT.709 OETF is piecewise-linear near black, unlike pure power-law gamma,
   // so the resulting display values should differ for the same input.
   orc::ColourFrameCarrier gamma22{};
@@ -198,7 +198,7 @@ TEST(ColourCarrierConversionTest,
   EXPECT_TRUE(pixel_differs);
 }
 
-TEST(ColourCarrierConversionTest, bt1886TransferProducesValidImage) {
+TEST(ColourCarrierConversionTest, Bt1886Transfer_ProducesValidImage) {
   // BT.1886 (effective 2.4 gamma) should compile and produce valid RGB.
   orc::ColourFrameCarrier carrier{};
   carrier.width = 1;

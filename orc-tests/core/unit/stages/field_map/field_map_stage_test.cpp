@@ -30,17 +30,17 @@ const orc::ParameterDescriptor* find_descriptor(
 }
 }  // namespace
 
-TEST(FieldMapStageTest, requiredInputCountIsOne) {
+TEST(FieldMapStageTest, RequiredInputCount_IsOne) {
   orc::FieldMapStage stage;
   EXPECT_EQ(stage.required_input_count(), 1u);
 }
 
-TEST(FieldMapStageTest, outputCountIsOne) {
+TEST(FieldMapStageTest, OutputCount_IsOne) {
   orc::FieldMapStage stage;
   EXPECT_EQ(stage.output_count(), 1u);
 }
 
-TEST(FieldMapStageTest, nodeTypeInfoHasExpectedMetadata) {
+TEST(FieldMapStageTest, NodeTypeInfo_HasExpectedMetadata) {
   orc::FieldMapStage stage;
   auto info = stage.get_node_type_info();
 
@@ -49,7 +49,7 @@ TEST(FieldMapStageTest, nodeTypeInfoHasExpectedMetadata) {
   EXPECT_EQ(info.compatible_formats, orc::VideoFormatCompatibility::ALL);
 }
 
-TEST(FieldMapStageTest, parameterDescriptorsRangesMatchRuntimeDefault) {
+TEST(FieldMapStageTest, ParameterDescriptorsRanges_MatchRuntimeDefault) {
   orc::FieldMapStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
@@ -67,7 +67,7 @@ TEST(FieldMapStageTest, parameterDescriptorsRangesMatchRuntimeDefault) {
             std::get<std::string>(params.at("ranges")));
 }
 
-TEST(FieldMapStageTest, parameterDescriptorsSeedMatchRuntimeDefault) {
+TEST(FieldMapStageTest, ParameterDescriptorsSeed_MatchRuntimeDefault) {
   orc::FieldMapStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
@@ -85,7 +85,7 @@ TEST(FieldMapStageTest, parameterDescriptorsSeedMatchRuntimeDefault) {
             std::get<int32_t>(params.at("seed")));
 }
 
-TEST(FieldMapStageTest, setParametersAcceptsValidRangesAndSeed) {
+TEST(FieldMapStageTest, SetParameters_AcceptsValidRangesAndSeed) {
   orc::FieldMapStage stage;
 
   const bool result = stage.set_parameters(
@@ -97,17 +97,17 @@ TEST(FieldMapStageTest, setParametersAcceptsValidRangesAndSeed) {
   EXPECT_EQ(std::get<int32_t>(params.at("seed")), 9);
 }
 
-TEST(FieldMapStageTest, setParametersRejectsInvalidRangeSpecification) {
+TEST(FieldMapStageTest, SetParameters_RejectsInvalidRangeSpecification) {
   orc::FieldMapStage stage;
   EXPECT_FALSE(stage.set_parameters({{"ranges", std::string("not-a-range")}}));
 }
 
-TEST(FieldMapStageTest, setParametersRejectsWrongSeedType) {
+TEST(FieldMapStageTest, SetParameters_RejectsWrongSeedType) {
   orc::FieldMapStage stage;
   EXPECT_FALSE(stage.set_parameters({{"seed", std::string("bad")}}));
 }
 
-TEST(FieldMapStageTest, executeReturnsInputUnchangedWhenRangesAreEmpty) {
+TEST(FieldMapStageTest, Execute_ReturnsInputUnchangedWhenRangesAreEmpty) {
   orc::FieldMapStage stage;
   orc::ObservationContext observation_context;
   auto source = std::make_shared<MockVideoFieldRepresentation>();

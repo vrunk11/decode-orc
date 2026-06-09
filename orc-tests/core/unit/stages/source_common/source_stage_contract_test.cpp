@@ -32,7 +32,7 @@ struct SourceStageContractCase {
 class SourceStageContractTest
     : public testing::TestWithParam<SourceStageContractCase> {};
 
-TEST_P(SourceStageContractTest, metadataMatchesSourceContract) {
+TEST_P(SourceStageContractTest, Metadata_MatchesSourceContract) {
   const auto& test_case = GetParam();
   auto stage = test_case.create_stage();
   const auto info = stage->get_node_type_info();

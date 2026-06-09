@@ -1,3 +1,12 @@
+/*
+ * File:        analysis_tool.h
+ * Module:      analysis
+ * Purpose:     Abstract base interface for all analysis tools
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #ifndef ORC_CORE_ANALYSIS_TOOL_H
 #define ORC_CORE_ANALYSIS_TOOL_H
 

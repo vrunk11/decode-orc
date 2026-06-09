@@ -1,3 +1,12 @@
+/*
+ * File:        analysis_result.h
+ * Module:      analysis
+ * Purpose:     Result type alias for analysis tool output
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #ifndef ORC_CORE_ANALYSIS_RESULT_H
 #define ORC_CORE_ANALYSIS_RESULT_H
 

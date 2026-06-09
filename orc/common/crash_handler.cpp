@@ -180,7 +180,7 @@ static std::string get_backtrace(
              "<coredump>\n";
     trace << "\n";
     trace << "Note: Binary has debug symbols (not stripped)\n";
-    free(strings);
+    free(static_cast<void*>(strings));
   } else {
     trace << "Unable to obtain backtrace\n";
   }
@@ -430,7 +430,7 @@ static std::vector<std::string> collect_log_files() {
           log_files.end()) {
         log_files.push_back(normalized);
       }
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch)
       // Continue even if file checks fail
     }
   };
@@ -440,7 +440,7 @@ static std::vector<std::string> collect_log_files() {
          fs::directory_iterator(g_crash_config.output_directory)) {
       add_file_if_present(entry.path(), true);
     }
-  } catch (...) {
+  } catch (...) {  // NOLINT(bugprone-empty-catch)
     // Continue even if directory listing fails
   }
 
@@ -489,7 +489,7 @@ static std::string create_bundle_zip(
         try {
           fs::path log_path(log_file);
           fs::copy(log_file, bundle_dir + "/" + log_path.filename().string());
-        } catch (...) {
+        } catch (...) {  // NOLINT(bugprone-empty-catch)
           // Continue even if log file copy fails
         }
       }
@@ -747,7 +747,7 @@ static void crash_signal_handler(int sig, siginfo_t* info, void* context) {
       logger->critical("CRASH DETECTED: {}", get_signal_name(sig));
       logger->flush();
     }
-  } catch (...) {
+  } catch (...) {  // NOLINT(bugprone-empty-catch)
     // Logging might not work in crash handler
   }
 

@@ -205,7 +205,7 @@ VBIFieldInfo VBIDecoder::parse_vbi_data(
   }
 
   if (!has_clv_picture_number && cav_picture_number.has_value()) {
-    info.picture_number = cav_picture_number.value();
+    info.picture_number = cav_picture_number;
   }
 
   // Lead-in / lead-out / picture stop codes

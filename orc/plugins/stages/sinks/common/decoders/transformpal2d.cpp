@@ -49,9 +49,9 @@ TransformPal2D::TransformPal2D() : TransformPal(XCOMPLEX, YCOMPLEX, 1) {
 
   // Allocate buffers for FFTW. These must be allocated using FFTW's own
   // functions so they're properly aligned for SIMD operations.
-  fftReal = fftw_alloc_real(static_cast<size_t>(YTILE * XTILE));
-  fftComplexIn = fftw_alloc_complex(static_cast<size_t>(YCOMPLEX * XCOMPLEX));
-  fftComplexOut = fftw_alloc_complex(static_cast<size_t>(YCOMPLEX * XCOMPLEX));
+  fftReal = fftw_alloc_real(static_cast<size_t>(YTILE) * XTILE);
+  fftComplexIn = fftw_alloc_complex(static_cast<size_t>(YCOMPLEX) * XCOMPLEX);
+  fftComplexOut = fftw_alloc_complex(static_cast<size_t>(YCOMPLEX) * XCOMPLEX);
 
   // Plan FFTW operations
   forwardPlan =
@@ -102,8 +102,8 @@ void TransformPal2D::filterFields(const std::vector<SourceField>& inputFields,
   chromaBuf.resize(endIndex - startIndex);
 
   for (int32_t i = 0; i < static_cast<int32_t>(chromaBuf.size()); i++) {
-    chromaBuf[i].resize(static_cast<size_t>(videoParameters.field_width *
-                        videoParameters.field_height));
+    chromaBuf[i].resize(static_cast<size_t>(videoParameters.field_width) *
+                        videoParameters.field_height);
     std::fill(chromaBuf[i].begin(), chromaBuf[i].end(), 0.0);
 
     outputFields[i] = chromaBuf[i].data();

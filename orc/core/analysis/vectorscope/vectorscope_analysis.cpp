@@ -126,13 +126,13 @@ VectorscopeData VectorscopeAnalysisTool::extractFromRGB(
   }
 
   // Reserve space for samples (with subsampling)
-  size_t estimated_samples = static_cast<size_t>((width / subsample) * (height / subsample));
+  size_t estimated_samples = static_cast<size_t>(width / subsample) * (height / subsample);
   data.samples.reserve(estimated_samples);
 
   // Extract U/V from RGB
   for (uint32_t y = 0; y < height; y += subsample) {
     for (uint32_t x = 0; x < width; x += subsample) {
-      size_t pixel_index = static_cast<size_t>((y * width + x) * 3);
+      size_t pixel_index = (static_cast<size_t>(y) * width + x) * 3;
 
       uint16_t r = rgb_data[pixel_index + 0];
       uint16_t g = rgb_data[pixel_index + 1];
@@ -165,7 +165,7 @@ VectorscopeData VectorscopeAnalysisTool::extractFromInterlacedRGB(
   }
 
   // Reserve space for samples from both fields (with subsampling)
-  size_t estimated_samples = static_cast<size_t>((width / subsample) * (height / subsample));
+  size_t estimated_samples = static_cast<size_t>(width / subsample) * (height / subsample);
   data.samples.reserve(estimated_samples);
 
   // Process both fields separately
@@ -175,7 +175,7 @@ VectorscopeData VectorscopeAnalysisTool::extractFromInterlacedRGB(
     // Process every (2 * subsample)th line starting from field_id
     for (uint32_t y = field_id; y < height; y += (2 * subsample)) {
       for (uint32_t x = 0; x < width; x += subsample) {
-        size_t pixel_index = static_cast<size_t>((y * width + x) * 3);
+        size_t pixel_index = (static_cast<size_t>(y) * width + x) * 3;
 
         uint16_t r = rgb_data[pixel_index + 0];
         uint16_t g = rgb_data[pixel_index + 1];

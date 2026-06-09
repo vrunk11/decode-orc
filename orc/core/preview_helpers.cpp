@@ -146,7 +146,7 @@ PreviewImage render_field_preview(
 
   result.width = static_cast<uint32_t>(descriptor->width);
   result.height = static_cast<uint32_t>(descriptor->height);
-  result.rgb_data.resize(static_cast<size_t>(result.width * result.height * 3));
+  result.rgb_data.resize(static_cast<size_t>(result.width) * result.height * 3);
 
   // Calculate scaling parameters (fixed-point integer math)
   double blackIRE = video_params->black_16b_ire;
@@ -167,7 +167,7 @@ PreviewImage render_field_preview(
       uint8_t gray = scale_16bit_to_8bit(line[x], apply_ire_scaling, ire_black,
                                          ire_mult, raw_mult);
 
-      size_t offset = static_cast<size_t>((y * result.width + x) * 3);
+      size_t offset = (static_cast<size_t>(y) * result.width + x) * 3;
       result.rgb_data[offset + 0] = gray;
       result.rgb_data[offset + 1] = gray;
       result.rgb_data[offset + 2] = gray;
@@ -214,7 +214,7 @@ PreviewImage render_split_preview(
   result.width = static_cast<uint32_t>(desc_first->width);
   result.height =
       static_cast<uint32_t>(desc_first->height + desc_second->height);
-  result.rgb_data.resize(static_cast<size_t>(result.width * result.height * 3));
+  result.rgb_data.resize(static_cast<size_t>(result.width) * result.height * 3);
 
   // Calculate scaling parameters (fixed-point integer math)
   double blackIRE = video_params->black_16b_ire;
@@ -238,7 +238,7 @@ PreviewImage render_split_preview(
         uint8_t gray = scale_16bit_to_8bit(line[x], apply_ire_scaling,
                                            ire_black, ire_mult, raw_mult);
 
-        size_t offset = static_cast<size_t>(((y + y_offset) * result.width + x) * 3);
+        size_t offset = (static_cast<size_t>(y + y_offset) * result.width + x) * 3;
         result.rgb_data[offset + 0] = gray;
         result.rgb_data[offset + 1] = gray;
         result.rgb_data[offset + 2] = gray;
@@ -314,7 +314,7 @@ PreviewImage render_frame_preview(
   result.width = static_cast<uint32_t>(desc_first->width);
   result.height =
       static_cast<uint32_t>(desc_first->height + desc_second->height);
-  result.rgb_data.resize(static_cast<size_t>(result.width * result.height * 3));
+  result.rgb_data.resize(static_cast<size_t>(result.width) * result.height * 3);
 
   // Calculate scaling parameters
   double blackIRE = video_params->black_16b_ire;
@@ -357,7 +357,7 @@ PreviewImage render_frame_preview(
     get_line_calls++;
     if (!line) continue;
 
-    uint8_t* rgb_line = &result.rgb_data[static_cast<size_t>(y * result.width * 3)];
+    uint8_t* rgb_line = &result.rgb_data[static_cast<size_t>(y) * result.width * 3];
 
     for (uint32_t x = 0; x < result.width; ++x) {
       uint8_t gray = scale_16bit_to_8bit(line[x], apply_ire_scaling, ire_black,
@@ -546,7 +546,7 @@ static PreviewImage render_split_preview_with_channel(
   result.width = static_cast<uint32_t>(desc_first->width);
   result.height =
       static_cast<uint32_t>(desc_first->height + desc_second->height);
-  result.rgb_data.resize(static_cast<size_t>(result.width * result.height * 3));
+  result.rgb_data.resize(static_cast<size_t>(result.width) * result.height * 3);
 
   // Get field data for the selected channel
   auto first_data = get_field_for_channel(representation, first_field, channel);
@@ -581,7 +581,7 @@ static PreviewImage render_split_preview_with_channel(
         gray = static_cast<uint8_t>(sample * raw_scale);
       }
 
-      size_t offset = static_cast<size_t>((y * result.width + x) * 3);
+      size_t offset = (static_cast<size_t>(y) * result.width + x) * 3;
       result.rgb_data[offset + 0] = gray;
       result.rgb_data[offset + 1] = gray;
       result.rgb_data[offset + 2] = gray;
@@ -606,8 +606,8 @@ static PreviewImage render_split_preview_with_channel(
       }
 
       size_t offset =
-          static_cast<size_t>(((y + static_cast<uint32_t>(desc_first->height)) * result.width + x) *
-          3);
+          (static_cast<size_t>(y + static_cast<uint32_t>(desc_first->height)) * result.width + x) *
+          3;
       result.rgb_data[offset + 0] = gray;
       result.rgb_data[offset + 1] = gray;
       result.rgb_data[offset + 2] = gray;
@@ -666,7 +666,7 @@ static PreviewImage render_frame_preview_with_channel(
   result.width = static_cast<uint32_t>(desc_first->width);
   result.height =
       static_cast<uint32_t>(desc_first->height + desc_second->height);
-  result.rgb_data.resize(static_cast<size_t>(result.width * result.height * 3));
+  result.rgb_data.resize(static_cast<size_t>(result.width) * result.height * 3);
 
   // Get field data for the selected channel
   auto first_data = get_field_for_channel(representation, first_field, channel);
@@ -717,7 +717,7 @@ static PreviewImage render_frame_preview_with_channel(
         gray = static_cast<uint8_t>(sample * raw_scale);
       }
 
-      size_t offset = static_cast<size_t>((y * result.width + x) * 3);
+      size_t offset = (static_cast<size_t>(y) * result.width + x) * 3;
       result.rgb_data[offset + 0] = gray;
       result.rgb_data[offset + 1] = gray;
       result.rgb_data[offset + 2] = gray;
@@ -833,7 +833,7 @@ PreviewImage render_field_grayscale(
       static_cast<int32_t>((255.0 / 65535.0) * 65536.0);  // Fixed-point 0.16
 
   // Convert to 8-bit grayscale with proper scaling, then to RGB888
-  std::vector<uint8_t> rgb_data(static_cast<size_t>(width * height * 3));
+  std::vector<uint8_t> rgb_data(static_cast<size_t>(width) * height * 3);
   for (size_t i = 0; i < field_data.size(); ++i) {
     uint8_t gray = scale_16bit_to_8bit(field_data[i], apply_ire_scaling,
                                        ire_black, ire_mult, raw_mult);

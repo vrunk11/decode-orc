@@ -50,43 +50,43 @@ orc::SourceParameters make_ntsc_comp_source_parameters(
 // Parameter descriptor tests
 // =========================================================================
 
-TEST(NTSCCompSourceStageTest, parameterDescriptorsContainsInputPath) {
+TEST(NTSCCompSourceStageTest, ParameterDescriptors_ContainsInputPath) {
   orc::NTSCCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "input_path", ".tbc");
 }
 
-TEST(NTSCCompSourceStageTest, parameterDescriptorsContainsPcmPath) {
+TEST(NTSCCompSourceStageTest, ParameterDescriptors_ContainsPcmPath) {
   orc::NTSCCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "pcm_path", ".pcm");
 }
 
-TEST(NTSCCompSourceStageTest, parameterDescriptorsContainsEfmPath) {
+TEST(NTSCCompSourceStageTest, ParameterDescriptors_ContainsEfmPath) {
   orc::NTSCCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "efm_path", ".efm");
 }
 
-TEST(NTSCCompSourceStageTest, descriptorDefaultsInputPathIsEmptyString) {
+TEST(NTSCCompSourceStageTest, Descriptor_DefaultsInputPathIsEmptyString) {
   orc::NTSCCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_empty_string_default(descriptors, "input_path");
 }
 
-TEST(NTSCCompSourceStageTest, descriptorDefaultsPcmPathIsEmptyString) {
+TEST(NTSCCompSourceStageTest, Descriptor_DefaultsPcmPathIsEmptyString) {
   orc::NTSCCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_empty_string_default(descriptors, "pcm_path");
 }
 
-TEST(NTSCCompSourceStageTest, descriptorDefaultsEfmPathIsEmptyString) {
+TEST(NTSCCompSourceStageTest, Descriptor_DefaultsEfmPathIsEmptyString) {
   orc::NTSCCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_empty_string_default(descriptors, "efm_path");
 }
 
-TEST(NTSCCompSourceStageTest, parameterDescriptorsAllParametersAreOptional) {
+TEST(NTSCCompSourceStageTest, ParameterDescriptorsAllParameters_AreOptional) {
   orc::NTSCCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_all_descriptors_optional(descriptors);
@@ -96,7 +96,7 @@ TEST(NTSCCompSourceStageTest, parameterDescriptorsAllParametersAreOptional) {
 // set_parameters validation tests
 // =========================================================================
 
-TEST(NTSCCompSourceStageTest, setParametersAcceptsValidStringMap) {
+TEST(NTSCCompSourceStageTest, SetParameters_AcceptsValidStringMap) {
   orc::NTSCCompSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"input_path", std::string("/some/file.tbc")},
@@ -106,7 +106,7 @@ TEST(NTSCCompSourceStageTest, setParametersAcceptsValidStringMap) {
   EXPECT_TRUE(stage.set_parameters(params));
 }
 
-TEST(NTSCCompSourceStageTest, setParametersRejectsNonStringInputPath) {
+TEST(NTSCCompSourceStageTest, SetParameters_RejectsNonStringInputPath) {
   orc::NTSCCompSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"input_path", static_cast<int32_t>(42)}};
@@ -114,7 +114,7 @@ TEST(NTSCCompSourceStageTest, setParametersRejectsNonStringInputPath) {
   EXPECT_FALSE(stage.set_parameters(params));
 }
 
-TEST(NTSCCompSourceStageTest, setParametersAcceptsEmptyMap) {
+TEST(NTSCCompSourceStageTest, SetParameters_AcceptsEmptyMap) {
   orc::NTSCCompSourceStage stage;
   EXPECT_TRUE(stage.set_parameters({}));
 }
@@ -123,7 +123,7 @@ TEST(NTSCCompSourceStageTest, setParametersAcceptsEmptyMap) {
 // execute() contract tests
 // =========================================================================
 
-TEST(NTSCCompSourceStageTest, executeThrowsWhenInputProvided) {
+TEST(NTSCCompSourceStageTest, Execute_ThrowsWhenInputProvided) {
   orc::NTSCCompSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -131,7 +131,7 @@ TEST(NTSCCompSourceStageTest, executeThrowsWhenInputProvided) {
                std::runtime_error);
 }
 
-TEST(NTSCCompSourceStageTest, executeReturnsEmptyWhenInputPathMissing) {
+TEST(NTSCCompSourceStageTest, Execute_ReturnsEmptyWhenInputPathMissing) {
   orc::NTSCCompSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -140,7 +140,7 @@ TEST(NTSCCompSourceStageTest, executeReturnsEmptyWhenInputPathMissing) {
   EXPECT_TRUE(outputs.empty());
 }
 
-TEST(NTSCCompSourceStageTest, executeReturnsEmptyWhenInputPathEmpty) {
+TEST(NTSCCompSourceStageTest, Execute_ReturnsEmptyWhenInputPathEmpty) {
   orc::NTSCCompSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -151,7 +151,7 @@ TEST(NTSCCompSourceStageTest, executeReturnsEmptyWhenInputPathEmpty) {
 }
 
 TEST(NTSCCompSourceStageTest,
-     executeLoadsNtscRepresentationThroughInjectedLoader) {
+     Execute_LoadsNtscRepresentationThroughInjectedLoader) {
   auto loader = std::make_shared<StrictMock<MockNTSCCompSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -179,7 +179,7 @@ TEST(NTSCCompSourceStageTest,
   EXPECT_TRUE(stage.supports_preview());
 }
 
-TEST(NTSCCompSourceStageTest, executeThrowsWhenLoadedMetadataIsNotNtsc) {
+TEST(NTSCCompSourceStageTest, Execute_ThrowsWhenLoadedMetadataIsNotNtsc) {
   auto loader = std::make_shared<StrictMock<MockNTSCCompSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();

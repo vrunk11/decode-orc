@@ -14,7 +14,7 @@
 namespace gui_unit_test {
 
 TEST(LineNavigationMapperTest,
-     computeTargetValidStepDownMapsToNextFieldLine) {
+     ComputeTargetValidStepDown_MapsToNextFieldLine) {
   int observed_next_image_y = -1;
   int observed_next_height = -1;
 
@@ -46,7 +46,7 @@ TEST(LineNavigationMapperTest,
 }
 
 TEST(LineNavigationMapperTest,
-     computeTargetInvalidWhenCurrentFieldToImageMappingFails) {
+     ComputeTargetInvalidWhenCurrentFieldToImageMapping_Fails) {
   bool map_image_called = false;
 
   const auto result = orc::gui::computeLineNavigationTarget(
@@ -68,7 +68,7 @@ TEST(LineNavigationMapperTest,
   EXPECT_FALSE(map_image_called);
 }
 
-TEST(LineNavigationMapperTest, computeTargetInvalidAtTopBoundary) {
+TEST(LineNavigationMapperTest, Compute_TargetInvalidAtTopBoundary) {
   bool map_image_called = false;
 
   const auto result = orc::gui::computeLineNavigationTarget(
@@ -91,7 +91,7 @@ TEST(LineNavigationMapperTest, computeTargetInvalidAtTopBoundary) {
 }
 
 TEST(LineNavigationMapperTest,
-     computeTargetInvalidWhenSteppedImageToFieldMappingFails) {
+     ComputeTargetInvalidWhenSteppedImageToFieldMapping_Fails) {
   const auto result = orc::gui::computeLineNavigationTarget(
       {
           .direction = 1,
@@ -108,7 +108,7 @@ TEST(LineNavigationMapperTest,
 }
 
 TEST(LineNavigationMapperTest,
-     computeTargetUpFromBottomWorksWhenCurrentImageYIsOutOfRange) {
+     ComputeTargetUpFromBottom_WorksWhenCurrentImageYIsOutOfRange) {
   int observed_next_image_y = -1;
 
   const auto result = orc::gui::computeLineNavigationTarget(

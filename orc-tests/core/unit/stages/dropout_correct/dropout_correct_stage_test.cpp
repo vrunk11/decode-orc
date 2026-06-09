@@ -34,17 +34,17 @@ const orc::ParameterDescriptor* find_descriptor(
 }
 }  // namespace
 
-TEST(DropoutCorrectStageTest, requiredInputCountIsOne) {
+TEST(DropoutCorrectStageTest, RequiredInputCount_IsOne) {
   orc::DropoutCorrectStage stage;
   EXPECT_EQ(stage.required_input_count(), 1u);
 }
 
-TEST(DropoutCorrectStageTest, outputCountIsOne) {
+TEST(DropoutCorrectStageTest, OutputCount_IsOne) {
   orc::DropoutCorrectStage stage;
   EXPECT_EQ(stage.output_count(), 1u);
 }
 
-TEST(DropoutCorrectStageTest, nodeTypeInfoHasExpectedMetadata) {
+TEST(DropoutCorrectStageTest, NodeTypeInfo_HasExpectedMetadata) {
   orc::DropoutCorrectStage stage;
   auto info = stage.get_node_type_info();
 
@@ -53,7 +53,7 @@ TEST(DropoutCorrectStageTest, nodeTypeInfoHasExpectedMetadata) {
   EXPECT_EQ(info.compatible_formats, orc::VideoFormatCompatibility::ALL);
 }
 
-TEST(DropoutCorrectStageTest, descriptorDefaultsMatchRuntimeDefaults) {
+TEST(DropoutCorrectStageTest, Descriptor_DefaultsMatchRuntimeDefaults) {
   orc::DropoutCorrectStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
@@ -93,7 +93,7 @@ TEST(DropoutCorrectStageTest, descriptorDefaultsMatchRuntimeDefaults) {
             std::get<bool>(params.at("highlight_corrections")));
 }
 
-TEST(DropoutCorrectStageTest, setParametersAcceptsValidValues) {
+TEST(DropoutCorrectStageTest, SetParameters_AcceptsValidValues) {
   orc::DropoutCorrectStage stage;
 
   const bool result =
@@ -112,17 +112,17 @@ TEST(DropoutCorrectStageTest, setParametersAcceptsValidValues) {
   EXPECT_TRUE(std::get<bool>(params.at("highlight_corrections")));
 }
 
-TEST(DropoutCorrectStageTest, setParametersRejectsOutOfRangeValue) {
+TEST(DropoutCorrectStageTest, SetParameters_RejectsOutOfRangeValue) {
   orc::DropoutCorrectStage stage;
   EXPECT_FALSE(stage.set_parameters({{"overcorrect_extension", uint32_t(49)}}));
 }
 
-TEST(DropoutCorrectStageTest, setParametersRejectsUnknownParameter) {
+TEST(DropoutCorrectStageTest, SetParameters_RejectsUnknownParameter) {
   orc::DropoutCorrectStage stage;
   EXPECT_FALSE(stage.set_parameters({{"unknown", true}}));
 }
 
-TEST(DropoutCorrectStageTest, executeReturnsSourceWhenFieldRangeInvalid) {
+TEST(DropoutCorrectStageTest, Execute_ReturnsSourceWhenFieldRangeInvalid) {
   orc::DropoutCorrectStage stage;
   orc::ObservationContext observation_context;
   auto source =

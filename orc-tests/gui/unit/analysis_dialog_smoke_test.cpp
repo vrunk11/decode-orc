@@ -63,7 +63,7 @@ QApplication& ensureApplication() {
 // AnalysisDialogBase subclasses
 // ---------------------------------------------------------------------------
 
-TEST(AnalysisDialogSmokeTest, burstLevelAnalysisDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, BurstLevelAnalysisDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   BurstLevelAnalysisDialog dialog;
@@ -79,7 +79,7 @@ TEST(AnalysisDialogSmokeTest, burstLevelAnalysisDialogCanShowAndClose) {
   EXPECT_FALSE(dialog.isVisible());
 }
 
-TEST(AnalysisDialogSmokeTest, dropoutAnalysisDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, DropoutAnalysisDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   DropoutAnalysisDialog dialog;
@@ -95,7 +95,7 @@ TEST(AnalysisDialogSmokeTest, dropoutAnalysisDialogCanShowAndClose) {
   EXPECT_FALSE(dialog.isVisible());
 }
 
-TEST(AnalysisDialogSmokeTest, snrAnalysisDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, SnrAnalysisDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   SNRAnalysisDialog dialog;
@@ -115,7 +115,7 @@ TEST(AnalysisDialogSmokeTest, snrAnalysisDialogCanShowAndClose) {
 // Analysis and observation dialogs (simple QWidget* parent constructors)
 // ---------------------------------------------------------------------------
 
-TEST(AnalysisDialogSmokeTest, ntscObserverDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, NtscObserverDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   NtscObserverDialog dialog;
@@ -131,7 +131,7 @@ TEST(AnalysisDialogSmokeTest, ntscObserverDialogCanShowAndClose) {
   EXPECT_FALSE(dialog.isVisible());
 }
 
-TEST(AnalysisDialogSmokeTest, qualityMetricsDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, QualityMetricsDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   QualityMetricsDialog dialog;
@@ -147,7 +147,7 @@ TEST(AnalysisDialogSmokeTest, qualityMetricsDialogCanShowAndClose) {
   EXPECT_FALSE(dialog.isVisible());
 }
 
-TEST(AnalysisDialogSmokeTest, vbiDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, VbiDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   VBIDialog dialog;
@@ -163,7 +163,7 @@ TEST(AnalysisDialogSmokeTest, vbiDialogCanShowAndClose) {
   EXPECT_FALSE(dialog.isVisible());
 }
 
-TEST(AnalysisDialogSmokeTest, lineScopeDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, LineScopeDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   LineScopeDialog dialog;
@@ -179,7 +179,7 @@ TEST(AnalysisDialogSmokeTest, lineScopeDialogCanShowAndClose) {
   EXPECT_FALSE(dialog.isVisible());
 }
 
-TEST(AnalysisDialogSmokeTest, hintsDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, HintsDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   HintsDialog dialog;
@@ -195,7 +195,7 @@ TEST(AnalysisDialogSmokeTest, hintsDialogCanShowAndClose) {
   EXPECT_FALSE(dialog.isVisible());
 }
 
-TEST(AnalysisDialogSmokeTest, fieldTimingDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, FieldTimingDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   FieldTimingDialog dialog;
@@ -211,7 +211,7 @@ TEST(AnalysisDialogSmokeTest, fieldTimingDialogCanShowAndClose) {
   EXPECT_FALSE(dialog.isVisible());
 }
 
-TEST(AnalysisDialogSmokeTest, inspectionDialogCanShowAndClose) {
+TEST(AnalysisDialogSmokeTest, InspectionDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   orc::presenters::StageInspectionView report;

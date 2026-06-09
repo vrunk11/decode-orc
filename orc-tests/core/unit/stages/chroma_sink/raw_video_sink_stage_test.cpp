@@ -33,7 +33,7 @@ bool has_string(const std::vector<std::string>& values,
 }
 }  // namespace
 
-TEST(RawVideoSinkStageTest, parameterDescriptorsIncludeOnlyRawOutputFormats) {
+TEST(RawVideoSinkStageTest, ParameterDescriptorsIncludeOnlyRawOutput_Formats) {
   orc::RawVideoSinkStage stage;
   auto descriptors = stage.get_parameter_descriptors(
       orc::VideoSystem::NTSC, orc::SourceType::Composite);
@@ -50,7 +50,7 @@ TEST(RawVideoSinkStageTest, parameterDescriptorsIncludeOnlyRawOutputFormats) {
   EXPECT_FALSE(has_string(allowed, "mkv-ffv1"));
 }
 
-TEST(RawVideoSinkStageTest, parameterDescriptorsHideFfmpegOnlyControls) {
+TEST(RawVideoSinkStageTest, Parameter_DescriptorsHideFfmpegOnlyControls) {
   orc::RawVideoSinkStage stage;
   auto descriptors = stage.get_parameter_descriptors(
       orc::VideoSystem::NTSC, orc::SourceType::Composite);
@@ -66,7 +66,7 @@ TEST(RawVideoSinkStageTest, parameterDescriptorsHideFfmpegOnlyControls) {
   EXPECT_EQ(find_parameter(descriptors, "apply_deinterlace"), nullptr);
 }
 
-TEST(RawVideoSinkStageTest, decoderOptionsIncludeNtscPathsForCompositeAndYc) {
+TEST(RawVideoSinkStageTest, Decoder_OptionsIncludeNtscPathsForCompositeAndYc) {
   orc::RawVideoSinkStage stage;
 
   for (const auto source_type :
@@ -107,7 +107,7 @@ TEST(RawVideoSinkStageTest, decoderOptionsIncludeNtscPathsForCompositeAndYc) {
   }
 }
 
-TEST(RawVideoSinkStageTest, decoderOptionsIncludePalPathsForCompositeAndYc) {
+TEST(RawVideoSinkStageTest, Decoder_OptionsIncludePalPathsForCompositeAndYc) {
   orc::RawVideoSinkStage stage;
 
   for (const auto source_type :
@@ -148,7 +148,7 @@ TEST(RawVideoSinkStageTest, decoderOptionsIncludePalPathsForCompositeAndYc) {
   }
 }
 
-TEST(RawVideoSinkStageTest, setParametersRejectsEncodedFormats) {
+TEST(RawVideoSinkStageTest, SetParameters_RejectsEncodedFormats) {
   orc::RawVideoSinkStage stage;
 
   const bool ok =
@@ -158,7 +158,7 @@ TEST(RawVideoSinkStageTest, setParametersRejectsEncodedFormats) {
 }
 
 TEST(RawVideoSinkStageTest,
-     setParametersAcceptsRawFormatAndIgnoresFfmpegKeys) {
+     SetParameters_AcceptsRawFormatAndIgnoresFfmpegKeys) {
   orc::RawVideoSinkStage stage;
 
   const bool ok = stage.set_parameters({{"output_format", std::string("y4m")},

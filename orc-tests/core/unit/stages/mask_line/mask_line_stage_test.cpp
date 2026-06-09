@@ -29,17 +29,17 @@ const orc::ParameterDescriptor* find_descriptor(
 }
 }  // namespace
 
-TEST(MaskLineStageTest, requiredInputCountIsOne) {
+TEST(MaskLineStageTest, RequiredInputCount_IsOne) {
   orc::MaskLineStage stage;
   EXPECT_EQ(stage.required_input_count(), 1u);
 }
 
-TEST(MaskLineStageTest, outputCountIsOne) {
+TEST(MaskLineStageTest, OutputCount_IsOne) {
   orc::MaskLineStage stage;
   EXPECT_EQ(stage.output_count(), 1u);
 }
 
-TEST(MaskLineStageTest, nodeTypeInfoHasExpectedMetadata) {
+TEST(MaskLineStageTest, NodeTypeInfo_HasExpectedMetadata) {
   orc::MaskLineStage stage;
   auto info = stage.get_node_type_info();
 
@@ -48,7 +48,7 @@ TEST(MaskLineStageTest, nodeTypeInfoHasExpectedMetadata) {
   EXPECT_EQ(info.compatible_formats, orc::VideoFormatCompatibility::ALL);
 }
 
-TEST(MaskLineStageTest, descriptorDefaultsMatchRuntimeDefaults) {
+TEST(MaskLineStageTest, Descriptor_DefaultsMatchRuntimeDefaults) {
   orc::MaskLineStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
@@ -69,7 +69,7 @@ TEST(MaskLineStageTest, descriptorDefaultsMatchRuntimeDefaults) {
             std::get<double>(params.at("maskIRE")));
 }
 
-TEST(MaskLineStageTest, setParametersAcceptsValidValues) {
+TEST(MaskLineStageTest, SetParameters_AcceptsValidValues) {
   orc::MaskLineStage stage;
 
   const bool result = stage.set_parameters(
@@ -81,7 +81,7 @@ TEST(MaskLineStageTest, setParametersAcceptsValidValues) {
   EXPECT_EQ(std::get<double>(params.at("maskIRE")), 50.0);
 }
 
-TEST(MaskLineStageTest, setParametersIgnoresUnknownOrWrongTypes) {
+TEST(MaskLineStageTest, SetParameters_IgnoresUnknownOrWrongTypes) {
   orc::MaskLineStage stage;
 
   const bool result = stage.set_parameters(
@@ -93,7 +93,7 @@ TEST(MaskLineStageTest, setParametersIgnoresUnknownOrWrongTypes) {
   EXPECT_EQ(std::get<double>(params.at("maskIRE")), 0.0);
 }
 
-TEST(MaskLineStageTest, processReturnsSourceWhenNoLinesConfigured) {
+TEST(MaskLineStageTest, Process_ReturnsSourceWhenNoLinesConfigured) {
   orc::MaskLineStage stage;
   auto source = std::make_shared<MockVideoFieldRepresentation>();
 
@@ -102,7 +102,7 @@ TEST(MaskLineStageTest, processReturnsSourceWhenNoLinesConfigured) {
   EXPECT_EQ(result.get(), source.get());
 }
 
-TEST(MaskLineStageTest, processWrapsSourceWhenMaskingConfigured) {
+TEST(MaskLineStageTest, Process_WrapsSourceWhenMaskingConfigured) {
   orc::MaskLineStage stage;
   auto source = std::make_shared<MockVideoFieldRepresentation>();
 
@@ -114,7 +114,7 @@ TEST(MaskLineStageTest, processWrapsSourceWhenMaskingConfigured) {
   EXPECT_NE(result.get(), source.get());
 }
 
-TEST(MaskLineStageTest, maskedRepresentationHandlesManyFieldIds) {
+TEST(MaskLineStageTest, MaskedRepresentation_HandlesManyFieldIds) {
   orc::MaskLineStage stage;
   auto source = std::make_shared<MockVideoFieldRepresentation>();
 

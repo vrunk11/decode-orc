@@ -14,7 +14,7 @@
 
 namespace orc_unit_test {
 
-TEST(StagePluginRegistryTest, parseYamlReadsStructuredRegistryEntries) {
+TEST(StagePluginRegistryTest, ParseYaml_ReadsStructuredRegistryEntries) {
   const std::string yaml_text = R"yaml(
 version: 2
 plugins:
@@ -65,7 +65,7 @@ plugins:
   EXPECT_EQ(entry.required_host_abi, 7U);
 }
 
-TEST(StagePluginRegistryTest, parseYamlWarnsWhenRemoteAssetNameMissing) {
+TEST(StagePluginRegistryTest, Parse_YamlWarnsWhenRemoteAssetNameMissing) {
   const std::string yaml_text = R"yaml(
 version: 2
 plugins:
@@ -89,7 +89,7 @@ plugins:
               std::string::npos);
 }
 
-TEST(StagePluginRegistryTest, parseYamlUsesLocalDevPathWhenPathMissing) {
+TEST(StagePluginRegistryTest, ParseYaml_UsesLocalDevPathWhenPathMissing) {
   const std::string yaml_text = R"yaml(
 version: 2
 plugins:
@@ -111,7 +111,7 @@ plugins:
             "/tmp/dev/liborc-stage-plugin-dev-override.so");
 }
 
-TEST(StagePluginRegistryTest, parseYamlWarnsOnInvalidReleaseAssetName) {
+TEST(StagePluginRegistryTest, Parse_YamlWarnsOnInvalidReleaseAssetName) {
   const std::string yaml_text = R"yaml(
 version: 2
 plugins:
@@ -132,7 +132,7 @@ plugins:
       "(expected orc-plugin_<stage-name>_<platform>.<so|dylib|dll>)");
 }
 
-TEST(StagePluginRegistryTest, serializeYamlRoundTripsRegistryEntries) {
+TEST(StagePluginRegistryTest, Serialize_YamlRoundTripsRegistryEntries) {
   std::vector<orc::StagePluginRegistryEntry> entries;
 
   orc::StagePluginRegistryEntry entry;
@@ -181,7 +181,7 @@ TEST(StagePluginRegistryTest, serializeYamlRoundTripsRegistryEntries) {
 }
 
 TEST(StagePluginRegistryTest,
-     parseYamlWarnsOnGithubRepoNameWithoutOrcPluginPrefix) {
+     Parse_YamlWarnsOnGithubRepoNameWithoutOrcPluginPrefix) {
   const std::string yaml_text = R"yaml(
 version: 2
 plugins:
@@ -201,7 +201,7 @@ plugins:
 }
 
 TEST(StagePluginRegistryTest,
-     parseYamlAcceptsGithubRepoNameWithOrcPluginPrefix) {
+     ParseYaml_AcceptsGithubRepoNameWithOrcPluginPrefix) {
   const std::string yaml_text = R"yaml(
 version: 2
 plugins:
@@ -218,7 +218,7 @@ plugins:
 }
 
 TEST(StagePluginRegistryTest,
-     parseYamlAcceptsOlderSchemaVersionWithoutWarning) {
+     ParseYaml_AcceptsOlderSchemaVersionWithoutWarning) {
   const std::string yaml_text = R"yaml(
 version: 1
 plugins:
@@ -243,7 +243,7 @@ plugins:
 // allowed directories happens at load time in stage_registry.cpp.
 // These tests document that contract.
 
-TEST(StagePluginRegistryTest, parseYamlStoresRelativeEscapePathVerbatim) {
+TEST(StagePluginRegistryTest, Parse_YamlStoresRelativeEscapePathVerbatim) {
   const std::string yaml_text = R"yaml(
 version: 2
 plugins:
@@ -261,7 +261,7 @@ plugins:
 }
 
 TEST(StagePluginRegistryTest,
-     parseYamlStoresAbsolutePathOutsideNormalDirsVerbatim) {
+     Parse_YamlStoresAbsolutePathOutsideNormalDirsVerbatim) {
   const std::string yaml_text = R"yaml(
 version: 2
 plugins:

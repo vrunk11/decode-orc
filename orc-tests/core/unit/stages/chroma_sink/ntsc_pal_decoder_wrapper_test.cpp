@@ -53,7 +53,7 @@ orc::SourceParameters make_pal_params() {
 }
 }  // namespace
 
-TEST(NtscDecoderWrapperTest, configureAcceptsNtscAndRejectsPal) {
+TEST(NtscDecoderWrapperTest, Configure_AcceptsNtscAndRejectsPal) {
   Comb::Configuration config;
   TestableNtscDecoder decoder(config);
 
@@ -61,7 +61,7 @@ TEST(NtscDecoderWrapperTest, configureAcceptsNtscAndRejectsPal) {
   EXPECT_FALSE(decoder.configure(make_pal_params()));
 }
 
-TEST(NtscDecoderWrapperTest, lookAroundFollowsCombConfiguration) {
+TEST(NtscDecoderWrapperTest, Look_AroundFollowsCombConfiguration) {
   Comb::Configuration config;
   config.dimensions = 3;
   TestableNtscDecoder decoder(config);
@@ -70,7 +70,7 @@ TEST(NtscDecoderWrapperTest, lookAroundFollowsCombConfiguration) {
   EXPECT_EQ(decoder.getLookAhead(), 1);
 }
 
-TEST(PalDecoderWrapperTest, configureAcceptsPalAndRejectsNtsc) {
+TEST(PalDecoderWrapperTest, Configure_AcceptsPalAndRejectsNtsc) {
   PalColour::Configuration config;
   TestablePalDecoder decoder(config);
 
@@ -78,7 +78,7 @@ TEST(PalDecoderWrapperTest, configureAcceptsPalAndRejectsNtsc) {
   EXPECT_FALSE(decoder.configure(make_ntsc_params()));
 }
 
-TEST(PalDecoderWrapperTest, lookAroundDependsOnPalFilterMode) {
+TEST(PalDecoderWrapperTest, Look_AroundDependsOnPalFilterMode) {
   PalColour::Configuration config_2d;
   config_2d.chromaFilter = PalColour::transform2DFilter;
   TestablePalDecoder decoder_2d(config_2d);
@@ -94,7 +94,7 @@ TEST(PalDecoderWrapperTest, lookAroundDependsOnPalFilterMode) {
   EXPECT_GT(decoder_3d.getLookAhead(), 0);
 }
 
-TEST(NtscDecoderWrapperTest, configureRejectsInvalidGeometry) {
+TEST(NtscDecoderWrapperTest, Configure_RejectsInvalidGeometry) {
   Comb::Configuration config;
   TestableNtscDecoder decoder(config);
 
@@ -104,7 +104,7 @@ TEST(NtscDecoderWrapperTest, configureRejectsInvalidGeometry) {
   EXPECT_FALSE(decoder.configure(params));
 }
 
-TEST(PalDecoderWrapperTest, configureRejectsInvalidGeometry) {
+TEST(PalDecoderWrapperTest, Configure_RejectsInvalidGeometry) {
   PalColour::Configuration config;
   TestablePalDecoder decoder(config);
 

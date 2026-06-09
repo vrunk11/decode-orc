@@ -246,11 +246,10 @@ void WriterWavMetadata::flush() {
                                  "\n";
       m_file.write(outputString.c_str(), static_cast<std::streamsize>(outputString.size()));
 
-      std::string debugString = m_trackAbsStartTimes[i].toString() + " " +
-                                m_trackAbsEndTimes[i].toString() +
-                                " Track: " + trackNumber + " " + trackTime;
       ORC_LOG_DEBUG("WriterWavMetadata::flush(): Wrote track metadata: {}",
-                    debugString);
+                    m_trackAbsStartTimes[i].toString() + " " +
+                        m_trackAbsEndTimes[i].toString() +
+                        " Track: " + trackNumber + " " + trackTime);
     }
   } else {
     ORC_LOG_DEBUG(
@@ -307,7 +306,7 @@ std::string WriterWavMetadata::convertToAudacityTimestamp(int32_t minutes,
   total_seconds += subsection / (FRAME_RATE * SUBSECTIONS_PER_FRAME);
 
   // Convert sample to fractional time
-  total_seconds += (sample / 2) / (FRAME_RATE * SUBSECTIONS_PER_FRAME *
+  total_seconds += (sample / 2) / (FRAME_RATE * SUBSECTIONS_PER_FRAME *  // NOLINT(bugprone-integer-division)
                                    SAMPLES_PER_SUBSECTION);
 
   // Format the output string with 6 decimal places

@@ -36,7 +36,7 @@ class MockHackdacSinkStageDeps : public orc::IHackdacSinkStageDeps {
               (override));
 };
 
-TEST(HackdacSinkStageTest, descriptorDefaultsOutputPathIsEmptyHdac) {
+TEST(HackdacSinkStageTest, Descriptor_DefaultsOutputPathIsEmptyHdac) {
   orc::HackdacSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
@@ -56,7 +56,7 @@ TEST(HackdacSinkStageTest, descriptorDefaultsOutputPathIsEmptyHdac) {
   EXPECT_TRUE(it->constraints.required);
 }
 
-TEST(HackdacSinkStageTest, triggerFailsWhenNoInputProvided) {
+TEST(HackdacSinkStageTest, Trigger_FailsWhenNoInputProvided) {
   orc::HackdacSinkStage stage;
   MockObservationContext observation_context;
 
@@ -69,7 +69,7 @@ TEST(HackdacSinkStageTest, triggerFailsWhenNoInputProvided) {
 }
 
 TEST(HackdacSinkStageTest,
-     triggerFailsWhenInputIsNotVideoFieldRepresentation) {
+     Trigger_FailsWhenInputIsNotVideoFieldRepresentation) {
   orc::HackdacSinkStage stage;
   MockObservationContext observation_context;
 
@@ -83,7 +83,7 @@ TEST(HackdacSinkStageTest,
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(HackdacSinkStageTest, triggerFailsWhenOutputPathMissing) {
+TEST(HackdacSinkStageTest, Trigger_FailsWhenOutputPathMissing) {
   orc::HackdacSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -96,7 +96,7 @@ TEST(HackdacSinkStageTest, triggerFailsWhenOutputPathMissing) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(HackdacSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
+TEST(HackdacSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   orc::HackdacSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockHackdacSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -116,7 +116,7 @@ TEST(HackdacSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(HackdacSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
+TEST(HackdacSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   orc::HackdacSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockHackdacSinkStageDeps>>();
   stage.set_deps_override(deps);

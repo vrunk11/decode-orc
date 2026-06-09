@@ -38,10 +38,10 @@ namespace core_internal {
 // ---------------------------------------------------------------------------
 #ifndef _WIN32
 
-namespace {
-
-thread_local sigjmp_buf plugin_fault_jmpbuf;
-thread_local bool plugin_fault_active = false;
+// inline thread_local gives one per-thread instance that is ODR-safe across
+// all translation units that include this header (C++17 inline variables).
+inline thread_local sigjmp_buf plugin_fault_jmpbuf;
+inline thread_local bool plugin_fault_active = false;
 
 inline void plugin_fault_signal_handler(int sig) {
   if (plugin_fault_active) {
@@ -58,8 +58,6 @@ inline void plugin_fault_signal_handler(int sig) {
   sigaction(sig, &sa, nullptr);
   raise(sig);
 }
-
-}  // anonymous namespace
 
 template <typename Fn>
 bool plugin_safe_call(Fn&& fn, std::string& error) {

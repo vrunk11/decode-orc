@@ -1,3 +1,12 @@
+/*
+ * File:        generic_analysis_dialog.cpp
+ * Module:      gui
+ * Purpose:     Generic Qt dialog for running and monitoring analysis tools
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #include "generic_analysis_dialog.h"
 
 #include "presenters/include/analysis_presenter.h"

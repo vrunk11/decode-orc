@@ -14,6 +14,7 @@
 #include <field_id.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <thread>
@@ -53,7 +54,7 @@ bool fillAudioFrameFromInterleavedS16(AVFrame* audio_frame,
     }
     case AV_SAMPLE_FMT_S16: {
       int16_t* out = reinterpret_cast<int16_t*>(audio_frame->data[0]);
-      std::copy_n(audio_buffer.begin(), static_cast<size_t>(frame_size * 2),
+      std::copy_n(audio_buffer.begin(), static_cast<size_t>(frame_size) * 2,
                   out);
       return true;
     }
@@ -642,7 +643,7 @@ bool FFmpegOutputBackend::setupEncoder(const std::string& codec_id,
     }
 
     // Add interlaced flag if not deinterlacing
-    // TODO: check for apply_deinterlace parameter
+    // TODO(sdi): check for apply_deinterlace parameter
     if (codec_id == "libx264") {
       av_opt_set(codec_ctx_->priv_data, "x264opts", "interlaced=1", 0);
     } else {
@@ -1137,7 +1138,7 @@ bool FFmpegOutputBackend::finalize() {
                     audio_buffer_.size() / 2);
 
       // Pad buffer to frame_size if needed
-      while (audio_buffer_.size() < static_cast<size_t>(frame_size * 2)) {
+      while (audio_buffer_.size() < static_cast<size_t>(frame_size) * 2) {
         audio_buffer_.push_back(0);  // Pad with silence
       }
 
@@ -1367,7 +1368,7 @@ bool FFmpegOutputBackend::encodeAudioForFrame() {
           // Assuming 48kHz audio sample rate
           double field_rate =
               (video_params->system == VideoSystem::PAL) ? 50.0 : 59.94;
-          sample_count = static_cast<uint32_t>((48000.0 / field_rate) + 0.5);
+          sample_count = static_cast<uint32_t>(std::lround(48000.0 / field_rate));
           sample_count *= 2;  // stereo (interleaved L/R pairs)
         }
       }
@@ -1386,7 +1387,7 @@ bool FFmpegOutputBackend::encodeAudioForFrame() {
 
   // Encode audio in chunks of frame_size from the persistent buffer
   while (audio_buffer_.size() >=
-         static_cast<size_t>(frame_size * 2)) {  // *2 for stereo interleaved
+         static_cast<size_t>(frame_size) * 2) {  // *2 for stereo interleaved
     // Convert interleaved int16 PCM to the encoder's required sample format
     av_frame_make_writable(audio_frame_);
     if (!fillAudioFrameFromInterleavedS16(audio_frame_,

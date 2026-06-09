@@ -12,7 +12,7 @@
 #include <gtest/gtest.h>
 
 namespace orc_unit_test {
-TEST(MonoDecoderTest, decodeFramesHandlesUnevenYCFieldHeights) {
+TEST(MonoDecoderTest, DecodeFrames_HandlesUnevenYCFieldHeights) {
   orc::SourceParameters sourceParameters;
   sourceParameters.field_width = 4;
   sourceParameters.field_height = 3;
@@ -70,7 +70,7 @@ TEST(MonoDecoderTest, decodeFramesHandlesUnevenYCFieldHeights) {
   }
 }
 
-TEST(MonoDecoderTest, updateConfigurationRejectsInvalidIreWindow) {
+TEST(MonoDecoderTest, UpdateConfiguration_RejectsInvalidIreWindow) {
   orc::SourceParameters sourceParameters;
   sourceParameters.field_width = 4;
   sourceParameters.field_height = 3;

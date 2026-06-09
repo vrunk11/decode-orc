@@ -1,3 +1,12 @@
+/*
+ * File:        analysis_progress.h
+ * Module:      analysis
+ * Purpose:     Atomic progress tracking for in-flight analysis operations
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #ifndef ORC_CORE_ANALYSIS_PROGRESS_H
 #define ORC_CORE_ANALYSIS_PROGRESS_H
 

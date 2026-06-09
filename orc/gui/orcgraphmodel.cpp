@@ -202,7 +202,7 @@ void OrcGraphModel::addConnection(ConnectionId const connectionId) {
     connectivity_.insert(connectionId);
 
     Q_EMIT connectionCreated(connectionId);
-  } catch (const std::exception& e) {
+  } catch (const std::exception& e) {  // NOLINT(bugprone-empty-catch)
     // Connection validation failed (e.g., invalid connection type, exceeded
     // limits) Silently ignore - QtNodes will show the connection isn't possible
   }
@@ -453,7 +453,7 @@ QJsonObject OrcGraphModel::saveNode(NodeId const nodeId) const {
       json["user_label"] = QString::fromStdString(node_info.label);
       json["x"] = node_info.x_position;
       json["y"] = node_info.y_position;
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch)
       // Node not found, return basic info only
     }
   }

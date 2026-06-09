@@ -392,7 +392,7 @@ static std::string generate_frame_map(const std::vector<MappedFrame>& frames,
     if (frame.is_pad) {
       entries.push_back({true, std::nullopt});
     } else if (frame.picture_number) {
-      entries.push_back({false, *frame.picture_number});
+      entries.push_back({false, frame.picture_number});
     }
   }
 

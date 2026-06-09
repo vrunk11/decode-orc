@@ -31,7 +31,7 @@ namespace gui_unit_test {
 // without depending on the node type registry or core module.
 // =============================================================================
 
-TEST(NodeTypeHelperPortTest, getInputPortPositionIsOnLeftEdge) {
+TEST(NodeTypeHelperPortTest, GetInputPortPosition_IsOnLeftEdge) {
   // Pure mathematical calculation: input port at center-left
   const double node_width = 100.0;
   const double node_height = 60.0;
@@ -46,7 +46,7 @@ TEST(NodeTypeHelperPortTest, getInputPortPositionIsOnLeftEdge) {
   EXPECT_EQ(pos.y(), 30.0);
 }
 
-TEST(NodeTypeHelperPortTest, getInputPortPositionMultipleHeights) {
+TEST(NodeTypeHelperPortTest, Get_InputPortPositionMultipleHeights) {
   // Test with different node heights to ensure vertical centering
   std::vector<double> heights = {40.0, 60.0, 100.0};
 
@@ -61,7 +61,7 @@ TEST(NodeTypeHelperPortTest, getInputPortPositionMultipleHeights) {
   }
 }
 
-TEST(NodeTypeHelperPortTest, getOutputPortPositionIsOnRightEdge) {
+TEST(NodeTypeHelperPortTest, GetOutputPortPosition_IsOnRightEdge) {
   // Pure mathematical calculation: output port at center-right
   const double node_width = 100.0;
   const double node_height = 60.0;
@@ -76,7 +76,7 @@ TEST(NodeTypeHelperPortTest, getOutputPortPositionIsOnRightEdge) {
   EXPECT_EQ(pos.y(), 30.0);
 }
 
-TEST(NodeTypeHelperPortTest, getOutputPortPositionMultipleWidths) {
+TEST(NodeTypeHelperPortTest, Get_OutputPortPositionMultipleWidths) {
   // Test with different node widths
   std::vector<double> widths = {80.0, 100.0, 150.0};
 
@@ -91,7 +91,7 @@ TEST(NodeTypeHelperPortTest, getOutputPortPositionMultipleWidths) {
   }
 }
 
-TEST(NodeTypeHelperPortTest, portPositionsAlignOnYAxis) {
+TEST(NodeTypeHelperPortTest, Port_PositionsAlignOnYAxis) {
   // Input and output ports of the same node should align vertically
   const double width = 100.0;
   const double height = 60.0;
@@ -103,7 +103,7 @@ TEST(NodeTypeHelperPortTest, portPositionsAlignOnYAxis) {
   EXPECT_EQ(input_y, output_y);
 }
 
-TEST(NodeTypeHelperPortTest, portPositionsHorizontalDistanceEqualsWidth) {
+TEST(NodeTypeHelperPortTest, Port_PositionsHorizontalDistanceEqualsWidth) {
   // The horizontal distance between input and output ports equals node width
   const double width = 100.0;
   const double height = 60.0;
@@ -115,7 +115,7 @@ TEST(NodeTypeHelperPortTest, portPositionsHorizontalDistanceEqualsWidth) {
   EXPECT_EQ(horizontal_distance, width);
 }
 
-TEST(NodeTypeHelperPortTest, portGeometryVariousNodeSizes) {
+TEST(NodeTypeHelperPortTest, Port_GeometryVariousNodeSizes) {
   // Test geometry with various realistic node sizes
   std::vector<std::pair<double, double>> sizes = {
       {80.0, 40.0},   // Small node

@@ -22,19 +22,19 @@ namespace gui_unit_test {
 // Field Number Formatting Tests
 // =============================================================================
 
-TEST(FieldFramePresentationTest, formatFieldNumberZeroReturnsField1) {
+TEST(FieldFramePresentationTest, FormatFieldNumberZero_ReturnsField1) {
   // 0-indexed field ID 0 should format as "Field 1"
   QString result = formatFieldNumber(0);
   EXPECT_EQ(result.toStdString(), "Field 1");
 }
 
-TEST(FieldFramePresentationTest, formatFieldNumberOneReturnsField2) {
+TEST(FieldFramePresentationTest, FormatFieldNumberOne_ReturnsField2) {
   // 0-indexed field ID 1 should format as "Field 2"
   QString result = formatFieldNumber(1);
   EXPECT_EQ(result.toStdString(), "Field 2");
 }
 
-TEST(FieldFramePresentationTest, formatFieldNumberLargeValues) {
+TEST(FieldFramePresentationTest, Format_FieldNumberLargeValues) {
   // Test with larger values to ensure correct conversion
   QString result = formatFieldNumber(99);
   EXPECT_EQ(result.toStdString(), "Field 100");
@@ -43,7 +43,7 @@ TEST(FieldFramePresentationTest, formatFieldNumberLargeValues) {
   EXPECT_EQ(result.toStdString(), "Field 1001");
 }
 
-TEST(FieldFramePresentationTest, formatFieldNumberIsOneIndexed) {
+TEST(FieldFramePresentationTest, FormatFieldNumber_IsOneIndexed) {
   // Verify consistent 1-indexed output for multiple values
   for (uint64_t i = 0; i < 10; ++i) {
     QString result = formatFieldNumber(i);
@@ -57,26 +57,26 @@ TEST(FieldFramePresentationTest, formatFieldNumberIsOneIndexed) {
 // Field Line Formatting Tests
 // =============================================================================
 
-TEST(FieldFramePresentationTest, formatFieldLineZeroReturnsLine1) {
+TEST(FieldFramePresentationTest, FormatFieldLineZero_ReturnsLine1) {
   // 0-indexed field line 0 should format as "line 1"
   QString result = formatFieldLine(0, 0);
   EXPECT_EQ(result.toStdString(), "line 1");
 }
 
-TEST(FieldFramePresentationTest, formatFieldLineIgnoresFieldId) {
+TEST(FieldFramePresentationTest, FormatFieldLine_IgnoresFieldId) {
   // Field line numbering should not depend on field ID (per function contract)
   QString result1 = formatFieldLine(0, 100);
   QString result2 = formatFieldLine(1, 100);
   EXPECT_EQ(result1, result2);  // Both should produce "line 101"
 }
 
-TEST(FieldFramePresentationTest, formatFieldLineLargeValues) {
+TEST(FieldFramePresentationTest, Format_FieldLineLargeValues) {
   // Test with larger line indices
   QString result = formatFieldLine(0, 624);  // Last line in PAL field
   EXPECT_EQ(result.toStdString(), "line 625");
 }
 
-TEST(FieldFramePresentationTest, formatFieldLineIsOneIndexed) {
+TEST(FieldFramePresentationTest, FormatFieldLine_IsOneIndexed) {
   // Verify consistent 1-indexed output for multiple values
   for (int i = 0; i < 20; ++i) {
     QString result = formatFieldLine(0, i);
@@ -90,27 +90,27 @@ TEST(FieldFramePresentationTest, formatFieldLineIsOneIndexed) {
 // Field With Internal Representation Formatting Tests
 // =============================================================================
 
-TEST(FieldFramePresentationTest, formatFieldWithInternalZeroZero) {
+TEST(FieldFramePresentationTest, Format_FieldWithInternalZeroZero) {
   // Field ID 0, line 0 should show Field 1 line 1 with internal [0 – 0]
   QString result = formatFieldWithInternal(0, 0);
   EXPECT_EQ(result.toStdString(), "Field 1 line 1 [0 – 0]");
 }
 
-TEST(FieldFramePresentationTest, formatFieldWithInternalOneZero) {
+TEST(FieldFramePresentationTest, Format_FieldWithInternalOneZero) {
   // Field ID 1 (second field), line 0 should show Field 2 line 1 with internal
   // [1 – 0]
   QString result = formatFieldWithInternal(1, 0);
   EXPECT_EQ(result.toStdString(), "Field 2 line 1 [1 – 0]");
 }
 
-TEST(FieldFramePresentationTest, formatFieldWithInternalZeroLarge) {
+TEST(FieldFramePresentationTest, Format_FieldWithInternalZeroLarge) {
   // Field ID 0, line 624 should show internal representation correctly
   QString result = formatFieldWithInternal(0, 624);
   EXPECT_EQ(result.toStdString(), "Field 1 line 625 [0 – 624]");
 }
 
 TEST(FieldFramePresentationTest,
-     formatFieldWithInternalIncludesInternalRepresentation) {
+     Format_FieldWithInternalIncludesInternalRepresentation) {
   // Verify that internal representation is included in the output
   QString result = formatFieldWithInternal(5, 123);
   EXPECT_TRUE(result.contains("[5 – 123]"));  // Check internal values
@@ -122,19 +122,19 @@ TEST(FieldFramePresentationTest,
 // Frame Number Formatting Tests
 // =============================================================================
 
-TEST(FramePresentationTest, formatFrameNumberZeroReturnsFrame1) {
+TEST(FramePresentationTest, FormatFrameNumberZero_ReturnsFrame1) {
   // 0-indexed frame 0 should format as "Frame 1"
   QString result = formatFrameNumber(0);
   EXPECT_EQ(result.toStdString(), "Frame 1");
 }
 
-TEST(FramePresentationTest, formatFrameNumberOneReturnsFrame2) {
+TEST(FramePresentationTest, FormatFrameNumberOne_ReturnsFrame2) {
   // 0-indexed frame 1 should format as "Frame 2"
   QString result = formatFrameNumber(1);
   EXPECT_EQ(result.toStdString(), "Frame 2");
 }
 
-TEST(FramePresentationTest, formatFrameNumberLargeValues) {
+TEST(FramePresentationTest, Format_FrameNumberLargeValues) {
   // Test with larger values to ensure correct conversion
   QString result = formatFrameNumber(99);
   EXPECT_EQ(result.toStdString(), "Frame 100");
@@ -143,7 +143,7 @@ TEST(FramePresentationTest, formatFrameNumberLargeValues) {
   EXPECT_EQ(result.toStdString(), "Frame 1001");
 }
 
-TEST(FramePresentationTest, formatFrameNumberIsOneIndexed) {
+TEST(FramePresentationTest, FormatFrameNumber_IsOneIndexed) {
   // Verify consistent 1-indexed output for multiple values
   for (uint64_t i = 0; i < 10; ++i) {
     QString result = formatFrameNumber(i);
@@ -157,7 +157,7 @@ TEST(FramePresentationTest, formatFrameNumberIsOneIndexed) {
 // Frame Number From Field ID Tests
 // =============================================================================
 
-TEST(FrameFieldConversionTest, getFrameNumberFromFieldIDEvenFields) {
+TEST(FrameFieldConversionTest, Get_FrameNumberFromFieldIDEvenFields) {
   // Field ID 0 → Frame 1, Field 2 → Frame 2, Field 4 → Frame 3, etc.
   EXPECT_EQ(getFrameNumberFromFieldID(0), 1UL);     // fields 0,1 → frame 1
   EXPECT_EQ(getFrameNumberFromFieldID(2), 2UL);     // fields 2,3 → frame 2
@@ -165,7 +165,7 @@ TEST(FrameFieldConversionTest, getFrameNumberFromFieldIDEvenFields) {
   EXPECT_EQ(getFrameNumberFromFieldID(100), 51UL);  // fields 100,101 → frame 51
 }
 
-TEST(FrameFieldConversionTest, getFrameNumberFromFieldIDOddFields) {
+TEST(FrameFieldConversionTest, Get_FrameNumberFromFieldIDOddFields) {
   // Odd field IDs should produce the same frame as the preceding even field
   EXPECT_EQ(getFrameNumberFromFieldID(1),
             1UL);  // field 1 (with field 0) → frame 1
@@ -177,7 +177,7 @@ TEST(FrameFieldConversionTest, getFrameNumberFromFieldIDOddFields) {
             51UL);  // field 101 (with field 100) → frame 51
 }
 
-TEST(FrameFieldConversionTest, getFrameNumberFromFieldIDFrameConsistency) {
+TEST(FrameFieldConversionTest, Get_FrameNumberFromFieldIDFrameConsistency) {
   // Both fields in a frame should return the same frame number
   for (uint64_t frame_idx = 0; frame_idx < 100; ++frame_idx) {
     uint64_t even_field_id = frame_idx * 2;
@@ -196,19 +196,19 @@ TEST(FrameFieldConversionTest, getFrameNumberFromFieldIDFrameConsistency) {
 // Field Within Frame Tests
 // =============================================================================
 
-TEST(FrameFieldConversionTest, getFieldWithinFrameZeroReturnsOne) {
+TEST(FrameFieldConversionTest, GetFieldWithinFrameZero_ReturnsOne) {
   // Field ID 0 is the first field (1-indexed output)
   int result = getFieldWithinFrame(0);
   EXPECT_EQ(result, 1);
 }
 
-TEST(FrameFieldConversionTest, getFieldWithinFrameOneReturnsTwo) {
+TEST(FrameFieldConversionTest, GetFieldWithinFrameOne_ReturnsTwo) {
   // Field ID 1 is the second field (1-indexed output)
   int result = getFieldWithinFrame(1);
   EXPECT_EQ(result, 2);
 }
 
-TEST(FrameFieldConversionTest, getFieldWithinFrameAlternates) {
+TEST(FrameFieldConversionTest, Get_FieldWithinFrameAlternates) {
   // Field within frame returns 1-indexed field number, not alternating pattern
   // Field ID 0 → 1, Field ID 1 → 2, Field ID 2 → 3, etc.
   for (int i = 0; i < 10; ++i) {
@@ -222,7 +222,7 @@ TEST(FrameFieldConversionTest, getFieldWithinFrameAlternates) {
 // Presentation Field Line Tests
 // =============================================================================
 
-TEST(PresentationLineTest, getPresentationFieldLinePALFirstFieldStartsAt1) {
+TEST(PresentationLineTest, GetPresentationFieldLinePALFirstField_StartsAt1) {
   // PAL first field (even fieldID): lines 1..312
   int line = getPresentationFieldLine(0, 0, true);  // fieldID 0, line 0
   EXPECT_EQ(line, 1);
@@ -232,7 +232,7 @@ TEST(PresentationLineTest, getPresentationFieldLinePALFirstFieldStartsAt1) {
 }
 
 TEST(PresentationLineTest,
-     getPresentationFieldLinePALSecondFieldStartsAt313) {
+     GetPresentationFieldLinePALSecondField_StartsAt313) {
   // PAL second field (odd fieldID): lines 313..625
   int line = getPresentationFieldLine(1, 0, true);  // fieldID 1, line 0
   EXPECT_EQ(line, 313);
@@ -241,7 +241,7 @@ TEST(PresentationLineTest,
   EXPECT_EQ(line, 625);
 }
 
-TEST(PresentationLineTest, getPresentationFieldLineNTSCFirstFieldStartsAt1) {
+TEST(PresentationLineTest, GetPresentationFieldLineNTSCFirstField_StartsAt1) {
   // NTSC first field (even fieldID): lines 1..262
   int line = getPresentationFieldLine(0, 0, false);  // fieldID 0, line 0
   EXPECT_EQ(line, 1);
@@ -251,7 +251,7 @@ TEST(PresentationLineTest, getPresentationFieldLineNTSCFirstFieldStartsAt1) {
 }
 
 TEST(PresentationLineTest,
-     getPresentationFieldLineNTSCSecondFieldStartsAt263) {
+     GetPresentationFieldLineNTSCSecondField_StartsAt263) {
   // NTSC second field (odd fieldID): lines 263..525
   int line = getPresentationFieldLine(1, 0, false);  // fieldID 1, line 0
   EXPECT_EQ(line, 263);

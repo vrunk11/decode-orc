@@ -1,3 +1,12 @@
+/*
+ * File:        analysis_registry.h
+ * Module:      analysis
+ * Purpose:     Singleton registry that discovers and vends analysis tools
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #ifndef ORC_CORE_ANALYSIS_REGISTRY_H
 #define ORC_CORE_ANALYSIS_REGISTRY_H
 

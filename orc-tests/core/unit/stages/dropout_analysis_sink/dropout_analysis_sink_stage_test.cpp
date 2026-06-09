@@ -49,7 +49,7 @@ class MockDropoutAnalysisSinkStageDeps
 };
 
 TEST(DropoutAnalysisSinkStageTest,
-     descriptorDefaultsIncludeExpectedOutputAndWriteCsv) {
+     Descriptor_DefaultsIncludeExpectedOutputAndWriteCsv) {
   orc::DropoutAnalysisSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
@@ -75,7 +75,7 @@ TEST(DropoutAnalysisSinkStageTest,
   EXPECT_FALSE(std::get<bool>(*write_csv_it->constraints.default_value));
 }
 
-TEST(DropoutAnalysisSinkStageTest, triggerFailsWhenNoInputProvided) {
+TEST(DropoutAnalysisSinkStageTest, Trigger_FailsWhenNoInputProvided) {
   orc::DropoutAnalysisSinkStage stage;
   MockObservationContext observation_context;
 
@@ -86,7 +86,7 @@ TEST(DropoutAnalysisSinkStageTest, triggerFailsWhenNoInputProvided) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(DropoutAnalysisSinkStageTest, triggerSucceedsWhenInputRangeIsEmpty) {
+TEST(DropoutAnalysisSinkStageTest, Trigger_SucceedsWhenInputRangeIsEmpty) {
   orc::DropoutAnalysisSinkStage stage;
   orc::ObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -104,7 +104,7 @@ TEST(DropoutAnalysisSinkStageTest, triggerSucceedsWhenInputRangeIsEmpty) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(DropoutAnalysisSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
+TEST(DropoutAnalysisSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   orc::DropoutAnalysisSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockDropoutAnalysisSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -139,7 +139,7 @@ TEST(DropoutAnalysisSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(DropoutAnalysisSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
+TEST(DropoutAnalysisSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   orc::DropoutAnalysisSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockDropoutAnalysisSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -163,7 +163,7 @@ TEST(DropoutAnalysisSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(DropoutAnalysisSinkStageTest, triggerWritesCSVWhenDepsSucceeds) {
+TEST(DropoutAnalysisSinkStageTest, Trigger_WritesCSVWhenDepsSucceeds) {
   orc::DropoutAnalysisSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockDropoutAnalysisSinkStageDeps>>();
   stage.set_deps_override(deps);

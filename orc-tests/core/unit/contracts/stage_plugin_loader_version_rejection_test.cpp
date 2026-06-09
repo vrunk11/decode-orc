@@ -37,7 +37,7 @@ std::filesystem::path test_fixture_path(const std::string& base_name) {
 // Non-existent path
 // ---------------------------------------------------------------------------
 
-TEST(StagePluginLoaderRejectionTest, nonExistentPathReportsError) {
+TEST(StagePluginLoaderRejectionTest, NonExistentPath_ReportsError) {
   orc::StagePluginLoader loader;
   const auto result = loader.load_plugin(
       "/definitely/does/not/exist/plugin.so",
@@ -54,7 +54,7 @@ TEST(StagePluginLoaderRejectionTest, nonExistentPathReportsError) {
 // ABI version mismatch
 // ---------------------------------------------------------------------------
 
-TEST(StagePluginLoaderRejectionTest, wrongHostAbiVersionIsRejected) {
+TEST(StagePluginLoaderRejectionTest, WrongHostAbiVersion_IsRejected) {
   const auto plugin_path = test_fixture_path("bad_abi_version");
   if (!std::filesystem::exists(plugin_path)) {
     GTEST_SKIP() << "Test fixture not built: " << plugin_path.string();
@@ -85,7 +85,7 @@ TEST(StagePluginLoaderRejectionTest, wrongHostAbiVersionIsRejected) {
 // Plugin API version mismatch
 // ---------------------------------------------------------------------------
 
-TEST(StagePluginLoaderRejectionTest, wrongPluginApiVersionIsRejected) {
+TEST(StagePluginLoaderRejectionTest, WrongPluginApiVersion_IsRejected) {
   const auto plugin_path = test_fixture_path("bad_api_version");
   if (!std::filesystem::exists(plugin_path)) {
     GTEST_SKIP() << "Test fixture not built: " << plugin_path.string();

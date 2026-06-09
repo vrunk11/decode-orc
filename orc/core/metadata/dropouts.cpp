@@ -1,3 +1,12 @@
+/*
+ * File:        dropouts.cpp
+ * Module:      metadata
+ * Purpose:     Dropout region data structures for TBC field processing
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 /************************************************************************
 
     dropouts.h
@@ -88,7 +97,7 @@ void DropOuts::clear() {
 // (to cut down on the amount of generated dropout data when processing
 // noisy/bad sources)
 
-// TODO: Sort the DOs by fieldLine otherwise this won't work correctly unless
+// TODO(sdi): Sort the DOs by fieldLine otherwise this won't work correctly unless
 // the caller is aware of the restriction (used in ld-diffdod only at the
 // moment)
 void DropOuts::concatenate(const bool verbose) {

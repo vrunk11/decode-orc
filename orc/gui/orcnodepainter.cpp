@@ -24,7 +24,7 @@
 #include "node_type_helper.h"
 #include "orcgraphmodel.h"
 
-using namespace QtNodes;
+using namespace QtNodes;  // NOLINT(google-build-using-namespace)
 
 void OrcNodePainter::paint(QPainter* painter, NodeGraphicsObject& ngo) const {
   // Draw everything using base class and custom versions

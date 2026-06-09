@@ -218,7 +218,7 @@ bool EIA608Decoder::decode_pac(uint8_t byte1, uint8_t byte2, size_t& row,
   // 0x50-0x5E or 0x70-0x7E: white text with indent
   if ((byte2 & 0x10)) {  // Indent PACs
     int indent_code = (byte2 & 0x0E) >> 1;
-    col = static_cast<size_t>(indent_code * 4);  // 0, 4, 8, 12, 16, 20, 24, 28
+    col = static_cast<size_t>(indent_code) * 4;  // 0, 4, 8, 12, 16, 20, 24, 28
   } else {
     col = 0;  // Color/attribute PACs start at column 0
   }

@@ -519,6 +519,7 @@ class IRenderPresenter {
  * - Worker thread methods are private and run on worker thread only
  * - No shared mutable state between threads
  */
+// Thread-safe: all public methods are safe to call from the GUI thread; worker-thread state is fully private.
 class RenderCoordinator : public QObject {
   Q_OBJECT
 

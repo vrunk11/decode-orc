@@ -1,3 +1,12 @@
+/*
+ * File:        lddecodemetadata.h
+ * Module:      metadata
+ * Purpose:     LD-Decode TBC file metadata model
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 /************************************************************************
 
     lddecodemetadata.h

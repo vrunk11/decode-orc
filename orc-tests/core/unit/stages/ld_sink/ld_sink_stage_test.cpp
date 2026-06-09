@@ -54,7 +54,7 @@ class LDSinkStageTest : public ::testing::Test {
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-TEST_F(LDSinkStageTest, descriptorDefaultsOutputPathIsEmptyTbc) {
+TEST_F(LDSinkStageTest, Descriptor_DefaultsOutputPathIsEmptyTbc) {
   const auto descriptors = instance_->get_parameter_descriptors();
 
   auto it = std::find_if(descriptors.begin(), descriptors.end(),
@@ -76,14 +76,14 @@ TEST_F(LDSinkStageTest, descriptorDefaultsOutputPathIsEmptyTbc) {
   EXPECT_EQ(std::get<std::string>(params.at("output_path")), "");
 }
 
-TEST_F(LDSinkStageTest, triggerReturnsFalseWhenOutputPathMissing) {
+TEST_F(LDSinkStageTest, Trigger_ReturnsFalseWhenOutputPathMissing) {
   const bool result = instance_->trigger({}, {}, mockObservationContext_);
 
   EXPECT_FALSE(result);
   EXPECT_EQ(instance_->get_trigger_status(), "Error: No output path specified");
 }
 
-TEST_F(LDSinkStageTest, triggerReturnsFalseWhenOutputPathIsEmpty) {
+TEST_F(LDSinkStageTest, Trigger_ReturnsFalseWhenOutputPathIsEmpty) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("")}};
 
@@ -94,7 +94,7 @@ TEST_F(LDSinkStageTest, triggerReturnsFalseWhenOutputPathIsEmpty) {
   EXPECT_EQ(instance_->get_trigger_status(), "Error: Output path is empty");
 }
 
-TEST_F(LDSinkStageTest, triggerReturnsFalseWhenNoInputConnected) {
+TEST_F(LDSinkStageTest, Trigger_ReturnsFalseWhenNoInputConnected) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("out")}};
 
@@ -106,7 +106,7 @@ TEST_F(LDSinkStageTest, triggerReturnsFalseWhenNoInputConnected) {
 }
 
 TEST_F(LDSinkStageTest,
-       triggerReturnsFalseWhenInputNotVideoFieldRepresentation) {
+       Trigger_ReturnsFalseWhenInputNotVideoFieldRepresentation) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("out")}};
   const std::vector<orc::ArtifactPtr> inputs = {nullptr};
@@ -119,7 +119,7 @@ TEST_F(LDSinkStageTest,
             "Error: Input is not a video field representation");
 }
 
-TEST_F(LDSinkStageTest, triggerWritesTbcAndSetsSuccessStatus) {
+TEST_F(LDSinkStageTest, Trigger_WritesTbcAndSetsSuccessStatus) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("out_path")}};
   const std::vector<orc::ArtifactPtr> inputs = make_valid_input();
@@ -147,7 +147,7 @@ TEST_F(LDSinkStageTest, triggerWritesTbcAndSetsSuccessStatus) {
   EXPECT_FALSE(instance_->is_trigger_in_progress());
 }
 
-TEST_F(LDSinkStageTest, triggerSetsErrorStatusWhenDepWriteFails) {
+TEST_F(LDSinkStageTest, Trigger_SetsErrorStatusWhenDepWriteFails) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("out_path")}};
   const std::vector<orc::ArtifactPtr> inputs = make_valid_input();
@@ -174,7 +174,7 @@ TEST_F(LDSinkStageTest, triggerSetsErrorStatusWhenDepWriteFails) {
   EXPECT_FALSE(instance_->is_trigger_in_progress());
 }
 
-TEST_F(LDSinkStageTest, setParametersAcceptsOutputPathString) {
+TEST_F(LDSinkStageTest, SetParameters_AcceptsOutputPathString) {
   const bool result =
       instance_->set_parameters({{"output_path", std::string("out.tbc")}});
   const auto params = instance_->get_parameters();
@@ -184,7 +184,7 @@ TEST_F(LDSinkStageTest, setParametersAcceptsOutputPathString) {
   EXPECT_EQ(std::get<std::string>(params.at("output_path")), "out.tbc");
 }
 
-TEST_F(LDSinkStageTest, setParametersRejectsNonStringOutputPath) {
+TEST_F(LDSinkStageTest, SetParameters_RejectsNonStringOutputPath) {
   const bool result = instance_->set_parameters({{"output_path", static_cast<int32_t>(7)}});
 
   EXPECT_FALSE(result);

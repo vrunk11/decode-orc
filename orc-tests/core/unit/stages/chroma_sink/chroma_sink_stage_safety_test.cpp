@@ -46,7 +46,7 @@ orc::SourceParameters make_too_narrow_pal_params() {
 }
 }  // namespace
 
-TEST(ChromaSinkStageSafetyTest, rawSinkTriggerRejectsInvalidNtscGeometry) {
+TEST(ChromaSinkStageSafetyTest, RawSinkTrigger_RejectsInvalidNtscGeometry) {
   orc::RawVideoSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -69,7 +69,7 @@ TEST(ChromaSinkStageSafetyTest, rawSinkTriggerRejectsInvalidNtscGeometry) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(ChromaSinkStageSafetyTest, ffmpegSinkTriggerRejectsInvalidPalGeometry) {
+TEST(ChromaSinkStageSafetyTest, FfmpegSinkTrigger_RejectsInvalidPalGeometry) {
   orc::FFmpegVideoSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();

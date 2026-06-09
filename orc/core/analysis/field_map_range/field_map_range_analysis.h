@@ -1,3 +1,12 @@
+/*
+ * File:        field_map_range_analysis.h
+ * Module:      analysis
+ * Purpose:     Field map range locator: finds fields by picture number or CLV timecode
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #ifndef ORC_CORE_ANALYSIS_FIELD_MAP_RANGE_ANALYSIS_H
 #define ORC_CORE_ANALYSIS_FIELD_MAP_RANGE_ANALYSIS_H
 

@@ -14,7 +14,7 @@
 #include "../../../../orc/plugins/stages/sinks/common/chroma_sink_stage.h"
 
 namespace orc_unit_test {
-TEST(ChromaSinkStageDefaultsTest, runtimeDefaultsEnableNtscPhaseCompensation) {
+TEST(ChromaSinkStageDefaultsTest, Runtime_DefaultsEnableNtscPhaseCompensation) {
   orc::ChromaSinkStage stage;
   auto params = stage.get_parameters();
 
@@ -25,7 +25,7 @@ TEST(ChromaSinkStageDefaultsTest, runtimeDefaultsEnableNtscPhaseCompensation) {
 }
 
 TEST(ChromaSinkStageDefaultsTest,
-     descriptorDefaultsEnableNtscPhaseCompensationForNtscProjects) {
+     Descriptor_DefaultsEnableNtscPhaseCompensationForNtscProjects) {
   orc::ChromaSinkStage stage;
   auto descriptors = stage.get_parameter_descriptors(orc::VideoSystem::NTSC,
                                                      orc::SourceType::YC);

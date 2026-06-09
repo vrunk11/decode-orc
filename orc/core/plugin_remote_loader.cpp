@@ -492,7 +492,7 @@ PluginRemoteLoader::DownloadResult PluginRemoteLoader::download_release_asset(
     // Clean up failed download
     try {
       std::filesystem::remove(cache_path);
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch)
     }
 
     curl_easy_cleanup(curl);
@@ -517,7 +517,7 @@ PluginRemoteLoader::DownloadResult PluginRemoteLoader::download_release_asset(
     // Clean up failed download
     try {
       std::filesystem::remove(cache_path);
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch)
     }
 
     return result;
@@ -545,7 +545,7 @@ PluginRemoteLoader::DownloadResult PluginRemoteLoader::download_release_asset(
     // Clean up empty file
     try {
       std::filesystem::remove(cache_path);
-    } catch (...) {
+    } catch (...) {  // NOLINT(bugprone-empty-catch)
     }
 
     return result;

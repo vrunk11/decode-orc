@@ -1,3 +1,12 @@
+/*
+ * File:        field_map_range_analysis.cpp
+ * Module:      analysis
+ * Purpose:     Field map range locator: finds fields by picture number or CLV timecode
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #include "field_map_range_analysis.h"
 
 #include <algorithm>
@@ -398,7 +407,7 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
     extract_vbi_if_needed(fid);
     auto pn_opt = get_picture_number_from_vbi(obs_context, fid, is_pal);
     if (pn_opt) {
-      first_picture_number = *pn_opt;
+      first_picture_number = pn_opt;
       first_valid_field = fid;
       ORC_LOG_DEBUG("First valid VBI at field {}: picture number {}",
                     fid.value(), *pn_opt);

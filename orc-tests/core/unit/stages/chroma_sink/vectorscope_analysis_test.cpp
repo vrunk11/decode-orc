@@ -16,7 +16,7 @@
 
 namespace orc_unit_test {
 TEST(VectorscopeAnalysisTest,
-     extractFromComponentFrameUsesActivePictureWindow) {
+     ExtractFromComponentFrame_UsesActivePictureWindow) {
   orc::SourceParameters source_parameters;
   source_parameters.field_width = 8;
   source_parameters.field_height = 4;
@@ -76,7 +76,7 @@ TEST(VectorscopeAnalysisTest,
   EXPECT_TRUE(saw_second_field);
 }
 
-TEST(VectorscopeAnalysisTest, extractFromColourFrameCarrierCanUseFullFrame) {
+TEST(VectorscopeAnalysisTest, ExtractFromColourFrameCarrier_CanUseFullFrame) {
   orc::ColourFrameCarrier carrier;
   carrier.system = orc::VideoSystem::NTSC;
   carrier.width = 6;

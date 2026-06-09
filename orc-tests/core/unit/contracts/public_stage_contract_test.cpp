@@ -63,7 +63,7 @@ class PublicStageContractTest : public testing::TestWithParam<size_t> {
   const PublicStageSpec& spec() const { return stage_spec_at(GetParam()); }
 };
 
-TEST_P(PublicStageContractTest, interfaceMetadataIsConsistent) {
+TEST_P(PublicStageContractTest, InterfaceMetadata_IsConsistent) {
   auto stage = spec().create();
   const auto info = stage->get_node_type_info();
 
@@ -97,7 +97,7 @@ TEST_P(PublicStageContractTest, interfaceMetadataIsConsistent) {
   }
 }
 
-TEST_P(PublicStageContractTest, parameterDefaultsMatchRuntimeState) {
+TEST_P(PublicStageContractTest, Parameter_DefaultsMatchRuntimeState) {
   // All inventory entries are registry-backed; this skip is retained as a
   // safety guard should a non-registry stage be added to the inventory.
   if (!spec().registry_backed) {
@@ -150,7 +150,7 @@ TEST_P(PublicStageContractTest, parameterDefaultsMatchRuntimeState) {
 }
 
 TEST_P(PublicStageContractTest,
-       observationDeclarationsAreUniqueAndSchemaCompatible) {
+       ObservationDeclarations_AreUniqueAndSchemaCompatible) {
   auto stage = spec().create();
   const auto required = stage->get_required_observations();
   const auto provided = stage->get_provided_observations();
@@ -197,7 +197,7 @@ TEST_P(PublicStageContractTest,
 }
 
 TEST_P(PublicStageContractTest,
-       triggerLifecycleIsCoherentOnImmediateInvalidInvocation) {
+       TriggerLifecycle_IsCoherentOnImmediateInvalidInvocation) {
   auto stage = spec().create();
   auto* triggerable = dynamic_cast<orc::TriggerableStage*>(stage.get());
   if (!triggerable) {
@@ -242,7 +242,7 @@ class FormatSpecificDefaultsTest : public testing::TestWithParam<size_t> {
   const PublicStageSpec& spec() const { return stage_spec_at(GetParam()); }
 };
 
-TEST_P(FormatSpecificDefaultsTest, palFormatDefaultsMatchRuntimeBehaviour) {
+TEST_P(FormatSpecificDefaultsTest, PalFormat_DefaultsMatchRuntimeBehaviour) {
   if (!spec().registry_backed) {
     GTEST_SKIP() << "Non-registry-backed base class skipped";
   }
@@ -281,7 +281,7 @@ TEST_P(FormatSpecificDefaultsTest, palFormatDefaultsMatchRuntimeBehaviour) {
   }
 }
 
-TEST_P(FormatSpecificDefaultsTest, ntscFormatDefaultsMatchRuntimeBehaviour) {
+TEST_P(FormatSpecificDefaultsTest, NtscFormat_DefaultsMatchRuntimeBehaviour) {
   if (!spec().registry_backed) {
     GTEST_SKIP() << "Non-registry-backed base class skipped";
   }

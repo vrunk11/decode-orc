@@ -39,7 +39,7 @@ QApplication& ensureApplication() {
 
 }  // namespace
 
-TEST(GUIWidgetHarnessSmokeTest, fieldPreviewWidgetCanShowAndCloseOffscreen) {
+TEST(GUIWidgetHarnessSmokeTest, FieldPreviewWidget_CanShowAndCloseOffscreen) {
   (void)ensureApplication();
 
   FieldPreviewWidget widget;

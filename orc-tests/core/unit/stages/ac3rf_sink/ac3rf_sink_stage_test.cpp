@@ -36,14 +36,14 @@ class MockAC3RFSinkStageDeps : public orc::IAC3RFSinkStageDeps {
 // Stage interface invariants
 // -------------------------------------------------------------------------
 
-TEST(AC3RFSinkStageTest, stageInterfaceInvariantsMatchSink) {
+TEST(AC3RFSinkStageTest, StageInterfaceInvariants_MatchSink) {
   orc::AC3RFSinkStage stage;
   EXPECT_EQ(stage.required_input_count(), 1u);
   EXPECT_EQ(stage.output_count(), 0u);
   EXPECT_EQ(stage.get_node_type_info().type, orc::NodeType::SINK);
 }
 
-TEST(AC3RFSinkStageTest, stageNameIsAC3RFSink) {
+TEST(AC3RFSinkStageTest, StageName_IsAC3RFSink) {
   orc::AC3RFSinkStage stage;
   EXPECT_EQ(stage.get_node_type_info().stage_name, "AC3RFSink");
 }
@@ -52,7 +52,7 @@ TEST(AC3RFSinkStageTest, stageNameIsAC3RFSink) {
 // Parameter descriptor / default parity
 // -------------------------------------------------------------------------
 
-TEST(AC3RFSinkStageTest, descriptorDefaultsOutputPathIsEmptyAc3) {
+TEST(AC3RFSinkStageTest, Descriptor_DefaultsOutputPathIsEmptyAc3) {
   orc::AC3RFSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
@@ -75,7 +75,7 @@ TEST(AC3RFSinkStageTest, descriptorDefaultsOutputPathIsEmptyAc3) {
 // Trigger failure paths (no filesystem / network / clock)
 // -------------------------------------------------------------------------
 
-TEST(AC3RFSinkStageTest, triggerFailsWhenNoInputProvided) {
+TEST(AC3RFSinkStageTest, Trigger_FailsWhenNoInputProvided) {
   orc::AC3RFSinkStage stage;
   MockObservationContext observation_context;
 
@@ -87,7 +87,7 @@ TEST(AC3RFSinkStageTest, triggerFailsWhenNoInputProvided) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(AC3RFSinkStageTest, triggerFailsWhenInputHasNoAC3RFData) {
+TEST(AC3RFSinkStageTest, Trigger_FailsWhenInputHasNoAC3RFData) {
   orc::AC3RFSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -104,7 +104,7 @@ TEST(AC3RFSinkStageTest, triggerFailsWhenInputHasNoAC3RFData) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(AC3RFSinkStageTest, triggerFailsWhenOutputPathMissing) {
+TEST(AC3RFSinkStageTest, Trigger_FailsWhenOutputPathMissing) {
   orc::AC3RFSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -120,7 +120,7 @@ TEST(AC3RFSinkStageTest, triggerFailsWhenOutputPathMissing) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(AC3RFSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
+TEST(AC3RFSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   orc::AC3RFSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockAC3RFSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -141,7 +141,7 @@ TEST(AC3RFSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(AC3RFSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
+TEST(AC3RFSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   orc::AC3RFSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockAC3RFSinkStageDeps>>();
   stage.set_deps_override(deps);

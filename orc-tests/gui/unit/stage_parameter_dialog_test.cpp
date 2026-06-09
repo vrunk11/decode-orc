@@ -93,7 +93,7 @@ orc::ParameterDescriptor makeDescriptor(
 }  // namespace
 
 TEST(StageParameterDialogTest,
-     getValuesRoundTripsAllSupportedParameterEditorTypes) {
+     Get_ValuesRoundTripsAllSupportedParameterEditorTypes) {
   (void)ensureApplication();
 
   std::vector<orc::ParameterDescriptor> descriptors;
@@ -181,7 +181,7 @@ TEST(StageParameterDialogTest,
 }
 
 TEST(StageParameterDialogTest,
-     numericEditorsRespectConfiguredBoundsAndClampStepping) {
+     Numeric_EditorsRespectConfiguredBoundsAndClampStepping) {
   (void)ensureApplication();
 
   std::vector<orc::ParameterDescriptor> descriptors;

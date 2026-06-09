@@ -29,17 +29,17 @@ const orc::ParameterDescriptor* find_descriptor(
 }
 }  // namespace
 
-TEST(StackerStageTest, requiredInputCountIsOne) {
+TEST(StackerStageTest, RequiredInputCount_IsOne) {
   orc::StackerStage stage;
   EXPECT_EQ(stage.required_input_count(), 1u);
 }
 
-TEST(StackerStageTest, outputCountIsOne) {
+TEST(StackerStageTest, OutputCount_IsOne) {
   orc::StackerStage stage;
   EXPECT_EQ(stage.output_count(), 1u);
 }
 
-TEST(StackerStageTest, nodeTypeInfoHasExpectedMetadata) {
+TEST(StackerStageTest, NodeTypeInfo_HasExpectedMetadata) {
   orc::StackerStage stage;
   auto info = stage.get_node_type_info();
 
@@ -48,7 +48,7 @@ TEST(StackerStageTest, nodeTypeInfoHasExpectedMetadata) {
   EXPECT_EQ(info.compatible_formats, orc::VideoFormatCompatibility::ALL);
 }
 
-TEST(StackerStageTest, descriptorDefaultsMatchRuntimeDefaults) {
+TEST(StackerStageTest, Descriptor_DefaultsMatchRuntimeDefaults) {
   orc::StackerStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
@@ -91,7 +91,7 @@ TEST(StackerStageTest, descriptorDefaultsMatchRuntimeDefaults) {
             std::get<std::string>(params.at("efm_stacking")));
 }
 
-TEST(StackerStageTest, setParametersAcceptsValidStringValues) {
+TEST(StackerStageTest, SetParameters_AcceptsValidStringValues) {
   orc::StackerStage stage;
 
   const bool result =
@@ -112,7 +112,7 @@ TEST(StackerStageTest, setParametersAcceptsValidStringValues) {
   EXPECT_EQ(std::get<std::string>(params.at("efm_stacking")), "Disabled");
 }
 
-TEST(StackerStageTest, setParametersAcceptsLegacyIntegerMode) {
+TEST(StackerStageTest, SetParameters_AcceptsLegacyIntegerMode) {
   orc::StackerStage stage;
 
   ASSERT_TRUE(stage.set_parameters({{"mode", int32_t(2)}}));
@@ -121,22 +121,22 @@ TEST(StackerStageTest, setParametersAcceptsLegacyIntegerMode) {
             "Smart Mean");
 }
 
-TEST(StackerStageTest, setParametersRejectsInvalidMode) {
+TEST(StackerStageTest, SetParameters_RejectsInvalidMode) {
   orc::StackerStage stage;
   EXPECT_FALSE(stage.set_parameters({{"mode", std::string("Nope")}}));
 }
 
-TEST(StackerStageTest, setParametersRejectsThresholdOutsideBounds) {
+TEST(StackerStageTest, SetParameters_RejectsThresholdOutsideBounds) {
   orc::StackerStage stage;
   EXPECT_FALSE(stage.set_parameters({{"smart_threshold", int32_t(129)}}));
 }
 
-TEST(StackerStageTest, processReturnsNullWhenSourcesEmpty) {
+TEST(StackerStageTest, Process_ReturnsNullWhenSourcesEmpty) {
   orc::StackerStage stage;
   EXPECT_EQ(stage.process({}), nullptr);
 }
 
-TEST(StackerStageTest, processReturnsOnlySourceInPassthroughMode) {
+TEST(StackerStageTest, Process_ReturnsOnlySourceInPassthroughMode) {
   orc::StackerStage stage;
   auto source = std::make_shared<MockVideoFieldRepresentation>();
   std::vector<std::shared_ptr<const orc::VideoFieldRepresentation>> sources = {

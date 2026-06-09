@@ -1,3 +1,12 @@
+/*
+ * File:        dropouts.h
+ * Module:      metadata
+ * Purpose:     Dropout region data structures for TBC field processing
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 /************************************************************************
 
     dropouts.h

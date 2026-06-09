@@ -55,7 +55,7 @@ class DaphneVBISinkStageDeps : public ::testing::Test {
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 TEST_F(DaphneVBISinkStageDeps,
-       writeVbiAddsExtensionAndWritesHeaderWhenSuccessful) {
+       WriteVbi_AddsExtensionAndWritesHeaderWhenSuccessful) {
   EXPECT_CALL(mockRepresentation_, field_range())
       .Times(1)
       .WillOnce(Return(orc::FieldIDRange(orc::FieldID(0), orc::FieldID(0))));
@@ -81,7 +81,7 @@ TEST_F(DaphneVBISinkStageDeps,
   EXPECT_TRUE(result);
 }
 
-TEST_F(DaphneVBISinkStageDeps, writeVbiReturnsFalseWhenOpenFails) {
+TEST_F(DaphneVBISinkStageDeps, WriteVbi_ReturnsFalseWhenOpenFails) {
   EXPECT_CALL(mockRepresentation_, field_range())
       .Times(1)
       .WillOnce(Return(orc::FieldIDRange(orc::FieldID(0), orc::FieldID(0))));
@@ -102,7 +102,7 @@ TEST_F(DaphneVBISinkStageDeps, writeVbiReturnsFalseWhenOpenFails) {
 }
 
 TEST_F(DaphneVBISinkStageDeps,
-       writeVbiClosesWriterAndMarksProcessingFalseWhenCancelled) {
+       WriteVbi_ClosesWriterAndMarksProcessingFalseWhenCancelled) {
   EXPECT_CALL(mockRepresentation_, field_range())
       .Times(1)
       .WillOnce(Return(orc::FieldIDRange(orc::FieldID(0), orc::FieldID(1))));

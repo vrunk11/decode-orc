@@ -21,7 +21,7 @@ namespace orc_unit_test {
 // Integration tests with actual downloads to GitHub releases will be added to
 // the test suite.
 
-TEST(PluginRemoteLoaderTest, getCachePathFormsCorrectPlatformSubdirectory) {
+TEST(PluginRemoteLoaderTest, Get_CachePathFormsCorrectPlatformSubdirectory) {
   const auto path = orc::PluginRemoteLoader::get_cache_path(
       "orc-plugin_skeleton_passthrough_linux.so", "linux");
   EXPECT_TRUE(path.find("plugin-cache") != std::string::npos);
@@ -30,7 +30,7 @@ TEST(PluginRemoteLoaderTest, getCachePathFormsCorrectPlatformSubdirectory) {
               std::string::npos);
 }
 
-TEST(PluginRemoteLoaderTest, getCachePathFormsCorrectWindowsPath) {
+TEST(PluginRemoteLoaderTest, Get_CachePathFormsCorrectWindowsPath) {
   const auto path = orc::PluginRemoteLoader::get_cache_path(
       "orc-plugin_skeleton_passthrough_windows.dll", "windows");
   EXPECT_TRUE(path.find("plugin-cache") != std::string::npos);
@@ -39,7 +39,7 @@ TEST(PluginRemoteLoaderTest, getCachePathFormsCorrectWindowsPath) {
               std::string::npos);
 }
 
-TEST(PluginRemoteLoaderTest, downloadRejectsInvalidAssetNames) {
+TEST(PluginRemoteLoaderTest, Download_RejectsInvalidAssetNames) {
   std::vector<std::string> warnings;
 
   // Missing stage and platform (no underscore separators)

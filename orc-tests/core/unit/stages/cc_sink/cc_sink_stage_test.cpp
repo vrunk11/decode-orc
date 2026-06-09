@@ -40,7 +40,7 @@ class MockCCSinkStageDeps : public orc::ICCSinkStageDeps {
               (override));
 };
 
-TEST(CCSinkStageTest, descriptorDefaultsIncludeExportFormatOptions) {
+TEST(CCSinkStageTest, Descriptor_DefaultsIncludeExportFormatOptions) {
   orc::CCSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
@@ -71,12 +71,12 @@ TEST(CCSinkStageTest, descriptorDefaultsIncludeExportFormatOptions) {
             "Scenarist SCC");
 }
 
-TEST(CCSinkStageTest, triggerStatusIsIdleWhenNotProcessing) {
+TEST(CCSinkStageTest, TriggerStatus_IsIdleWhenNotProcessing) {
   orc::CCSinkStage stage;
   EXPECT_EQ(stage.get_trigger_status(), "Idle");
 }
 
-TEST(CCSinkStageTest, triggerFailsWhenNoInputProvided) {
+TEST(CCSinkStageTest, Trigger_FailsWhenNoInputProvided) {
   orc::CCSinkStage stage;
   MockObservationContext observation_context;
 
@@ -87,7 +87,7 @@ TEST(CCSinkStageTest, triggerFailsWhenNoInputProvided) {
   EXPECT_EQ(stage.get_trigger_status(), "Idle");
 }
 
-TEST(CCSinkStageTest, triggerFailsWhenInputIsNotVideoFieldRepresentation) {
+TEST(CCSinkStageTest, Trigger_FailsWhenInputIsNotVideoFieldRepresentation) {
   orc::CCSinkStage stage;
   MockObservationContext observation_context;
 
@@ -100,7 +100,7 @@ TEST(CCSinkStageTest, triggerFailsWhenInputIsNotVideoFieldRepresentation) {
   EXPECT_EQ(stage.get_trigger_status(), "Idle");
 }
 
-TEST(CCSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
+TEST(CCSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   orc::CCSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockCCSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -129,7 +129,7 @@ TEST(CCSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
   EXPECT_EQ(stage.get_trigger_status(), "Idle");
 }
 
-TEST(CCSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
+TEST(CCSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   orc::CCSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockCCSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -152,7 +152,7 @@ TEST(CCSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
   EXPECT_EQ(stage.get_trigger_status(), "Idle");
 }
 
-TEST(CCSinkStageTest, triggerUsesDepsSeamWithSCCFormat) {
+TEST(CCSinkStageTest, Trigger_UsesDepsSeamWithSCCFormat) {
   orc::CCSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockCCSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -177,7 +177,7 @@ TEST(CCSinkStageTest, triggerUsesDepsSeamWithSCCFormat) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(CCSinkStageTest, triggerUsesDepsSeamWithPlainTextFormat) {
+TEST(CCSinkStageTest, Trigger_UsesDepsSeamWithPlainTextFormat) {
   orc::CCSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockCCSinkStageDeps>>();
   stage.set_deps_override(deps);

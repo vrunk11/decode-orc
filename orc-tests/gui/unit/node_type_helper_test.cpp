@@ -23,7 +23,7 @@ namespace gui_unit_test {
 // NodeVisualInfo Structure Tests
 // =============================================================================
 
-TEST(NodeTypeHelperTest, getVisualInfoReturnsDefaultForUnknownStage) {
+TEST(NodeTypeHelperTest, GetVisualInfo_ReturnsDefaultForUnknownStage) {
   // Verify that unknown stages return a sensible default (no crash)
   auto info = NodeTypeHelper::getVisualInfo("UnknownStageName");
 
@@ -34,7 +34,7 @@ TEST(NodeTypeHelperTest, getVisualInfoReturnsDefaultForUnknownStage) {
       info.output_is_many);  // Most stages don't produce multiple outputs
 }
 
-TEST(NodeTypeHelperTest, getVisualInfoSourceStageHasOutput) {
+TEST(NodeTypeHelperTest, GetVisualInfoSourceStage_HasOutput) {
   // Source stages should have output but no input
   auto info = NodeTypeHelper::getVisualInfo("PALYCSource");
 
@@ -42,7 +42,7 @@ TEST(NodeTypeHelperTest, getVisualInfoSourceStageHasOutput) {
   EXPECT_TRUE(info.has_output);  // Sources produce output
 }
 
-TEST(NodeTypeHelperTest, getVisualInfoTransformStageHasInputAndOutput) {
+TEST(NodeTypeHelperTest, GetVisualInfoTransformStage_HasInputAndOutput) {
   // Transform stages should have both input and output
   auto info = NodeTypeHelper::getVisualInfo("FieldInvert");
 
@@ -51,7 +51,7 @@ TEST(NodeTypeHelperTest, getVisualInfoTransformStageHasInputAndOutput) {
   EXPECT_FALSE(info.input_is_many);  // Transforms typically have single input
 }
 
-TEST(NodeTypeHelperTest, getVisualInfoSinkStageHasInputNoOutput) {
+TEST(NodeTypeHelperTest, GetVisualInfoSinkStage_HasInputNoOutput) {
   // Sink stages should have input but no output
   auto info = NodeTypeHelper::getVisualInfo("RawVideoSink");
 
@@ -63,7 +63,7 @@ TEST(NodeTypeHelperTest, getVisualInfoSinkStageHasInputNoOutput) {
 // Port Position Tests
 // =============================================================================
 
-TEST(NodeTypeHelperTest, getInputPortPositionIsOnLeftEdge) {
+TEST(NodeTypeHelperTest, GetInputPortPosition_IsOnLeftEdge) {
   const double node_width = 100.0;
   const double node_height = 60.0;
 
@@ -73,7 +73,7 @@ TEST(NodeTypeHelperTest, getInputPortPositionIsOnLeftEdge) {
   EXPECT_EQ(pos.y(), node_height / 2.0);  // Middle height
 }
 
-TEST(NodeTypeHelperTest, getInputPortPositionMultipleHeights) {
+TEST(NodeTypeHelperTest, Get_InputPortPositionMultipleHeights) {
   // Test with different node heights to ensure vertical centering
   std::vector<double> heights = {40.0, 60.0, 100.0};
 
@@ -84,7 +84,7 @@ TEST(NodeTypeHelperTest, getInputPortPositionMultipleHeights) {
   }
 }
 
-TEST(NodeTypeHelperTest, getOutputPortPositionIsOnRightEdge) {
+TEST(NodeTypeHelperTest, GetOutputPortPosition_IsOnRightEdge) {
   const double node_width = 100.0;
   const double node_height = 60.0;
 
@@ -94,7 +94,7 @@ TEST(NodeTypeHelperTest, getOutputPortPositionIsOnRightEdge) {
   EXPECT_EQ(pos.y(), node_height / 2.0);  // Middle height
 }
 
-TEST(NodeTypeHelperTest, getOutputPortPositionMultipleWidths) {
+TEST(NodeTypeHelperTest, Get_OutputPortPositionMultipleWidths) {
   // Test with different node widths
   std::vector<double> widths = {80.0, 100.0, 150.0};
 
@@ -105,7 +105,7 @@ TEST(NodeTypeHelperTest, getOutputPortPositionMultipleWidths) {
   }
 }
 
-TEST(NodeTypeHelperTest, portPositionsAlignOnYAxis) {
+TEST(NodeTypeHelperTest, Port_PositionsAlignOnYAxis) {
   // Input and output ports of the same node should align vertically
   const double width = 100.0;
   const double height = 60.0;
@@ -120,7 +120,7 @@ TEST(NodeTypeHelperTest, portPositionsAlignOnYAxis) {
 // Connection Validity Tests
 // =============================================================================
 
-TEST(NodeTypeHelperTest, canConnectSourceToTransform) {
+TEST(NodeTypeHelperTest, Can_ConnectSourceToTransform) {
   // A source can typically connect to a transform
   bool can = NodeTypeHelper::canConnect("PALYCSource",  // source_stage
                                         "FieldInvert",  // target_stage
@@ -131,7 +131,7 @@ TEST(NodeTypeHelperTest, canConnectSourceToTransform) {
   EXPECT_TRUE(can);
 }
 
-TEST(NodeTypeHelperTest, canConnectTransformToSink) {
+TEST(NodeTypeHelperTest, Can_ConnectTransformToSink) {
   // A transform can typically connect to a sink
   bool can = NodeTypeHelper::canConnect("FieldInvert",   // source_stage
                                         "RawVideoSink",  // target_stage
@@ -142,7 +142,7 @@ TEST(NodeTypeHelperTest, canConnectTransformToSink) {
   EXPECT_TRUE(can);
 }
 
-TEST(NodeTypeHelperTest, canConnectSourceToSourceFails) {
+TEST(NodeTypeHelperTest, CanConnectSourceToSource_Fails) {
   // Source to source should not be allowed (sources produce output, don't
   // accept input)
   bool can = NodeTypeHelper::canConnect(
@@ -155,7 +155,7 @@ TEST(NodeTypeHelperTest, canConnectSourceToSourceFails) {
   EXPECT_FALSE(can);
 }
 
-TEST(NodeTypeHelperTest, canConnectSinkToSinkFails) {
+TEST(NodeTypeHelperTest, CanConnectSinkToSink_Fails) {
   // Sink to sink should not be allowed (sinks consume input, don't produce
   // output)
   bool can = NodeTypeHelper::canConnect(
@@ -168,7 +168,7 @@ TEST(NodeTypeHelperTest, canConnectSinkToSinkFails) {
   EXPECT_FALSE(can);
 }
 
-TEST(NodeTypeHelperTest, canConnectExceedsTargetInputLimitFails) {
+TEST(NodeTypeHelperTest, CanConnectExceedsTargetInputLimit_Fails) {
   // If target already has max inputs reached, should not allow new connection
   bool can =
       NodeTypeHelper::canConnect("FieldInvert",   // source_stage
@@ -180,7 +180,7 @@ TEST(NodeTypeHelperTest, canConnectExceedsTargetInputLimitFails) {
   EXPECT_FALSE(can);
 }
 
-TEST(NodeTypeHelperTest, canConnectExceedsSourceOutputLimitFails) {
+TEST(NodeTypeHelperTest, CanConnectExceedsSourceOutputLimit_Fails) {
   // If source already has max outputs reached, should not allow new connection
   bool can =
       NodeTypeHelper::canConnect("FieldInvert",  // source_stage (1 output max)
@@ -192,7 +192,7 @@ TEST(NodeTypeHelperTest, canConnectExceedsSourceOutputLimitFails) {
   EXPECT_FALSE(can);
 }
 
-TEST(NodeTypeHelperTest, canConnectUnknownSourceStageFails) {
+TEST(NodeTypeHelperTest, CanConnectUnknownSourceStage_Fails) {
   // Unknown stages should fail connection validation
   bool can = NodeTypeHelper::canConnect("UnknownSource",  // source_stage
                                         "FieldInvert",    // target_stage
@@ -203,7 +203,7 @@ TEST(NodeTypeHelperTest, canConnectUnknownSourceStageFails) {
   EXPECT_FALSE(can);
 }
 
-TEST(NodeTypeHelperTest, canConnectUnknownTargetStageFails) {
+TEST(NodeTypeHelperTest, CanConnectUnknownTargetStage_Fails) {
   // Unknown target stages should fail connection validation
   bool can = NodeTypeHelper::canConnect("FieldInvert",    // source_stage
                                         "UnknownTarget",  // target_stage

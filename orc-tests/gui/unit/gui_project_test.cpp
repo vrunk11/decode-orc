@@ -21,14 +21,14 @@ namespace gui_unit_test {
 using ::testing::Return;
 using ::testing::StrictMock;
 
-TEST(GUIProjectTest, newEmptyProjectDelegatesLifecycleAndClearsModified) {
+TEST(GUIProjectTest, NewEmptyProject_DelegatesLifecycleAndClearsModified) {
   auto mock = std::make_unique<
       StrictMock<orc::presenters::test::MockProjectPresenter>>();
   auto* mock_presenter = mock.get();
   GUIProject project(std::move(mock));
 
   EXPECT_CALL(*mock_presenter, clearProject()).Times(1);
-  EXPECT_CALL(*mock_presenter, setProjectName("phase3-project")).Times(1);
+  EXPECT_CALL(*mock_presenter, setProjectName("test-project")).Times(1);
   EXPECT_CALL(*mock_presenter,
               setVideoFormat(orc::presenters::VideoFormat::NTSC))
       .Times(1);
@@ -39,12 +39,12 @@ TEST(GUIProjectTest, newEmptyProjectDelegatesLifecycleAndClearsModified) {
 
   QString error;
   EXPECT_TRUE(project.newEmptyProject(
-      "phase3-project", orc::presenters::VideoFormat::NTSC,
+      "test-project", orc::presenters::VideoFormat::NTSC,
       orc::presenters::SourceType::Composite, &error));
   EXPECT_TRUE(error.isEmpty());
 }
 
-TEST(GUIProjectTest, isModifiedDelegatesToPresenter) {
+TEST(GUIProjectTest, IsModified_DelegatesToPresenter) {
   auto mock = std::make_unique<
       StrictMock<orc::presenters::test::MockProjectPresenter>>();
   auto* mock_presenter = mock.get();
@@ -58,28 +58,28 @@ TEST(GUIProjectTest, isModifiedDelegatesToPresenter) {
   project.setModified(false);
 }
 
-TEST(GUIProjectTest, saveToFileDelegatesToPresenterAndStoresPath) {
+TEST(GUIProjectTest, SaveToFile_DelegatesToPresenterAndStoresPath) {
   auto mock = std::make_unique<
       StrictMock<orc::presenters::test::MockProjectPresenter>>();
   auto* mock_presenter = mock.get();
   GUIProject project(std::move(mock));
 
-  EXPECT_CALL(*mock_presenter, saveProject("/tmp/phase3-save.orcprj"))
+  EXPECT_CALL(*mock_presenter, saveProject("/tmp/test-save.orcprj"))
       .WillOnce(Return(true));
 
   QString error;
-  EXPECT_TRUE(project.saveToFile("/tmp/phase3-save.orcprj", &error));
+  EXPECT_TRUE(project.saveToFile("/tmp/test-save.orcprj", &error));
   EXPECT_TRUE(error.isEmpty());
-  EXPECT_EQ(project.projectPath(), QString("/tmp/phase3-save.orcprj"));
+  EXPECT_EQ(project.projectPath(), QString("/tmp/test-save.orcprj"));
 }
 
-TEST(GUIProjectTest, loadFromFileDelegatesToPresenterBuildsDagAndStoresPath) {
+TEST(GUIProjectTest, LoadFromFile_DelegatesToPresenterBuildsDagAndStoresPath) {
   auto mock = std::make_unique<
       StrictMock<orc::presenters::test::MockProjectPresenter>>();
   auto* mock_presenter = mock.get();
   GUIProject project(std::move(mock));
 
-  EXPECT_CALL(*mock_presenter, loadProject("/tmp/phase3-load.orcprj"))
+  EXPECT_CALL(*mock_presenter, loadProject("/tmp/test-load.orcprj"))
       .WillOnce(Return(true));
   EXPECT_CALL(*mock_presenter, buildDAG())
       .WillOnce(Return(std::make_shared<int>(42)));
@@ -89,12 +89,12 @@ TEST(GUIProjectTest, loadFromFileDelegatesToPresenterBuildsDagAndStoresPath) {
       .WillOnce(Return(std::vector<orc::presenters::StageInfo>{}));
 
   QString error;
-  EXPECT_TRUE(project.loadFromFile("/tmp/phase3-load.orcprj", &error));
+  EXPECT_TRUE(project.loadFromFile("/tmp/test-load.orcprj", &error));
   EXPECT_TRUE(error.isEmpty());
-  EXPECT_EQ(project.projectPath(), QString("/tmp/phase3-load.orcprj"));
+  EXPECT_EQ(project.projectPath(), QString("/tmp/test-load.orcprj"));
 }
 
-TEST(GUIProjectTest, clearResetsPathAndDelegatesProjectReset) {
+TEST(GUIProjectTest, Clear_ResetsPathAndDelegatesProjectReset) {
   auto mock = std::make_unique<
       StrictMock<orc::presenters::test::MockProjectPresenter>>();
   auto* mock_presenter = mock.get();

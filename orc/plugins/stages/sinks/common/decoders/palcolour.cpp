@@ -153,7 +153,7 @@ void PalColour::buildLookUpTables() {
   } else {
     // HACK - For whatever reason Pal-M ends up with the vectors swapped and out
     // of phase swapping the cos and sin references seem to work around that.
-    // TODO: Find a proper solution to this.
+    // TODO(sdi): Find a proper solution to this.
     for (int32_t i = 0; i < videoParameters.field_width; i++) {
       const double rad =
           2 * M_PI * i * videoParameters.fsc / videoParameters.sample_rate;
@@ -601,7 +601,7 @@ void PalColour::detectBurst(LineInfo& line, const uint16_t* inputData) {
 void PalColour::doYNR(double* Yline) {
   // nr_y is the coring level
   const double irescale =
-      (videoParameters.white_16b_ire - videoParameters.black_16b_ire) / 100;
+      (videoParameters.white_16b_ire - videoParameters.black_16b_ire) / 100.0;
   double nr_y = configuration.yNRLevel * irescale;
 
   // High-pass filter for Y

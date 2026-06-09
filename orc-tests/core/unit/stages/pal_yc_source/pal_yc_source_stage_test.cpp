@@ -51,37 +51,37 @@ orc::SourceParameters make_pal_family_source_parameters(
 // Parameter descriptor tests
 // =========================================================================
 
-TEST(PALYCSourceStageTest, parameterDescriptorsContainsYPath) {
+TEST(PALYCSourceStageTest, ParameterDescriptors_ContainsYPath) {
   orc::PALYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "y_path", ".tbcy");
 }
 
-TEST(PALYCSourceStageTest, parameterDescriptorsContainsCPath) {
+TEST(PALYCSourceStageTest, ParameterDescriptors_ContainsCPath) {
   orc::PALYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "c_path", ".tbcc");
 }
 
-TEST(PALYCSourceStageTest, parameterDescriptorsContainsDbPath) {
+TEST(PALYCSourceStageTest, ParameterDescriptors_ContainsDbPath) {
   orc::PALYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "db_path", ".db");
 }
 
-TEST(PALYCSourceStageTest, parameterDescriptorsContainsPcmPath) {
+TEST(PALYCSourceStageTest, ParameterDescriptors_ContainsPcmPath) {
   orc::PALYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "pcm_path", ".pcm");
 }
 
-TEST(PALYCSourceStageTest, parameterDescriptorsContainsEfmPath) {
+TEST(PALYCSourceStageTest, ParameterDescriptors_ContainsEfmPath) {
   orc::PALYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "efm_path", ".efm");
 }
 
-TEST(PALYCSourceStageTest, descriptorDefaultsAllPathsAreEmptyString) {
+TEST(PALYCSourceStageTest, Descriptor_DefaultsAllPathsAreEmptyString) {
   orc::PALYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
 
@@ -98,7 +98,7 @@ TEST(PALYCSourceStageTest, descriptorDefaultsAllPathsAreEmptyString) {
   }
 }
 
-TEST(PALYCSourceStageTest, parameterDescriptorsAllParametersAreOptional) {
+TEST(PALYCSourceStageTest, ParameterDescriptorsAllParameters_AreOptional) {
   orc::PALYCSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_all_descriptors_optional(descriptors);
@@ -108,7 +108,7 @@ TEST(PALYCSourceStageTest, parameterDescriptorsAllParametersAreOptional) {
 // get_parameters / parity tests
 // =========================================================================
 
-TEST(PALYCSourceStageTest, getParametersDefaultYPathIsEmptyString) {
+TEST(PALYCSourceStageTest, GetParametersDefaultYPath_IsEmptyString) {
   orc::PALYCSourceStage stage;
   auto params = stage.get_parameters();
 
@@ -118,7 +118,7 @@ TEST(PALYCSourceStageTest, getParametersDefaultYPathIsEmptyString) {
   EXPECT_EQ(std::get<std::string>(it->second), "");
 }
 
-TEST(PALYCSourceStageTest, getParametersDefaultCPathIsEmptyString) {
+TEST(PALYCSourceStageTest, GetParametersDefaultCPath_IsEmptyString) {
   orc::PALYCSourceStage stage;
   auto params = stage.get_parameters();
 
@@ -128,7 +128,7 @@ TEST(PALYCSourceStageTest, getParametersDefaultCPathIsEmptyString) {
   EXPECT_EQ(std::get<std::string>(it->second), "");
 }
 
-TEST(PALYCSourceStageTest, getParametersDefaultDbPathIsEmptyString) {
+TEST(PALYCSourceStageTest, GetParametersDefaultDbPath_IsEmptyString) {
   orc::PALYCSourceStage stage;
   auto params = stage.get_parameters();
 
@@ -142,7 +142,7 @@ TEST(PALYCSourceStageTest, getParametersDefaultDbPathIsEmptyString) {
 // set_parameters validation tests
 // =========================================================================
 
-TEST(PALYCSourceStageTest, setParametersAcceptsValidStringMap) {
+TEST(PALYCSourceStageTest, SetParameters_AcceptsValidStringMap) {
   orc::PALYCSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"y_path", std::string("/some/file.tbcy")},
@@ -154,7 +154,7 @@ TEST(PALYCSourceStageTest, setParametersAcceptsValidStringMap) {
   EXPECT_TRUE(stage.set_parameters(params));
 }
 
-TEST(PALYCSourceStageTest, setParametersRejectsNonStringYPath) {
+TEST(PALYCSourceStageTest, SetParameters_RejectsNonStringYPath) {
   orc::PALYCSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"y_path", static_cast<int32_t>(99)}};
@@ -162,7 +162,7 @@ TEST(PALYCSourceStageTest, setParametersRejectsNonStringYPath) {
   EXPECT_FALSE(stage.set_parameters(params));
 }
 
-TEST(PALYCSourceStageTest, setParametersRejectsNonStringCPath) {
+TEST(PALYCSourceStageTest, SetParameters_RejectsNonStringCPath) {
   orc::PALYCSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"c_path", static_cast<int32_t>(99)}};
@@ -170,7 +170,7 @@ TEST(PALYCSourceStageTest, setParametersRejectsNonStringCPath) {
   EXPECT_FALSE(stage.set_parameters(params));
 }
 
-TEST(PALYCSourceStageTest, setParametersPersistsValues) {
+TEST(PALYCSourceStageTest, Set_ParametersPersistsValues) {
   orc::PALYCSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"y_path", std::string("/luma.tbcy")},
@@ -183,7 +183,7 @@ TEST(PALYCSourceStageTest, setParametersPersistsValues) {
   EXPECT_EQ(std::get<std::string>(persisted.at("c_path")), "/chroma.tbcc");
 }
 
-TEST(PALYCSourceStageTest, setParametersAcceptsEmptyMap) {
+TEST(PALYCSourceStageTest, SetParameters_AcceptsEmptyMap) {
   orc::PALYCSourceStage stage;
   EXPECT_TRUE(stage.set_parameters({}));
 }
@@ -192,7 +192,7 @@ TEST(PALYCSourceStageTest, setParametersAcceptsEmptyMap) {
 // execute() contract tests
 // =========================================================================
 
-TEST(PALYCSourceStageTest, executeThrowsWhenInputProvided) {
+TEST(PALYCSourceStageTest, Execute_ThrowsWhenInputProvided) {
   orc::PALYCSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -200,7 +200,7 @@ TEST(PALYCSourceStageTest, executeThrowsWhenInputProvided) {
                std::runtime_error);
 }
 
-TEST(PALYCSourceStageTest, executeReturnsEmptyWhenYPathMissing) {
+TEST(PALYCSourceStageTest, Execute_ReturnsEmptyWhenYPathMissing) {
   orc::PALYCSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -210,7 +210,7 @@ TEST(PALYCSourceStageTest, executeReturnsEmptyWhenYPathMissing) {
   EXPECT_TRUE(outputs.empty());
 }
 
-TEST(PALYCSourceStageTest, executeReturnsEmptyWhenCPathMissing) {
+TEST(PALYCSourceStageTest, Execute_ReturnsEmptyWhenCPathMissing) {
   orc::PALYCSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -221,7 +221,7 @@ TEST(PALYCSourceStageTest, executeReturnsEmptyWhenCPathMissing) {
 }
 
 TEST(PALYCSourceStageTest,
-     executeLoadsPalMRepresentationThroughInjectedLoader) {
+     Execute_LoadsPalMRepresentationThroughInjectedLoader) {
   auto loader = std::make_shared<StrictMock<MockPALYCSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -251,7 +251,7 @@ TEST(PALYCSourceStageTest,
   EXPECT_TRUE(stage.supports_preview());
 }
 
-TEST(PALYCSourceStageTest, executeThrowsWhenLoadedMetadataIsNotPalFamily) {
+TEST(PALYCSourceStageTest, Execute_ThrowsWhenLoadedMetadataIsNotPalFamily) {
   auto loader = std::make_shared<StrictMock<MockPALYCSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -275,7 +275,7 @@ TEST(PALYCSourceStageTest, executeThrowsWhenLoadedMetadataIsNotPalFamily) {
                orc::UserDataError);
 }
 
-TEST(PALYCSourceStageTest, generateReportUsesInjectedLoaderMetadataForPalM) {
+TEST(PALYCSourceStageTest, GenerateReport_UsesInjectedLoaderMetadataForPalM) {
   auto loader = std::make_shared<StrictMock<MockPALYCSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();

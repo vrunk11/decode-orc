@@ -53,14 +53,14 @@ class DaphneVBISinkStage : public ::testing::Test {
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-TEST_F(DaphneVBISinkStage, triggerReturnsFalseWhenOutputPathMissing) {
+TEST_F(DaphneVBISinkStage, Trigger_ReturnsFalseWhenOutputPathMissing) {
   const bool result = instance_->trigger({}, {}, mockObservationContext);
 
   EXPECT_FALSE(result);
   EXPECT_EQ(instance_->get_trigger_status(), "Error: No output path specified");
 }
 
-TEST_F(DaphneVBISinkStage, triggerReturnsFalseWhenOutputPathIsEmpty) {
+TEST_F(DaphneVBISinkStage, Trigger_ReturnsFalseWhenOutputPathIsEmpty) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("")}};
 
@@ -71,7 +71,7 @@ TEST_F(DaphneVBISinkStage, triggerReturnsFalseWhenOutputPathIsEmpty) {
   EXPECT_EQ(instance_->get_trigger_status(), "Error: Output path is empty");
 }
 
-TEST_F(DaphneVBISinkStage, triggerReturnsFalseWhenNoInputConnected) {
+TEST_F(DaphneVBISinkStage, Trigger_ReturnsFalseWhenNoInputConnected) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("out")}};
 
@@ -83,7 +83,7 @@ TEST_F(DaphneVBISinkStage, triggerReturnsFalseWhenNoInputConnected) {
 }
 
 TEST_F(DaphneVBISinkStage,
-       triggerReturnsFalseWhenInputNotVideoFieldRepresentation) {
+       Trigger_ReturnsFalseWhenInputNotVideoFieldRepresentation) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("out")}};
   const std::vector<orc::ArtifactPtr> inputs = {nullptr};
@@ -96,7 +96,7 @@ TEST_F(DaphneVBISinkStage,
             "Error: Input is not a video field representation");
 }
 
-TEST_F(DaphneVBISinkStage, triggerWritesVbiAndSetsSuccessStatus) {
+TEST_F(DaphneVBISinkStage, Trigger_WritesVbiAndSetsSuccessStatus) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("out_path")}};
   const std::vector<orc::ArtifactPtr> inputs = make_valid_input();
@@ -122,7 +122,7 @@ TEST_F(DaphneVBISinkStage, triggerWritesVbiAndSetsSuccessStatus) {
   EXPECT_FALSE(instance_->is_trigger_in_progress());
 }
 
-TEST_F(DaphneVBISinkStage, triggerSetsErrorStatusWhenDepWriteFails) {
+TEST_F(DaphneVBISinkStage, Trigger_SetsErrorStatusWhenDepWriteFails) {
   const std::map<std::string, orc::ParameterValue> parameters = {
       {"output_path", std::string("out_path")}};
   const std::vector<orc::ArtifactPtr> inputs = make_valid_input();
@@ -147,7 +147,7 @@ TEST_F(DaphneVBISinkStage, triggerSetsErrorStatusWhenDepWriteFails) {
   EXPECT_FALSE(instance_->is_trigger_in_progress());
 }
 
-TEST_F(DaphneVBISinkStage, setParametersAcceptsOutputPathString) {
+TEST_F(DaphneVBISinkStage, SetParameters_AcceptsOutputPathString) {
   const bool result =
       instance_->set_parameters({{"output_path", std::string("abc.vbi")}});
   const auto params = instance_->get_parameters();
@@ -157,7 +157,7 @@ TEST_F(DaphneVBISinkStage, setParametersAcceptsOutputPathString) {
   EXPECT_EQ(std::get<std::string>(params.at("output_path")), "abc.vbi");
 }
 
-TEST_F(DaphneVBISinkStage, setParametersRejectsNonStringOutputPath) {
+TEST_F(DaphneVBISinkStage, SetParameters_RejectsNonStringOutputPath) {
   const bool result = instance_->set_parameters({{"output_path", static_cast<int32_t>(7)}});
 
   EXPECT_FALSE(result);

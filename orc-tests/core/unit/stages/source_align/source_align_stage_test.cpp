@@ -31,17 +31,17 @@ const orc::ParameterDescriptor* find_descriptor(
 }
 }  // namespace
 
-TEST(SourceAlignStageTest, requiredInputCountIsOne) {
+TEST(SourceAlignStageTest, RequiredInputCount_IsOne) {
   orc::SourceAlignStage stage;
   EXPECT_EQ(stage.required_input_count(), 1u);
 }
 
-TEST(SourceAlignStageTest, outputCountIsUnboundedSentinel) {
+TEST(SourceAlignStageTest, OutputCount_IsUnboundedSentinel) {
   orc::SourceAlignStage stage;
   EXPECT_EQ(stage.output_count(), static_cast<size_t>(UINT32_MAX));
 }
 
-TEST(SourceAlignStageTest, nodeTypeInfoHasExpectedMetadata) {
+TEST(SourceAlignStageTest, NodeTypeInfo_HasExpectedMetadata) {
   orc::SourceAlignStage stage;
   auto info = stage.get_node_type_info();
 
@@ -50,7 +50,7 @@ TEST(SourceAlignStageTest, nodeTypeInfoHasExpectedMetadata) {
   EXPECT_EQ(info.compatible_formats, orc::VideoFormatCompatibility::ALL);
 }
 
-TEST(SourceAlignStageTest, descriptorDefaultsMatchRuntimeDefaults) {
+TEST(SourceAlignStageTest, Descriptor_DefaultsMatchRuntimeDefaults) {
   orc::SourceAlignStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
@@ -72,7 +72,7 @@ TEST(SourceAlignStageTest, descriptorDefaultsMatchRuntimeDefaults) {
             std::get<bool>(params.at("enforceFieldOrder")));
 }
 
-TEST(SourceAlignStageTest, setParametersAcceptsValidValues) {
+TEST(SourceAlignStageTest, SetParameters_AcceptsValidValues) {
   orc::SourceAlignStage stage;
 
   const bool result = stage.set_parameters(
@@ -84,18 +84,18 @@ TEST(SourceAlignStageTest, setParametersAcceptsValidValues) {
   EXPECT_FALSE(std::get<bool>(params.at("enforceFieldOrder")));
 }
 
-TEST(SourceAlignStageTest, setParametersRejectsWrongType) {
+TEST(SourceAlignStageTest, SetParameters_RejectsWrongType) {
   orc::SourceAlignStage stage;
   EXPECT_FALSE(
       stage.set_parameters({{"enforceFieldOrder", std::string("false")}}));
 }
 
-TEST(SourceAlignStageTest, setParametersRejectsUnknownParameter) {
+TEST(SourceAlignStageTest, SetParameters_RejectsUnknownParameter) {
   orc::SourceAlignStage stage;
   EXPECT_FALSE(stage.set_parameters({{"unknown", true}}));
 }
 
-TEST(SourceAlignStageTest, executeThrowsWhenNoInputsProvided) {
+TEST(SourceAlignStageTest, Execute_ThrowsWhenNoInputsProvided) {
   orc::SourceAlignStage stage;
   orc::ObservationContext observation_context;
 
@@ -103,7 +103,7 @@ TEST(SourceAlignStageTest, executeThrowsWhenNoInputsProvided) {
                orc::DAGExecutionError);
 }
 
-TEST(SourceAlignStageTest, executeThrowsWhenTooManyInputsProvided) {
+TEST(SourceAlignStageTest, Execute_ThrowsWhenTooManyInputsProvided) {
   orc::SourceAlignStage stage;
   orc::ObservationContext observation_context;
   std::vector<orc::ArtifactPtr> inputs(17);
@@ -112,7 +112,7 @@ TEST(SourceAlignStageTest, executeThrowsWhenTooManyInputsProvided) {
                orc::DAGExecutionError);
 }
 
-TEST(SourceAlignStageTest, executeThrowsWhenManualAlignmentMapIsInvalid) {
+TEST(SourceAlignStageTest, Execute_ThrowsWhenManualAlignmentMapIsInvalid) {
   orc::SourceAlignStage stage;
   orc::ObservationContext observation_context;
   auto source = std::make_shared<MockVideoFieldRepresentation>();

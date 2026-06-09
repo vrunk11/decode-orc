@@ -89,7 +89,7 @@ CCExportResult CCSinkStageDeps::export_cc(
 
 std::string CCSinkStageDeps::generate_timestamp(int32_t field_index,
                                                 VideoFormat format) const {
-  double frame_index = static_cast<double>((field_index - 1) / 2);
+  double frame_index = static_cast<double>((field_index - 1) / 2);  // NOLINT(bugprone-integer-division)
 
   const double frames_per_second = (format == VideoFormat::PAL) ? 25.0 : 29.97;
   const double frames_per_minute = frames_per_second * 60.0;

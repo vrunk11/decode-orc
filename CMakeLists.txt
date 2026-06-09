@@ -19,6 +19,7 @@ enable_testing()
 option(BUILD_UNIT_TESTS "Build unit tests" ON)
 option(BUILD_GUI_TESTS "Build GUI unit tests" OFF)
 option(BUILD_INTEGRATION_TESTS "Build integration tests" OFF)
+option(BUILD_FUNCTIONAL_TESTS "Build functional tests (require built plugins)" OFF)
 
 # ---------------------------------------------------------------------------
 # EFM decoder dependencies
@@ -55,7 +56,7 @@ include(cmake/ClangTidy.cmake)
 # Add the orc subdirectory which contains the main project
 add_subdirectory(orc)
 
-if(BUILD_UNIT_TESTS OR BUILD_GUI_TESTS OR BUILD_INTEGRATION_TESTS)
+if(BUILD_UNIT_TESTS OR BUILD_GUI_TESTS OR BUILD_INTEGRATION_TESTS OR BUILD_FUNCTIONAL_TESTS)
     # Add the unified test tree rooted at orc-tests/
     add_subdirectory(orc-tests)
 endif()

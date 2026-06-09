@@ -124,6 +124,8 @@ SectionMetadata Subcode::fromData(const std::vector<uint8_t>& data) {
       case 0x4:
         sectionMetadata.setQMode(SectionMetadata::QMode4);
         break;
+      default:
+        break;
     }
 
     // Validate the control nybble before processing
@@ -228,6 +230,8 @@ SectionMetadata Subcode::fromData(const std::vector<uint8_t>& data) {
         sectionMetadata.setCopyProhibited(false);
         sectionMetadata.setPreemphasis(true);
         sectionMetadata.set2Channel(false);
+        break;
+      default:
         break;
     }
 

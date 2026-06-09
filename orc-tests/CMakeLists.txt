@@ -25,6 +25,10 @@ if(BUILD_INTEGRATION_TESTS)
     add_subdirectory(core/integration)
 endif()
 
+if(BUILD_FUNCTIONAL_TESTS)
+    add_subdirectory(core/functional)
+endif()
+
 if(BUILD_GUI_TESTS)
     add_subdirectory(gui/unit)
 endif()

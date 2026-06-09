@@ -36,7 +36,7 @@ class MockEFMSinkStageDeps : public orc::IEFMSinkStageDeps {
               (override));
 };
 
-TEST(EFMSinkStageTest, descriptorDefaultsIncludeOutputPathAndDecodeMode) {
+TEST(EFMSinkStageTest, Descriptor_DefaultsIncludeOutputPathAndDecodeMode) {
   orc::EFMSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
@@ -66,7 +66,7 @@ TEST(EFMSinkStageTest, descriptorDefaultsIncludeOutputPathAndDecodeMode) {
   EXPECT_EQ(mode_it->constraints.allowed_strings.size(), 2u);
 }
 
-TEST(EFMSinkStageTest, triggerFailsWhenNoInputProvided) {
+TEST(EFMSinkStageTest, Trigger_FailsWhenNoInputProvided) {
   orc::EFMSinkStage stage;
   MockObservationContext observation_context;
 
@@ -78,7 +78,7 @@ TEST(EFMSinkStageTest, triggerFailsWhenNoInputProvided) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(EFMSinkStageTest, triggerFailsWhenInputHasNoEfm) {
+TEST(EFMSinkStageTest, Trigger_FailsWhenInputHasNoEfm) {
   orc::EFMSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -95,7 +95,7 @@ TEST(EFMSinkStageTest, triggerFailsWhenInputHasNoEfm) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(EFMSinkStageTest, triggerFailsWhenOutputPathMissing) {
+TEST(EFMSinkStageTest, Trigger_FailsWhenOutputPathMissing) {
   orc::EFMSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -110,7 +110,7 @@ TEST(EFMSinkStageTest, triggerFailsWhenOutputPathMissing) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(EFMSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
+TEST(EFMSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   orc::EFMSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockEFMSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -133,7 +133,7 @@ TEST(EFMSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(EFMSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
+TEST(EFMSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   orc::EFMSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockEFMSinkStageDeps>>();
   stage.set_deps_override(deps);

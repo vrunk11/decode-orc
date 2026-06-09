@@ -52,7 +52,7 @@ class BufferedFileWriter : public IFileWriter<T> {
     if (is_open_) {
       try {
         close();
-      } catch (...) {
+      } catch (...) {  // NOLINT(bugprone-empty-catch)
         // Suppress exceptions in destructor
       }
     }

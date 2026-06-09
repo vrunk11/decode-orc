@@ -1,3 +1,12 @@
+/*
+ * File:        inspection_dialog.h
+ * Module:      gui
+ * Purpose:     Qt dialog for displaying stage inspection reports
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ */
+
 #ifndef ORC_GUI_INSPECTION_DIALOG_H
 #define ORC_GUI_INSPECTION_DIALOG_H
 

@@ -73,7 +73,7 @@ SourceField make_composite_field(bool is_first_field, uint16_t base) {
 }
 }  // namespace
 
-TEST(PalColourTest, configurationLookAroundMatchesFilterMode) {
+TEST(PalColourTest, ConfigurationLookAround_MatchesFilterMode) {
   PalColour::Configuration pal2d;
   pal2d.chromaFilter = PalColour::palColourFilter;
 
@@ -86,7 +86,7 @@ TEST(PalColourTest, configurationLookAroundMatchesFilterMode) {
   EXPECT_GT(transform3d.getLookAhead(), 0);
 }
 
-TEST(PalColourTest, decodeFramesYcPathPreservesLumaInActiveRegion) {
+TEST(PalColourTest, DecodeFramesYcPath_PreservesLumaInActiveRegion) {
   const auto params = make_pal_video_params();
 
   PalColour::Configuration config;
@@ -116,7 +116,7 @@ TEST(PalColourTest, decodeFramesYcPathPreservesLumaInActiveRegion) {
   EXPECT_DOUBLE_EQ(line1[24], static_cast<double>(second_field.luma_data[24]));
 }
 
-TEST(PalColourTest, decodeFramesCompositePathMatchesGoldenVector) {
+TEST(PalColourTest, DecodeFramesCompositePath_MatchesGoldenVector) {
   const auto params = make_pal_video_params();
 
   PalColour::Configuration config;
@@ -149,7 +149,7 @@ TEST(PalColourTest, decodeFramesCompositePathMatchesGoldenVector) {
   EXPECT_NEAR(v0[24], -0.372185, 1e-5);
 }
 
-TEST(PalColourTest, invalidConfigurationDoesNotAttemptDecode) {
+TEST(PalColourTest, InvalidConfiguration_DoesNotAttemptDecode) {
   auto params = make_pal_video_params();
   params.field_width = 8;
 

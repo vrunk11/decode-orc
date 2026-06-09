@@ -342,7 +342,7 @@ orc::DAG build_test_dag_with_stage(
 
 }  // namespace
 
-TEST(PreviewViewRegistryTest, registerAndListViews) {
+TEST(PreviewViewRegistryTest, Register_AndListViews) {
   orc::PreviewViewRegistry registry;
 
   auto state = std::make_shared<TestViewState>();
@@ -360,7 +360,7 @@ TEST(PreviewViewRegistryTest, registerAndListViews) {
   EXPECT_EQ(listed[0].display_name, "Test View");
 }
 
-TEST(PreviewViewRegistryTest, duplicateRegistrationFails) {
+TEST(PreviewViewRegistryTest, DuplicateRegistration_Fails) {
   orc::PreviewViewRegistry registry;
   auto state = std::make_shared<TestViewState>();
 
@@ -377,7 +377,7 @@ TEST(PreviewViewRegistryTest, duplicateRegistrationFails) {
       }));
 }
 
-TEST(PreviewViewRegistryTest, applicableViewsFilterByStageDataType) {
+TEST(PreviewViewRegistryTest, Applicable_ViewsFilterByStageDataType) {
   orc::PreviewViewRegistry registry;
   auto state = std::make_shared<TestViewState>();
 
@@ -400,7 +400,7 @@ TEST(PreviewViewRegistryTest, applicableViewsFilterByStageDataType) {
   EXPECT_TRUE(unsupported.empty());
 }
 
-TEST(PreviewViewRegistryTest, requestAndExportDispatchToViewInstance) {
+TEST(PreviewViewRegistryTest, Request_AndExportDispatchToViewInstance) {
   orc::PreviewViewRegistry registry;
   auto state = std::make_shared<TestViewState>();
 
@@ -431,7 +431,7 @@ TEST(PreviewViewRegistryTest, requestAndExportDispatchToViewInstance) {
   EXPECT_TRUE(state->export_called);
 }
 
-TEST(PreviewViewRegistryTest, requestErrorPropagates) {
+TEST(PreviewViewRegistryTest, RequestError_Propagates) {
   orc::PreviewViewRegistry registry;
   auto state = std::make_shared<TestViewState>();
   state->fail_request = true;
@@ -454,7 +454,7 @@ TEST(PreviewViewRegistryTest, requestErrorPropagates) {
   EXPECT_EQ(request_result.error_message, "request failed");
 }
 
-TEST(PreviewViewRegistryTest, exportErrorPropagates) {
+TEST(PreviewViewRegistryTest, ExportError_Propagates) {
   orc::PreviewViewRegistry registry;
   auto state = std::make_shared<TestViewState>();
   state->fail_export = true;
@@ -482,7 +482,7 @@ TEST(PreviewViewRegistryTest, exportErrorPropagates) {
 }
 
 TEST(PreviewViewRegistryTest,
-     vectorscopeRequestDoesNotDependOnImageRenderSideChannel) {
+     VectorscopeRequest_DoesNotDependOnImageRenderSideChannel) {
   orc::PreviewViewRegistry registry;
 
   auto stage = std::make_shared<TestColourPreviewStage>();
@@ -518,7 +518,7 @@ TEST(PreviewViewRegistryTest,
 // unregister_view
 // =============================================================================
 
-TEST(PreviewViewRegistryTest, unregisterExistingViewReturnsTrue) {
+TEST(PreviewViewRegistryTest, UnregisterExistingView_ReturnsTrue) {
   orc::PreviewViewRegistry registry;
   auto state = std::make_shared<TestViewState>();
 
@@ -534,12 +534,12 @@ TEST(PreviewViewRegistryTest, unregisterExistingViewReturnsTrue) {
   EXPECT_TRUE(registry.list_views().empty());
 }
 
-TEST(PreviewViewRegistryTest, unregisterNonExistentViewReturnsFalse) {
+TEST(PreviewViewRegistryTest, UnregisterNonExistentView_ReturnsFalse) {
   orc::PreviewViewRegistry registry;
   EXPECT_FALSE(registry.unregister_view("does.not.exist"));
 }
 
-TEST(PreviewViewRegistryTest, reregisterAfterUnregisterSucceeds) {
+TEST(PreviewViewRegistryTest, ReregisterAfterUnregister_Succeeds) {
   orc::PreviewViewRegistry registry;
   auto state = std::make_shared<TestViewState>();
 
@@ -564,7 +564,7 @@ TEST(PreviewViewRegistryTest, reregisterAfterUnregisterSucceeds) {
 // request_data error paths
 // =============================================================================
 
-TEST(PreviewViewRegistryTest, requestDataForUnknownViewIdReturnsError) {
+TEST(PreviewViewRegistryTest, RequestDataForUnknownViewId_ReturnsError) {
   orc::PreviewViewRegistry registry;
 
   auto stage = std::make_shared<TestPreviewStage>(
@@ -580,7 +580,7 @@ TEST(PreviewViewRegistryTest, requestDataForUnknownViewIdReturnsError) {
 }
 
 TEST(PreviewViewRegistryTest,
-     requestDataWhenStageDataTypeMismatchesReturnsError) {
+     RequestDataWhenStageDataTypeMismatches_ReturnsError) {
   // Stage only supports CompositeNTSC; request is for ColourPAL.
   orc::PreviewViewRegistry registry;
   auto state = std::make_shared<TestViewState>();
@@ -610,7 +610,7 @@ TEST(PreviewViewRegistryTest,
 // export_as error paths
 // =============================================================================
 
-TEST(PreviewViewRegistryTest, exportAsWithoutPriorRequestReturnsError) {
+TEST(PreviewViewRegistryTest, ExportAsWithoutPriorRequest_ReturnsError) {
   // export_as() requires a cached view instance (populated by request_data).
   // Calling it without a prior successful request should return an error.
   orc::PreviewViewRegistry registry;
@@ -634,7 +634,7 @@ TEST(PreviewViewRegistryTest, exportAsWithoutPriorRequestReturnsError) {
 // =============================================================================
 
 TEST(PreviewViewRegistryTest,
-     applicableViewsEmptyWhenStageHasNoCapabilityInterface) {
+     ApplicableViewsEmptyWhenStage_HasNoCapabilityInterface) {
   // A stage that does not implement IStagePreviewCapability should produce
   // an empty applicable views list regardless of what views are registered.
   orc::PreviewViewRegistry registry;
@@ -655,7 +655,7 @@ TEST(PreviewViewRegistryTest,
   EXPECT_TRUE(views.empty());
 }
 
-TEST(PreviewViewRegistryTest, defaultViewsIncludeGenericVfrVisualizations) {
+TEST(PreviewViewRegistryTest, Default_ViewsIncludeGenericVfrVisualizations) {
   orc::PreviewViewRegistry registry;
 
   auto stage = std::make_shared<TestPreviewStage>(
@@ -681,7 +681,7 @@ TEST(PreviewViewRegistryTest, defaultViewsIncludeGenericVfrVisualizations) {
 // =============================================================================
 
 TEST(PreviewViewRegistryTest,
-     vectorscopeRequestFailsWhenStageIsNotColourProvider) {
+     VectorscopeRequest_FailsWhenStageIsNotColourProvider) {
   // Stage declares ColourNTSC capability but doesn't implement
   // IColourPreviewProvider. The vectorscope view must return an error.
   orc::PreviewViewRegistry registry;
@@ -704,7 +704,7 @@ TEST(PreviewViewRegistryTest,
 }
 
 TEST(PreviewViewRegistryTest,
-     vectorscopeRequestRebuildsSamplesWhenCarrierHasNoVectorscopeData) {
+     VectorscopeRequestRebuildsSamplesWhenCarrier_HasNoVectorscopeData) {
   // Stage provides a valid colour carrier but no cached vectorscope payload.
   // The vectorscope view should rebuild the samples from the carrier planes.
   orc::PreviewViewRegistry registry;

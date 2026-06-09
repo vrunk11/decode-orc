@@ -1,8 +1,8 @@
 /*
- * File:        phase_d_runtime_architecture_test.cpp
+ * File:        runtime_stage_contracts_test.cpp
  * Module:      orc-core-tests
- * Purpose:     Phase D runtime architecture validation: verify stage discovery,
- *              creation, and plugin compliance with SDK-only contracts
+ * Purpose:     Runtime contracts: stage registry discovery, creation,
+ *              and plugin loader compliance with SDK-only interfaces
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -16,7 +16,7 @@
 
 #include "../../../orc/core/include/stage_plugin_loader.h"
 #include "../../../orc/core/include/stage_registry.h"
-#include "../include/public_stage_inventory.h"
+#include "../../unit/include/public_stage_inventory.h"
 
 namespace orc_unit_test {
 namespace {
@@ -36,12 +36,12 @@ std::filesystem::path plugin_library_path(const std::string& base_name) {
 
 }  // namespace
 
-class PhaseDRuntimeArchitectureTest : public ::testing::Test {
+class RuntimeStageContractsTest : public ::testing::Test {
  protected:
   orc::StagePluginLoader loader_;
 };
 
-TEST_F(PhaseDRuntimeArchitectureTest, corePublicStagesAreDiscoverable) {
+TEST_F(RuntimeStageContractsTest, CorePublicStages_AreDiscoverable) {
   // Verify the Stage Registry contains all expected core-supplied stages
   std::vector<std::string> expected_stages;
   for (const auto& spec : public_stage_specs()) {
@@ -53,7 +53,7 @@ TEST_F(PhaseDRuntimeArchitectureTest, corePublicStagesAreDiscoverable) {
   EXPECT_GT(expected_stages.size(), 5U) << "Should have at least 5 core stages";
 }
 
-TEST_F(PhaseDRuntimeArchitectureTest, stageCreationFromRegistrySucceeds) {
+TEST_F(RuntimeStageContractsTest, StageCreationFromRegistry_Succeeds) {
   // Verify stages can be created through the registry
   std::vector<orc::DAGStagePtr> created_stages;
 
@@ -108,7 +108,7 @@ TEST_F(PhaseDRuntimeArchitectureTest, stageCreationFromRegistrySucceeds) {
       << "Should have created at least 5 stages";
 }
 
-TEST_F(PhaseDRuntimeArchitectureTest, runtimePluginDiscoverySucceeds) {
+TEST_F(RuntimeStageContractsTest, RuntimePluginDiscovery_Succeeds) {
   auto plugin_path = plugin_library_path("raw-video-sink");
   ASSERT_TRUE(std::filesystem::exists(plugin_path)) << plugin_path.string();
 
@@ -137,7 +137,7 @@ TEST_F(PhaseDRuntimeArchitectureTest, runtimePluginDiscoverySucceeds) {
   EXPECT_EQ(loaded_stage_names.front(), "raw_video_sink");
 }
 
-TEST_F(PhaseDRuntimeArchitectureTest, runtimePluginMetadataIsValid) {
+TEST_F(RuntimeStageContractsTest, RuntimePluginMetadata_IsValid) {
   auto plugin_path = plugin_library_path("raw-video-sink");
   ASSERT_TRUE(std::filesystem::exists(plugin_path));
 
@@ -164,7 +164,7 @@ TEST_F(PhaseDRuntimeArchitectureTest, runtimePluginMetadataIsValid) {
       << "Plugin should register at least one stage";
 }
 
-TEST_F(PhaseDRuntimeArchitectureTest, stageCreationIsRepeatable) {
+TEST_F(RuntimeStageContractsTest, StageCreation_IsRepeatable) {
   // Verify stages can be created multiple times from the registry
   auto spec = public_stage_specs()[0];  // Use first stage
 

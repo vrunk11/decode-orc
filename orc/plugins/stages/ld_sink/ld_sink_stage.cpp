@@ -42,7 +42,7 @@ std::vector<ArtifactPtr> LDSinkStage::execute(
     const std::vector<ArtifactPtr>& inputs,
     const std::map<std::string, ParameterValue>& parameters [[maybe_unused]],
     ObservationContext& observation_context) {
-  (void)observation_context;  // TODO: Use for observations
+  (void)observation_context;  // TODO(sdi): Use for observations
   // Cache input for preview rendering
   if (!inputs.empty()) {
     cached_input_ =

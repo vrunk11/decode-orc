@@ -301,7 +301,7 @@ std::optional<VBIFieldInfoView> RenderPresenter::getVBIData(NodeID node_id,
     }
 
     // Return the fully decoded VBI information
-    return vbi_info_opt.value();
+    return vbi_info_opt;
 
   } catch (const std::exception&) {
     return std::nullopt;
@@ -872,7 +872,7 @@ ObservationData RenderPresenter::getObservations(NodeID node_id,
       return result;
     }
 
-    // TODO: Serialize observations to JSON
+    // TODO(sdi): Serialize observations to JSON
     result.is_valid = true;
     result.json_data = "{}";  // Placeholder
 
@@ -891,7 +891,7 @@ void RenderPresenter::clearCache() {
 }
 
 std::string RenderPresenter::getCacheStats() const {
-  // TODO: Implement cache stats
+  // TODO(sdi): Implement cache stats
   return "Cache: active";
 }
 

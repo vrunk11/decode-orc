@@ -77,7 +77,7 @@ SourceField make_composite_field(bool is_first_field, uint16_t base) {
 }
 }  // namespace
 
-TEST(CombTest, configurationLookAroundDependsOnDimensions) {
+TEST(CombTest, Configuration_LookAroundDependsOnDimensions) {
   Comb::Configuration c2d;
   c2d.dimensions = 2;
 
@@ -90,7 +90,7 @@ TEST(CombTest, configurationLookAroundDependsOnDimensions) {
   EXPECT_EQ(c3d.getLookAhead(), 1);
 }
 
-TEST(CombTest, decodeFramesYcPathPreservesLumaInActiveRegion) {
+TEST(CombTest, DecodeFramesYcPath_PreservesLumaInActiveRegion) {
   const auto params = make_ntsc_video_params();
 
   Comb::Configuration config;
@@ -120,7 +120,7 @@ TEST(CombTest, decodeFramesYcPathPreservesLumaInActiveRegion) {
   EXPECT_DOUBLE_EQ(line1[20], static_cast<double>(second_field.luma_data[20]));
 }
 
-TEST(CombTest, decodeFramesCompositePathMatchesGoldenVector) {
+TEST(CombTest, DecodeFramesCompositePath_MatchesGoldenVector) {
   const auto params = make_ntsc_video_params();
 
   Comb::Configuration config;
@@ -156,7 +156,7 @@ TEST(CombTest, decodeFramesCompositePathMatchesGoldenVector) {
   EXPECT_TRUE(std::isfinite(v0[16]));
 }
 
-TEST(CombTest, invalidConfigurationDoesNotAttemptDecode) {
+TEST(CombTest, InvalidConfiguration_DoesNotAttemptDecode) {
   auto params = make_ntsc_video_params();
   params.field_width = 8;
 

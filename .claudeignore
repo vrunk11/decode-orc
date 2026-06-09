@@ -1,0 +1,81 @@
+# Build output directories
+build/
+*/build/
+build-*/
+
+# Nix build outputs
+result
+result-*
+.direnv/
+
+# Generated documentation
+site/
+docs/html/
+docs/latex/
+
+# CMake / CTest temporary artefacts
+Testing/
+*.o
+*.o.tmp
+
+# Compiled object and library files
+*.slo
+*.lo
+*.obj
+*.gch
+*.pch
+*.ilk
+*.pdb
+*.so
+*.dylib
+*.dll
+*.lai
+*.la
+*.a
+*.lib
+*.exe
+*.app
+*.dwo
+
+# Large binary / media files
+*.tbc
+*.lds
+*.ldf
+
+# Databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Flatpak build directories
+flatpak-*/
+.flatpak-*/
+.flatpak-builder/
+
+# External vendor / third-party directories
+external/
+vcpkg/
+vcpkg-buildtrees-alt/
+
+# Crash bundles
+crash_bundle*
+
+# User and test project files (project examples, not source)
+user-projects/
+test-projects/
+
+# Large sample data
+sw_tpg21_test_files/
+
+# Encode test outputs (generated, not source)
+encode-tests/encode-output/
+
+# IDE directories
+.vscode/
+.idea/
+.vs/
+
+# macOS metadata
+.DS_Store
+**/.DS_Store

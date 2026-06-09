@@ -50,43 +50,43 @@ orc::SourceParameters make_pal_family_comp_source_parameters(
 // Parameter descriptor tests
 // =========================================================================
 
-TEST(PALCompSourceStageTest, parameterDescriptorsContainsInputPath) {
+TEST(PALCompSourceStageTest, ParameterDescriptors_ContainsInputPath) {
   orc::PALCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "input_path", ".tbc");
 }
 
-TEST(PALCompSourceStageTest, parameterDescriptorsContainsPcmPath) {
+TEST(PALCompSourceStageTest, ParameterDescriptors_ContainsPcmPath) {
   orc::PALCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "pcm_path", ".pcm");
 }
 
-TEST(PALCompSourceStageTest, parameterDescriptorsContainsEfmPath) {
+TEST(PALCompSourceStageTest, ParameterDescriptors_ContainsEfmPath) {
   orc::PALCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_file_path_descriptor(descriptors, "efm_path", ".efm");
 }
 
-TEST(PALCompSourceStageTest, descriptorDefaultsInputPathIsEmptyString) {
+TEST(PALCompSourceStageTest, Descriptor_DefaultsInputPathIsEmptyString) {
   orc::PALCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_empty_string_default(descriptors, "input_path");
 }
 
-TEST(PALCompSourceStageTest, descriptorDefaultsPcmPathIsEmptyString) {
+TEST(PALCompSourceStageTest, Descriptor_DefaultsPcmPathIsEmptyString) {
   orc::PALCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_empty_string_default(descriptors, "pcm_path");
 }
 
-TEST(PALCompSourceStageTest, descriptorDefaultsEfmPathIsEmptyString) {
+TEST(PALCompSourceStageTest, Descriptor_DefaultsEfmPathIsEmptyString) {
   orc::PALCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_empty_string_default(descriptors, "efm_path");
 }
 
-TEST(PALCompSourceStageTest, parameterDescriptorsAllParametersAreOptional) {
+TEST(PALCompSourceStageTest, ParameterDescriptorsAllParameters_AreOptional) {
   orc::PALCompSourceStage stage;
   auto descriptors = stage.get_parameter_descriptors();
   expect_all_descriptors_optional(descriptors);
@@ -96,7 +96,7 @@ TEST(PALCompSourceStageTest, parameterDescriptorsAllParametersAreOptional) {
 // set_parameters validation tests
 // =========================================================================
 
-TEST(PALCompSourceStageTest, setParametersAcceptsValidStringMap) {
+TEST(PALCompSourceStageTest, SetParameters_AcceptsValidStringMap) {
   orc::PALCompSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"input_path", std::string("/some/file.tbc")},
@@ -106,7 +106,7 @@ TEST(PALCompSourceStageTest, setParametersAcceptsValidStringMap) {
   EXPECT_TRUE(stage.set_parameters(params));
 }
 
-TEST(PALCompSourceStageTest, setParametersRejectsNonStringInputPath) {
+TEST(PALCompSourceStageTest, SetParameters_RejectsNonStringInputPath) {
   orc::PALCompSourceStage stage;
   const std::map<std::string, orc::ParameterValue> params = {
       {"input_path", static_cast<int32_t>(42)}};
@@ -114,7 +114,7 @@ TEST(PALCompSourceStageTest, setParametersRejectsNonStringInputPath) {
   EXPECT_FALSE(stage.set_parameters(params));
 }
 
-TEST(PALCompSourceStageTest, setParametersAcceptsEmptyMap) {
+TEST(PALCompSourceStageTest, SetParameters_AcceptsEmptyMap) {
   orc::PALCompSourceStage stage;
   EXPECT_TRUE(stage.set_parameters({}));
 }
@@ -123,7 +123,7 @@ TEST(PALCompSourceStageTest, setParametersAcceptsEmptyMap) {
 // execute() contract tests
 // =========================================================================
 
-TEST(PALCompSourceStageTest, executeThrowsWhenInputProvided) {
+TEST(PALCompSourceStageTest, Execute_ThrowsWhenInputProvided) {
   orc::PALCompSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -131,7 +131,7 @@ TEST(PALCompSourceStageTest, executeThrowsWhenInputProvided) {
                std::runtime_error);
 }
 
-TEST(PALCompSourceStageTest, executeReturnsEmptyWhenInputPathMissing) {
+TEST(PALCompSourceStageTest, Execute_ReturnsEmptyWhenInputPathMissing) {
   orc::PALCompSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -140,7 +140,7 @@ TEST(PALCompSourceStageTest, executeReturnsEmptyWhenInputPathMissing) {
   EXPECT_TRUE(outputs.empty());
 }
 
-TEST(PALCompSourceStageTest, executeReturnsEmptyWhenInputPathEmpty) {
+TEST(PALCompSourceStageTest, Execute_ReturnsEmptyWhenInputPathEmpty) {
   orc::PALCompSourceStage stage;
   orc::ObservationContext observation_context;
 
@@ -151,7 +151,7 @@ TEST(PALCompSourceStageTest, executeReturnsEmptyWhenInputPathEmpty) {
 }
 
 TEST(PALCompSourceStageTest,
-     executeLoadsPalMRepresentationThroughInjectedLoader) {
+     Execute_LoadsPalMRepresentationThroughInjectedLoader) {
   auto loader = std::make_shared<StrictMock<MockPALCompSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -179,7 +179,7 @@ TEST(PALCompSourceStageTest,
   EXPECT_TRUE(stage.supports_preview());
 }
 
-TEST(PALCompSourceStageTest, executeThrowsWhenLoadedMetadataIsNotPalFamily) {
+TEST(PALCompSourceStageTest, Execute_ThrowsWhenLoadedMetadataIsNotPalFamily) {
   auto loader = std::make_shared<StrictMock<MockPALCompSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -202,7 +202,7 @@ TEST(PALCompSourceStageTest, executeThrowsWhenLoadedMetadataIsNotPalFamily) {
       orc::UserDataError);
 }
 
-TEST(PALCompSourceStageTest, generateReportUsesInjectedLoaderMetadataForPalM) {
+TEST(PALCompSourceStageTest, GenerateReport_UsesInjectedLoaderMetadataForPalM) {
   auto loader = std::make_shared<StrictMock<MockPALCompSourceLoader>>();
   auto representation =
       std::make_shared<NiceMock<MockVideoFieldRepresentation>>();

@@ -58,7 +58,7 @@ class LDSinkStageDepsTest : public ::testing::Test {
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 TEST_F(LDSinkStageDepsTest,
-       writeTbcAddsExtensionAndSucceedsWithEmptyRange) {
+       WriteTbc_AddsExtensionAndSucceedsWithEmptyRange) {
   EXPECT_CALL(mockRepresentation_, field_range())
       .Times(1)
       .WillOnce(Return(orc::FieldIDRange(orc::FieldID(0), orc::FieldID(0))));
@@ -104,7 +104,7 @@ TEST_F(LDSinkStageDepsTest,
   EXPECT_TRUE(result);
 }
 
-TEST_F(LDSinkStageDepsTest, writeTbcReturnsFalseWhenTbcFileOpenFails) {
+TEST_F(LDSinkStageDepsTest, WriteTbc_ReturnsFalseWhenTbcFileOpenFails) {
   EXPECT_CALL(mockRepresentation_, field_range())
       .Times(1)
       .WillOnce(Return(orc::FieldIDRange(orc::FieldID(0), orc::FieldID(0))));
@@ -125,7 +125,7 @@ TEST_F(LDSinkStageDepsTest, writeTbcReturnsFalseWhenTbcFileOpenFails) {
 }
 
 TEST_F(LDSinkStageDepsTest,
-       writeTbcReturnsFalseWhenMetadataDbOpenFails) {
+       WriteTbc_ReturnsFalseWhenMetadataDbOpenFails) {
   EXPECT_CALL(mockRepresentation_, field_range())
       .Times(1)
       .WillOnce(Return(orc::FieldIDRange(orc::FieldID(0), orc::FieldID(0))));
@@ -152,7 +152,7 @@ TEST_F(LDSinkStageDepsTest,
 }
 
 TEST_F(LDSinkStageDepsTest,
-       writeTbcReturnsFalseWhenGetVideoParametersReturnsNullopt) {
+       WriteTbc_ReturnsFalseWhenGetVideoParametersReturnsNullopt) {
   EXPECT_CALL(mockRepresentation_, field_range())
       .Times(1)
       .WillOnce(Return(orc::FieldIDRange(orc::FieldID(0), orc::FieldID(0))));
@@ -184,7 +184,7 @@ TEST_F(LDSinkStageDepsTest,
 }
 
 TEST_F(LDSinkStageDepsTest,
-       writeTbcReturnsFalseWhenWriteVideoParametersFails) {
+       WriteTbc_ReturnsFalseWhenWriteVideoParametersFails) {
   EXPECT_CALL(mockRepresentation_, field_range())
       .Times(1)
       .WillOnce(Return(orc::FieldIDRange(orc::FieldID(0), orc::FieldID(0))));
@@ -222,7 +222,7 @@ TEST_F(LDSinkStageDepsTest,
 }
 
 TEST_F(LDSinkStageDepsTest,
-       writeTbcClosesFilesAndMarksProcessingFalseWhenCancelled) {
+       WriteTbc_ClosesFilesAndMarksProcessingFalseWhenCancelled) {
   EXPECT_CALL(mockRepresentation_, field_range())
       .Times(1)
       .WillOnce(Return(orc::FieldIDRange(orc::FieldID(0), orc::FieldID(1))));

@@ -33,14 +33,14 @@ class MockAudioSinkStageDeps : public orc::IAudioSinkStageDeps {
               (override));
 };
 
-TEST(AudioSinkStageTest, stageInterfaceInvariantsMatchSink) {
+TEST(AudioSinkStageTest, StageInterfaceInvariants_MatchSink) {
   orc::AudioSinkStage stage;
   EXPECT_EQ(stage.required_input_count(), 1u);
   EXPECT_EQ(stage.output_count(), 0u);
   EXPECT_EQ(stage.get_node_type_info().type, orc::NodeType::SINK);
 }
 
-TEST(AudioSinkStageTest, descriptorDefaultsOutputPathIsEmptyWav) {
+TEST(AudioSinkStageTest, Descriptor_DefaultsOutputPathIsEmptyWav) {
   orc::AudioSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
@@ -59,7 +59,7 @@ TEST(AudioSinkStageTest, descriptorDefaultsOutputPathIsEmptyWav) {
   EXPECT_EQ(std::get<std::string>(*it->constraints.default_value), "");
 }
 
-TEST(AudioSinkStageTest, triggerFailsWhenNoInputProvided) {
+TEST(AudioSinkStageTest, Trigger_FailsWhenNoInputProvided) {
   orc::AudioSinkStage stage;
   MockObservationContext observation_context;
 
@@ -71,7 +71,7 @@ TEST(AudioSinkStageTest, triggerFailsWhenNoInputProvided) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(AudioSinkStageTest, triggerFailsWhenInputHasNoAudio) {
+TEST(AudioSinkStageTest, Trigger_FailsWhenInputHasNoAudio) {
   orc::AudioSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -89,7 +89,7 @@ TEST(AudioSinkStageTest, triggerFailsWhenInputHasNoAudio) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(AudioSinkStageTest, triggerFailsWhenInputIsNotVideoFieldRepresentation) {
+TEST(AudioSinkStageTest, Trigger_FailsWhenInputIsNotVideoFieldRepresentation) {
   orc::AudioSinkStage stage;
   MockObservationContext observation_context;
 
@@ -102,7 +102,7 @@ TEST(AudioSinkStageTest, triggerFailsWhenInputIsNotVideoFieldRepresentation) {
             "Error: Input must be a VideoFieldRepresentation");
 }
 
-TEST(AudioSinkStageTest, triggerFailsWhenOutputPathMissing) {
+TEST(AudioSinkStageTest, Trigger_FailsWhenOutputPathMissing) {
   orc::AudioSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -115,7 +115,7 @@ TEST(AudioSinkStageTest, triggerFailsWhenOutputPathMissing) {
             "Error: output_path parameter is required");
 }
 
-TEST(AudioSinkStageTest, triggerFailsWhenOutputPathIsNotString) {
+TEST(AudioSinkStageTest, Trigger_FailsWhenOutputPathIsNotString) {
   orc::AudioSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -129,7 +129,7 @@ TEST(AudioSinkStageTest, triggerFailsWhenOutputPathIsNotString) {
             "Error: output_path parameter must be a string");
 }
 
-TEST(AudioSinkStageTest, triggerFailsWhenOutputPathIsEmpty) {
+TEST(AudioSinkStageTest, Trigger_FailsWhenOutputPathIsEmpty) {
   orc::AudioSinkStage stage;
   MockObservationContext observation_context;
   auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
@@ -143,7 +143,7 @@ TEST(AudioSinkStageTest, triggerFailsWhenOutputPathIsEmpty) {
             "Error: output_path parameter is empty");
 }
 
-TEST(AudioSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
+TEST(AudioSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   orc::AudioSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockAudioSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -162,7 +162,7 @@ TEST(AudioSinkStageTest, triggerUsesDepsSeamAndReportsSuccess) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(AudioSinkStageTest, triggerUsesDepsSeamAndPropagatesFailure) {
+TEST(AudioSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   orc::AudioSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockAudioSinkStageDeps>>();
   stage.set_deps_override(deps);

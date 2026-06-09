@@ -67,7 +67,7 @@ bool has_tweak(const orc::StagePreviewCapability& capability,
 }
 }  // namespace
 
-TEST(ChromaSinkTweakPanelTest, previewCapabilityListsNtscDecodeTweaks) {
+TEST(ChromaSinkTweakPanelTest, Preview_CapabilityListsNtscDecodeTweaks) {
   const auto capability = capability_for_system(orc::VideoSystem::NTSC);
 
   EXPECT_TRUE(has_tweak(capability, "decoder_type",
@@ -89,7 +89,7 @@ TEST(ChromaSinkTweakPanelTest, previewCapabilityListsNtscDecodeTweaks) {
                          orc::PreviewTweakClass::DecodePhase));
 }
 
-TEST(ChromaSinkTweakPanelTest, previewCapabilityListsPalDecodeTweaks) {
+TEST(ChromaSinkTweakPanelTest, Preview_CapabilityListsPalDecodeTweaks) {
   const auto capability = capability_for_system(orc::VideoSystem::PAL);
 
   EXPECT_TRUE(has_tweak(capability, "decoder_type",
@@ -112,7 +112,7 @@ TEST(ChromaSinkTweakPanelTest, previewCapabilityListsPalDecodeTweaks) {
 }
 
 TEST(ChromaSinkTweakPanelTest,
-     previewCapabilityExcludesOutputAndFileParameters) {
+     Preview_CapabilityExcludesOutputAndFileParameters) {
   const auto capability = capability_for_system(orc::VideoSystem::NTSC);
 
   EXPECT_FALSE(has_tweak(capability, "output_path",
@@ -128,7 +128,7 @@ TEST(ChromaSinkTweakPanelTest,
 }
 
 TEST(ChromaSinkTweakPanelTest,
-     setParametersUpdatesRuntimeValuesForTweakables) {
+     SetParameters_UpdatesRuntimeValuesForTweakables) {
   orc::ChromaSinkStage stage;
   stage.set_parameters({{"decoder_type", std::string("mono")},
                         {"chroma_gain", 2.5},
