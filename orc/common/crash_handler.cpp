@@ -373,33 +373,116 @@ static std::string create_crash_info(
 }
 
 /**
- * @brief Find and copy coredump file
- * @return Path to coredump if found, empty string otherwise
+ * @brief Find a coredump file written by the OS after a previous crash.
+ *
+ * Only useful from create_crash_bundle() (manually triggered after the fact).
+ * Do NOT call from the signal handler — the core file does not exist yet when
+ * the handler runs.
+ *
+ * @return Absolute path to a coredump/crash-report file, or empty string.
  * @private
  */
 static std::string find_coredump() {
-#ifndef _WIN32
-  // Common coredump locations
-  std::vector<std::string> possible_paths = {
-      "core",
-      "core." + std::to_string(getpid()),
-      "/var/lib/systemd/coredump/core",
-  };
+#if defined(__linux__) || defined(__APPLE__)
+  const std::string pid_str = std::to_string(getpid());
 
-  // Check if apport is being used (Ubuntu)
-  std::string apport_path = "/var/crash/_usr_bin_" +
-                            g_crash_config.application_name + "." +
-                            std::to_string(getuid()) + ".crash";
-  possible_paths.push_back(apport_path);
-
-  for (const auto& path : possible_paths) {
-    if (fs::exists(path)) {
-      return path;
+  // Check standard CWD locations first (traditional core / core.<pid>).
+  for (const std::string& rel :
+       {std::string("core"), std::string("core.") + pid_str}) {
+    if (fs::exists(rel)) {
+      return rel;
     }
+  }
+
+#ifdef __APPLE__
+  // macOS writes core files to /cores/ when enabled via ulimit.
+  const std::string macos_path = "/cores/core." + pid_str;
+  if (fs::exists(macos_path)) {
+    return macos_path;
   }
 #endif
 
+#ifdef __linux__
+  // Search systemd-coredump directory for a file whose name contains this PID.
+  // Actual filenames follow the pattern:
+  //   core.<exe>.<uid>.<boot-id>.<pid>.<timestamp>.zst
+  try {
+    const fs::path systemd_core_dir("/var/lib/systemd/coredump");
+    if (fs::is_directory(systemd_core_dir)) {
+      for (const auto& entry : fs::directory_iterator(systemd_core_dir)) {
+        if (entry.path().filename().string().find(pid_str) !=
+            std::string::npos) {
+          return entry.path().string();
+        }
+      }
+    }
+  } catch (...) {  // NOLINT(bugprone-empty-catch)
+  }
+
+  // Check if apport is being used (Ubuntu).
+  const std::string apport_path = "/var/crash/_usr_bin_" +
+                                  g_crash_config.application_name + "." +
+                                  std::to_string(getuid()) + ".crash";
+  if (fs::exists(apport_path)) {
+    return apport_path;
+  }
+#endif
+#endif  // defined(__linux__) || defined(__APPLE__)
+
   return "";
+}
+
+/**
+ * @brief Return a human-readable hint about where the OS will write the
+ *        coredump after this process terminates.
+ *
+ * Use this from the signal handler where the core file does not exist yet.
+ * Returns an empty string on Windows (minidumps are written synchronously
+ * by the SEH handler instead).
+ *
+ * @return Descriptive string, or empty on unsupported platforms.
+ * @private
+ */
+static std::string get_expected_coredump_location() {
+#ifdef __linux__
+  // Read /proc/sys/kernel/core_pattern to determine where cores are sent.
+  try {
+    std::ifstream pattern_file("/proc/sys/kernel/core_pattern");
+    if (pattern_file.is_open()) {
+      std::string pattern;
+      std::getline(pattern_file, pattern);
+      if (!pattern.empty()) {
+        if (pattern[0] == '|') {
+          // Piped to an external handler.
+          const std::string handler = pattern.substr(1);
+          if (handler.find("systemd") != std::string::npos) {
+            return "systemd-coredump will collect the core after process "
+                   "exit. Use: coredumpctl list " +
+                   g_crash_config.application_name +
+                   "\nor inspect /var/lib/systemd/coredump/";
+          }
+          if (handler.find("apport") != std::string::npos) {
+            return "apport will collect the core after process exit. "
+                   "Check /var/crash/";
+          }
+          return "Core is piped to: " + handler +
+                 " — check your system coredump handler";
+        }
+        // Plain file path template.
+        return "Core file expected at pattern: " + pattern +
+               " (pid=" + std::to_string(getpid()) + ")";
+      }
+    }
+  } catch (...) {  // NOLINT(bugprone-empty-catch)
+  }
+  return "core or core." + std::to_string(getpid()) +
+         " in the working directory (if core dumps are enabled)";
+#elif defined(__APPLE__)
+  return "/cores/core." + std::to_string(getpid()) +
+         " (written after process exit if `ulimit -c unlimited` is set)";
+#else
+  return "";
+#endif
 }
 
 /**
@@ -454,14 +537,18 @@ static std::vector<std::string> collect_log_files() {
 /**
  * @brief Create a ZIP file containing crash diagnostic information
  * @param crash_info_content The formatted crash report text
- * @param coredump_path Path to coredump file (empty if none)
+ * @param coredump_path Path to an already-existing coredump (empty if none)
  * @param log_files List of log file paths to include
+ * @param coredump_note Optional hint written to coredump_note.txt when no
+ *        coredump file is available (e.g. from the signal handler, where the
+ *        OS has not yet written the core)
  * @return Path to created ZIP file, or fallback text file on ZIP failure
  * @private
  */
 static std::string create_bundle_zip(
     const std::string& crash_info_content, const std::string& coredump_path,
-    const std::vector<std::string>& log_files) {
+    const std::vector<std::string>& log_files,
+    const std::string& coredump_note = "") {
   if (!ensure_output_directory_exists()) {
     return "";
   }
@@ -495,18 +582,35 @@ static std::string create_bundle_zip(
       }
     }
 
-    // Copy coredump if available and enabled
-    if (g_crash_config.enable_coredump && !coredump_path.empty() &&
-        fs::exists(coredump_path)) {
-      try {
-        fs::copy(coredump_path, bundle_dir + "/coredump");
-      } catch (...) {
-        // Coredump might be too large or inaccessible
+    // Copy coredump if available and enabled.
+    if (g_crash_config.enable_coredump) {
+      if (!coredump_path.empty() && fs::exists(coredump_path)) {
+        try {
+          fs::copy(coredump_path, bundle_dir + "/coredump");
+        } catch (...) {
+          // Coredump might be too large or inaccessible.
+          std::ofstream note(bundle_dir + "/coredump_note.txt");
+          note << "Coredump was found at: " << coredump_path << "\n"
+               << "but could not be included in the bundle (possibly too "
+                  "large or insufficient permissions).\n"
+               << "Please include it manually if needed.\n";
+          note.close();
+        }
+      } else if (!coredump_note.empty()) {
+        // No coredump file yet (e.g. written from the signal handler before
+        // the OS has had a chance to write the core).  Leave a note so the
+        // user knows where to look after the process terminates.
         std::ofstream note(bundle_dir + "/coredump_note.txt");
-        note << "Coredump was found at: " << coredump_path << "\n";
-        note << "but could not be included in the bundle (possibly too large "
-                "or insufficient permissions).\n";
-        note << "Please include it manually if needed.\n";
+        note << "A coredump was not yet available when this bundle was "
+                "created.\n\n"
+             << "Expected location:\n"
+             << "  " << coredump_note << "\n\n"
+             << "The coredump is written by the OS after the process "
+                "terminates.\n"
+             << "Once available, load it with:\n"
+             << "  gdb /path/to/" << g_crash_config.application_name
+             << " coredump\n"
+             << "  (gdb) bt\n";
         note.close();
       }
     }
@@ -659,7 +763,7 @@ static std::string create_windows_crash_bundle(
   std::vector<std::string> log_files = collect_log_files();
 
   std::string bundle_path =
-      create_bundle_zip(crash_info, minidump_path, log_files);
+      create_bundle_zip(crash_info, minidump_path, log_files, "");
   g_last_crash_bundle = bundle_path;
   return bundle_path;
 }
@@ -751,15 +855,17 @@ static void crash_signal_handler(int sig, siginfo_t* info, void* context) {
     // Logging might not work in crash handler
   }
 
-  // Create crash bundle
+  // Create crash bundle.
+  // Do NOT call find_coredump() here: the OS writes the core file only after
+  // the signal handler returns and the default disposition terminates the
+  // process.  Instead, record a hint about where the core will appear.
   std::string crash_info = create_crash_info(sig);
-  std::string coredump_path = find_coredump();
+  std::string coredump_hint = get_expected_coredump_location();
 
-  // Try to find log files
   std::vector<std::string> log_files = collect_log_files();
 
   std::string bundle_path =
-      create_bundle_zip(crash_info, coredump_path, log_files);
+      create_bundle_zip(crash_info, "", log_files, coredump_hint);
   g_last_crash_bundle = bundle_path;
 
   // Print message to stderr
@@ -812,8 +918,8 @@ bool init_crash_handler(const CrashHandlerConfig& config) {
   }
 
 #ifndef _WIN32
-#ifdef __linux__
-  // Enable core dumps (Linux only)
+#if defined(__linux__) || defined(__APPLE__)
+  // Enable core dumps on Linux and macOS (macOS writes to /cores/core.<pid>).
   if (g_crash_config.enable_coredump) {
     struct rlimit core_limit;
     core_limit.rlim_cur = RLIM_INFINITY;
@@ -861,12 +967,14 @@ std::string create_crash_bundle(const std::string& error_message) {
   }
 
   std::string crash_info = create_crash_info(0, error_message);
+  // This is a manually triggered bundle (not from a signal handler), so the
+  // process is still alive and any pre-existing coredump can be found now.
   std::string coredump_path = find_coredump();
 
   std::vector<std::string> log_files = collect_log_files();
 
   std::string bundle_path =
-      create_bundle_zip(crash_info, coredump_path, log_files);
+      create_bundle_zip(crash_info, coredump_path, log_files, "");
   g_last_crash_bundle = bundle_path;
 
   return bundle_path;
