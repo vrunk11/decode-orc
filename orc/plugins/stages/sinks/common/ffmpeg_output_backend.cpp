@@ -1040,6 +1040,21 @@ bool FFmpegOutputBackend::convertAndEncode(
     }
   }
 
+  // Make destination frame writable before sws_scale writes to it. With
+  // FF_THREAD_FRAME enabled, avcodec_send_frame() takes an internal av_frame_ref
+  // on frame_, so buf[0]->refcount becomes > 1. Without this call, the next
+  // sws_scale would write to a buffer still held by the encoder thread, causing
+  // heap corruption (Windows 0xC0000005 inside av_buffer_realloc).
+  ret = av_frame_make_writable(frame_);
+  if (ret < 0) {
+    char errbuf[AV_ERROR_MAX_STRING_SIZE];
+    av_strerror(ret, errbuf, sizeof(errbuf));
+    ORC_LOG_ERROR(
+        "FFmpegOutputBackend: Failed to make destination frame writable: {}",
+        errbuf);
+    return false;
+  }
+
   // Convert from YUV444P16LE to encoder's pixel format using swscale
   ret = sws_scale(sws_ctx_, src_frame_->data, src_frame_->linesize, 0, height_,
                   frame_->data, frame_->linesize);
