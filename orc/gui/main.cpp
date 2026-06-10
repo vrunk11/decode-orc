@@ -171,7 +171,17 @@ void applySystemTheme(QApplication& app, bool isDark) {
               "palette(window-text); }"
               "QMenu::item:selected { background-color: palette(highlight); "
               "color: palette(highlighted-text); }"
-              "QMenu::item:disabled { color: %1; }")
+              "QMenu::item:disabled { color: %1; }"
+              "QMessageBox { background-color: palette(window); color: "
+              "palette(window-text); }"
+              "QMessageBox QLabel { color: palette(window-text); }"
+              "QMessageBox QPushButton { background-color: palette(button); "
+              "color: palette(button-text); border: 1px solid palette(mid); "
+              "padding: 4px 12px; border-radius: 3px; min-width: 60px; }"
+              "QMessageBox QPushButton:hover { background-color: "
+              "palette(highlight); color: palette(highlighted-text); }"
+              "QMessageBox QPushButton:pressed { background-color: "
+              "palette(dark); color: palette(button-text); }")
           .arg(disabled_menu_text_color));
 }
 
