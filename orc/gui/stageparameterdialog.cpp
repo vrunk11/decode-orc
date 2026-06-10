@@ -654,8 +654,8 @@ bool StageParameterDialog::validate_values() {
         msgBox.setWindowTitle("Legacy Metadata Format");
         msgBox.setIcon(QMessageBox::Warning);
         msgBox.setText(
-            QString("The TBC source '%1' has legacy JSON metadata. It will be "
-                    "read directly.\n\n"
+            QString("The TBC source '%1' has legacy JSON metadata. This is just "
+                    "a warning - the source will load regardless.\n\n"
                     "For best long-term results, consider re-decoding with a "
                     "current version of ld-decode/vhs-decode.")
                 .arg(filename));

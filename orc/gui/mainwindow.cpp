@@ -1266,10 +1266,10 @@ void MainWindow::quickProject(const QString& filename) {
       QMessageBox msgBox(this);
       msgBox.setWindowTitle("Legacy Metadata Format");
       msgBox.setIcon(QMessageBox::Warning);
-      msgBox.setText(QString("The TBC source '%1' has legacy JSON metadata. It "
-                             "will be read directly.\n\n"
-                             "For best long-term results, consider re-decoding "
-                             "with a current version of ld-decode/vhs-decode.")
+      msgBox.setText(QString("The TBC source '%1' has legacy JSON metadata. This is just "
+                          "a warning - the source will load regardless.\n\n"
+                          "For best long-term results, consider re-decoding with a "
+                          "current version of ld-decode/vhs-decode.")
                          .arg(filename));
       QPushButton* continueBtn =
           msgBox.addButton("Continue", QMessageBox::AcceptRole);
