@@ -27,8 +27,8 @@
 
 #ifdef _WIN32
 #define NOMINMAX
-#include <dbghelp.h>
 #include <windows.h>
+#include <dbghelp.h>
 #endif
 
 // Unix/POSIX-specific headers (not available on Windows)
