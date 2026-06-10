@@ -75,9 +75,11 @@ for header in $PRESENTER_HEADERS; do
     fi
     
     # Extract public/protected sections (exclude private/implementation)
+    # Patterns use optional leading whitespace to handle Google-style indented
+    # access specifiers (e.g. " public:" / " private:").
     PUBLIC_API=$(awk '
-        /^public:|^protected:/ { in_public=1; next }
-        /^private:/ { in_public=0; next }
+        /^ *public:|^ *protected:/ { in_public=1; next }
+        /^ *private:/ { in_public=0; next }
         /^class.*{/ { in_public=1 }
         in_public { print }
     ' "$header")

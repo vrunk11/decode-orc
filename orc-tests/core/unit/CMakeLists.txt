@@ -34,13 +34,12 @@ function(orc_add_core_unit_tests target labels)
                 target_link_libraries(${target} orc_chroma_decoders)
         endif()
 
-        # Phase 7A: stage instances in contract tests are now obtained via StageRegistry,
-        # not by direct concrete class construction. These static plugin links are still
-        # required so that each plugin's registration callback fires during static
+        # Stage instances in contract tests are obtained via StageRegistry, not by
+        # direct concrete class construction. These static plugin links are required
+        # so that each plugin's registration callback fires during static
         # initialisation, populating the registry before any test runs.
-        # Phase 8 will add dedicated integration tests that exercise the runtime
-        # dlopen/LoadLibrary plugin-loading path (ABI matching, missing symbols, etc.)
-        # alongside these registry-population links.
+        # Dedicated functional tests cover the runtime dlopen/LoadLibrary path
+        # (ABI matching, missing symbols, etc.) alongside these registry links.
         foreach(_orc_stage_plugin_target
                         orc-stage-plugin-ntsc-comp-source
                         orc-stage-plugin-ntsc-yc-source
@@ -148,9 +147,7 @@ orc_add_core_unit_tests(
 
         contracts/public_stage_contract_test.cpp
         contracts/stage_registry_contract_test.cpp
-        contracts/stage_plugin_loader_smoke_test.cpp
         contracts/project_to_dag_contract_test.cpp
-        contracts/phase_d_runtime_architecture_test.cpp
         contracts/plugin_safe_call_test.cpp
 )
 
@@ -195,7 +192,7 @@ orc_add_core_unit_tests(
         metadata/project_plugin_metadata_test.cpp
         metadata/stage_plugin_registry_test.cpp
         metadata/plugin_remote_loader_test.cpp
-        metadata/phase_7d_skeleton_load_test.cpp
+        metadata/skeleton_plugin_registry_test.cpp
 )
 
         orc_add_core_unit_tests(
