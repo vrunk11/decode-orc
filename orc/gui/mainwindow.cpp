@@ -4938,20 +4938,24 @@ void MainWindow::onSampleMarkerMoved(int sample_x) {
       preview_dialog_->previewSlider()->value(), last_line_scope_field_index_,
       last_line_scope_line_number_, image_height);
 
-  // Only update cross-hairs if mapping is valid
-  // If mapping fails, keep the cross-hairs at their current position to avoid
-  // jumping
+  // Use the remapped Y if available, otherwise fall back to the stored Y.
+  // For stages like the FFmpeg/raw video sink the field-to-image mapping may
+  // fail, but the Y position is already known from when the line was selected.
+  // Moving the position marker only changes X, so we can always update the
+  // cross-hairs as long as we have a valid Y coordinate.
+  int image_y = -1;
   if (image_coords.is_valid) {
-    // Update cross-hairs at the new X position with recalculated Y
-    preview_dialog_->previewWidget()->updateCrosshairsPosition(
-        preview_x, image_coords.image_y);
+    image_y = image_coords.image_y;
+  } else if (last_line_scope_image_y_ >= 0) {
+    image_y = last_line_scope_image_y_;
+  }
 
-    // Update stored position so it's maintained when changing stages
+  if (image_y >= 0) {
+    preview_dialog_->previewWidget()->updateCrosshairsPosition(preview_x,
+                                                               image_y);
     last_line_scope_image_x_ = preview_x;
-    last_line_scope_image_y_ = image_coords.image_y;
+    last_line_scope_image_y_ = image_y;
 
-    // Update field timing dialog if it's visible (to update the marker
-    // position)
     if (preview_dialog_->fieldTimingDialog() &&
         preview_dialog_->fieldTimingDialog()->isVisible()) {
       ORC_LOG_DEBUG(
