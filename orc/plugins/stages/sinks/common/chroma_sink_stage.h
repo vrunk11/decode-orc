@@ -210,6 +210,7 @@ class ChromaSinkStage : public DAGStage,
   bool embed_audio_;            // Embed analogue audio in output (MP4/MKV only)
   bool embed_closed_captions_;  // Embed closed captions in MP4 output (MP4
                                 // only, converted to mov_text)
+  bool embed_chapter_metadata_;  // Write chapter markers from VBI data (MKV/MP4/MOV)
 
   // Encoder quality parameters (for FFmpeg output)
   std::string encoder_preset_;    // "fast", "medium", "slow", "veryslow"

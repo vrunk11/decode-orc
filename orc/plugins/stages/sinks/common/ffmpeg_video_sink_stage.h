@@ -55,6 +55,7 @@ namespace orc {
  * - encoder_bitrate: Bitrate in bits/sec (0 = use CRF, default 0)
  * - embed_audio: Embed analogue audio in output (requires audio in source)
  * - embed_closed_captions: Embed closed captions as mov_text (MP4 only)
+ * - embed_chapter_metadata: Write chapter markers from VBI data (MKV/MP4/MOV)
  */
 class FFmpegVideoSinkStage : public ChromaSinkStage, public StageToolProvider {
  public:

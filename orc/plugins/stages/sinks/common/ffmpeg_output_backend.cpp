@@ -197,9 +197,10 @@ bool FFmpegOutputBackend::initialize(const Configuration& config) {
   encoder_crf_ = config.encoder_crf;
   encoder_bitrate_ = config.encoder_bitrate;
 
-  // Store audio configuration
+  // Store audio/subtitle/chapter configuration
   embed_audio_ = config.embed_audio;
   embed_closed_captions_ = config.embed_closed_captions;
+  embed_chapter_metadata_ = config.embed_chapter_metadata;
   vfr_ = config.vfr;
   start_field_index_ = config.start_field_index;
   num_fields_ = config.num_fields;
@@ -385,6 +386,26 @@ bool FFmpegOutputBackend::initialize(const Configuration& config) {
             "embedding disabled");
         embed_closed_captions_ = false;
       }
+    }
+  }
+
+  // Setup chapter metadata from VBI observations if requested
+  if (embed_chapter_metadata_) {
+    if (container_format_ == "mxf") {
+      ORC_LOG_WARN(
+          "FFmpegOutputBackend: Chapter metadata not supported in MXF "
+          "container, disabling");
+      embed_chapter_metadata_ = false;
+    } else if (config.observation_context) {
+      ORC_LOG_DEBUG(
+          "FFmpegOutputBackend: Setting up chapter metadata from VBI "
+          "observations");
+      setupChapterMetadata(*config.observation_context);
+    } else {
+      ORC_LOG_WARN(
+          "FFmpegOutputBackend: No observation context provided, chapter "
+          "metadata disabled");
+      embed_chapter_metadata_ = false;
     }
   }
 
@@ -1224,6 +1245,7 @@ std::string FFmpegOutputBackend::getFormatInfo() const {
   std::string info = container_format_ + " (" + codec_name_;
   if (embed_audio_) info += " + audio";
   if (embed_closed_captions_) info += " + CC";
+  if (embed_chapter_metadata_) info += " + chapters";
   info += ")";
   return info;
 }
@@ -1536,6 +1558,104 @@ void FFmpegOutputBackend::extractClosedCaptionsFromObservations(
       "FFmpegOutputBackend: Extracted {} closed caption cues from {} fields "
       "with CC data",
       pending_cues_.size(), cc_count);
+}
+
+void FFmpegOutputBackend::setupChapterMetadata(
+    const IObservationContext& context) {
+  // Collect chapter number transitions from VBI observations
+  struct ChapterEntry {
+    int32_t number;
+    uint64_t field_offset;  // Offset from start_field_index_
+  };
+  std::vector<ChapterEntry> chapters;
+  int32_t current_chapter = -1;
+
+  // Iterate through the same field range used for audio/CC
+  for (uint64_t offset = 0; offset <= num_fields_; ++offset) {
+    FieldID fid(static_cast<uint32_t>(start_field_index_ + offset));
+    auto val = context.get(fid, "vbi", "chapter_number");
+    if (val && std::holds_alternative<int32_t>(*val)) {
+      int32_t ch = std::get<int32_t>(*val);
+      if (ch != current_chapter) {
+        chapters.push_back({ch, offset});
+        current_chapter = ch;
+      }
+    }
+  }
+
+  if (chapters.empty()) {
+    ORC_LOG_DEBUG(
+        "FFmpegOutputBackend: No VBI chapter markers found, disabling chapter "
+        "metadata");
+    embed_chapter_metadata_ = false;
+    return;
+  }
+
+  ORC_LOG_INFO("FFmpegOutputBackend: Found {} chapter(s) from VBI data",
+               chapters.size());
+
+  // Use millisecond precision time base for chapters
+  const AVRational chapter_tb = {1, 1000};
+  const bool is_ntsc = (video_system_ == VideoSystem::NTSC ||
+                        video_system_ == VideoSystem::PAL_M);
+
+  // Convert a field offset (from start_field_index_) to milliseconds
+  auto field_offset_to_ms = [&](uint64_t field_offset) -> int64_t {
+    if (is_ntsc) {
+      // NTSC/PAL-M: 29.97 fps = 59.94 fields/sec → ms = offset * 1001 / 60
+      return static_cast<int64_t>(field_offset) * 1001LL / 60LL;
+    }
+    // PAL: 25 fps = 50 fields/sec → ms = offset * 1000 / 50 = offset * 20
+    return static_cast<int64_t>(field_offset) * 20LL;
+  };
+
+  const int64_t total_ms = field_offset_to_ms(num_fields_);
+
+  for (size_t i = 0; i < chapters.size(); ++i) {
+    const int64_t start_ms = field_offset_to_ms(chapters[i].field_offset);
+    const int64_t end_ms = (i + 1 < chapters.size())
+                               ? field_offset_to_ms(chapters[i + 1].field_offset)
+                               : total_ms;
+
+    const std::string title = "Chapter " + std::to_string(chapters[i].number);
+
+    // Allocate and populate AVChapter manually (avformat_new_chapter was
+    // removed in FFmpeg 7.x).
+    AVChapter* chapter =
+        static_cast<AVChapter*>(av_mallocz(sizeof(AVChapter)));
+    if (!chapter) {
+      ORC_LOG_WARN(
+          "FFmpegOutputBackend: Failed to allocate chapter {} ('{}')", i + 1,
+          title);
+      continue;
+    }
+    chapter->id = static_cast<int64_t>(i);
+    chapter->time_base = chapter_tb;
+    chapter->start = start_ms;
+    chapter->end = end_ms;
+    av_dict_set(&chapter->metadata, "title", title.c_str(), 0);
+
+    // Append chapter pointer to format context chapters array.
+    // av_realloc_array expects void*; cast explicitly to satisfy the
+    // bugprone-multi-level-implicit-pointer-conversion check.
+    AVChapter** new_chapters = static_cast<AVChapter**>(av_realloc_array(
+        static_cast<void*>(format_ctx_->chapters),
+        format_ctx_->nb_chapters + 1, sizeof(AVChapter*)));
+    if (!new_chapters) {
+      ORC_LOG_WARN(
+          "FFmpegOutputBackend: Failed to resize chapters array for chapter "
+          "{} ('{}')",
+          i + 1, title);
+      av_dict_free(&chapter->metadata);
+      av_free(chapter);
+      continue;
+    }
+    format_ctx_->chapters = new_chapters;
+    format_ctx_->chapters[format_ctx_->nb_chapters++] = chapter;
+
+    ORC_LOG_DEBUG("FFmpegOutputBackend: Chapter {}: '{}' ({:.3f}s - {:.3f}s)",
+                  i + 1, title, start_ms / 1000.0, end_ms / 1000.0);
+  }
 }
 
 bool FFmpegOutputBackend::setupSubtitleEncoder() {

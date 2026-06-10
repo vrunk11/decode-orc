@@ -94,6 +94,7 @@ class FFmpegPresetDialog : public ConfigDialogBase {
   QCheckBox* deinterlace_checkbox_;
   QCheckBox* embed_audio_checkbox_;
   QCheckBox* embed_captions_checkbox_;
+  QCheckBox* embed_chapters_checkbox_;
 
   // Advanced settings group
   QComboBox* quality_preset_combo_;

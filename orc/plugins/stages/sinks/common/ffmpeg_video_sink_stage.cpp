@@ -10,6 +10,7 @@
 #include "ffmpeg_video_sink_stage.h"
 
 #include "../../../../sdk/include/orc/plugin/orc_stage_runtime.h"
+#include "biphase_observer.h"
 #include "closed_caption_observer.h"
 #include "logging.h"
 #include "output_backend.h"
@@ -237,6 +238,64 @@ bool FFmpegVideoSinkStage::trigger(
 
         ORC_LOG_DEBUG(
             "FFmpegVideoSink: CC observations extracted for fields {}-{}",
+            field_range.start.value(), field_range.end.value());
+      }
+    }
+  }
+
+  // If chapter metadata embedding is enabled, run BiphaseObserver to populate
+  // VBI observations (including chapter_number) in the observation context.
+  // The pipeline does not guarantee a BiphaseObserver pass for FFmpeg exports.
+  bool embed_chapters = false;
+  auto ch_param = parameters.find("embed_chapter_metadata");
+  if (ch_param != parameters.end()) {
+    if (std::holds_alternative<bool>(ch_param->second)) {
+      embed_chapters = std::get<bool>(ch_param->second);
+    } else if (std::holds_alternative<std::string>(ch_param->second)) {
+      std::string val = std::get<std::string>(ch_param->second);
+      embed_chapters = (val == "true" || val == "1" || val == "yes");
+    }
+  }
+
+  if (embed_chapters) {
+    ORC_LOG_DEBUG(
+        "FFmpegVideoSink: Chapter metadata enabled, extracting VBI "
+        "observations");
+
+    if (!inputs.empty()) {
+      auto vfr =
+          std::dynamic_pointer_cast<VideoFieldRepresentation>(inputs[0]);
+      if (vfr) {
+        BiphaseObserver biphase_observer;
+        auto field_range = vfr->field_range();
+        const size_t total_fields = static_cast<size_t>(
+            field_range.end.value() - field_range.start.value() + 1);
+
+        if (progress_callback_) {
+          progress_callback_(0, total_fields, "Collecting VBI chapter data...");
+        }
+
+        size_t fields_processed = 0;
+        for (FieldID::value_type field_num = field_range.start.value();
+             field_num <= field_range.end.value(); ++field_num) {
+          FieldID field_id(field_num);
+          if (vfr->has_field(field_id)) {
+            biphase_observer.process_field(*vfr, field_id, observation_context);
+          }
+          ++fields_processed;
+          if (progress_callback_) {
+            progress_callback_(fields_processed, total_fields,
+                               "Collecting VBI chapter data...");
+          }
+          if (cancel_requested_.load()) {
+            ORC_LOG_WARN(
+                "FFmpegVideoSink: Cancelled during VBI chapter collection");
+            return false;
+          }
+        }
+
+        ORC_LOG_DEBUG(
+            "FFmpegVideoSink: VBI observations extracted for fields {}-{}",
             field_range.start.value(), field_range.end.value());
       }
     }

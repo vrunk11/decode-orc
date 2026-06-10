@@ -200,6 +200,11 @@ FFmpegPresetDialog::FFmpegPresetDialog(const QString& project_path,
       "Convert EIA-608 closed captions to subtitle track (MP4/MOV only)");
   embed_captions_checkbox_->setChecked(false);
 
+  embed_chapters_checkbox_ = add_checkbox(
+      options_layout, "Embed chapter metadata",
+      "Write chapter markers from VBI data to output file (MKV/MP4/MOV only)");
+  embed_chapters_checkbox_->setChecked(false);
+
   // Advanced settings group
   auto* advanced_group = create_group("Advanced Settings (Optional)");
   auto* advanced_layout = qobject_cast<QFormLayout*>(advanced_group->layout());
@@ -328,6 +333,7 @@ void FFmpegPresetDialog::apply_configuration() {
   // Set options
   set_parameter("embed_audio", embed_audio_checkbox_->isChecked());
   set_parameter("embed_closed_captions", embed_captions_checkbox_->isChecked());
+  set_parameter("embed_chapter_metadata", embed_chapters_checkbox_->isChecked());
 
   // Set output filename (output_path parameter)
   QString filename = filename_edit_->text().trimmed();
@@ -415,6 +421,12 @@ void FFmpegPresetDialog::load_from_parameters(
   if (captions_it != params.end() &&
       std::holds_alternative<bool>(captions_it->second)) {
     embed_captions_checkbox_->setChecked(std::get<bool>(captions_it->second));
+  }
+
+  auto chapters_it = params.find("embed_chapter_metadata");
+  if (chapters_it != params.end() &&
+      std::holds_alternative<bool>(chapters_it->second)) {
+    embed_chapters_checkbox_->setChecked(std::get<bool>(chapters_it->second));
   }
 
   // Load output filename

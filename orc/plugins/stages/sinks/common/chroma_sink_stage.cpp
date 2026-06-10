@@ -110,6 +110,7 @@ ChromaSinkStage::ChromaSinkStage()
       output_padding_(8),
       embed_audio_(false),
       embed_closed_captions_(false),
+      embed_chapter_metadata_(false),
       encoder_preset_("medium"),
       encoder_crf_(18),
       encoder_bitrate_(0)  // 0 = use CRF
@@ -384,7 +385,22 @@ std::vector<ParameterDescriptor> ChromaSinkStage::get_parameter_descriptors(
            false,
            ParameterDependency{
                "output_format",
-               {"mp4-h264", "mp4-hevc", "mp4-av1", "mov-h264", "mov-hevc"}}}}};
+               {"mp4-h264", "mp4-hevc", "mp4-av1", "mov-h264", "mov-hevc"}}}},
+      ParameterDescriptor{
+          "embed_chapter_metadata",
+          "Embed Chapter Metadata",
+          "Write chapter markers from VBI data to output file (MKV/MP4/MOV "
+          "only; requires chapter numbers decoded by BiphaseObserver)",
+          ParameterType::BOOL,
+          {{},
+           {},
+           false,
+           {},
+           false,
+           ParameterDependency{"output_format",
+                               {"mkv-ffv1", "mov-prores", "mov-v210",
+                                "mov-v410", "mp4-h264", "mov-h264", "mp4-hevc",
+                                "mov-hevc", "mp4-av1"}}}}};
 
   // Add format-specific parameters
   if (project_format == VideoSystem::NTSC) {
@@ -523,6 +539,7 @@ std::map<std::string, ParameterValue> ChromaSinkStage::get_parameters() const {
   params["encoder_bitrate"] = encoder_bitrate_;
   params["embed_audio"] = embed_audio_;
   params["embed_closed_captions"] = embed_closed_captions_;
+  params["embed_chapter_metadata"] = embed_chapter_metadata_;
   params["hardware_encoder"] = hardware_encoder_;
   params["prores_profile"] = prores_profile_;
   params["use_lossless_mode"] = use_lossless_mode_;
@@ -704,6 +721,14 @@ bool ChromaSinkStage::set_parameters(
       } else if (std::holds_alternative<std::string>(value)) {
         auto str_val = std::get<std::string>(value);
         embed_closed_captions_ =
+            (str_val == "true" || str_val == "1" || str_val == "yes");
+      }
+    } else if (key == "embed_chapter_metadata") {
+      if (std::holds_alternative<bool>(value)) {
+        embed_chapter_metadata_ = std::get<bool>(value);
+      } else if (std::holds_alternative<std::string>(value)) {
+        auto str_val = std::get<std::string>(value);
+        embed_chapter_metadata_ =
             (str_val == "true" || str_val == "1" || str_val == "yes");
       }
     } else if (key == "hardware_encoder") {
@@ -1174,6 +1199,7 @@ bool ChromaSinkStage::trigger(
   backendConfig.encoder_bitrate = encoder_bitrate_;
   backendConfig.embed_audio = embed_audio_;
   backendConfig.embed_closed_captions = embed_closed_captions_;
+  backendConfig.embed_chapter_metadata = embed_chapter_metadata_;
   backendConfig.options["hardware_encoder"] = hardware_encoder_;
   backendConfig.options["prores_profile"] = prores_profile_;
   backendConfig.options["use_lossless_mode"] =
@@ -1182,9 +1208,9 @@ bool ChromaSinkStage::trigger(
       apply_deinterlace_ ? "true" : "false";
   backendConfig.observation_context = &observation_context;
 
-  // Set field range for audio and/or closed caption extraction
-  // Both features need to know which fields were processed
-  if ((embed_audio_ && vfr && vfr->has_audio()) || embed_closed_captions_) {
+  // Set field range for audio, closed caption, and/or chapter metadata extraction
+  if ((embed_audio_ && vfr && vfr->has_audio()) || embed_closed_captions_ ||
+      embed_chapter_metadata_) {
     backendConfig.start_field_index = field_range.start.value();
     backendConfig.num_fields =
         field_range.end.value() - field_range.start.value();
@@ -1202,6 +1228,14 @@ bool ChromaSinkStage::trigger(
       ORC_LOG_DEBUG(
           "ChromaSink: Closed caption embedding enabled for output (fields {} "
           "to {} = {} fields, {} frames)",
+          field_range.start.value(), field_range.end.value(),
+          backendConfig.num_fields, numOutputFrames);
+    }
+
+    if (embed_chapter_metadata_) {
+      ORC_LOG_DEBUG(
+          "ChromaSink: Chapter metadata embedding enabled for output (fields "
+          "{} to {} = {} fields, {} frames)",
           field_range.start.value(), field_range.end.value(),
           backendConfig.num_fields, numOutputFrames);
     }

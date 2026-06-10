@@ -64,9 +64,13 @@ class OutputBackend {
     // Closed caption settings (MP4 only, converts EIA-608 to mov_text)
     bool embed_closed_captions =
         false;  ///< Embed closed captions as mov_text subtitle (MP4 only)
+
+    // Chapter metadata settings (MKV/MP4/MOV only)
+    bool embed_chapter_metadata =
+        false;  ///< Write chapter markers from VBI data (MKV/MP4/MOV only)
+
     const class IObservationContext* observation_context =
-        nullptr;  ///< Observation context with CC data (if
-                  ///< embed_closed_captions=true)
+        nullptr;  ///< Observation context with CC/chapter data
   };
 
   /**

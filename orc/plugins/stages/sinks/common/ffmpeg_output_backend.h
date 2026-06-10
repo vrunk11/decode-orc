@@ -78,6 +78,9 @@ class FFmpegOutputBackend : public OutputBackend {
   std::vector<CaptionCue> pending_cues_;
   size_t next_cue_index_ = 0;
 
+  // Chapter metadata
+  bool embed_chapter_metadata_ = false;
+
   // State
   int64_t pts_ = 0;
   int frames_written_ = 0;
@@ -117,6 +120,8 @@ class FFmpegOutputBackend : public OutputBackend {
   void extractClosedCaptionsFromObservations(
       const class IObservationContext& observation_context,
       uint64_t field_start, uint64_t field_count);
+  void setupChapterMetadata(
+      const class IObservationContext& observation_context);
   bool encodeAudioForFrame();
   bool encodeClosedCaptionsForFrame();
   bool convertAndEncode(const ComponentFrame& component_frame);
