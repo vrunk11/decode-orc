@@ -129,6 +129,12 @@ if(BUILD_GUI)
 
             message(STATUS "Using QtNodes submodule at ${QTNODES_DIR}")
             add_subdirectory("${QTNODES_DIR}" "${CMAKE_BINARY_DIR}/external/qtnodes")
+
+            # Suppress C4458 (parameter '_id' hides class member) in QtNodes MOC-generated code.
+            # This is an upstream issue in NodeGroup.hpp that we cannot fix directly.
+            if(MSVC AND TARGET QtNodes)
+                target_compile_options(QtNodes PRIVATE /wd4458)
+            endif()
         else()
             message(FATAL_ERROR "QtNodes not found. Please init submodule: git submodule update --init --recursive")
         endif()
