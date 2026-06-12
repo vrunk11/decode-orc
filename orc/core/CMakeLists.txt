@@ -6,6 +6,7 @@ add_library(orc-core SHARED
     artifact.cpp
     dag_executor.cpp
     dag_field_renderer.cpp
+    dag_frame_renderer.cpp
     preview_renderer.cpp
     preview_view_registry.cpp
     preview_helpers.cpp

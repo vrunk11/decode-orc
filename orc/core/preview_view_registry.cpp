@@ -48,13 +48,13 @@ PreviewOutputType output_type_for_data_type(VideoDataType data_type) {
     case VideoDataType::CompositePAL:
     case VideoDataType::YC_NTSC:
     case VideoDataType::YC_PAL:
-      return PreviewOutputType::Field;
+      return PreviewOutputType::Frame_Field1;
     case VideoDataType::ColourNTSC:
     case VideoDataType::ColourPAL:
-      return PreviewOutputType::Frame;
+      return PreviewOutputType::Frame_Field1_First;
   }
 
-  return PreviewOutputType::Field;
+  return PreviewOutputType::Frame_Field1;
 }
 
 class ImagePreviewView final : public IPreviewView {
@@ -126,7 +126,7 @@ class ImagePreviewView final : public IPreviewView {
  private:
   NodeID node_id_;
   PreviewRenderer* renderer_{nullptr};
-  PreviewOutputType last_type_{PreviewOutputType::Field};
+  PreviewOutputType last_type_{PreviewOutputType::Frame_Field1};
   uint64_t last_index_{0};
 };
 

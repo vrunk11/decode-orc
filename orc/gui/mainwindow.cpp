@@ -259,11 +259,11 @@ MainWindow::MainWindow(QWidget* parent)
       current_view_node_id_(),
       last_dropout_node_id_(),
       last_dropout_mode_(orc::DropoutAnalysisMode::FULL_FIELD),
-      last_dropout_output_type_(orc::PreviewOutputType::Frame),
+      last_dropout_output_type_(orc::PreviewOutputType::Frame_Field1_First),
       last_snr_node_id_(),
       last_snr_mode_(orc::SNRAnalysisMode::WHITE),
-      last_snr_output_type_(orc::PreviewOutputType::Frame),
-      current_output_type_(orc::PreviewOutputType::Frame),
+      last_snr_output_type_(orc::PreviewOutputType::Frame_Field1_First),
+      current_output_type_(orc::PreviewOutputType::Frame_Field1_First),
       current_option_id_("frame")  // Default to "Frame (Y)" option
       ,
       current_aspect_ratio_mode_(
@@ -1596,7 +1596,7 @@ void MainWindow::onNavigatePreview(int delta) {
   // In frame view modes, keyboard arrows skip 2 slider positions at a time
   // so one keypress = one frame; in field mode one keypress = one field.
   const int step =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed)
           ? 2
           : 1;
@@ -1636,16 +1636,20 @@ void MainWindow::onPreviewModeChanged(int index) {
   uint64_t new_position = current_position;
 
   // Determine if previous and new types are field-based or frame-based
-  bool previous_is_field = (previous_type == orc::PreviewOutputType::Field ||
-                            previous_type == orc::PreviewOutputType::Luma);
-  bool new_is_field = (current_output_type_ == orc::PreviewOutputType::Field ||
-                       current_output_type_ == orc::PreviewOutputType::Luma);
+  bool previous_is_field =
+      (previous_type == orc::PreviewOutputType::Frame_Field1 ||
+       previous_type == orc::PreviewOutputType::Frame_Field2 ||
+       previous_type == orc::PreviewOutputType::Luma);
+  bool new_is_field =
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+       current_output_type_ == orc::PreviewOutputType::Frame_Field2 ||
+       current_output_type_ == orc::PreviewOutputType::Luma);
 
   // Get first_field_offset - this is the same for all frame-based outputs
   // (determined by field 0 parity) We can get it from any frame-based output
   uint64_t first_field_offset = 0;
   for (const auto& output : available_outputs_) {
-    if (output.type == orc::PreviewOutputType::Frame ||
+    if (output.type == orc::PreviewOutputType::Frame_Field1_First ||
         output.type == orc::PreviewOutputType::Frame_Reversed ||
         output.type == orc::PreviewOutputType::Split) {
       first_field_offset = output.first_field_offset;
@@ -1839,7 +1843,8 @@ void MainWindow::updatePreviewInfo() {
   QString slider_min_text;
   QString slider_max_text;
 
-  if (current_output_type_ == orc::PreviewOutputType::Field) {
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+      current_output_type_ == orc::PreviewOutputType::Frame_Field2) {
     // Field mode: show 1-indexed field numbers
     uint64_t field_id = static_cast<uint64_t>(current_index);
     uint64_t min_field_id = 0;
@@ -1852,7 +1857,7 @@ void MainWindow::updatePreviewInfo() {
 
     slider_min_text = QString::number(min_field_id + 1);  // 1-indexed
     slider_max_text = QString::number(max_field_id + 1);  // 1-indexed
-  } else if (current_output_type_ == orc::PreviewOutputType::Frame ||
+  } else if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
              current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
     // Frame mode: show 1-indexed frame numbers with constituent field numbers
     uint64_t frame_index = static_cast<uint64_t>(current_index);
@@ -2483,7 +2488,7 @@ orc::VideoDataType MainWindow::inferCurrentVideoDataType() const {
       project_.presenter() && project_.presenter()->getVideoFormat() ==
                                   orc::presenters::VideoFormat::PAL;
 
-  if (current_output_type_ == orc::PreviewOutputType::Frame ||
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
       current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
       current_output_type_ == orc::PreviewOutputType::Split) {
     return is_pal ? orc::VideoDataType::ColourPAL
@@ -4137,7 +4142,7 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
   int field_height_for_sample = first_fh;
 
   // Check if we're showing two fields (frame mode)
-  if (current_output_type_ == orc::PreviewOutputType::Frame ||
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
       current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
       current_output_type_ == orc::PreviewOutputType::Split) {
     // Determine which field based on sample position
@@ -4311,7 +4316,7 @@ void MainWindow::updateQualityMetricsDialog() {
 
   // Check if we're in frame mode (any mode that shows two fields)
   bool is_frame_mode =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
        current_output_type_ == orc::PreviewOutputType::Split);
 
@@ -4468,7 +4473,7 @@ void MainWindow::updateVBIDialog() {
 
   // Check if we're in frame mode (any mode that shows two fields)
   bool is_frame_mode =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
        current_output_type_ == orc::PreviewOutputType::Split);
 
@@ -4516,7 +4521,7 @@ void MainWindow::updateHintsDialog() {
 
   // Check if we're in frame mode (any mode that shows two fields)
   bool is_frame_mode =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
        current_output_type_ == orc::PreviewOutputType::Split);
 
@@ -4580,7 +4585,7 @@ void MainWindow::updateNtscObserverDialog() {
 
   // Check if we're in frame mode (any mode that shows two fields)
   bool is_frame_mode =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
        current_output_type_ == orc::PreviewOutputType::Split);
 
@@ -4726,7 +4731,7 @@ void MainWindow::onLineScopeRequested(int image_x, int image_y) {
   // Request line samples from the coordinator using Field output type
   // Note: Core API expects 0-based line numbers
   pending_line_sample_request_id_ = render_coordinator_->requestLineSamples(
-      current_view_node_id_, orc::PreviewOutputType::Field, field_index,
+      current_view_node_id_, orc::PreviewOutputType::Frame_Field1, field_index,
       field_line_0based,  // Core API uses 0-based
       sample_x, preview_image_width);
 }
@@ -4914,7 +4919,7 @@ void MainWindow::requestLineSamplesForNavigation(uint64_t field_index,
       sample_x, preview_image_width);
 
   pending_line_sample_request_id_ = render_coordinator_->requestLineSamples(
-      current_view_node_id_, orc::PreviewOutputType::Field, field_index,
+      current_view_node_id_, orc::PreviewOutputType::Frame_Field1, field_index,
       line_number, sample_x, preview_image_width);
 
   ORC_LOG_DEBUG("requestLineSamplesForNavigation: request_id={}",
@@ -5063,13 +5068,14 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
   if (last_line_scope_field_index_ < 0) {
     ORC_LOG_DEBUG("No stored field index, initializing from current mode");
 
-    if (current_output_type_ == orc::PreviewOutputType::Field) {
+    if (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+        current_output_type_ == orc::PreviewOutputType::Frame_Field2) {
       last_line_scope_field_index_ = preview_dialog_->previewSlider()->value();
     } else if (current_output_type_ == orc::PreviewOutputType::Split) {
       // For split mode, use first field of the pair
       uint64_t pair_index = preview_dialog_->previewSlider()->value();
       last_line_scope_field_index_ = pair_index * 2;
-    } else if (current_output_type_ == orc::PreviewOutputType::Frame ||
+    } else if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
                current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
       // For frame mode, get fields from frame and use first one
       auto frame_fields = render_coordinator_->getFrameFields(
@@ -5092,7 +5098,7 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
 
   // If in Frame mode, get which fields are in the current frame and pick the
   // one with same parity
-  if (current_output_type_ == orc::PreviewOutputType::Frame ||
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
       current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
     uint64_t frame_index = preview_dialog_->previewSlider()->value();
     auto frame_fields =
@@ -5118,7 +5124,8 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
     }
   }
   // In Field or Split mode, just use the current field index from the slider
-  else if (current_output_type_ == orc::PreviewOutputType::Field) {
+  else if (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+           current_output_type_ == orc::PreviewOutputType::Frame_Field2) {
     new_field_index = preview_dialog_->previewSlider()->value();
     ORC_LOG_DEBUG("Field mode: using field {} from slider", new_field_index);
   } else if (current_output_type_ == orc::PreviewOutputType::Split) {
@@ -5150,7 +5157,7 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
                 new_field_index, last_line_scope_line_number_, sample_x);
 
   pending_line_sample_request_id_ = render_coordinator_->requestLineSamples(
-      current_view_node_id_, orc::PreviewOutputType::Field, new_field_index,
+      current_view_node_id_, orc::PreviewOutputType::Frame_Field1, new_field_index,
       last_line_scope_line_number_, sample_x, preview_width);
 }
 

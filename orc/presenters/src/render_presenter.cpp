@@ -15,8 +15,9 @@
 #include <stdexcept>
 
 #include "analysis_sink_results.h"
+#include "../core/include/cvbs_signal_constants.h"
 #include "../core/include/dag_executor.h"
-#include "../core/include/dag_field_renderer.h"
+#include "../core/include/dag_frame_renderer.h"
 #include "../core/include/logging.h"
 #include "../core/include/observation_cache.h"
 #include "../core/include/observation_context.h"
@@ -54,7 +55,7 @@ class RenderPresenter::Impl {
   std::shared_ptr<void> dag_void_;  // Opaque DAG handle
   std::unique_ptr<orc::PreviewRenderer> preview_renderer_;
   orc::PreviewViewRegistry preview_view_registry_;
-  std::unique_ptr<orc::DAGFieldRenderer> field_renderer_;
+  std::unique_ptr<orc::DAGFrameRenderer> field_renderer_;
   std::unique_ptr<orc::VBIDecoder> vbi_decoder_;
   std::shared_ptr<orc::ObservationCache> obs_cache_;
   std::atomic<bool> trigger_cancel_requested_;
@@ -101,7 +102,7 @@ class RenderPresenter::Impl {
     // Rebuild renderers
     obs_cache_ = std::make_shared<orc::ObservationCache>(dag);
     preview_renderer_ = std::make_unique<orc::PreviewRenderer>(dag);
-    field_renderer_ = std::make_unique<orc::DAGFieldRenderer>(dag);
+    field_renderer_ = std::make_unique<orc::DAGFrameRenderer>(dag);
     vbi_decoder_ = std::make_unique<orc::VBIDecoder>();
 
     preview_view_registry_ = orc::PreviewViewRegistry{};
@@ -155,10 +156,11 @@ orc::PreviewRenderResult RenderPresenter::renderPreview(
 
     // Populate observation cache for the rendered field(s)
     if (impl_->obs_cache_) {
-      if (output_type == orc::PreviewOutputType::Field ||
+      if (output_type == orc::PreviewOutputType::Frame_Field1 ||
+          output_type == orc::PreviewOutputType::Frame_Field2 ||
           output_type == orc::PreviewOutputType::Luma) {
         impl_->obs_cache_->get_field(node_id, orc::FieldID(output_index));
-      } else if (output_type == orc::PreviewOutputType::Frame ||
+      } else if (output_type == orc::PreviewOutputType::Frame_Field1_First ||
                  output_type == orc::PreviewOutputType::Frame_Reversed ||
                  output_type == orc::PreviewOutputType::Split) {
         uint64_t first_field = output_index * 2;
@@ -612,48 +614,55 @@ RenderPresenter::FrameLineNavigation RenderPresenter::navigateFrameLine(
 
 std::vector<uint16_t> RenderPresenter::getLineSamples(
     NodeID node_id, orc::PreviewOutputType output_type, uint64_t output_index,
-    int line_number, int sample_x, int preview_width) {
+    int line_number, int /*sample_x*/, int /*preview_width*/) {
   if (!impl_->preview_renderer_) {
     return {};
   }
 
+  if (output_type != orc::PreviewOutputType::Frame_Field1 &&
+      output_type != orc::PreviewOutputType::Frame_Field2) {
+    return {};
+  }
+
   try {
-    // Get the representation at this node
     auto repr = impl_->preview_renderer_->get_representation_at_node(node_id);
     if (!repr) {
       return {};
     }
 
-    // Determine which field to get samples from
-    orc::FieldID field_id;
-    if (output_type == orc::PreviewOutputType::Field) {
-      field_id = orc::FieldID(output_index);
-    } else {
-      // For frames, use first field (GUI should call mapImageToField first)
-      return {};
-    }
+    orc::FrameID frame_id = static_cast<orc::FrameID>(output_index / 2);
+    int field_within_frame = static_cast<int>(output_index % 2);
 
-    // Get descriptor to know field dimensions
-    auto descriptor = repr->get_descriptor(field_id);
+    auto descriptor = repr->get_frame_descriptor(frame_id);
     if (!descriptor) {
       return {};
     }
 
-    // Validate line number is within bounds
+    size_t f1_lines = (descriptor->system == orc::VideoSystem::PAL)
+                          ? static_cast<size_t>(orc::kPalField1Lines)
+                          : static_cast<size_t>(orc::kNtscField1Lines);
+    size_t field_height =
+        (field_within_frame == 0) ? f1_lines : (descriptor->height - f1_lines);
+    size_t field_line_offset = (field_within_frame == 0) ? 0 : f1_lines;
+
     if (line_number < 0 ||
-        static_cast<size_t>(line_number) >= descriptor->height) {
+        static_cast<size_t>(line_number) >= field_height) {
       return {};
     }
 
-    // Get line data
-    const uint16_t* line_data = repr->get_line(field_id, line_number);
+    size_t frame_line =
+        field_line_offset + static_cast<size_t>(line_number);
+    const orc::VideoFrameRepresentation::sample_type* line_data =
+        repr->get_line(frame_id, frame_line);
     if (!line_data) {
       return {};
     }
 
-    // Return as uint16_t vector (no conversion needed)
-    std::vector<uint16_t> result(line_data, line_data + descriptor->width);
-
+    size_t width = descriptor->samples_per_line_nominal;
+    std::vector<uint16_t> result(width);
+    for (size_t i = 0; i < width; ++i) {
+      result[i] = static_cast<uint16_t>(line_data[i]);
+    }
     return result;
 
   } catch (const std::exception&) {
@@ -663,7 +672,7 @@ std::vector<uint16_t> RenderPresenter::getLineSamples(
 
 RenderPresenter::LineSampleData RenderPresenter::getLineSamplesWithYC(
     NodeID node_id, orc::PreviewOutputType output_type, uint64_t output_index,
-    int line_number, int sample_x, int preview_width) {
+    int line_number, int /*sample_x*/, int /*preview_width*/) {
   LineSampleData result;
   result.has_separate_channels = false;
 
@@ -671,59 +680,67 @@ RenderPresenter::LineSampleData RenderPresenter::getLineSamplesWithYC(
     return result;
   }
 
+  if (output_type != orc::PreviewOutputType::Frame_Field1 &&
+      output_type != orc::PreviewOutputType::Frame_Field2) {
+    return result;
+  }
+
   try {
-    // Get the representation at this node
     auto repr = impl_->preview_renderer_->get_representation_at_node(node_id);
     if (!repr) {
       return result;
     }
 
-    // Determine which field to get samples from
-    orc::FieldID field_id;
-    if (output_type == orc::PreviewOutputType::Field) {
-      field_id = orc::FieldID(output_index);
-    } else {
-      // For frames, use first field (GUI should call mapImageToField first)
-      return result;
-    }
+    orc::FrameID frame_id = static_cast<orc::FrameID>(output_index / 2);
+    int field_within_frame = static_cast<int>(output_index % 2);
 
-    // Get descriptor to know field dimensions
-    auto descriptor = repr->get_descriptor(field_id);
+    auto descriptor = repr->get_frame_descriptor(frame_id);
     if (!descriptor) {
       return result;
     }
 
-    // Validate line number is within bounds
+    size_t f1_lines = (descriptor->system == orc::VideoSystem::PAL)
+                          ? static_cast<size_t>(orc::kPalField1Lines)
+                          : static_cast<size_t>(orc::kNtscField1Lines);
+    size_t field_height =
+        (field_within_frame == 0) ? f1_lines : (descriptor->height - f1_lines);
+    size_t field_line_offset = (field_within_frame == 0) ? 0 : f1_lines;
+
     if (line_number < 0 ||
-        static_cast<size_t>(line_number) >= descriptor->height) {
+        static_cast<size_t>(line_number) >= field_height) {
       return result;
     }
 
-    // Check if this is a Y/C source with separate channels
+    size_t frame_line = field_line_offset + static_cast<size_t>(line_number);
+    size_t width = descriptor->samples_per_line_nominal;
+
     result.has_separate_channels = repr->has_separate_channels();
 
     if (result.has_separate_channels) {
-      // Y/C source - get Y and C separately (no composite available)
-      const uint16_t* y_data = repr->get_line_luma(field_id, line_number);
+      const auto* y_data = repr->get_line_luma(frame_id, frame_line);
       if (y_data) {
-        result.y_samples.assign(y_data, y_data + descriptor->width);
+        result.y_samples.resize(width);
+        for (size_t i = 0; i < width; ++i) {
+          result.y_samples[i] = static_cast<uint16_t>(y_data[i]);
+        }
       }
-
-      const uint16_t* c_data = repr->get_line_chroma(field_id, line_number);
+      const auto* c_data = repr->get_line_chroma(frame_id, frame_line);
       if (c_data) {
-        result.c_samples.assign(c_data, c_data + descriptor->width);
+        result.c_samples.resize(width);
+        for (size_t i = 0; i < width; ++i) {
+          result.c_samples[i] = static_cast<uint16_t>(c_data[i]);
+        }
       }
-
-      // For Y/C sources, use Y as composite for compatibility
       result.composite_samples = result.y_samples;
     } else {
-      // Composite source - get composite line data
-      const uint16_t* line_data = repr->get_line(field_id, line_number);
+      const auto* line_data = repr->get_line(frame_id, frame_line);
       if (!line_data) {
         return result;
       }
-
-      result.composite_samples.assign(line_data, line_data + descriptor->width);
+      result.composite_samples.resize(width);
+      for (size_t i = 0; i < width; ++i) {
+        result.composite_samples[i] = static_cast<uint16_t>(line_data[i]);
+      }
     }
 
     return result;
@@ -745,89 +762,116 @@ RenderPresenter::LineSampleData RenderPresenter::getFieldSamplesForTiming(
   }
 
   try {
-    // Get the representation at this node
     auto repr = impl_->preview_renderer_->get_representation_at_node(node_id);
     if (!repr) {
       return result;
     }
 
-    // Check if this is a Y/C source with separate channels
     result.has_separate_channels = repr->has_separate_channels();
 
-    // Determine which field(s) to get samples from
-    if (output_type == orc::PreviewOutputType::Field ||
-        output_type == orc::PreviewOutputType::Luma) {
-      // Single field
-      orc::FieldID field_id(output_index);
+    auto collect_lines = [&](orc::FrameID frame_id, size_t line_offset,
+                             size_t line_count, size_t spl,
+                             std::vector<uint16_t>& composite,
+                             std::vector<uint16_t>& y_out,
+                             std::vector<uint16_t>& c_out) {
+      for (size_t l = 0; l < line_count; ++l) {
+        size_t fl = line_offset + l;
+        if (result.has_separate_channels) {
+          const auto* y = repr->get_line_luma(frame_id, fl);
+          const auto* c = repr->get_line_chroma(frame_id, fl);
+          if (y) {
+            for (size_t s = 0; s < spl; ++s) {
+              y_out.push_back(static_cast<uint16_t>(y[s]));
+            }
+          }
+          if (c) {
+            for (size_t s = 0; s < spl; ++s) {
+              c_out.push_back(static_cast<uint16_t>(c[s]));
+            }
+          }
+        } else {
+          const auto* d = repr->get_line(frame_id, fl);
+          if (d) {
+            for (size_t s = 0; s < spl; ++s) {
+              composite.push_back(static_cast<uint16_t>(d[s]));
+            }
+          }
+        }
+      }
+    };
 
-      // Get actual field height from VFR descriptor
-      auto descriptor = repr->get_descriptor(field_id);
-      if (descriptor) {
-        result.first_field_height = static_cast<int>(descriptor->height);
+    const bool is_single_field =
+        (output_type == orc::PreviewOutputType::Frame_Field1 ||
+         output_type == orc::PreviewOutputType::Frame_Field2 ||
+         output_type == orc::PreviewOutputType::Luma);
+    const bool is_frame_type =
+        (output_type == orc::PreviewOutputType::Frame_Field1_First ||
+         output_type == orc::PreviewOutputType::Frame_Reversed ||
+         output_type == orc::PreviewOutputType::Split);
+
+    if (is_single_field) {
+      orc::FrameID frame_id = static_cast<orc::FrameID>(output_index / 2);
+      int field_within_frame = static_cast<int>(output_index % 2);
+
+      auto desc = repr->get_frame_descriptor(frame_id);
+      if (!desc) {
+        return result;
       }
 
-      if (result.has_separate_channels) {
-        // Y/C source - get entire field for Y and C
-        result.y_samples = repr->get_field_luma(field_id);
-        result.c_samples = repr->get_field_chroma(field_id);
-        result.composite_samples = result.y_samples;  // Use Y as composite
-      } else {
-        // Composite source
-        result.composite_samples = repr->get_field(field_id);
+      size_t f1_lines = (desc->system == orc::VideoSystem::PAL)
+                            ? static_cast<size_t>(orc::kPalField1Lines)
+                            : static_cast<size_t>(orc::kNtscField1Lines);
+      size_t field_height =
+          (field_within_frame == 0) ? f1_lines : (desc->height - f1_lines);
+      size_t field_offset = (field_within_frame == 0) ? 0 : f1_lines;
+      result.first_field_height = static_cast<int>(field_height);
+
+      collect_lines(frame_id, field_offset, field_height,
+                    desc->samples_per_line_nominal, result.composite_samples,
+                    result.y_samples, result.c_samples);
+
+    } else if (is_frame_type) {
+      orc::FrameID frame_id = static_cast<orc::FrameID>(output_index);
+
+      auto desc = repr->get_frame_descriptor(frame_id);
+      if (!desc) {
+        return result;
       }
-    } else if (output_type == orc::PreviewOutputType::Frame ||
-               output_type == orc::PreviewOutputType::Frame_Reversed ||
-               output_type == orc::PreviewOutputType::Split) {
-      // Two fields - convert frame index to field indices
-      // Frame N consists of fields (N*2) and (N*2 + 1)
-      uint64_t first_field = output_index * 2;
 
-      orc::FieldID field1_id(first_field);
-      orc::FieldID field2_id(first_field + 1);
+      size_t f1_lines = (desc->system == orc::VideoSystem::PAL)
+                            ? static_cast<size_t>(orc::kPalField1Lines)
+                            : static_cast<size_t>(orc::kNtscField1Lines);
+      size_t f2_lines = desc->height - f1_lines;
+      size_t spl = desc->samples_per_line_nominal;
 
-      // Handle reversed field order
+      size_t field1_offset = 0;
+      size_t field1_height = f1_lines;
+      size_t field2_offset = f1_lines;
+      size_t field2_height = f2_lines;
+
       if (output_type == orc::PreviewOutputType::Frame_Reversed) {
-        std::swap(field1_id, field2_id);
+        std::swap(field1_offset, field2_offset);
+        std::swap(field1_height, field2_height);
       }
 
-      // Get actual field heights from VFR descriptors
-      auto desc1 = repr->get_descriptor(field1_id);
-      auto desc2 = repr->get_descriptor(field2_id);
-      if (desc1) {
-        result.first_field_height = static_cast<int>(desc1->height);
-      }
-      if (desc2) {
-        result.second_field_height = static_cast<int>(desc2->height);
-      }
+      result.first_field_height = static_cast<int>(field1_height);
+      result.second_field_height = static_cast<int>(field2_height);
 
-      if (result.has_separate_channels) {
-        // Y/C source - get both fields for Y and C
-        auto y1 = repr->get_field_luma(field1_id);
-        auto c1 = repr->get_field_chroma(field1_id);
-        auto y2 = repr->get_field_luma(field2_id);
-        auto c2 = repr->get_field_chroma(field2_id);
+      collect_lines(frame_id, field1_offset, field1_height, spl,
+                    result.composite_samples, result.y_samples,
+                    result.c_samples);
+      std::vector<uint16_t> comp2, y2, c2;
+      collect_lines(frame_id, field2_offset, field2_height, spl, comp2, y2,
+                    c2);
 
-        // Concatenate field 1 and field 2
-        result.y_samples.reserve(y1.size() + y2.size());
-        result.y_samples.insert(result.y_samples.end(), y1.begin(), y1.end());
-        result.y_samples.insert(result.y_samples.end(), y2.begin(), y2.end());
+      result.composite_samples.insert(result.composite_samples.end(),
+                                      comp2.begin(), comp2.end());
+      result.y_samples.insert(result.y_samples.end(), y2.begin(), y2.end());
+      result.c_samples.insert(result.c_samples.end(), c2.begin(), c2.end());
+    }
 
-        result.c_samples.reserve(c1.size() + c2.size());
-        result.c_samples.insert(result.c_samples.end(), c1.begin(), c1.end());
-        result.c_samples.insert(result.c_samples.end(), c2.begin(), c2.end());
-
-        result.composite_samples = result.y_samples;  // Use Y as composite
-      } else {
-        // Composite source - get both fields and concatenate
-        auto f1 = repr->get_field(field1_id);
-        auto f2 = repr->get_field(field2_id);
-
-        result.composite_samples.reserve(f1.size() + f2.size());
-        result.composite_samples.insert(result.composite_samples.end(),
-                                        f1.begin(), f1.end());
-        result.composite_samples.insert(result.composite_samples.end(),
-                                        f2.begin(), f2.end());
-      }
+    if (result.has_separate_channels && result.composite_samples.empty()) {
+      result.composite_samples = result.y_samples;
     }
 
     return result;
@@ -1111,18 +1155,16 @@ bool RenderPresenter::getBurstLevelAnalysisData(NodeID node_id,
 QualityMetrics RenderPresenter::getFieldQualityMetrics(NodeID node_id,
                                                        FieldID field_id) {
   if (!impl_->field_renderer_) {
-    return QualityMetrics{};  // Empty metrics
+    return QualityMetrics{};
   }
 
-  // Render the field to populate observation context
+  orc::FrameID frame_id = static_cast<orc::FrameID>(field_id.value() / 2);
   auto render_result =
-      impl_->field_renderer_->render_field_at_node(node_id, field_id);
-
+      impl_->field_renderer_->render_frame_at_node(node_id, frame_id);
   if (!render_result.is_valid) {
     return QualityMetrics{};
   }
 
-  // Extract metrics from observation context
   const auto& obs_context = impl_->field_renderer_->get_observation_context();
   return MetricsPresenter::extractFieldMetrics(
       field_id, const_cast<void*>(static_cast<const void*>(&obs_context)));
@@ -1135,17 +1177,13 @@ QualityMetrics RenderPresenter::getFrameQualityMetrics(NodeID node_id,
     return QualityMetrics{};
   }
 
-  // Render both fields to populate observation context
-  auto render_result1 =
-      impl_->field_renderer_->render_field_at_node(node_id, field1_id);
-  auto render_result2 =
-      impl_->field_renderer_->render_field_at_node(node_id, field2_id);
-
-  if (!render_result1.is_valid || !render_result2.is_valid) {
+  orc::FrameID frame_id = static_cast<orc::FrameID>(field1_id.value() / 2);
+  auto render_result =
+      impl_->field_renderer_->render_frame_at_node(node_id, frame_id);
+  if (!render_result.is_valid) {
     return QualityMetrics{};
   }
 
-  // Extract and average metrics from observation context
   const auto& obs_context = impl_->field_renderer_->get_observation_context();
   return MetricsPresenter::extractFrameMetrics(
       field1_id, field2_id,
@@ -1180,10 +1218,9 @@ const void* RenderPresenter::getObservationContext(NodeID node_id,
     return nullptr;
   }
 
-  // Render the field to populate observation context
-  impl_->field_renderer_->render_field_at_node(node_id, field_id);
+  orc::FrameID frame_id = static_cast<orc::FrameID>(field_id.value() / 2);
+  impl_->field_renderer_->render_frame_at_node(node_id, frame_id);
 
-  // Return pointer to observation context
   return &impl_->field_renderer_->get_observation_context();
 }
 

@@ -1022,7 +1022,7 @@ void RenderCoordinator::handleGetFieldTiming(const GetFieldTimingRequest& req) {
     std::vector<uint16_t> y_samples_2;
     std::vector<uint16_t> c_samples_2;
 
-    if (req.output_type == orc::PreviewOutputType::Frame ||
+    if (req.output_type == orc::PreviewOutputType::Frame_Field1_First ||
         req.output_type == orc::PreviewOutputType::Frame_Reversed ||
         req.output_type == orc::PreviewOutputType::Split) {
       // For frame modes, output_index is a frame number, so convert to field

@@ -162,7 +162,7 @@ TEST(RenderCoordinatorTest, StalePreviewResponses_AreSuppressed) {
 
   EXPECT_CALL(
       *mock_presenter,
-      renderPreview(orc::NodeID(9), orc::PreviewOutputType::Field, 0, ""))
+      renderPreview(orc::NodeID(9), orc::PreviewOutputType::Frame_Field1, 0, ""))
       .WillOnce(
           Invoke([](orc::NodeID node_id, orc::PreviewOutputType output_type,
                     uint64_t output_index, const std::string&) {
@@ -190,9 +190,9 @@ TEST(RenderCoordinatorTest, StalePreviewResponses_AreSuppressed) {
   coordinator.updateDAG(std::make_shared<int>(345));
 
   const uint64_t first_id = coordinator.requestPreview(
-      orc::NodeID(9), orc::PreviewOutputType::Field, 0);
+      orc::NodeID(9), orc::PreviewOutputType::Frame_Field1, 0);
   const uint64_t second_id = coordinator.requestPreview(
-      orc::NodeID(9), orc::PreviewOutputType::Field, 0);
+      orc::NodeID(9), orc::PreviewOutputType::Frame_Field1, 0);
 
   ASSERT_TRUE(waitForCount(preview_spy, 1));
   EXPECT_EQ(preview_spy.count(), 1);
@@ -220,7 +220,7 @@ TEST(RenderCoordinatorTest,
       .WillOnce(Return(true));
   EXPECT_CALL(
       *mock_presenter,
-      renderPreview(orc::NodeID(11), orc::PreviewOutputType::Field, 2, ""))
+      renderPreview(orc::NodeID(11), orc::PreviewOutputType::Frame_Field1, 2, ""))
       .WillOnce(
           Invoke([](orc::NodeID node_id, orc::PreviewOutputType output_type,
                     uint64_t output_index, const std::string&) {
@@ -243,7 +243,7 @@ TEST(RenderCoordinatorTest,
   std::map<std::string, orc::ParameterValue> params;
   params.emplace("phase", int32_t{3});
   const uint64_t request_id = coordinator.requestApplyStageParameters(
-      orc::NodeID(11), orc::PreviewOutputType::Field, 2, "", std::move(params));
+      orc::NodeID(11), orc::PreviewOutputType::Frame_Field1, 2, "", std::move(params));
 
   ASSERT_TRUE(waitForCount(preview_spy, 1));
   ASSERT_EQ(preview_spy.count(), 1);

@@ -15,6 +15,7 @@
 
 #include "preview_renderer.h"
 #include "previewable_stage.h"
+#include "video_field_representation.h"
 
 namespace orc {
 

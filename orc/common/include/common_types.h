@@ -51,13 +51,16 @@ enum class SourceType {
  * @brief Output types available for preview
  */
 enum class PreviewOutputType {
-  Field,           ///< Single field (interlaced)
-  Frame,           ///< Frame with natural field order (using is_first_field)
-  Frame_Reversed,  ///< Frame with reversed field order
-  Split,   ///< Frame with fields stacked vertically (first field on top, second
-           ///< on bottom)
-  Luma,    ///< Luma component only
-  Chroma,  ///< Chroma component only (future)
+  Frame_Field1,  ///< Display field 1 of the frame as a flat (non-interlaced)
+                 ///< image
+  Frame_Field2,  ///< Display field 2 of the frame as a flat image
+  Frame_Field1_First,  ///< Interlaced frame display, field 1 on top (natural
+                       ///< temporal order)
+  Frame_Reversed,      ///< Interlaced frame display, field 2 on top (reversed
+                       ///< temporal order)
+  Split,  ///< Frame with field 1 stacked above field 2 (non-interlaced)
+  Luma,   ///< Luma component only
+  Chroma,    ///< Chroma component only (future)
   Composite  ///< Composite video (future)
 };
 

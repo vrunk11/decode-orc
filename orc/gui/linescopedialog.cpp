@@ -201,7 +201,7 @@ void LineScopeDialog::setLineSamples(
   // Note: current_line_number_ is stored as 0-based, pass it directly to GUI
   // helpers
   QString title;
-  if (preview_mode == orc::PreviewOutputType::Frame ||
+  if (preview_mode == orc::PreviewOutputType::Frame_Field1_First ||
       preview_mode == orc::PreviewOutputType::Frame_Reversed ||
       preview_mode == orc::PreviewOutputType::Split) {
     // Frame or Split mode: show frame number and frame line number

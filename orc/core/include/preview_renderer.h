@@ -13,7 +13,7 @@
 // GUI/CLI code must NOT include this directly; use RenderPresenter instead.
 
 #include <common_types.h>  // For PreviewOutputType, AspectRatioMode
-#include <field_id.h>
+#include <frame_id.h>
 #include <node_id.h>
 #include <orc_rendering.h>  // For public API types (DropoutRegion, PreviewImage)
 
@@ -25,10 +25,10 @@
 #include <vector>
 
 #include "../analysis/vectorscope/vectorscope_data.h"
-#include "dag_field_renderer.h"
+#include "dag_frame_renderer.h"
 #include "previewable_stage.h"  // For PreviewNavigationHint enum
 #include "stage_preview_capability.h"
-#include "video_field_representation.h"
+#include "video_frame_representation.h"
 
 namespace orc {
 
@@ -125,7 +125,7 @@ class PreviewRenderer {
    * @return Rendered image result
    *
    * Examples:
-   * - render_output("node_1", PreviewOutputType::Field, 100) -> field 100
+   * - render_output("node_1", PreviewOutputType::Frame_Field1, 100) -> field 100
    * - render_output("node_1", PreviewOutputType::Frame_EvenOdd, 50) -> frame 50
    * (even first)
    */
@@ -157,16 +157,16 @@ class PreviewRenderer {
   bool get_show_dropouts() const;
 
   /**
-   * @brief Get the field representation at a node
+   * @brief Get the frame representation at a node
    *
-   * This allows direct access to the underlying 16-bit field data
+   * This allows direct access to the underlying CVBS_U10_4FSC frame data
    * for operations like line scope display.
    *
    * @param node_id The node to get representation from
-   * @return Shared pointer to the field representation, or nullptr if not
+   * @return Shared pointer to the frame representation, or nullptr if not
    * available
    */
-  std::shared_ptr<const VideoFieldRepresentation> get_representation_at_node(
+  VideoFrameRepresentationPtr get_representation_at_node(
       const NodeID& node_id) const;
 
   /**
@@ -353,8 +353,8 @@ class PreviewRenderer {
   bool save_png(const PreviewImage& image, const std::string& filename);
 
  private:
-  /// DAG field renderer for getting field representations
-  std::unique_ptr<DAGFieldRenderer> field_renderer_;
+  /// DAG frame renderer for getting frame representations
+  std::unique_ptr<DAGFrameRenderer> frame_renderer_;
 
   /// Current DAG reference
   std::shared_ptr<const DAG> dag_;
@@ -381,31 +381,35 @@ class PreviewRenderer {
   // ========================================================================
 
   /**
-   * @brief Render a single field to RGB888
-   */
-  PreviewImage render_field(
-      std::shared_ptr<const VideoFieldRepresentation> repr, FieldID field_id);
-
-  /**
-   * @brief Render a frame (two fields woven together) to RGB888
+   * @brief Render a single field (field 1 or field 2) from a VFR frame to
+   * RGB888
    *
-   * @param even_first If true, even field on even lines; if false, odd field on
-   * even lines
+   * @param vfr The VideoFrameRepresentation containing the frame
+   * @param frame_id The FrameID to render
+   * @param field_idx 0 for field 1, 1 for field 2
    */
-  PreviewImage render_frame(
-      std::shared_ptr<const VideoFieldRepresentation> repr, FieldID field_a,
-      FieldID field_b, bool even_first);
+  PreviewImage render_vfr_field(const VideoFrameRepresentation& vfr,
+                                FrameID frame_id, int field_idx);
 
   /**
-   * @brief Render a frame by stacking two fields vertically
-   * @param repr The video field representation
-   * @param field_a First field ID (top)
-   * @param field_b Second field ID (bottom)
-   * @return Rendered split frame image
+   * @brief Render an interlaced frame (two fields woven together) to RGB888
+   *
+   * @param vfr The VideoFrameRepresentation containing the frame
+   * @param frame_id The FrameID to render
+   * @param field1_first If true, field 1 occupies even lines; if false, field 2
+   * does
    */
-  PreviewImage render_split_frame(
-      std::shared_ptr<const VideoFieldRepresentation> repr, FieldID field_a,
-      FieldID field_b);
+  PreviewImage render_vfr_interlaced(const VideoFrameRepresentation& vfr,
+                                     FrameID frame_id, bool field1_first);
+
+  /**
+   * @brief Render a split frame (field 1 above field 2) to RGB888
+   *
+   * @param vfr The VideoFrameRepresentation containing the frame
+   * @param frame_id The FrameID to render
+   */
+  PreviewImage render_vfr_split(const VideoFrameRepresentation& vfr,
+                                FrameID frame_id);
 
   /**
    * @brief Render dropout regions onto an image
@@ -414,12 +418,12 @@ class PreviewRenderer {
   void render_dropouts(PreviewImage& image) const;
 
   /**
-   * @brief Convert 16-bit TBC samples to 8-bit grayscale
+   * @brief Convert CVBS_U10_4FSC int16_t samples to 8-bit display value
    *
-   * Applies proper scaling based on black/white IRE levels.
-   * Default: simple 16->8 bit shift, but could be improved with metadata.
+   * Maps blanking_level → 0, white_level → 255. Only clamps the 8-bit output.
    */
-  uint8_t tbc_sample_to_8bit(uint16_t sample, double blackIRE, double whiteIRE);
+  uint8_t cvbs_sample_to_8bit(int16_t sample, int32_t blanking_level,
+                               int32_t white_level);
 
   // ========================================================================
   // Stage preview support (new interface for sources/transforms)
