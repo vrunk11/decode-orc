@@ -87,6 +87,7 @@ orc_add_core_unit_tests(
         stages/source_common/source_stage_contract_test.cpp
         stages/tbc_source/tbc_source_stage_test.cpp
         stages/tbc_source/pal_tbc_converter_test.cpp
+        stages/tbc_source/ntsc_tbc_converter_test.cpp
         stages/cvbs_source/cvbs_source_stage_test.cpp
 )
 

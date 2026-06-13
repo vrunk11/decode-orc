@@ -21,8 +21,12 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "audio_resampler.h"
 #include "error_types.h"
 #include "logging.h"
+#include "ntsc_tbc_converter.h"
+#include "ntsc_tbc_yc_converter.h"
+#include "pal_m_tbc_converter.h"
 #include "pal_tbc_converter.h"
 #include "pal_tbc_yc_converter.h"
 
@@ -190,8 +194,10 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
         has_efm_(has_efm),
         has_ac3_(has_ac3),
         is_yc_(!c_path_.empty()) {
-    // Pre-compute per-frame audio sample offsets from field metadata.
+    // Pre-compute per-frame audio offsets from field metadata, then resample
+  // for NTSC/PAL_M.
     compute_audio_offsets();
+    compute_ntsc_palM_audio();
   }
 
   // --------------------------------------------------------------------------
@@ -337,6 +343,17 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   uint32_t get_audio_sample_count(FrameID id) const override {
     if (!has_audio_ || !has_frame(id)) return 0;
     const size_t idx = static_cast<size_t>(id);
+
+    if (video_params_.system != VideoSystem::PAL) {
+      // NTSC/PAL_M: fixed 1470 stereo pairs per frame after resampling.
+      if (idx < resampled_audio_frames_.size() &&
+          !resampled_audio_frames_[idx].empty()) {
+        return static_cast<uint32_t>(resampled_audio_frames_[idx].size() / 2);
+      }
+      return 0;
+    }
+
+    // PAL: per-frame count from field metadata.
     if (idx >= audio_frame_pair_counts_.size()) return 0;
     return static_cast<uint32_t>(audio_frame_pair_counts_[idx]);
   }
@@ -344,6 +361,16 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   std::vector<int16_t> get_audio_samples(FrameID id) const override {
     if (!has_audio_ || !has_frame(id)) return {};
     const size_t idx = static_cast<size_t>(id);
+
+    if (video_params_.system != VideoSystem::PAL) {
+      // NTSC/PAL_M: return pre-resampled block.
+      if (idx < resampled_audio_frames_.size()) {
+        return resampled_audio_frames_[idx];
+      }
+      return {};
+    }
+
+    // PAL: read raw PCM using pre-computed per-frame offsets.
     if (idx >= audio_frame_offsets_.size()) return {};
     const size_t pair_offset = audio_frame_offsets_[idx];
     const size_t pair_count = audio_frame_pair_counts_[idx];
@@ -397,13 +424,22 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     }
   }
 
-  // Compute the colour_frame_index for a frame from its two field metadata entries.
+  // Compute the colour_frame_index for a frame from its field metadata.
+  // Uses TBC field 1 (even index = 2×id) which carries the frame phase.
   int compute_colour_frame_index(FrameID id) const {
-    // Use the phase from the first field (TBC field 1 = odd field = index 2×id).
     const size_t fld_idx = static_cast<size_t>(id) * 2;
     if (fld_idx >= field_meta_.size()) return -1;
-    return PalTBCConverter::map_field_phase_to_colour_frame_index(
-        field_meta_[fld_idx].field_phase_id);
+    const auto phase = field_meta_[fld_idx].field_phase_id;
+    switch (video_params_.system) {
+      case VideoSystem::PAL:
+        return PalTBCConverter::map_field_phase_to_colour_frame_index(phase);
+      case VideoSystem::NTSC:
+        return NtscTBCConverter::map_field_phase_to_colour_frame_index(phase);
+      case VideoSystem::PAL_M:
+        return PalMTBCConverter::map_field_phase_to_colour_frame_index(phase);
+      default:
+        return -1;
+    }
   }
 
   void ensure_frame_cached(FrameID id) const {
@@ -417,40 +453,40 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   }
 
   CachedFrame assemble_frame(FrameID id) const {
-    // Only PAL is implemented in Phase 4; NTSC and PAL_M are Phase 5.
-    if (video_params_.system != VideoSystem::PAL) {
-      throw std::runtime_error(
-          "TBC source: NTSC and PAL_M converters are not yet implemented "
-          "(Phase 5). Only PAL TBC sources are supported in this version.");
+    switch (video_params_.system) {
+      case VideoSystem::PAL:   return assemble_pal_frame(id);
+      case VideoSystem::NTSC:  return assemble_ntsc_frame(id);
+      case VideoSystem::PAL_M: return assemble_pal_m_frame(id);
+      default:
+        throw std::runtime_error(
+            "TBC source: unsupported video system for frame assembly");
     }
+  }
 
-    // TBC field ordering (design §5.2.3):
+  CachedFrame assemble_pal_frame(FrameID id) const {
+    // TBC field ordering (design §5.2.3 / EBU Tech. 3280-E §1.3):
     //   Even field indices (0, 2, 4…) → TBC field 1 (312 lines, odd/earlier)
     //   Odd field indices  (1, 3, 5…) → TBC field 2 (313 lines, even/later)
     const int32_t tbc_f1_idx = static_cast<int32_t>(id) * 2;
     const int32_t tbc_f2_idx = tbc_f1_idx + 1;
 
-    // PAL field dimensions.
     constexpr int32_t kF1Lines = kPalFrameLines - kPalField1Lines;  // 312
     constexpr int32_t kF2Lines = kPalField1Lines;                   // 313
     constexpr int32_t kLineW   = kPalMaxSamplesPerLine - 1;         // 1135
-    const int32_t stored_field_size = kF2Lines * kLineW;  // 313×1135 stored
+    const int32_t stored_field_size = kF2Lines * kLineW;
 
     std::string err;
 
-    // TBC field 1 (312-line field, odd/earlier temporal).
     const std::vector<uint16_t> raw_f1 = deps_->read_field_samples(
         tbc_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
     if (raw_f1.empty()) {
-      throw std::runtime_error("TBC: failed to read field 1 for frame " +
+      throw std::runtime_error("PAL TBC: failed to read field 1 for frame " +
                                std::to_string(id) + ": " + err);
     }
-
-    // TBC field 2 (313-line field, even/later temporal).
     const std::vector<uint16_t> raw_f2 = deps_->read_field_samples(
         tbc_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
     if (raw_f2.empty()) {
-      throw std::runtime_error("TBC: failed to read field 2 for frame " +
+      throw std::runtime_error("PAL TBC: failed to read field 2 for frame " +
                                std::to_string(id) + ": " + err);
     }
 
@@ -460,28 +496,125 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     result.colour_frame_index = compute_colour_frame_index(id);
 
     if (is_yc_) {
-      // Luma channel (Y .tbc): same assembly, passed as composite.
-      // Chroma channel (C .tbc): read from c_path_.
       const std::vector<uint16_t> raw_c1 = deps_->read_field_samples(
           c_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
       const std::vector<uint16_t> raw_c2 = deps_->read_field_samples(
           c_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
-
       if (raw_c1.empty() || raw_c2.empty()) {
         throw std::runtime_error(
-            "TBC YC: failed to read chroma field for frame " +
+            "PAL TBC YC: failed to read chroma field for frame " +
             std::to_string(id) + ": " + err);
       }
-      // Luma = samples already assembled above; copy to luma buffer.
       result.luma = result.samples;
       result.chroma = PalTBCConverter::assemble_frame(
           raw_c1, raw_c2, video_params_.blanking_16b, video_params_.white_16b);
     }
+    return result;
+  }
 
+  CachedFrame assemble_ntsc_frame(FrameID id) const {
+    // SMPTE 244M-2003 §4.1: NTSC frame assembly.
+    // Both fields stored at 263 lines in the TBC file; field 1 has only 262
+    // real lines — the last stored line is TBC padding and is discarded.
+    const int32_t tbc_f1_idx = static_cast<int32_t>(id) * 2;
+    const int32_t tbc_f2_idx = tbc_f1_idx + 1;
+
+    constexpr int32_t kF1Lines = kNtscField1Lines;                    // 262
+    constexpr int32_t kF2Lines = kNtscFrameLines - kNtscField1Lines;  // 263
+    constexpr int32_t kLineW   = kNtscSamplesPerLine;                 // 910
+    const int32_t stored_field_size = kF2Lines * kLineW;  // 263×910 stored
+
+    std::string err;
+
+    const std::vector<uint16_t> raw_f1 = deps_->read_field_samples(
+        tbc_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
+    if (raw_f1.empty()) {
+      throw std::runtime_error("NTSC TBC: failed to read field 1 for frame " +
+                               std::to_string(id) + ": " + err);
+    }
+    const std::vector<uint16_t> raw_f2 = deps_->read_field_samples(
+        tbc_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
+    if (raw_f2.empty()) {
+      throw std::runtime_error("NTSC TBC: failed to read field 2 for frame " +
+                               std::to_string(id) + ": " + err);
+    }
+
+    CachedFrame result;
+    result.samples = NtscTBCConverter::assemble_frame(
+        raw_f1, raw_f2, video_params_.blanking_16b, video_params_.white_16b);
+    result.colour_frame_index = compute_colour_frame_index(id);
+
+    if (is_yc_) {
+      const std::vector<uint16_t> raw_c1 = deps_->read_field_samples(
+          c_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
+      const std::vector<uint16_t> raw_c2 = deps_->read_field_samples(
+          c_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
+      if (raw_c1.empty() || raw_c2.empty()) {
+        throw std::runtime_error(
+            "NTSC TBC YC: failed to read chroma field for frame " +
+            std::to_string(id) + ": " + err);
+      }
+      result.luma = result.samples;
+      result.chroma = NtscTBCConverter::assemble_frame(
+          raw_c1, raw_c2, video_params_.blanking_16b, video_params_.white_16b);
+    }
+    return result;
+  }
+
+  CachedFrame assemble_pal_m_frame(FrameID id) const {
+    // ITU-R BT.1700-1 Annex 1 Part B: PAL_M frame assembly.
+    // Same field structure as NTSC (263 lines stored; field 1 = 262 real lines)
+    // but with kPalMSamplesPerLine = 909 samples/line.
+    const int32_t tbc_f1_idx = static_cast<int32_t>(id) * 2;
+    const int32_t tbc_f2_idx = tbc_f1_idx + 1;
+
+    constexpr int32_t kF1Lines = kPalMField1Lines;                    // 262
+    constexpr int32_t kF2Lines = kPalMFrameLines - kPalMField1Lines;  // 263
+    constexpr int32_t kLineW   = kPalMSamplesPerLine;                 // 909
+    const int32_t stored_field_size = kF2Lines * kLineW;  // 263×909 stored
+
+    std::string err;
+
+    const std::vector<uint16_t> raw_f1 = deps_->read_field_samples(
+        tbc_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
+    if (raw_f1.empty()) {
+      throw std::runtime_error("PAL_M TBC: failed to read field 1 for frame " +
+                               std::to_string(id) + ": " + err);
+    }
+    const std::vector<uint16_t> raw_f2 = deps_->read_field_samples(
+        tbc_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
+    if (raw_f2.empty()) {
+      throw std::runtime_error("PAL_M TBC: failed to read field 2 for frame " +
+                               std::to_string(id) + ": " + err);
+    }
+
+    CachedFrame result;
+    result.samples = PalMTBCConverter::assemble_frame(
+        raw_f1, raw_f2, video_params_.blanking_16b, video_params_.white_16b);
+    result.colour_frame_index = compute_colour_frame_index(id);
+
+    if (is_yc_) {
+      // PAL_M YC: reuse the NTSC YC assembly (same field geometry).
+      const std::vector<uint16_t> raw_c1 = deps_->read_field_samples(
+          c_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
+      const std::vector<uint16_t> raw_c2 = deps_->read_field_samples(
+          c_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
+      if (raw_c1.empty() || raw_c2.empty()) {
+        throw std::runtime_error(
+            "PAL_M TBC YC: failed to read chroma field for frame " +
+            std::to_string(id) + ": " + err);
+      }
+      result.luma = result.samples;
+      result.chroma = PalMTBCConverter::assemble_frame(
+          raw_c1, raw_c2, video_params_.blanking_16b, video_params_.white_16b);
+    }
     return result;
   }
 
   // Pre-compute cumulative audio stereo-pair offsets from per-field metadata.
+  // PAL: these offsets are used directly for raw PCM access.
+  // NTSC/PAL_M: the total pair count is used to read the full PCM for
+  // resampling; per-frame offsets are not used for playback.
   void compute_audio_offsets() {
     if (!has_audio_) return;
     const size_t fc = frame_count();
@@ -509,6 +642,24 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
       audio_frame_pair_counts_[frame_idx] = pairs;
       cumulative += pairs;
     }
+    audio_total_raw_pairs_ = cumulative;
+  }
+
+  // NTSC/PAL_M only: read the entire raw PCM, resample to the frame-locked
+  // rate (44100000/1001 Hz), and cache per-frame 1470-pair blocks.
+  // PAL audio (44100 Hz = locked rate) bypasses this entirely.
+  void compute_ntsc_palM_audio() {
+    if (!has_audio_) return;
+    if (video_params_.system == VideoSystem::PAL) return;  // PAL: no resampling
+
+    if (audio_total_raw_pairs_ == 0) return;
+
+    const std::vector<int16_t> raw =
+        deps_->read_audio_samples_at(pcm_path_, 0, audio_total_raw_pairs_);
+    if (raw.empty()) return;
+
+    resampled_audio_frames_ = NtscPalMAudioResampler::resample_and_segment(
+        raw, frame_count());
   }
 
   TBCVideoParams video_params_;
@@ -527,9 +678,13 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   bool has_ac3_ = false;
   bool is_yc_ = false;
 
-  // Pre-computed audio layout (stereo pairs).
+  // Pre-computed audio layout (stereo pairs) — PAL raw PCM path.
   std::vector<size_t> audio_frame_offsets_;
   std::vector<size_t> audio_frame_pair_counts_;
+  size_t audio_total_raw_pairs_ = 0;
+
+  // NTSC/PAL_M: per-frame resampled audio blocks (1470 stereo pairs each).
+  std::vector<std::vector<int16_t>> resampled_audio_frames_;
 
   mutable std::mutex cache_mutex_;
   mutable std::unordered_map<FrameID, CachedFrame> frame_cache_;
@@ -836,22 +991,52 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
   // Load all per-field metadata.
   auto field_meta = deps_->load_all_field_meta(sc.db_path, err);
 
-  // PAL YC phase alignment check (design §14.11).
-  if (is_yc && tvp.system == VideoSystem::PAL && field_meta.size() >= 2) {
-    const int luma_cfi = PalTBCConverter::map_field_phase_to_colour_frame_index(
-        field_meta[0].field_phase_id);
-    // Chroma phase: load chroma metadata separately.
+  // YC phase alignment check (design §14.11): compare colour_frame_index at
+  // frame 0 for luma and chroma when operating in YC mode.
+  if (is_yc && !field_meta.empty()) {
     auto c_sc = resolve_sidecars(c_path, parameters);
     c_sc.db_path = c_path + ".json.db";
     std::vector<TBCFieldMeta> c_meta =
         deps_->load_all_field_meta(c_sc.db_path, err);
+
     if (!c_meta.empty()) {
-      const int chroma_cfi =
-          PalTBCConverter::map_field_phase_to_colour_frame_index(
+      int luma_cfi = -1;
+      int chroma_cfi = -1;
+
+      switch (tvp.system) {
+        case VideoSystem::PAL:
+          luma_cfi = PalTBCConverter::map_field_phase_to_colour_frame_index(
+              field_meta[0].field_phase_id);
+          chroma_cfi = PalTBCConverter::map_field_phase_to_colour_frame_index(
               c_meta[0].field_phase_id);
-      if (!PalTBCYCConverter::check_yc_phase_alignment(luma_cfi, chroma_cfi)) {
-        throw UserDataError(
-            PalTBCYCConverter::yc_alignment_error(luma_cfi, chroma_cfi));
+          if (!PalTBCYCConverter::check_yc_phase_alignment(luma_cfi, chroma_cfi)) {
+            throw UserDataError(
+                PalTBCYCConverter::yc_alignment_error(luma_cfi, chroma_cfi));
+          }
+          break;
+        case VideoSystem::NTSC:
+          luma_cfi = NtscTBCConverter::map_field_phase_to_colour_frame_index(
+              field_meta[0].field_phase_id);
+          chroma_cfi = NtscTBCConverter::map_field_phase_to_colour_frame_index(
+              c_meta[0].field_phase_id);
+          if (!NtscTBCYCConverter::check_yc_phase_alignment(luma_cfi, chroma_cfi)) {
+            throw UserDataError(
+                NtscTBCYCConverter::yc_alignment_error(luma_cfi, chroma_cfi));
+          }
+          break;
+        case VideoSystem::PAL_M:
+          luma_cfi = PalMTBCConverter::map_field_phase_to_colour_frame_index(
+              field_meta[0].field_phase_id);
+          chroma_cfi = PalMTBCConverter::map_field_phase_to_colour_frame_index(
+              c_meta[0].field_phase_id);
+          // PAL_M YC: reuse the PAL alignment checker (same logic, 4-frame cycle).
+          if (!PalTBCYCConverter::check_yc_phase_alignment(luma_cfi, chroma_cfi)) {
+            throw UserDataError(
+                PalTBCYCConverter::yc_alignment_error(luma_cfi, chroma_cfi));
+          }
+          break;
+        default:
+          break;
       }
     }
   }
