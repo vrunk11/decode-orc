@@ -674,6 +674,10 @@ void RenderCoordinator::handleRenderPreview(const RenderPreviewRequest& req) {
       return;
     }
 
+    if (!result.success && !result.error_message.empty()) {
+      ORC_LOG_ERROR("RenderCoordinator: Preview render failed: {}",
+                    result.error_message);
+    }
     ORC_LOG_DEBUG("RenderCoordinator: Preview render complete, success={}",
                   result.success);
 

@@ -1319,17 +1319,7 @@ void MainWindow::quickProject(const QString& filename) {
   preview_dialog_->frameJumpSpinBox()->setEnabled(false);
   preview_dialog_->previewSlider()->setValue(0);
 
-  // Determine stage names based on format and source type
-  std::string source_stage_name;
-  if (video_format == orc::VideoSystem::NTSC) {
-    source_stage_name = (source_type == orc::SourceType::Composite)
-                            ? "NTSC_Comp_Source"
-                            : "NTSC_YC_Source";
-  } else {
-    source_stage_name = (source_type == orc::SourceType::Composite)
-                            ? "PAL_Comp_Source"
-                            : "PAL_YC_Source";
-  }
+  const std::string source_stage_name = "tbc_source";
 
   // Create empty project
   QString project_name = file_info.completeBaseName();
