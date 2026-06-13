@@ -14,6 +14,8 @@
 #include <cmath>
 #include <cstddef>
 
+#include <cvbs_signal_constants.h>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -93,8 +95,8 @@ void TransformPal2D::filterFields(const std::vector<SourceField>& inputFields,
 
   // Check we have a valid vector of input fields, and a matching output vector
   assert((inputFields.size() % 2) == 0);
-  for (int32_t i = 0; i < inputFields.size(); i++) {
-    assert(!inputFields[i].data.empty());
+  for (int32_t i = 0; i < static_cast<int32_t>(inputFields.size()); i++) {
+    assert(inputFields[i].data != nullptr);
   }
   assert(outputFields.size() == (endIndex - startIndex));
 
@@ -152,20 +154,22 @@ void TransformPal2D::filterField(const SourceField& inputField,
 void TransformPal2D::forwardFFTTile(int32_t tileX, int32_t tileY,
                                     int32_t startY, int32_t endY,
                                     const SourceField& inputField) {
-  // Copy the input signal into fftReal, applying the window function
-  const uint16_t* inputPtr = inputField.data.data();
+  // Copy the input signal into fftReal, applying the window function.
+  // Use inputField.getLine() to correctly handle PAL non-uniform lines.
   for (int32_t y = 0; y < YTILE; y++) {
     // If this frame line is above/below the active region, fill it with
-    // black instead.
+    // blanking level instead.
     if (y < startY || y >= endY) {
       for (int32_t x = 0; x < XTILE; x++) {
+        // EBU Tech. 3280-E: blanking level = kPalBlanking in 10-bit domain.
         fftReal[(y * XTILE) + x] =
-            videoParameters.black_16b_ire * windowFunction[y][x];
+            orc::kPalBlanking * windowFunction[y][x];
       }
       continue;
     }
 
-    const uint16_t* b = inputPtr + (static_cast<ptrdiff_t>((tileY + y) * videoParameters.field_width));
+    const int32_t field_line = tileY + y;
+    const int16_t* b = inputField.getLine(static_cast<size_t>(field_line));
     for (int32_t x = 0; x < XTILE; x++) {
       fftReal[(y * XTILE) + x] = b[tileX + x] * windowFunction[y][x];
     }

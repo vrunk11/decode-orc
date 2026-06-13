@@ -14,6 +14,8 @@
 #include <cassert>
 #include <cmath>
 
+#include <cvbs_signal_constants.h>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -83,8 +85,11 @@ int32_t TransformPal3D::getThresholdsSize() {
 }
 
 int32_t TransformPal3D::getLookBehind() {
-  // We overlap at most half a tile (in frames) into the past...
-  return (HALFZTILE + 1) / 2;
+  // Design §8.7: In the VFrameR frame-based architecture, this decoder
+  // requires one frame of look-behind context.  Internally the 3D FFT tile
+  // extends up to HALFZTILE fields back; fields outside the provided range
+  // are filled with blanking in forwardFFTTile().
+  return 1;
 }
 
 int32_t TransformPal3D::getLookAhead() {
@@ -111,15 +116,17 @@ void TransformPal3D::filterFields(const std::vector<SourceField>& inputFields,
 
   // Check we have a valid vector of input fields, and a matching output vector
   assert((inputFields.size() % 2) == 0);
-  for (int32_t i = 0; i < inputFields.size(); i++) {
-    assert(!inputFields[i].data.empty());
+  for (int32_t i = 0; i < static_cast<int32_t>(inputFields.size()); i++) {
+    assert(inputFields[i].data != nullptr);
   }
   assert(outputFields.size() == (endIndex - startIndex));
 
-  // Check that we've been given enough surrounding fields to compute FFTs
-  // that overlap the fields we're actually interested in by half a tile
-  assert(startIndex >= HALFZTILE);
-  assert((inputFields.size() - endIndex) >= HALFZTILE);
+  // Check that we've been given at least getLookBehind() frames (= 2 fields)
+  // of surrounding context.  The 3D FFT tile may reach further than this;
+  // forwardFFTTile() fills missing fields with blanking.
+  assert(startIndex >= getLookBehind() * 2);
+  assert((static_cast<int32_t>(inputFields.size()) - endIndex) >=
+         getLookAhead() * 2);
 
   // Allocate and clear output buffers
   chromaBuf.resize(endIndex - startIndex);
@@ -170,33 +177,33 @@ void TransformPal3D::forwardFFTTile(
     // Bounds check to prevent out-of-bounds access
     if (fieldIndex < 0 ||
         fieldIndex >= static_cast<int32_t>(inputFields.size())) {
-      // Fill entire z-slice with black if field is out of bounds
+      // Fill entire z-slice with blanking if field is out of bounds.
+      // EBU Tech. 3280-E: blanking level = kPalBlanking in 10-bit domain.
       for (int32_t y = 0; y < YTILE; y++) {
         for (int32_t x = 0; x < XTILE; x++) {
           fftReal[(((z * YTILE) + y) * XTILE) + x] =
-              videoParameters.black_16b_ire * windowFunction[z][y][x];
+              orc::kPalBlanking * windowFunction[z][y][x];
         }
       }
       continue;
     }
 
-    const uint16_t* inputPtr = inputFields[fieldIndex].data.data();
-
     for (int32_t y = 0; y < YTILE; y++) {
-      // If this frame line is not available in the field
-      // we're reading from (either because it's above/below
-      // the active region, or because it's in the other
-      // field), fill it with black instead.
+      // If this frame line is not available in the field we're reading from
+      // (either outside the active region, or in the other field), fill with
+      // blanking instead.
       if (y < startY || y >= endY || ((tileY + y) % 2) != (fieldIndex % 2)) {
         for (int32_t x = 0; x < XTILE; x++) {
           fftReal[(((z * YTILE) + y) * XTILE) + x] =
-              videoParameters.black_16b_ire * windowFunction[z][y][x];
+              orc::kPalBlanking * windowFunction[z][y][x];
         }
         continue;
       }
 
       const int32_t fieldLine = (tileY + y) / 2;
-      const uint16_t* b = inputPtr + (static_cast<ptrdiff_t>(fieldLine * videoParameters.field_width));
+      // Use getLine() to handle PAL non-uniform line lengths correctly.
+      const int16_t* b =
+          inputFields[fieldIndex].getLine(static_cast<size_t>(fieldLine));
       for (int32_t x = 0; x < XTILE; x++) {
         fftReal[(((z * YTILE) + y) * XTILE) + x] =
             b[tileX + x] * windowFunction[z][y][x];

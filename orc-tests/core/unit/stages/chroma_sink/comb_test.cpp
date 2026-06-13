@@ -15,6 +15,7 @@
 
 namespace orc_unit_test {
 namespace {
+
 orc::SourceParameters make_ntsc_video_params() {
   orc::SourceParameters p;
   p.system = orc::VideoSystem::NTSC;
@@ -33,48 +34,60 @@ orc::SourceParameters make_ntsc_video_params() {
   return p;
 }
 
-SourceField make_yc_field(bool is_first_field, uint16_t luma_base,
-                          uint16_t chroma_base) {
+// Helper owning wrapper for tests: holds the sample buffers and the
+// non-owning SourceField that points into them.
+struct OwnedField {
+  std::vector<int16_t> composite_buf;
+  std::vector<int16_t> luma_buf;
+  std::vector<int16_t> chroma_buf;
   SourceField field;
-  field.is_yc = true;
-  field.is_first_field = is_first_field;
-  field.field_phase_id = is_first_field ? 1 : 2;
 
-  constexpr int width = 32;
-  constexpr int height = 4;
-  field.luma_data.reserve(static_cast<size_t>(width) * height);
-  field.chroma_data.reserve(static_cast<size_t>(width) * height);
+  static OwnedField makeYC(bool is_first_field, int16_t luma_base,
+                            int16_t chroma_base, int width, int height) {
+    OwnedField of;
+    of.field.is_yc = true;
+    of.field.is_first_field = is_first_field;
+    of.field.frame_phase_id = is_first_field ? 1 : 2;
+    of.field.line_count = static_cast<size_t>(height);
+    of.field.samples_per_line = static_cast<size_t>(width);
 
-  for (int line = 0; line < height; ++line) {
-    for (int x = 0; x < width; ++x) {
-      field.luma_data.push_back(
-          static_cast<uint16_t>(luma_base + line * 4 + x));
-      field.chroma_data.push_back(
-          static_cast<uint16_t>(chroma_base + ((x % 4) * 10)));
+    of.luma_buf.reserve(static_cast<size_t>(width * height));
+    of.chroma_buf.reserve(static_cast<size_t>(width * height));
+    for (int line = 0; line < height; ++line) {
+      for (int x = 0; x < width; ++x) {
+        of.luma_buf.push_back(
+            static_cast<int16_t>(luma_base + line * 4 + x));
+        of.chroma_buf.push_back(
+            static_cast<int16_t>(chroma_base + ((x % 4) * 10)));
+      }
     }
+    // Pointers remain valid: std::vector move preserves data address.
+    of.field.luma_data = of.luma_buf.data();
+    of.field.chroma_data = of.chroma_buf.data();
+    return of;
   }
 
-  return field;
-}
+  static OwnedField makeComposite(bool is_first_field, int16_t base,
+                                   int width, int height) {
+    OwnedField of;
+    of.field.is_yc = false;
+    of.field.is_first_field = is_first_field;
+    of.field.frame_phase_id = is_first_field ? 1 : 2;
+    of.field.line_count = static_cast<size_t>(height);
+    of.field.samples_per_line = static_cast<size_t>(width);
 
-SourceField make_composite_field(bool is_first_field, uint16_t base) {
-  SourceField field;
-  field.is_yc = false;
-  field.is_first_field = is_first_field;
-  field.field_phase_id = is_first_field ? 1 : 2;
-
-  constexpr int width = 32;
-  constexpr int height = 4;
-  field.data.reserve(static_cast<size_t>(width) * height);
-
-  for (int line = 0; line < height; ++line) {
-    for (int x = 0; x < width; ++x) {
-      field.data.push_back(static_cast<uint16_t>(base + line * 8 + x));
+    of.composite_buf.reserve(static_cast<size_t>(width * height));
+    for (int line = 0; line < height; ++line) {
+      for (int x = 0; x < width; ++x) {
+        of.composite_buf.push_back(
+            static_cast<int16_t>(base + line * 8 + x));
+      }
     }
+    of.field.data = of.composite_buf.data();
+    return of;
   }
+};
 
-  return field;
-}
 }  // namespace
 
 TEST(CombTest, Configuration_LookAroundDependsOnDimensions) {
@@ -100,10 +113,10 @@ TEST(CombTest, DecodeFramesYcPath_PreservesLumaInActiveRegion) {
   Comb decoder;
   decoder.updateConfiguration(params, config);
 
-  auto first_field = make_yc_field(true, 1000, 2000);
-  auto second_field = make_yc_field(false, 3000, 4000);
+  auto first_owned = OwnedField::makeYC(true, 1000, 2000, 32, 4);
+  auto second_owned = OwnedField::makeYC(false, 3000, 4000, 32, 4);
 
-  std::vector<SourceField> fields = {first_field, second_field};
+  std::vector<SourceField> fields = {first_owned.field, second_owned.field};
   std::vector<ComponentFrame> output(1);
 
   decoder.decodeFrames(fields, 0, 2, output);
@@ -114,10 +127,14 @@ TEST(CombTest, DecodeFramesYcPath_PreservesLumaInActiveRegion) {
   const double* line0 = output[0].y(0);
   const double* line1 = output[0].y(1);
 
-  EXPECT_DOUBLE_EQ(line0[16], static_cast<double>(first_field.luma_data[16]));
-  EXPECT_DOUBLE_EQ(line0[20], static_cast<double>(first_field.luma_data[20]));
-  EXPECT_DOUBLE_EQ(line1[16], static_cast<double>(second_field.luma_data[16]));
-  EXPECT_DOUBLE_EQ(line1[20], static_cast<double>(second_field.luma_data[20]));
+  EXPECT_DOUBLE_EQ(line0[16],
+                   static_cast<double>(first_owned.field.luma_data[16]));
+  EXPECT_DOUBLE_EQ(line0[20],
+                   static_cast<double>(first_owned.field.luma_data[20]));
+  EXPECT_DOUBLE_EQ(line1[16],
+                   static_cast<double>(second_owned.field.luma_data[16]));
+  EXPECT_DOUBLE_EQ(line1[20],
+                   static_cast<double>(second_owned.field.luma_data[20]));
 }
 
 TEST(CombTest, DecodeFramesCompositePath_MatchesGoldenVector) {
@@ -130,10 +147,10 @@ TEST(CombTest, DecodeFramesCompositePath_MatchesGoldenVector) {
   Comb decoder;
   decoder.updateConfiguration(params, config);
 
-  auto first_field = make_composite_field(true, 2500);
-  auto second_field = make_composite_field(false, 2600);
+  auto first_owned = OwnedField::makeComposite(true, 2500, 32, 4);
+  auto second_owned = OwnedField::makeComposite(false, 2600, 32, 4);
 
-  std::vector<SourceField> fields = {first_field, second_field};
+  std::vector<SourceField> fields = {first_owned.field, second_owned.field};
   std::vector<ComponentFrame> output(1);
 
   decoder.decodeFrames(fields, 0, 2, output);

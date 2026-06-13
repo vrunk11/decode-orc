@@ -13,7 +13,7 @@
 #include "../../../../orc/plugins/stages/sinks/common/ffmpeg_video_sink_stage.h"
 #include "../../../../orc/plugins/stages/sinks/common/raw_video_sink_stage.h"
 #include "../../include/observation_context_interface_mock.h"
-#include "../../include/video_field_representation_mock.h"
+#include "../../include/video_frame_representation_artifact_mock.h"
 
 namespace orc_unit_test {
 using testing::HasSubstr;
@@ -49,7 +49,8 @@ orc::SourceParameters make_too_narrow_pal_params() {
 TEST(ChromaSinkStageSafetyTest, RawSinkTrigger_RejectsInvalidNtscGeometry) {
   orc::RawVideoSinkStage stage;
   MockObservationContext observation_context;
-  auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
+  auto vfr =
+      std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*vfr, get_video_parameters())
       .WillRepeatedly(Return(make_too_narrow_ntsc_params()));
@@ -72,7 +73,8 @@ TEST(ChromaSinkStageSafetyTest, RawSinkTrigger_RejectsInvalidNtscGeometry) {
 TEST(ChromaSinkStageSafetyTest, FfmpegSinkTrigger_RejectsInvalidPalGeometry) {
   orc::FFmpegVideoSinkStage stage;
   MockObservationContext observation_context;
-  auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
+  auto vfr =
+      std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*vfr, get_video_parameters())
       .WillRepeatedly(Return(make_too_narrow_pal_params()));

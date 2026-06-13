@@ -16,7 +16,7 @@
 
 #include "../../../../orc/core/include/observation_context.h"
 #include "../../../../orc/plugins/stages/sinks/common/chroma_sink_stage.h"
-#include "../../include/video_field_representation_mock.h"
+#include "../../include/video_frame_representation_artifact_mock.h"
 
 namespace orc_unit_test {
 using testing::NiceMock;
@@ -45,11 +45,12 @@ orc::SourceParameters make_video_params(orc::VideoSystem system) {
 orc::StagePreviewCapability capability_for_system(orc::VideoSystem system) {
   orc::ChromaSinkStage stage;
   orc::ObservationContext observation_context;
-  auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
+  auto vfr =
+      std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*vfr, get_video_parameters())
       .WillRepeatedly(Return(make_video_params(system)));
-  EXPECT_CALL(*vfr, field_count()).WillRepeatedly(Return(200u));
+  EXPECT_CALL(*vfr, frame_count()).WillRepeatedly(Return(100u));
 
   stage.execute({vfr}, {}, observation_context);
   return stage.get_preview_capability();

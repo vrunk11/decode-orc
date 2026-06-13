@@ -29,18 +29,26 @@ TEST(MonoDecoderTest, DecodeFrames_HandlesUnevenYCFieldHeights) {
 
   MonoDecoder decoder(config);
 
+  // Owned buffers for the non-owning SourceField pointers.
+  const std::vector<int16_t> first_luma = {10, 11, 12, 13, 20, 21, 22, 23};
+  const std::vector<int16_t> second_luma = {100, 101, 102, 103, 110, 111,
+                                             112, 113, 120, 121, 122, 123};
+
   SourceField firstField;
   firstField.is_yc = true;
   firstField.is_first_field = true;
-  firstField.luma_data = {10, 11, 12, 13, 20, 21, 22, 23};
-  firstField.chroma_data = firstField.luma_data;
+  firstField.line_count = 2;
+  firstField.samples_per_line = 4;
+  firstField.luma_data = first_luma.data();
+  firstField.chroma_data = first_luma.data();  // Chroma same as luma in test
 
   SourceField secondField;
   secondField.is_yc = true;
   secondField.is_first_field = false;
-  secondField.luma_data = {100, 101, 102, 103, 110, 111,
-                           112, 113, 120, 121, 122, 123};
-  secondField.chroma_data = secondField.luma_data;
+  secondField.line_count = 3;
+  secondField.samples_per_line = 4;
+  secondField.luma_data = second_luma.data();
+  secondField.chroma_data = second_luma.data();
 
   std::vector<SourceField> inputFields = {firstField, secondField};
   std::vector<ComponentFrame> outputFrames(1);

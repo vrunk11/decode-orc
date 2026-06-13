@@ -61,7 +61,7 @@ class FFmpegOutputBackend : public OutputBackend {
   AVFrame* audio_frame_ = nullptr;
   AVPacket* audio_packet_ = nullptr;
   int64_t audio_pts_ = 0;
-  const VideoFieldRepresentation* vfr_ = nullptr;
+  const VideoFrameRepresentation* vfr_ = nullptr;
   uint64_t start_field_index_ = 0;
   uint64_t num_fields_ = 0;
   uint64_t current_field_for_audio_ = 0;

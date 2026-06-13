@@ -15,8 +15,10 @@
     "GUI code cannot include core/stages/chroma_sink/chroma_sink_stage.h. Use VectorscopePresenter or RenderPresenter instead."
 #endif
 
+#include <frame_id.h>
 #include <node_type.h>
 #include <orc_source_parameters.h>
+#include <video_frame_representation.h>
 
 #include <atomic>
 #include <optional>
@@ -137,7 +139,7 @@ class ChromaSinkStage : public DAGStage,
  private:
   mutable std::mutex
       cached_input_mutex_;  // Protects cached_input_ from race conditions
-  mutable std::shared_ptr<const VideoFieldRepresentation>
+  mutable std::shared_ptr<const orc::VideoFrameRepresentation>
       cached_input_;  // For preview
 
   // Cached decoder for preview (avoid recreating expensive FFTW plans)
@@ -236,13 +238,18 @@ class ChromaSinkStage : public DAGStage,
       const orc::SourceParameters& videoParams) const;
 
   // Helper methods for integration
-  SourceField convertToSourceField(const VideoFieldRepresentation* vfr,
-                                   FieldID field_id) const;
+
+  // Build a non-owning SourceField view into the VFrameR frame buffer.
+  // For PAL, populates line_ptrs (and luma/chroma_line_ptrs for YC sources)
+  // to handle non-uniform 1135/1136-sample lines.
+  SourceField convertToSourceField(const orc::VideoFrameRepresentation* vfr,
+                                   orc::FrameID frame_id, bool is_first_field,
+                                   const orc::SourceParameters& videoParams) const;
 
   bool writeOutputFile(
       const std::string& output_path, const std::string& format,
       const std::vector<::ComponentFrame>& frames, const void* videoParams,
-      const VideoFieldRepresentation* vfr, uint64_t start_field_index,
+      const orc::VideoFrameRepresentation* vfr, uint64_t start_field_index,
       uint64_t num_fields,
       std::string& error_message  // Output parameter for detailed error
   ) const;
