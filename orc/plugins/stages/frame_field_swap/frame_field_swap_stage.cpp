@@ -274,9 +274,9 @@ std::vector<PreviewOption> FrameFieldSwapStage::get_preview_options() const {
   }
 
   return {
-      PreviewOption{"frame", "Frame (Scaled)", false, w, h,
+      PreviewOption{"sequential_clamped", "Sequential Clamped", false, w, h,
                     static_cast<uint64_t>(fc), dar},
-      PreviewOption{"frame_raw", "Frame (Raw)", false, w, h,
+      PreviewOption{"sequential_raw", "Sequential Raw", false, w, h,
                     static_cast<uint64_t>(fc), dar},
   };
 }
@@ -287,7 +287,7 @@ PreviewImage FrameFieldSwapStage::render_preview(
   if (!cached_output_) return PreviewImage{0, 0, {}, {}, {}};
   const FrameID fid = static_cast<FrameID>(index);
   if (!cached_output_->has_frame(fid)) return PreviewImage{0, 0, {}, {}, {}};
-  const bool scale = (option_id != "frame_raw");
+  const bool scale = (option_id != "sequential_raw");
   return render_vfr_grayscale(*cached_output_, fid, scale);
 }
 

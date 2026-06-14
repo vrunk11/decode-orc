@@ -175,10 +175,10 @@ void MainWindow::onAvailableOutputsReady(
 
   // If current option not available, try to find a sensible default
   if (!found_match && !available_outputs_.empty()) {
-    // Prefer "frame" (Frame (Y)) if available, otherwise use first output
+    // Prefer "interlaced_clamped" if available, otherwise use first output
     bool found_frame = false;
     for (const auto& output : available_outputs_) {
-      if (output.option_id == "frame") {
+      if (output.option_id == "interlaced_clamped") {
         current_output_type_ = output.type;
         current_option_id_ = output.option_id;
         found_frame = true;

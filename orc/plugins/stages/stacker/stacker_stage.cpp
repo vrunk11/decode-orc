@@ -1310,9 +1310,9 @@ std::vector<PreviewOption> StackerStage::get_preview_options() const {
   }
 
   return {
-      PreviewOption{"frame", "Frame (Scaled)", false, w, h,
+      PreviewOption{"sequential_clamped", "Sequential Clamped", false, w, h,
                     static_cast<uint64_t>(fc), dar},
-      PreviewOption{"frame_raw", "Frame (Raw)", false, w, h,
+      PreviewOption{"sequential_raw", "Sequential Raw", false, w, h,
                     static_cast<uint64_t>(fc), dar},
   };
 }
@@ -1324,7 +1324,7 @@ PreviewImage StackerStage::render_preview(const std::string& option_id,
   const FrameID fid = static_cast<FrameID>(index);
   if (!cached_output_->has_frame(fid)) { return PreviewImage{0, 0, {}, {}, {}}; }
 
-  bool apply_scaling = (option_id == "frame");
+  bool apply_scaling = (option_id == "sequential_clamped");
   return render_stacker_grayscale(*cached_output_, fid, apply_scaling);
 }
 

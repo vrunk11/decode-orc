@@ -79,15 +79,12 @@ struct LineLabel {
 //     broadcast_line = 2 + (i - kPalField1Lines) * 2
 //
 // NTSC broadcast interlace convention (SMPTE 170M-2004 §11.3):
-//   Frame-flat line 0 is the first line of field 1.
-//   Field 1 lines → broadcast even: 4, 6, 8, …, 525, 2 (wraps)
-//   Field 2 lines → broadcast odd: 267, 269, …, 524, 1, 3 (wraps)
-//   For simplicity in display (matching standard oscilloscope usage):
-//     field 1 lines → broadcast 2, 4, …, 524 (even, but offset by 1)
-//     field 2 lines → broadcast 1, 3, …, 525 (odd)
-//   Simplified rule used here (consistent with ld-decode display):
-//     field 1, line i: broadcast = 2 + i * 2       (starts at 2)
-//     field 2, line i: broadcast = 1 + i * 2       (starts at 1)
+//   VFR field 1 (top spatial, 263 lines) → broadcast odd: 1, 3, 5, …, 525
+//   VFR field 2 (bottom spatial, 262 lines) → broadcast even: 2, 4, 6, …, 524
+//   frame_line i ∈ [0, 262] (field 1, top):
+//     broadcast_line = 1 + i * 2
+//   frame_line i ∈ [263, 524] (field 2, bottom):
+//     broadcast_line = 2 + (i - 263) * 2
 //
 // PAL_M follows the same field structure as NTSC (525 lines, 2 fields).
 inline LineLabel make_line_label(size_t frame_line, VideoSystem sys,
@@ -101,13 +98,13 @@ inline LineLabel make_line_label(size_t frame_line, VideoSystem sys,
     frame_height = 625;
     field1_lines = 313;
   } else if (sys == VideoSystem::NTSC) {
-    // SMPTE 170M-2004 §11.3: 525-line NTSC
+    // SMPTE 170M-2004 §11.3: 525-line NTSC; VFR field 1 = top spatial (263 lines)
     frame_height = 525;
-    field1_lines = 262;
+    field1_lines = 263;
   } else if (sys == VideoSystem::PAL_M) {
-    // ITU-R BT.1700-1 Annex 1 Part B: 525-line PAL_M
+    // ITU-R BT.1700-1 Annex 1 Part B: 525-line PAL_M; VFR field 1 = top spatial (263 lines)
     frame_height = 525;
-    field1_lines = 262;
+    field1_lines = 263;
   } else {
     label.display = "?";
     return label;
@@ -149,12 +146,12 @@ inline LineLabel make_line_label(size_t frame_line, VideoSystem sys,
         }
       } else {
         // SMPTE 170M-2004 §11.3 / ITU-R BT.1700-1: NTSC/PAL_M broadcast
-        // Field 1 (lines 0..261): broadcast = 2, 4, …, 524 (even)
-        // Field 2 (lines 262..524): broadcast = 1, 3, …, 525 (odd)
+        // VFR field 1 (top, lines 0..262): broadcast = 1, 3, …, 525 (odd)
+        // VFR field 2 (bottom, lines 263..524): broadcast = 2, 4, …, 524 (even)
         if (iline < field1_lines) {
-          label.broadcast_line = 2 + iline * 2;
+          label.broadcast_line = 1 + iline * 2;
         } else {
-          label.broadcast_line = 1 + (iline - field1_lines) * 2;
+          label.broadcast_line = 2 + (iline - field1_lines) * 2;
         }
       }
       label.display = std::to_string(label.broadcast_line);

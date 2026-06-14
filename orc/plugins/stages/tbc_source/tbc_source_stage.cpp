@@ -65,11 +65,14 @@ SourceParameters build_source_params(const TBCVideoParams& tvp,
   constexpr int32_t kPalActiveVideoStart = 157;
   constexpr int32_t kPalActiveVideoEnd = 157 + 948;
   constexpr int32_t kPalFirstActiveFrameLine = 44;
+  // ITU-R BT.1700 Table 1 item 1a: 576 active lines for 625-line PAL.
   constexpr int32_t kPalLastActiveFrameLine = 620;
   constexpr int32_t kNtscActiveVideoStart = 126;
   constexpr int32_t kNtscActiveVideoEnd = 126 + 768;
   constexpr int32_t kNtscFirstActiveFrameLine = 40;
-  constexpr int32_t kNtscLastActiveFrameLine = 519;
+  // ITU-R BT.1700 Table 1 item 1a: 483 active lines for 525-line systems.
+  // 40 + 483 = 523.
+  constexpr int32_t kNtscLastActiveFrameLine = 523;
 
   SourceParameters sp;
   sp.system = tvp.system;
@@ -514,26 +517,29 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
 
   CachedFrame assemble_ntsc_frame(FrameID id) const {
     // SMPTE 244M-2003 §4.1: NTSC frame assembly.
-    // Both fields stored at 263 lines in the TBC file; field 1 has only 262
-    // real lines — the last stored line is TBC padding and is discarded.
+    // Both TBC fields stored at 263 lines on disk; TBC field 1 has 262 real
+    // lines — the last stored line is TBC padding and is discarded.
+    // kNtscField1Lines (263) = VFR field 1 (top) = TBC field 2 real line count.
     const int32_t tbc_f1_idx = static_cast<int32_t>(id) * 2;
     const int32_t tbc_f2_idx = tbc_f1_idx + 1;
 
-    constexpr int32_t kF1Lines = kNtscField1Lines;                    // 262
-    constexpr int32_t kF2Lines = kNtscFrameLines - kNtscField1Lines;  // 263
+    constexpr int32_t kF1Lines = kNtscField1Lines;                    // 263 = TBC f2 / VFR field 1
+    constexpr int32_t kF2Lines = kNtscFrameLines - kNtscField1Lines;  // 262 = TBC f1 / VFR field 2
     constexpr int32_t kLineW   = kNtscSamplesPerLine;                 // 910
-    const int32_t stored_field_size = kF2Lines * kLineW;  // 263×910 stored
+    const int32_t stored_field_size = kF1Lines * kLineW;  // 263×910 stored per field
 
     std::string err;
 
+    // TBC field 1 (earlier temporal, 262 real lines); discard padding line.
     const std::vector<uint16_t> raw_f1 = deps_->read_field_samples(
-        tbc_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
+        tbc_path_, tbc_f1_idx, stored_field_size, kF2Lines * kLineW, err);
     if (raw_f1.empty()) {
       throw std::runtime_error("NTSC TBC: failed to read field 1 for frame " +
                                std::to_string(id) + ": " + err);
     }
+    // TBC field 2 (later temporal, 263 real lines); use all lines.
     const std::vector<uint16_t> raw_f2 = deps_->read_field_samples(
-        tbc_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
+        tbc_path_, tbc_f2_idx, stored_field_size, kF1Lines * kLineW, err);
     if (raw_f2.empty()) {
       throw std::runtime_error("NTSC TBC: failed to read field 2 for frame " +
                                std::to_string(id) + ": " + err);
@@ -546,9 +552,9 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
 
     if (is_yc_) {
       const std::vector<uint16_t> raw_c1 = deps_->read_field_samples(
-          c_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
+          c_path_, tbc_f1_idx, stored_field_size, kF2Lines * kLineW, err);
       const std::vector<uint16_t> raw_c2 = deps_->read_field_samples(
-          c_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
+          c_path_, tbc_f2_idx, stored_field_size, kF1Lines * kLineW, err);
       if (raw_c1.empty() || raw_c2.empty()) {
         throw std::runtime_error(
             "NTSC TBC YC: failed to read chroma field for frame " +
@@ -563,26 +569,28 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
 
   CachedFrame assemble_pal_m_frame(FrameID id) const {
     // ITU-R BT.1700-1 Annex 1 Part B: PAL_M frame assembly.
-    // Same field structure as NTSC (263 lines stored; field 1 = 262 real lines)
-    // but with kPalMSamplesPerLine = 909 samples/line.
+    // Same swap convention as NTSC: TBC field 2 (263 lines) → VFR field 1 (top).
+    // kPalMSamplesPerLine = 909 samples/line.
     const int32_t tbc_f1_idx = static_cast<int32_t>(id) * 2;
     const int32_t tbc_f2_idx = tbc_f1_idx + 1;
 
-    constexpr int32_t kF1Lines = kPalMField1Lines;                    // 262
-    constexpr int32_t kF2Lines = kPalMFrameLines - kPalMField1Lines;  // 263
+    constexpr int32_t kF1Lines = kPalMField1Lines;                    // 263 = TBC f2 / VFR field 1
+    constexpr int32_t kF2Lines = kPalMFrameLines - kPalMField1Lines;  // 262 = TBC f1 / VFR field 2
     constexpr int32_t kLineW   = kPalMSamplesPerLine;                 // 909
-    const int32_t stored_field_size = kF2Lines * kLineW;  // 263×909 stored
+    const int32_t stored_field_size = kF1Lines * kLineW;  // 263×909 stored per field
 
     std::string err;
 
+    // TBC field 1 (earlier temporal, 262 real lines); discard padding line.
     const std::vector<uint16_t> raw_f1 = deps_->read_field_samples(
-        tbc_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
+        tbc_path_, tbc_f1_idx, stored_field_size, kF2Lines * kLineW, err);
     if (raw_f1.empty()) {
       throw std::runtime_error("PAL_M TBC: failed to read field 1 for frame " +
                                std::to_string(id) + ": " + err);
     }
+    // TBC field 2 (later temporal, 263 real lines); use all lines.
     const std::vector<uint16_t> raw_f2 = deps_->read_field_samples(
-        tbc_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
+        tbc_path_, tbc_f2_idx, stored_field_size, kF1Lines * kLineW, err);
     if (raw_f2.empty()) {
       throw std::runtime_error("PAL_M TBC: failed to read field 2 for frame " +
                                std::to_string(id) + ": " + err);
@@ -596,9 +604,9 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     if (is_yc_) {
       // PAL_M YC: reuse the NTSC YC assembly (same field geometry).
       const std::vector<uint16_t> raw_c1 = deps_->read_field_samples(
-          c_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
+          c_path_, tbc_f1_idx, stored_field_size, kF2Lines * kLineW, err);
       const std::vector<uint16_t> raw_c2 = deps_->read_field_samples(
-          c_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
+          c_path_, tbc_f2_idx, stored_field_size, kF1Lines * kLineW, err);
       if (raw_c1.empty() || raw_c2.empty()) {
         throw std::runtime_error(
             "PAL_M TBC YC: failed to read chroma field for frame " +
@@ -1172,8 +1180,14 @@ std::vector<PreviewOption> TBCSourceStage::get_preview_options() const {
   constexpr double dar = 0.7;
 
   return {
-      PreviewOption{"frame", "Frame (Clamped)", false, width, height, fc, dar},
-      PreviewOption{"frame_raw", "Frame (Raw)", false, width, height, fc, dar},
+      PreviewOption{"interlaced_clamped", "Interlaced Clamped", false, width,
+                    height, fc, dar},
+      PreviewOption{"interlaced_raw", "Interlaced Raw", false, width, height,
+                    fc, dar},
+      PreviewOption{"sequential_clamped", "Sequential Clamped", false, width,
+                    height, fc, dar},
+      PreviewOption{"sequential_raw", "Sequential Raw", false, width, height,
+                    fc, dar},
   };
 }
 
@@ -1200,15 +1214,54 @@ PreviewImage TBCSourceStage::render_preview(const std::string& option_id,
   const int32_t clamped_range = (white > black) ? (white - black) : 1;
   const int32_t raw_range = (peak > sync_tip) ? (peak - sync_tip) : 1;
 
-  const bool apply_level_scaling = (option_id != "frame_raw");
+  const bool apply_level_scaling =
+      (option_id == "sequential_clamped" || option_id == "interlaced_clamped");
+  const bool do_interlace =
+      (option_id == "interlaced_clamped" || option_id == "interlaced_raw");
+
+  // Determine field-line count and which display rows carry field 1.
+  // VFR field 1 is always the top spatial field for all systems:
+  //   PAL:    field 1 (313 lines, top) → even display rows.
+  //   NTSC:   field 1 (263 lines, top) → even display rows.
+  //   PAL_M:  field 1 (263 lines, top) → even display rows.
+  size_t field1_lines = height / 2;
+  bool field1_on_even_rows = true;
+  switch (params_opt->system) {
+    case VideoSystem::PAL:
+      field1_lines = static_cast<size_t>(kPalField1Lines);
+      field1_on_even_rows = true;
+      break;
+    case VideoSystem::NTSC:
+      field1_lines = static_cast<size_t>(kNtscField1Lines);
+      field1_on_even_rows = true;
+      break;
+    case VideoSystem::PAL_M:
+      field1_lines = static_cast<size_t>(kPalMField1Lines);
+      field1_on_even_rows = true;
+      break;
+    default:
+      break;
+  }
 
   PreviewImage img;
   img.width = static_cast<uint32_t>(width);
   img.height = static_cast<uint32_t>(height);
   img.rgb_data.reserve(width * height * 3);
 
-  for (size_t line = 0; line < height; ++line) {
-    const VideoFrameRepresentation::sample_type* row = repr->get_line(fid, line);
+  for (size_t display_row = 0; display_row < height; ++display_row) {
+    size_t buf_line;
+    if (do_interlace) {
+      const bool use_field1 =
+          (display_row % 2 == 0) == field1_on_even_rows;
+      buf_line = use_field1 ? (display_row / 2)
+                            : (field1_lines + display_row / 2);
+      if (buf_line >= height) buf_line = height - 1;
+    } else {
+      buf_line = display_row;
+    }
+
+    const VideoFrameRepresentation::sample_type* row =
+        repr->get_line(fid, buf_line);
     for (size_t s = 0; s < width; ++s) {
       const int32_t raw = row ? static_cast<int32_t>(row[s]) : black;
       int32_t scaled;

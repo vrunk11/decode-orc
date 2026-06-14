@@ -102,20 +102,11 @@ void split_dropout_run(VideoSystem sys, const DropoutRun& run,
     di.end_sample =
         static_cast<uint32_t>(fls.sample + static_cast<int32_t>(run_on_line));
 
-    // PAL field mapping: CVBS field 1 → TBC field 2, CVBS field 2 → TBC field 1
-    // NTSC/PAL_M:        CVBS field 1 → TBC field 1, CVBS field 2 → TBC field 2
-    if (sys == VideoSystem::PAL) {
-      if (fls.field == 2) {
-        tbc_f1_dropouts.push_back(di);
-      } else {
-        tbc_f2_dropouts.push_back(di);
-      }
+    // All systems: VFR field 1 (top) → TBC field 2, VFR field 2 (bottom) → TBC field 1
+    if (fls.field == 2) {
+      tbc_f1_dropouts.push_back(di);
     } else {
-      if (fls.field == 1) {
-        tbc_f1_dropouts.push_back(di);
-      } else {
-        tbc_f2_dropouts.push_back(di);
-      }
+      tbc_f2_dropouts.push_back(di);
     }
 
     offset += run_on_line;
@@ -306,11 +297,15 @@ bool LDSinkStageDeps::write_tbc_and_metadata(
       }
 
       // Describe the two TBC fields to extract from this CVBS frame.
+      // All systems: VFR field 1 (top, field1_cvbs_line_count lines) → TBC field 2
+      //              VFR field 2 (bottom, remaining lines)            → TBC field 1
       //
-      // PAL:       TBC field 1 (is_first_field=true, 312 lines) = CVBS lines [313, 625)
-      //            TBC field 2 (is_first_field=false, 313 lines) = CVBS lines [0, 313)
-      // NTSC/PAL_M: TBC field 1 (is_first_field=true, 262 lines) = CVBS lines [0, 262)
-      //             TBC field 2 (is_first_field=false, 263 lines) = CVBS lines [262, 525)
+      // PAL:    TBC field 1 (is_first_field=true, 312 lines) = VFR lines [313, 625)
+      //         TBC field 2 (is_first_field=false, 313 lines) = VFR lines [0, 313)
+      // NTSC:   TBC field 1 (is_first_field=true, 262 lines) = VFR lines [263, 525)
+      //         TBC field 2 (is_first_field=false, 263 lines) = VFR lines [0, 263)
+      // PAL_M:  TBC field 1 (is_first_field=true, 262 lines) = VFR lines [263, 525)
+      //         TBC field 2 (is_first_field=false, 263 lines) = VFR lines [0, 263)
       struct FieldExtract {
         int32_t cvbs_start;
         int32_t cvbs_end;  // exclusive
@@ -319,15 +314,9 @@ bool LDSinkStageDeps::write_tbc_and_metadata(
       };
 
       std::array<FieldExtract, 2> extract_plan;
-      if (sys == VideoSystem::PAL) {
-        extract_plan[0] = {field1_cvbs_line_count, frame_lines_total, true,
-                           &tbc_f1_dropouts};
-        extract_plan[1] = {0, field1_cvbs_line_count, false, &tbc_f2_dropouts};
-      } else {
-        extract_plan[0] = {0, field1_cvbs_line_count, true, &tbc_f1_dropouts};
-        extract_plan[1] = {field1_cvbs_line_count, frame_lines_total, false,
-                           &tbc_f2_dropouts};
-      }
+      extract_plan[0] = {field1_cvbs_line_count, frame_lines_total, true,
+                         &tbc_f1_dropouts};
+      extract_plan[1] = {0, field1_cvbs_line_count, false, &tbc_f2_dropouts};
 
       for (const auto& ep : extract_plan) {
         const size_t actual_lines =

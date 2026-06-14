@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "cvbs_signal_constants.h"
 #include "logging.h"
 
 namespace orc {
@@ -71,7 +72,9 @@ std::vector<PreviewOption> get_standard_preview_options(
 
   // Calculate DAR correction based on active video region
   // For 4:3 DAR, we want the active area to display at 4:3 ratio
-  double dar_correction = 0.7;  // Default fallback
+  // 1.0 is a neutral fallback (no horizontal correction — SAR 1:1 display)
+  // used only when active area parameters are not set by the stage.
+  double dar_correction = 1.0;
   if (video_params->active_video_start >= 0 &&
       video_params->active_video_end > video_params->active_video_start &&
       video_params->first_active_frame_line >= 0 &&
@@ -81,9 +84,9 @@ std::vector<PreviewOption> get_standard_preview_options(
         video_params->active_video_end - video_params->active_video_start;
     uint32_t active_height = video_params->last_active_frame_line -
                              video_params->first_active_frame_line;
-    // Calculate DAR correction: active area should display at 4:3
-    // Example: PAL 702x576 → ratio 1.219, target 1.333, multiply width
-    // by 1.333/1.219 = 1.094
+    // PAR correction: scale horizontal so active area displays at 4:3.
+    // PAL 4FSC: 948 active samples / 576 active lines → 0.810.
+    // NTSC 4FSC: 768 active samples / 483 active lines → 0.838.
     double active_ratio =
         static_cast<double>(active_width) / static_cast<double>(active_height);
     double target_ratio = 4.0 / 3.0;
@@ -94,8 +97,8 @@ std::vector<PreviewOption> get_standard_preview_options(
         dar_correction, active_width, active_height, active_ratio);
   } else {
     ORC_LOG_WARN(
-        "PreviewHelpers: Using fallback DAR 0.7 (active_video: {}-{}, "
-        "active_frame_line: {}-{})",
+        "PreviewHelpers: Active area params not set (active_video: {}-{}, "
+        "active_frame_line: {}-{}); falling back to SAR 1:1 (no correction)",
         video_params->active_video_start, video_params->active_video_end,
         video_params->first_active_frame_line,
         video_params->last_active_frame_line);
@@ -116,10 +119,12 @@ std::vector<PreviewOption> get_standard_preview_options(
                                     height * 2, pair_count, dar_correction});
     options.push_back(PreviewOption{"split_raw", "Split (Raw)", false, width,
                                     height * 2, pair_count, dar_correction});
-    options.push_back(PreviewOption{"frame", "Frame (Clamped)", false, width,
-                                    height * 2, frame_count, dar_correction});
-    options.push_back(PreviewOption{"frame_raw", "Frame (Raw)", false, width,
-                                    height * 2, frame_count, dar_correction});
+    options.push_back(
+        PreviewOption{"sequential_clamped", "Sequential Clamped", false, width,
+                      height * 2, frame_count, dar_correction});
+    options.push_back(
+        PreviewOption{"sequential_raw", "Sequential Raw", false, width,
+                      height * 2, frame_count, dar_correction});
   }
 
   return options;
@@ -423,38 +428,29 @@ PreviewImage render_standard_preview(
     return result;
   }
 
-  // Check if option_id has a channel suffix (_y, _c, _yc)
-  // If so, delegate to the channel-aware renderer
-  if (option_id.find("_yc") != std::string::npos ||
-      (option_id.find("_y") != std::string::npos &&
-       option_id.find("_yc") == std::string::npos) ||
-      option_id.find("_c") != std::string::npos) {
-    // Parse channel from suffix
+  // Check if option_id has a channel suffix (_yc, _y, or _c) at the end.
+  // Use ends-with matching to avoid false positives on "_clamped".
+  auto ends_with_suffix = [&](const std::string& suffix) {
+    return option_id.size() >= suffix.size() &&
+           option_id.compare(option_id.size() - suffix.size(), suffix.size(),
+                             suffix) == 0;
+  };
+  if (ends_with_suffix("_yc") || ends_with_suffix("_y") ||
+      ends_with_suffix("_c")) {
+    // Strip channel suffix to recover the base option id; the base already
+    // encodes clamped vs raw (e.g. "sequential_raw_yc" → "sequential_raw").
     RenderChannel channel = RenderChannel::COMPOSITE;
     std::string base_option = option_id;
 
-    // Check _yc first (before _y or _c)
-    if (option_id.find("_yc") != std::string::npos) {
+    if (ends_with_suffix("_yc")) {
       channel = RenderChannel::COMPOSITE_YC;
-      size_t pos = option_id.find("_yc");
-      base_option = option_id.substr(0, pos);
-      if (pos + 3 < option_id.size() && option_id.substr(pos + 3) == "_raw") {
-        base_option += "_raw";
-      }
-    } else if (option_id.find("_y") != std::string::npos) {
+      base_option = option_id.substr(0, option_id.size() - 3);
+    } else if (ends_with_suffix("_y")) {
       channel = RenderChannel::LUMA_ONLY;
-      size_t pos = option_id.find("_y");
-      base_option = option_id.substr(0, pos);
-      if (pos + 2 < option_id.size() && option_id.substr(pos + 2) == "_raw") {
-        base_option += "_raw";
-      }
-    } else if (option_id.find("_c") != std::string::npos) {
+      base_option = option_id.substr(0, option_id.size() - 2);
+    } else if (ends_with_suffix("_c")) {
       channel = RenderChannel::CHROMA_ONLY;
-      size_t pos = option_id.find("_c");
-      base_option = option_id.substr(0, pos);
-      if (pos + 2 < option_id.size() && option_id.substr(pos + 2) == "_raw") {
-        base_option += "_raw";
-      }
+      base_option = option_id.substr(0, option_id.size() - 2);
     }
 
     return render_standard_preview_with_channel(representation, base_option,
@@ -472,7 +468,7 @@ PreviewImage render_standard_preview(
     return render_split_preview(representation, index, apply_ire_scaling);
   }
 
-  if (option_id == "frame" || option_id == "frame_raw") {
+  if (option_id == "sequential_clamped" || option_id == "sequential_raw") {
     return render_frame_preview(representation, index, apply_ire_scaling);
   }
 
@@ -764,7 +760,7 @@ PreviewImage render_standard_preview_with_channel(
                                              apply_ire_scaling, channel);
   }
 
-  if (option_id == "frame" || option_id == "frame_raw") {
+  if (option_id == "sequential_clamped" || option_id == "sequential_raw") {
     return render_frame_preview_with_channel(representation.get(), index,
                                              apply_ire_scaling, channel);
   }
@@ -900,7 +896,9 @@ std::vector<PreviewOption> get_standard_preview_options(
   uint32_t width = static_cast<uint32_t>(video_params->frame_width_nominal);
   uint32_t height = static_cast<uint32_t>(video_params->frame_height);
 
-  double dar_correction = 0.7;
+  // 1.0 is a neutral fallback; only the computed path reaches stages that
+  // properly configure active area parameters.
+  double dar_correction = 1.0;
   if (video_params->active_video_start >= 0 &&
       video_params->active_video_end > video_params->active_video_start &&
       video_params->first_active_frame_line >= 0 &&
@@ -916,10 +914,16 @@ std::vector<PreviewOption> get_standard_preview_options(
     dar_correction = (4.0 / 3.0) / active_ratio;
   }
 
-  options.push_back(PreviewOption{"frame", "Frame (Clamped)", false, width,
-                                  height, frame_count, dar_correction});
-  options.push_back(PreviewOption{"frame_raw", "Frame (Raw)", false, width,
-                                  height, frame_count, dar_correction});
+  options.push_back(PreviewOption{"interlaced_clamped", "Interlaced Clamped",
+                                  false, width, height, frame_count,
+                                  dar_correction});
+  options.push_back(PreviewOption{"interlaced_raw", "Interlaced Raw", false,
+                                  width, height, frame_count, dar_correction});
+  options.push_back(PreviewOption{"sequential_clamped", "Sequential Clamped",
+                                  false, width, height, frame_count,
+                                  dar_correction});
+  options.push_back(PreviewOption{"sequential_raw", "Sequential Raw", false,
+                                  width, height, frame_count, dar_correction});
 
   return options;
 }
@@ -950,8 +954,13 @@ PreviewImage render_standard_preview(
     return result;
   }
 
-  bool apply_level_scaling = (option_id == "frame");
-  if (option_id != "frame" && option_id != "frame_raw") {
+  const bool apply_level_scaling =
+      (option_id == "sequential_clamped" || option_id == "interlaced_clamped");
+  const bool do_interlace =
+      (option_id == "interlaced_clamped" || option_id == "interlaced_raw");
+
+  if (option_id != "sequential_clamped" && option_id != "sequential_raw" &&
+      option_id != "interlaced_clamped" && option_id != "interlaced_raw") {
     ORC_LOG_WARN("PreviewHelpers (frame): Unknown preview option '{}'",
                  option_id);
     return result;
@@ -964,20 +973,59 @@ PreviewImage render_standard_preview(
   int32_t sync_tip_level = video_params->sync_tip_level;
   int32_t peak_level = video_params->peak_level;
 
+  // Determine field-line count and dominance for interlaced weaving.
+  // VFR field 1 is always the top spatial field; all systems use even display rows.
+  //   PAL:   field 1 (313 lines, top) → even display rows.
+  //   NTSC:  field 1 (263 lines, top) → even display rows.
+  //   PAL_M: field 1 (263 lines, top) → even display rows.
+  size_t field1_lines = static_cast<size_t>(height) / 2;
+  bool field1_on_even_rows = true;
+  if (do_interlace) {
+    switch (video_params->system) {
+      case VideoSystem::PAL:
+        field1_lines = static_cast<size_t>(kPalField1Lines);
+        field1_on_even_rows = true;
+        break;
+      case VideoSystem::NTSC:
+        field1_lines = static_cast<size_t>(kNtscField1Lines);
+        field1_on_even_rows = true;
+        break;
+      case VideoSystem::PAL_M:
+        field1_lines = static_cast<size_t>(kPalMField1Lines);
+        field1_on_even_rows = true;
+        break;
+      default:
+        break;
+    }
+  }
+
   result.width = width;
   result.height = height;
   result.rgb_data.resize(static_cast<size_t>(width) * height * 3);
 
-  for (uint32_t y = 0; y < height; ++y) {
+  for (uint32_t display_row = 0; display_row < height; ++display_row) {
+    size_t buf_line;
+    if (do_interlace) {
+      const bool use_field1 =
+          (display_row % 2 == 0) == field1_on_even_rows;
+      buf_line = use_field1 ? (display_row / 2)
+                            : (field1_lines + display_row / 2);
+      if (buf_line >= static_cast<size_t>(height)) {
+        buf_line = static_cast<size_t>(height) - 1;
+      }
+    } else {
+      buf_line = display_row;
+    }
+
     const VideoFrameRepresentation::sample_type* line =
-        representation->get_line(frame_id, y);
+        representation->get_line(frame_id, buf_line);
     if (!line) continue;
 
     for (uint32_t x = 0; x < width; ++x) {
       uint8_t gray = scale_10bit_to_8bit(line[x], apply_level_scaling,
                                          black_level, white_level,
                                          sync_tip_level, peak_level);
-      size_t offset = (static_cast<size_t>(y) * width + x) * 3;
+      size_t offset = (static_cast<size_t>(display_row) * width + x) * 3;
       result.rgb_data[offset + 0] = gray;
       result.rgb_data[offset + 1] = gray;
       result.rgb_data[offset + 2] = gray;

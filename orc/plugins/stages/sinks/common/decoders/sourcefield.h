@@ -39,7 +39,7 @@ struct SourceField {
   // 1-based sequence number within the source (frame-based, not field-based).
   int32_t seq_no = 0;
 
-  // True for CVBS field 1 (the 313-line field in PAL; 262-line field in NTSC).
+  // True for CVBS field 1 (the 313-line field in PAL; 263-line field in NTSC).
   bool is_first_field = true;
 
   // Colour-frame phase index for this field's parent frame.
@@ -66,7 +66,7 @@ struct SourceField {
   // -------------------------------------------------------------------------
   // Geometry
   // -------------------------------------------------------------------------
-  // Number of lines in this field (e.g. 313 for PAL field 1, 262 for NTSC field 1).
+  // Number of lines in this field (e.g. 313 for PAL field 1, 263 for NTSC field 1).
   size_t line_count = 0;
 
   // Nominal samples per line.  For PAL this is 1135; for NTSC 910; for PAL_M 909.

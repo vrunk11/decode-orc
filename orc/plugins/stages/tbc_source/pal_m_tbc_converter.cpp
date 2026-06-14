@@ -40,15 +40,19 @@ std::vector<int16_t> PalMTBCConverter::assemble_frame(
     const std::vector<uint16_t>& tbc_field2,  // 263 × 909 samples
     int32_t tbc_blanking, int32_t tbc_white) {
   // ITU-R BT.1700-1 Annex 1 Part B §1: PAL_M frame assembly.
-  // Field 1: 262 lines.  Field 2: 263 lines.  Orthogonal: 909 samples/line.
-  constexpr int32_t kF1Lines = kPalMField1Lines;                    // 262
-  constexpr int32_t kF2Lines = kPalMFrameLines - kPalMField1Lines;  // 263
-  constexpr int32_t kLineW = kPalMSamplesPerLine;                   // 909
+  // TBC field ordering (ld-decode convention, same as NTSC):
+  //   TBC field 1 = earlier temporal, 262 real lines → VFR field 2 (bottom)
+  //   TBC field 2 = later temporal,  263 real lines → VFR field 1 (top)
+  // VFR layout: [CVBS field 1 (top, 263 lines)][CVBS field 2 (bottom, 262 lines)]
+  // Orthogonal: 909 samples/line.
+  constexpr int32_t kTBCF1Lines = kPalMFrameLines - kPalMField1Lines;  // 262
+  constexpr int32_t kTBCF2Lines = kPalMField1Lines;                    // 263
+  constexpr int32_t kLineW = kPalMSamplesPerLine;                      // 909
 
   const size_t exp_f1 =
-      static_cast<size_t>(kF1Lines) * static_cast<size_t>(kLineW);
+      static_cast<size_t>(kTBCF1Lines) * static_cast<size_t>(kLineW);
   const size_t exp_f2 =
-      static_cast<size_t>(kF2Lines) * static_cast<size_t>(kLineW);
+      static_cast<size_t>(kTBCF2Lines) * static_cast<size_t>(kLineW);
 
   if (tbc_field1.size() != exp_f1 || tbc_field2.size() != exp_f2) {
     throw std::invalid_argument(
@@ -58,10 +62,12 @@ std::vector<int16_t> PalMTBCConverter::assemble_frame(
   std::vector<int16_t> frame;
   frame.reserve(static_cast<size_t>(kPalMFrameSamples));
 
-  for (const uint16_t s : tbc_field1) {
+  // VFR field 1 (top, 263 lines) ← TBC field 2 (later temporal)
+  for (const uint16_t s : tbc_field2) {
     frame.push_back(tbc_to_cvbs(s, tbc_blanking, tbc_white));
   }
-  for (const uint16_t s : tbc_field2) {
+  // VFR field 2 (bottom, 262 lines) ← TBC field 1 (earlier temporal)
+  for (const uint16_t s : tbc_field1) {
     frame.push_back(tbc_to_cvbs(s, tbc_blanking, tbc_white));
   }
 

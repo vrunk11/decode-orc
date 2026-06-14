@@ -253,9 +253,9 @@ std::vector<PreviewOption> DropoutAnalysisSinkStage::get_preview_options()
   if (fc == 0 || !params) return {};
   const uint32_t w = static_cast<uint32_t>(params->frame_width_nominal);
   const uint32_t h = static_cast<uint32_t>(params->frame_height);
-  return {PreviewOption{"frame", "Frame (Scaled)", false, w, h,
+  return {PreviewOption{"sequential_clamped", "Sequential Clamped", false, w, h,
                         static_cast<uint64_t>(fc), 0.7},
-          PreviewOption{"frame_raw", "Frame (Raw)", false, w, h,
+          PreviewOption{"sequential_raw", "Sequential Raw", false, w, h,
                         static_cast<uint64_t>(fc), 0.7}};
 }
 
@@ -265,7 +265,8 @@ PreviewImage DropoutAnalysisSinkStage::render_preview(
   if (!cached_input_) return PreviewImage{};
   const FrameID fid = static_cast<FrameID>(index);
   if (!cached_input_->has_frame(fid)) return PreviewImage{};
-  return render_vfr_grayscale(*cached_input_, fid, option_id != "frame_raw");
+  return render_vfr_grayscale(*cached_input_, fid,
+                              option_id != "sequential_raw");
 }
 
 }  // namespace orc

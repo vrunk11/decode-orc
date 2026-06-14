@@ -264,7 +264,7 @@ MainWindow::MainWindow(QWidget* parent)
       last_snr_mode_(orc::SNRAnalysisMode::WHITE),
       last_snr_output_type_(orc::PreviewOutputType::Frame_Field1_First),
       current_output_type_(orc::PreviewOutputType::Frame_Field1_First),
-      current_option_id_("frame")  // Default to "Frame (Y)" option
+      current_option_id_("interlaced_clamped")  // Default to "Interlaced Clamped" option
       ,
       current_aspect_ratio_mode_(
           orc::AspectRatioMode::DAR_4_3)  // Default to 4:3

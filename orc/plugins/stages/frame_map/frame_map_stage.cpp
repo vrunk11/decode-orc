@@ -736,9 +736,9 @@ std::vector<PreviewOption> FrameMapStage::get_preview_options() const {
   }
 
   return {
-      PreviewOption{"frame", "Frame (Scaled)", false, w, h,
+      PreviewOption{"sequential_clamped", "Sequential Clamped", false, w, h,
                     static_cast<uint64_t>(fc), dar},
-      PreviewOption{"frame_raw", "Frame (Raw)", false, w, h,
+      PreviewOption{"sequential_raw", "Sequential Raw", false, w, h,
                     static_cast<uint64_t>(fc), dar},
   };
 }
@@ -761,7 +761,7 @@ PreviewImage FrameMapStage::render_preview(const std::string& option_id,
   const int32_t blanking = params->blanking_level;
   const int32_t white = params->white_level;
   const int32_t range = (white > blanking) ? (white - blanking) : 1;
-  const bool apply_scaling = (option_id == "frame");
+  const bool apply_scaling = (option_id == "sequential_clamped");
 
   PreviewImage img;
   img.width = static_cast<uint32_t>(width);

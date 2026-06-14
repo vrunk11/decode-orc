@@ -1702,9 +1702,9 @@ SourceField ChromaSinkStage::convertToSourceField(
                            ? static_cast<size_t>(orc::kPalMSamplesPerLine)
                            : static_cast<size_t>(orc::kNtscSamplesPerLine);
     const size_t field1_lines =
-        static_cast<size_t>(orc::kNtscField1Lines);  // 262
+        static_cast<size_t>(orc::kNtscField1Lines);  // 263 (top spatial)
     const size_t field2_lines =
-        static_cast<size_t>(orc::kNtscFrameLines - orc::kNtscField1Lines);  // 263
+        static_cast<size_t>(orc::kNtscFrameLines - orc::kNtscField1Lines);  // 262 (bottom spatial)
 
     sf.samples_per_line = spl;
     if (is_first_field) {

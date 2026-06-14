@@ -31,10 +31,11 @@ namespace orc {
 //   PAL_M uses the same levels as NTSC (kNtscBlanking, kNtscWhite, etc.)
 //   per ITU-R BT.1700-1 Annex 1 Part B.
 //
-// TBC field ordering:
-//   Same as NTSC: both fields stored at 263 lines; field 1 has 262 real lines
-//   (last padding line stripped).  No field order swap.
-//   Frame layout: [field 1: 262 × 909][field 2: 263 × 909]
+// TBC field ordering (ld-decode convention, same as NTSC):
+//   Both fields stored at 263 lines in the TBC file.
+//   TBC field 1 (earlier temporal, 262 real lines) → VFR field 2 (bottom)
+//   TBC field 2 (later temporal,  263 real lines)  → VFR field 1 (top)
+//   VFR frame layout: [VFR field 1 (top): 263 × 909][VFR field 2 (bottom): 262 × 909]
 class PalMTBCConverter {
  public:
   // -------------------------------------------------------------------------
@@ -53,14 +54,16 @@ class PalMTBCConverter {
 
   // Assemble a CVBS_U10_4FSC PAL_M frame from two TBC fields.
   //
-  // tbc_field1: kPalMField1Lines = 262 lines × kPalMSamplesPerLine = 909
-  //   = 238,158 samples.  Caller strips the TBC padding line.
+  // tbc_field1: (kPalMFrameLines - kPalMField1Lines) = 262 lines × 909
+  //   = 238,158 samples.  Earlier temporal; becomes VFR field 2 (bottom).
+  //   Caller strips the TBC padding line (stored as 263 lines on disk).
   //
-  // tbc_field2: (kPalMFrameLines - kPalMField1Lines) = 263 lines × 909
-  //   = 239,067 samples.
+  // tbc_field2: kPalMField1Lines = 263 lines × kPalMSamplesPerLine = 909
+  //   = 239,067 samples.  Later temporal; becomes VFR field 1 (top).
   //
   // PAL_M is orthogonal: kPalMSamplesPerLine = 909 on every line.
-  // Output: [field 1: 262 × 909][field 2: 263 × 909] = kPalMFrameSamples.
+  // Output: [VFR field 1 (top): 263 × 909][VFR field 2 (bottom): 262 × 909]
+  //         = kPalMFrameSamples.
   static std::vector<int16_t> assemble_frame(
       const std::vector<uint16_t>& tbc_field1,  // 262 × 909 samples
       const std::vector<uint16_t>& tbc_field2,  // 263 × 909 samples

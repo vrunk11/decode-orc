@@ -433,7 +433,8 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_available_outputs(
 
   // Compute DAR correction from active-video geometry when available.
   // Keep this consistent with PreviewHelpers/stage preview option builders.
-  double dar_correction = 0.7;
+  // 1.0 is a neutral fallback (SAR 1:1) when active area params are absent.
+  double dar_correction = 1.0;
   if (auto video_params = result.representation->get_video_parameters();
       video_params.has_value()) {
     const auto& vp = *video_params;
@@ -1914,7 +1915,10 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_stage_preview_outputs(
       type = PreviewOutputType::Frame_Field1;
     } else if (option.id == "split" || option.id == "split_raw") {
       type = PreviewOutputType::Split;
-    } else if (option.id == "frame" || option.id == "frame_raw") {
+    } else if (option.id == "sequential_clamped" ||
+               option.id == "sequential_raw" ||
+               option.id == "interlaced_clamped" ||
+               option.id == "interlaced_raw") {
       type = PreviewOutputType::Frame_Field1_First;
     }
 
@@ -2012,9 +2016,15 @@ PreviewRenderResult PreviewRenderer::render_stage_preview(
             (type == PreviewOutputType::Split &&
              (option.id == "split" || option.id == "split_raw")) ||
             (type == PreviewOutputType::Frame_Field1_First &&
-             (option.id == "frame" || option.id == "frame_raw")) ||
+             (option.id == "sequential_clamped" ||
+              option.id == "sequential_raw" ||
+              option.id == "interlaced_clamped" ||
+              option.id == "interlaced_raw")) ||
             (type == PreviewOutputType::Frame_Reversed &&
-             (option.id == "frame" || option.id == "frame_raw"))) {
+             (option.id == "sequential_clamped" ||
+              option.id == "sequential_raw" ||
+              option.id == "interlaced_clamped" ||
+              option.id == "interlaced_raw"))) {
           effective_option_id = option.id;
           break;
         }

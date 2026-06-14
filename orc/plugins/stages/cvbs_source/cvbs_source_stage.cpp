@@ -211,12 +211,16 @@ int measure_colour_frame_index(const int16_t* frame_data,
 constexpr int32_t kPalActiveVideoStart = 157;
 constexpr int32_t kPalActiveVideoEnd = 157 + 948;  // = 1105
 constexpr int32_t kPalFirstActiveFrameLine = 44;
+// EBU Tech. 3280-E / ITU-R BT.1700 Table 1 item 1a: 576 active lines for
+// 625-line PAL.  620 - 44 = 576.
 constexpr int32_t kPalLastActiveFrameLine = 620;
 
 constexpr int32_t kNtscActiveVideoStart = 126;
 constexpr int32_t kNtscActiveVideoEnd = 126 + 768;  // = 894
 constexpr int32_t kNtscFirstActiveFrameLine = 40;
-constexpr int32_t kNtscLastActiveFrameLine = 519;
+// ITU-R BT.1700 Table 1 item 1a: 483 active lines for 525-line systems.
+// 40 + 483 = 523.
+constexpr int32_t kNtscLastActiveFrameLine = 523;
 
 SourceParameters build_source_parameters(VideoSystem system,
                                          int32_t frame_count,
@@ -289,7 +293,7 @@ SourceParameters build_source_parameters(VideoSystem system,
 
 PreviewImage render_vfr_frame_as_grayscale(
     const VideoFrameRepresentation& vfr, FrameID frame_id,
-    bool apply_level_scaling) {
+    bool apply_level_scaling, bool do_interlace = false) {
   auto desc_opt = vfr.get_frame_descriptor(frame_id);
   auto params_opt = vfr.get_video_parameters();
   if (!desc_opt || !params_opt) {
@@ -310,13 +314,50 @@ PreviewImage render_vfr_frame_as_grayscale(
   const int32_t clamped_range = (white > black) ? (white - black) : 1;
   const int32_t raw_range = (peak > sync_tip) ? (peak - sync_tip) : 1;
 
+  // Determine field-line count and which display rows carry field 1.
+  // VFR field 1 is always the top spatial field for all systems:
+  //   PAL:   field 1 (313 lines, top) → even display rows.
+  //   NTSC:  field 1 (263 lines, top) → even display rows.
+  //   PAL_M: field 1 (263 lines, top) → even display rows.
+  size_t field1_lines = height / 2;
+  bool field1_on_even_rows = true;
+  if (do_interlace) {
+    switch (params_opt->system) {
+      case VideoSystem::PAL:
+        field1_lines = static_cast<size_t>(kPalField1Lines);
+        field1_on_even_rows = true;
+        break;
+      case VideoSystem::NTSC:
+        field1_lines = static_cast<size_t>(kNtscField1Lines);
+        field1_on_even_rows = true;
+        break;
+      case VideoSystem::PAL_M:
+        field1_lines = static_cast<size_t>(kPalMField1Lines);
+        field1_on_even_rows = true;
+        break;
+      default:
+        break;
+    }
+  }
+
   PreviewImage img;
   img.width = static_cast<uint32_t>(width);
   img.height = static_cast<uint32_t>(height);
   img.rgb_data.reserve(width * height * 3);
 
-  for (size_t line = 0; line < height; ++line) {
-    const int16_t* line_ptr = vfr.get_line(frame_id, line);
+  for (size_t display_row = 0; display_row < height; ++display_row) {
+    size_t buf_line;
+    if (do_interlace) {
+      const bool use_field1 =
+          (display_row % 2 == 0) == field1_on_even_rows;
+      buf_line = use_field1 ? (display_row / 2)
+                            : (field1_lines + display_row / 2);
+      if (buf_line >= height) buf_line = height - 1;
+    } else {
+      buf_line = display_row;
+    }
+
+    const int16_t* line_ptr = vfr.get_line(frame_id, buf_line);
     for (size_t s = 0; s < width; ++s) {
       const int32_t raw =
           line_ptr ? static_cast<int32_t>(line_ptr[s]) : black;
@@ -1304,9 +1345,13 @@ std::vector<PreviewOption> FixedFormatCVBSSourceStage::get_preview_options()
   }
 
   return {
-      PreviewOption{"frame", "Frame (Scaled)", false, w, h,
+      PreviewOption{"interlaced_clamped", "Interlaced Clamped", false, w, h,
                     static_cast<uint64_t>(fc), dar_correction},
-      PreviewOption{"frame_raw", "Frame (Raw)", false, w, h,
+      PreviewOption{"interlaced_raw", "Interlaced Raw", false, w, h,
+                    static_cast<uint64_t>(fc), dar_correction},
+      PreviewOption{"sequential_clamped", "Sequential Clamped", false, w, h,
+                    static_cast<uint64_t>(fc), dar_correction},
+      PreviewOption{"sequential_raw", "Sequential Raw", false, w, h,
                     static_cast<uint64_t>(fc), dar_correction},
   };
 }
@@ -1324,9 +1369,12 @@ PreviewImage FixedFormatCVBSSourceStage::render_preview(
     return PreviewImage{0, 0, {}, {}, {}};
   }
 
-  const bool apply_scaling = (option_id != "frame_raw");
+  const bool apply_scaling =
+      (option_id == "sequential_clamped" || option_id == "interlaced_clamped");
+  const bool do_interlace =
+      (option_id == "interlaced_clamped" || option_id == "interlaced_raw");
   return render_vfr_frame_as_grayscale(*vfr, static_cast<FrameID>(index),
-                                       apply_scaling);
+                                       apply_scaling, do_interlace);
 }
 
 std::optional<StageReport> FixedFormatCVBSSourceStage::generate_report() const {
