@@ -19,18 +19,11 @@ namespace {
 orc::SourceParameters make_ntsc_video_params() {
   orc::SourceParameters p;
   p.system = orc::VideoSystem::NTSC;
-  p.field_width = 32;
-  p.field_height = 4;
+  p.frame_width_nominal = 32;
   p.active_video_start = 16;
   p.active_video_end = 24;
   p.first_active_frame_line = 0;
   p.last_active_frame_line = 6;
-  p.colour_burst_start = 16;
-  p.colour_burst_end = 20;
-  p.black_16b_ire = 0;
-  p.white_16b_ire = 100;
-  p.sample_rate = 4.0;
-  p.fsc = 1.0;
   return p;
 }
 
@@ -43,7 +36,7 @@ struct OwnedField {
   SourceField field;
 
   static OwnedField makeYC(bool is_first_field, int16_t luma_base,
-                            int16_t chroma_base, int width, int height) {
+                           int16_t chroma_base, int width, int height) {
     OwnedField of;
     of.field.is_yc = true;
     of.field.is_first_field = is_first_field;
@@ -55,8 +48,7 @@ struct OwnedField {
     of.chroma_buf.reserve(static_cast<size_t>(width * height));
     for (int line = 0; line < height; ++line) {
       for (int x = 0; x < width; ++x) {
-        of.luma_buf.push_back(
-            static_cast<int16_t>(luma_base + line * 4 + x));
+        of.luma_buf.push_back(static_cast<int16_t>(luma_base + line * 4 + x));
         of.chroma_buf.push_back(
             static_cast<int16_t>(chroma_base + ((x % 4) * 10)));
       }
@@ -67,8 +59,8 @@ struct OwnedField {
     return of;
   }
 
-  static OwnedField makeComposite(bool is_first_field, int16_t base,
-                                   int width, int height) {
+  static OwnedField makeComposite(bool is_first_field, int16_t base, int width,
+                                  int height) {
     OwnedField of;
     of.field.is_yc = false;
     of.field.is_first_field = is_first_field;
@@ -79,8 +71,7 @@ struct OwnedField {
     of.composite_buf.reserve(static_cast<size_t>(width * height));
     for (int line = 0; line < height; ++line) {
       for (int x = 0; x < width; ++x) {
-        of.composite_buf.push_back(
-            static_cast<int16_t>(base + line * 8 + x));
+        of.composite_buf.push_back(static_cast<int16_t>(base + line * 8 + x));
       }
     }
     of.field.data = of.composite_buf.data();
@@ -122,7 +113,7 @@ TEST(CombTest, DecodeFramesYcPath_PreservesLumaInActiveRegion) {
   decoder.decodeFrames(fields, 0, 2, output);
 
   EXPECT_EQ(output[0].getWidth(), 32);
-  EXPECT_EQ(output[0].getHeight(), 7);
+  EXPECT_EQ(output[0].getHeight(), 525);  // NTSC: 263*2-1
 
   const double* line0 = output[0].y(0);
   const double* line1 = output[0].y(1);
@@ -156,7 +147,7 @@ TEST(CombTest, DecodeFramesCompositePath_MatchesGoldenVector) {
   decoder.decodeFrames(fields, 0, 2, output);
 
   EXPECT_EQ(output[0].getWidth(), 32);
-  EXPECT_EQ(output[0].getHeight(), 7);
+  EXPECT_EQ(output[0].getHeight(), 525);  // NTSC: 263*2-1
 
   const double* y0 = output[0].y(0);
   const double* u0 = output[0].u(0);
@@ -175,7 +166,7 @@ TEST(CombTest, DecodeFramesCompositePath_MatchesGoldenVector) {
 
 TEST(CombTest, InvalidConfiguration_DoesNotAttemptDecode) {
   auto params = make_ntsc_video_params();
-  params.field_width = 8;
+  params.frame_width_nominal = 8;
 
   Comb::Configuration config;
   config.dimensions = 2;

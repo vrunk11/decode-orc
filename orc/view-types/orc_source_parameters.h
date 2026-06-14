@@ -23,10 +23,6 @@ namespace orc {
 // This struct carries the signal parameters that stages need to interpret
 // frame sample buffers correctly.  All level fields are in the
 // CVBS_U10_4FSC 10-bit domain (0–1023).
-//
-// Fields marked [DEPRECATED — Phase 1→4 migration] are retained only to keep
-// existing consumers compiling while they are migrated to the new fields in
-// subsequent phases.  They will be removed once all consumers have migrated.
 struct SourceParameters {
   // ---------------------------------------------------------------------------
   // Identity
@@ -56,11 +52,11 @@ struct SourceParameters {
   // signals they equal the spec constants.  has_nonstandard_values is set when
   // they differ.
 
-  int32_t sync_tip_level = -1;   // Sync tip (e.g., kPalSyncTip = 4)
-  int32_t blanking_level = -1;   // Blanking / 0 IRE (e.g., kPalBlanking = 256)
-  int32_t black_level = -1;      // Black level (e.g., kPalBlack = 282)
-  int32_t white_level = -1;      // White / 100 IRE (e.g., kPalWhite = 844)
-  int32_t peak_level = -1;       // Peak white (e.g., kPalPeak = 1019)
+  int32_t sync_tip_level = -1;  // Sync tip (e.g., kPalSyncTip = 4)
+  int32_t blanking_level = -1;  // Blanking / 0 IRE (e.g., kPalBlanking = 256)
+  int32_t black_level = -1;     // Black level (e.g., kPalBlack = 282)
+  int32_t white_level = -1;     // White / 100 IRE (e.g., kPalWhite = 844)
+  int32_t peak_level = -1;      // Peak white (e.g., kPalPeak = 1019)
 
   // True when black_level or white_level differs from the spec-defined
   // constant for this system (e.g., NTSC-J, or a video_params override).
@@ -82,7 +78,7 @@ struct SourceParameters {
   // ---------------------------------------------------------------------------
   bool is_mapped = false;
   std::string tape_format;
-  std::string decoder;    // e.g., "ld-decode", "vhs-decode"
+  std::string decoder;  // e.g., "ld-decode", "vhs-decode"
   std::string git_branch;
   std::string git_commit;
 
@@ -90,25 +86,6 @@ struct SourceParameters {
   // been applied as a crop.  Decoder output stages write to 0-based
   // ComponentFrame coordinates when this is set.
   bool active_area_cropping_applied = false;
-
-  // ---------------------------------------------------------------------------
-  // DEPRECATED — retained for compilation while consumers migrate to the
-  // CVBS_U10_4FSC field set above.  Will be removed in Phase 4.
-  // ---------------------------------------------------------------------------
-  bool is_subcarrier_locked = false;
-  int32_t field_width = -1;
-  int32_t field_height = -1;
-  int32_t number_of_sequential_fields = -1;
-  bool is_first_field_first = true;
-  int32_t colour_burst_start = -1;
-  int32_t colour_burst_end = -1;
-  int32_t first_active_field_line = -1;
-  int32_t last_active_field_line = -1;
-  int32_t blanking_16b_ire = -1;
-  int32_t black_16b_ire = -1;
-  int32_t white_16b_ire = -1;
-  double sample_rate = -1.0;
-  double fsc = -1.0;
 
   bool is_valid() const {
     return system != VideoSystem::Unknown && frame_width_nominal > 0;

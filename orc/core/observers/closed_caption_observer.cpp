@@ -9,6 +9,7 @@
 
 #include "closed_caption_observer.h"
 
+#include <cvbs_signal_constants.h>
 #include "logging.h"
 #include "observation_context.h"
 #include "vbi_utilities.h"
@@ -103,7 +104,9 @@ void ClosedCaptionObserver::process_field(
 
   // Bit clock is 32 x fH [CTA-608-E p14]
   double samples_per_bit = static_cast<double>(descriptor->width) / 32.0;
-  size_t colorburst_end = video_params.colour_burst_end;
+  // Colour burst end derived from video system constant.
+  size_t colorburst_end =
+      static_cast<size_t>(colour_burst_range(video_params.system).second);
 
   DecodedCaption decoded;
   bool success = decode_line(line_data, descriptor->width, zero_crossing,

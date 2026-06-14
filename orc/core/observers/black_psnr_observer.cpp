@@ -13,6 +13,7 @@
 #include <cmath>
 #include <numeric>
 
+#include <cvbs_signal_constants.h>
 #include "../include/field_id.h"
 #include "../include/logging.h"
 #include "../include/observation_context.h"
@@ -119,15 +120,9 @@ std::vector<double> BlackPSNRObserver::get_line_slice_ire(
     return result;
   }
 
-  // Get video parameters for IRE conversion
-  auto video_params_opt = representation.get_video_parameters();
-  double black_16b = 16384.0;  // Default
-  double white_16b = 53248.0;  // Default
-
-  if (video_params_opt.has_value()) {
-    black_16b = static_cast<double>(video_params_opt->black_16b_ire);
-    white_16b = static_cast<double>(video_params_opt->white_16b_ire);
-  }
+  // ld-decode TBC 16-bit domain normative levels (kTbcBlanking / kTbcWhite).
+  constexpr double black_16b = kTbcBlanking;
+  constexpr double white_16b = kTbcWhite;
 
   double ire_scale = 100.0 / (white_16b - black_16b);
 

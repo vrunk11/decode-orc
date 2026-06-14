@@ -77,7 +77,8 @@ inline constexpr uint32_t kStagePluginHostAbiVersion = 4;
 ///
 /// History:
 ///   1 — Initial public API surface (Phase 4).
-///   2 — Decode-Orc 2.0: DAGStage execute() receives VideoFrameRepresentationPtr
+///   2 — Decode-Orc 2.0: DAGStage execute() receives
+///   VideoFrameRepresentationPtr
 ///        (frame-based) instead of VideoFieldRepresentationPtr (field-based).
 ///        DropoutRegion replaced by DropoutRun. FieldID/FieldIDRange removed;
 ///        FrameID/FrameIDRange are the canonical navigation types.

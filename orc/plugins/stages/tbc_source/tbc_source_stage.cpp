@@ -12,6 +12,7 @@
 #include <cvbs_signal_constants.h>
 #include <tbc_metadata.h>
 #include <tbc_reader.h>
+#include <video_field_representation.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -24,12 +25,12 @@
 #include "audio_resampler.h"
 #include "error_types.h"
 #include "logging.h"
-#include "preview_helpers.h"
 #include "ntsc_tbc_converter.h"
 #include "ntsc_tbc_yc_converter.h"
 #include "pal_m_tbc_converter.h"
 #include "pal_tbc_converter.h"
 #include "pal_tbc_yc_converter.h"
+#include "preview_helpers.h"
 
 namespace orc {
 
@@ -43,10 +44,9 @@ std::vector<size_t> compute_pal_line_offsets() {
   size_t offset = 0;
   for (int32_t i = 0; i < kPalFrameLines; ++i) {
     offsets[static_cast<size_t>(i)] = offset;
-    const bool is_extra = (i == kPalExtraSampleLines[0] ||
-                           i == kPalExtraSampleLines[1] ||
-                           i == kPalExtraSampleLines[2] ||
-                           i == kPalExtraSampleLines[3]);
+    const bool is_extra =
+        (i == kPalExtraSampleLines[0] || i == kPalExtraSampleLines[1] ||
+         i == kPalExtraSampleLines[2] || i == kPalExtraSampleLines[3]);
     offset += is_extra ? static_cast<size_t>(kPalMaxSamplesPerLine)
                        : static_cast<size_t>(kPalMaxSamplesPerLine - 1);
   }
@@ -114,11 +114,12 @@ SourceParameters build_source_params(const TBCVideoParams& tvp,
       sp.last_active_frame_line = kNtscLastActiveFrameLine;
       if (tvp.ntsc_j_black_level_16b.has_value()) {
         // NTSC-J: convert 16-bit TBC domain to CVBS 10-bit.
-        const double n = static_cast<double>(tvp.ntsc_j_black_level_16b.value() -
-                                              tvp.blanking_16b) /
-                         static_cast<double>(tvp.white_16b - tvp.blanking_16b);
-        const int32_t cvbs_j =
-            static_cast<int32_t>(n * (kNtscWhite - kNtscBlanking) + kNtscBlanking);
+        const double n =
+            static_cast<double>(tvp.ntsc_j_black_level_16b.value() -
+                                tvp.blanking_16b) /
+            static_cast<double>(tvp.white_16b - tvp.blanking_16b);
+        const int32_t cvbs_j = static_cast<int32_t>(
+            n * (kNtscWhite - kNtscBlanking) + kNtscBlanking);
         sp.black_level = cvbs_j;
         sp.has_nonstandard_values = true;
       }
@@ -148,10 +149,18 @@ SourceParameters build_source_params(const TBCVideoParams& tvp,
 std::string make_display_name(VideoSystem system, bool is_yc) {
   std::string sys_str;
   switch (system) {
-    case VideoSystem::PAL:   sys_str = "PAL";   break;
-    case VideoSystem::NTSC:  sys_str = "NTSC";  break;
-    case VideoSystem::PAL_M: sys_str = "PAL-M"; break;
-    default:                 sys_str = "TBC";   break;
+    case VideoSystem::PAL:
+      sys_str = "PAL";
+      break;
+    case VideoSystem::NTSC:
+      sys_str = "NTSC";
+      break;
+    case VideoSystem::PAL_M:
+      sys_str = "PAL-M";
+      break;
+    default:
+      sys_str = "TBC";
+      break;
   }
   return sys_str + " TBC " + (is_yc ? "YC" : "Composite");
 }
@@ -166,22 +175,14 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
                                             public Artifact {
  public:
   TBCDecodedFrameRepresentation(
-      TBCVideoParams video_params,
-      SourceParameters source_params,
+      TBCVideoParams video_params, SourceParameters source_params,
       std::vector<TBCFieldMeta> field_meta,
       std::shared_ptr<ITBCSourceStageDeps> deps,
       std::string tbc_path,  // composite .tbc (or Y .tbc for YC)
       std::string c_path,    // chroma .tbc for YC mode; empty for composite
-      std::string pcm_path,
-      std::string efm_bin_path,
-      std::string efm_meta_path,
-      std::string ac3_bin_path,
-      std::string ac3_meta_path,
-      bool has_audio,
-      bool has_efm,
-      bool has_ac3,
-      ArtifactID artifact_id,
-      Provenance provenance)
+      std::string pcm_path, std::string efm_bin_path, std::string efm_meta_path,
+      std::string ac3_bin_path, std::string ac3_meta_path, bool has_audio,
+      bool has_efm, bool has_ac3, ArtifactID artifact_id, Provenance provenance)
       : Artifact(std::move(artifact_id), std::move(provenance)),
         video_params_(std::move(video_params)),
         source_params_(std::move(source_params)),
@@ -199,7 +200,7 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
         has_ac3_(has_ac3),
         is_yc_(!c_path_.empty()) {
     // Pre-compute per-frame audio offsets from field metadata, then resample
-  // for NTSC/PAL_M.
+    // for NTSC/PAL_M.
     compute_audio_offsets();
     compute_ntsc_palM_audio();
   }
@@ -391,8 +392,8 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     if (!has_efm_ || !has_frame(id)) return {};
     const int32_t fld1 = static_cast<int32_t>(id) * 2;
     const int32_t fld2 = fld1 + 1;
-    auto result = deps_->read_efm_for_frame(efm_bin_path_, efm_meta_path_,
-                                            fld1, fld2);
+    auto result =
+        deps_->read_efm_for_frame(efm_bin_path_, efm_meta_path_, fld1, fld2);
     return result.value_or(std::vector<uint8_t>{});
   }
 
@@ -405,8 +406,8 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     if (!has_ac3_ || !has_frame(id)) return {};
     const int32_t fld1 = static_cast<int32_t>(id) * 2;
     const int32_t fld2 = fld1 + 1;
-    auto result = deps_->read_ac3_for_frame(ac3_bin_path_, ac3_meta_path_,
-                                            fld1, fld2);
+    auto result =
+        deps_->read_ac3_for_frame(ac3_bin_path_, ac3_meta_path_, fld1, fld2);
     return result.value_or(std::vector<uint8_t>{});
   }
 
@@ -421,10 +422,14 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   size_t frame_samples_total() const {
     // PAL: kPalFrameSamples; NTSC: kNtscFrameSamples; PAL_M: kPalMFrameSamples
     switch (video_params_.system) {
-      case VideoSystem::PAL:   return static_cast<size_t>(kPalFrameSamples);
-      case VideoSystem::NTSC:  return static_cast<size_t>(kNtscFrameSamples);
-      case VideoSystem::PAL_M: return static_cast<size_t>(kPalMFrameSamples);
-      default:                 return 0;
+      case VideoSystem::PAL:
+        return static_cast<size_t>(kPalFrameSamples);
+      case VideoSystem::NTSC:
+        return static_cast<size_t>(kNtscFrameSamples);
+      case VideoSystem::PAL_M:
+        return static_cast<size_t>(kPalMFrameSamples);
+      default:
+        return 0;
     }
   }
 
@@ -458,9 +463,12 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
 
   CachedFrame assemble_frame(FrameID id) const {
     switch (video_params_.system) {
-      case VideoSystem::PAL:   return assemble_pal_frame(id);
-      case VideoSystem::NTSC:  return assemble_ntsc_frame(id);
-      case VideoSystem::PAL_M: return assemble_pal_m_frame(id);
+      case VideoSystem::PAL:
+        return assemble_pal_frame(id);
+      case VideoSystem::NTSC:
+        return assemble_ntsc_frame(id);
+      case VideoSystem::PAL_M:
+        return assemble_pal_m_frame(id);
       default:
         throw std::runtime_error(
             "TBC source: unsupported video system for frame assembly");
@@ -476,7 +484,7 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
 
     constexpr int32_t kF1Lines = kPalFrameLines - kPalField1Lines;  // 312
     constexpr int32_t kF2Lines = kPalField1Lines;                   // 313
-    constexpr int32_t kLineW   = kPalMaxSamplesPerLine - 1;         // 1135
+    constexpr int32_t kLineW = kPalMaxSamplesPerLine - 1;           // 1135
     const int32_t stored_field_size = kF2Lines * kLineW;
 
     std::string err;
@@ -524,10 +532,13 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     const int32_t tbc_f1_idx = static_cast<int32_t>(id) * 2;
     const int32_t tbc_f2_idx = tbc_f1_idx + 1;
 
-    constexpr int32_t kF1Lines = kNtscField1Lines;                    // 263 = TBC f2 / VFR field 1
-    constexpr int32_t kF2Lines = kNtscFrameLines - kNtscField1Lines;  // 262 = TBC f1 / VFR field 2
-    constexpr int32_t kLineW   = kNtscSamplesPerLine;                 // 910
-    const int32_t stored_field_size = kF1Lines * kLineW;  // 263×910 stored per field
+    constexpr int32_t kF1Lines =
+        kNtscField1Lines;  // 263 = TBC f2 / VFR field 1
+    constexpr int32_t kF2Lines =
+        kNtscFrameLines - kNtscField1Lines;  // 262 = TBC f1 / VFR field 2
+    constexpr int32_t kLineW = kNtscSamplesPerLine;  // 910
+    const int32_t stored_field_size =
+        kF1Lines * kLineW;  // 263×910 stored per field
 
     std::string err;
 
@@ -570,15 +581,18 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
 
   CachedFrame assemble_pal_m_frame(FrameID id) const {
     // ITU-R BT.1700-1 Annex 1 Part B: PAL_M frame assembly.
-    // Same swap convention as NTSC: TBC field 2 (263 lines) → VFR field 1 (top).
-    // kPalMSamplesPerLine = 909 samples/line.
+    // Same swap convention as NTSC: TBC field 2 (263 lines) → VFR field 1
+    // (top). kPalMSamplesPerLine = 909 samples/line.
     const int32_t tbc_f1_idx = static_cast<int32_t>(id) * 2;
     const int32_t tbc_f2_idx = tbc_f1_idx + 1;
 
-    constexpr int32_t kF1Lines = kPalMField1Lines;                    // 263 = TBC f2 / VFR field 1
-    constexpr int32_t kF2Lines = kPalMFrameLines - kPalMField1Lines;  // 262 = TBC f1 / VFR field 2
-    constexpr int32_t kLineW   = kPalMSamplesPerLine;                 // 909
-    const int32_t stored_field_size = kF1Lines * kLineW;  // 263×909 stored per field
+    constexpr int32_t kF1Lines =
+        kPalMField1Lines;  // 263 = TBC f2 / VFR field 1
+    constexpr int32_t kF2Lines =
+        kPalMFrameLines - kPalMField1Lines;  // 262 = TBC f1 / VFR field 2
+    constexpr int32_t kLineW = kPalMSamplesPerLine;  // 909
+    const int32_t stored_field_size =
+        kF1Lines * kLineW;  // 263×909 stored per field
 
     std::string err;
 
@@ -667,8 +681,8 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
         deps_->read_audio_samples_at(pcm_path_, 0, audio_total_raw_pairs_);
     if (raw.empty()) return;
 
-    resampled_audio_frames_ = NtscPalMAudioResampler::resample_and_segment(
-        raw, frame_count());
+    resampled_audio_frames_ =
+        NtscPalMAudioResampler::resample_and_segment(raw, frame_count());
   }
 
   TBCVideoParams video_params_;
@@ -753,16 +767,20 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
     tvp.git_branch = sp->git_branch;
     tvp.git_commit = sp->git_commit;
     tvp.is_widescreen = sp->is_widescreen;
-    tvp.blanking_16b = sp->blanking_16b_ire;
-    tvp.white_16b = sp->white_16b_ire;
-    tvp.number_of_fields = sp->number_of_sequential_fields;
-    tvp.field_width = sp->field_width;
+    // TBC 16-bit domain levels — always the ld-decode normative constants.
+    tvp.blanking_16b = kTbcBlanking;
+    tvp.white_16b = kTbcWhite;
+    tvp.number_of_fields = sp->number_of_sequential_frames * 2;
+    tvp.field_width = sp->frame_width_nominal;
 
     // Field heights: both stored at max height in the TBC file.
-    // PAL: max = 313 lines; shorter field = 312 lines.
+    // PAL: max = 313 lines (padded field height); shorter field = 312 lines.
     // NTSC/PAL_M: max = 263 lines; shorter field = 262 lines.
-    tvp.field2_height = sp->field_height;               // max (stored) height
-    tvp.field1_height = sp->field_height - 1;           // shorter field
+    // calculate_padded_field_height() returns the max (longer) field height.
+    const int32_t padded_fh =
+        static_cast<int32_t>(calculate_padded_field_height(sp->system));
+    tvp.field2_height = padded_fh;      // max (stored) height
+    tvp.field1_height = padded_fh - 1;  // shorter field
 
     tvp.active_video_start = sp->active_video_start;
     tvp.active_video_end = sp->active_video_end;
@@ -776,8 +794,8 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
       const std::string& db_path, std::string& error_message) const override {
     TBCMetadataSqliteReader reader;
     if (!reader.open(db_path)) {
-      error_message = "Failed to open TBC metadata for field meta: '" +
-                      db_path + "'";
+      error_message =
+          "Failed to open TBC metadata for field meta: '" + db_path + "'";
       return {};
     }
 
@@ -820,8 +838,7 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
     std::vector<uint16_t> samples(static_cast<size_t>(use_sample_count));
     ifs.read(reinterpret_cast<char*>(samples.data()),
              static_cast<std::streamsize>(use_sample_count) * 2LL);
-    const size_t words_read =
-        static_cast<size_t>(ifs.gcount()) / 2;
+    const size_t words_read = static_cast<size_t>(ifs.gcount()) / 2;
     if (words_read < static_cast<size_t>(use_sample_count)) {
       error_message = "Short read for field " + std::to_string(field_index) +
                       " in '" + tbc_path + "'";
@@ -862,10 +879,8 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
   }
 
   std::optional<std::vector<uint8_t>> read_efm_for_frame(
-      const std::string& /*efm_bin_path*/,
-      const std::string& /*efm_meta_path*/,
-      int32_t /*field_seq_no_a*/,
-      int32_t /*field_seq_no_b*/) const override {
+      const std::string& /*efm_bin_path*/, const std::string& /*efm_meta_path*/,
+      int32_t /*field_seq_no_a*/, int32_t /*field_seq_no_b*/) const override {
     // EFM reading from TBC is deferred; the TBC field-level EFM data is
     // stored per-field in the existing metadata.  Full implementation uses
     // the TBCAudioEFMHandler; returning empty for now to satisfy the interface.
@@ -880,10 +895,8 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
   }
 
   std::optional<std::vector<uint8_t>> read_ac3_for_frame(
-      const std::string& /*ac3_bin_path*/,
-      const std::string& /*ac3_meta_path*/,
-      int32_t /*field_seq_no_a*/,
-      int32_t /*field_seq_no_b*/) const override {
+      const std::string& /*ac3_bin_path*/, const std::string& /*ac3_meta_path*/,
+      int32_t /*field_seq_no_a*/, int32_t /*field_seq_no_b*/) const override {
     return std::nullopt;
   }
 };
@@ -908,8 +921,7 @@ TBCSourceStage::SidecarPaths TBCSourceStage::resolve_sidecars(
 
   auto get_str = [&](const std::string& key) -> std::string {
     const auto it = params.find(key);
-    if (it != params.end() &&
-        std::holds_alternative<std::string>(it->second)) {
+    if (it != params.end() && std::holds_alternative<std::string>(it->second)) {
       return std::get<std::string>(it->second);
     }
     return {};
@@ -947,11 +959,11 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
     return {};
   };
 
-  const std::string y_path   = get_str("y_path");
-  const std::string c_path   = get_str("c_path");
+  const std::string y_path = get_str("y_path");
+  const std::string c_path = get_str("c_path");
   const std::string comp_path = get_str("input_path");
   const bool is_yc = (!y_path.empty() && !c_path.empty());
-  const std::string tbc_path  = is_yc ? y_path : comp_path;
+  const std::string tbc_path = is_yc ? y_path : comp_path;
 
   if (tbc_path.empty()) {
     ORC_LOG_DEBUG("tbc_source: No input path configured, returning empty.");
@@ -987,14 +999,13 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
   TBCVideoParams tvp = std::move(*tvp_opt);
 
   if (tvp.system == VideoSystem::Unknown) {
-    throw UserDataError(
-        "TBC source: unknown video system in '" + sc.db_path + "'");
+    throw UserDataError("TBC source: unknown video system in '" + sc.db_path +
+                        "'");
   }
   if (tvp.blanking_16b <= 0 || tvp.white_16b <= tvp.blanking_16b) {
-    throw UserDataError(
-        "TBC source: invalid level values in '" + sc.db_path +
-        "' (blanking=" + std::to_string(tvp.blanking_16b) +
-        ", white=" + std::to_string(tvp.white_16b) + ")");
+    throw UserDataError("TBC source: invalid level values in '" + sc.db_path +
+                        "' (blanking=" + std::to_string(tvp.blanking_16b) +
+                        ", white=" + std::to_string(tvp.white_16b) + ")");
   }
 
   // Load all per-field metadata.
@@ -1018,7 +1029,8 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
               field_meta[0].field_phase_id);
           chroma_cfi = PalTBCConverter::map_field_phase_to_colour_frame_index(
               c_meta[0].field_phase_id);
-          if (!PalTBCYCConverter::check_yc_phase_alignment(luma_cfi, chroma_cfi)) {
+          if (!PalTBCYCConverter::check_yc_phase_alignment(luma_cfi,
+                                                           chroma_cfi)) {
             throw UserDataError(
                 PalTBCYCConverter::yc_alignment_error(luma_cfi, chroma_cfi));
           }
@@ -1028,7 +1040,8 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
               field_meta[0].field_phase_id);
           chroma_cfi = NtscTBCConverter::map_field_phase_to_colour_frame_index(
               c_meta[0].field_phase_id);
-          if (!NtscTBCYCConverter::check_yc_phase_alignment(luma_cfi, chroma_cfi)) {
+          if (!NtscTBCYCConverter::check_yc_phase_alignment(luma_cfi,
+                                                            chroma_cfi)) {
             throw UserDataError(
                 NtscTBCYCConverter::yc_alignment_error(luma_cfi, chroma_cfi));
           }
@@ -1038,8 +1051,10 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
               field_meta[0].field_phase_id);
           chroma_cfi = PalMTBCConverter::map_field_phase_to_colour_frame_index(
               c_meta[0].field_phase_id);
-          // PAL_M YC: reuse the PAL alignment checker (same logic, 4-frame cycle).
-          if (!PalTBCYCConverter::check_yc_phase_alignment(luma_cfi, chroma_cfi)) {
+          // PAL_M YC: reuse the PAL alignment checker (same logic, 4-frame
+          // cycle).
+          if (!PalTBCYCConverter::check_yc_phase_alignment(luma_cfi,
+                                                           chroma_cfi)) {
             throw UserDataError(
                 PalTBCYCConverter::yc_alignment_error(luma_cfi, chroma_cfi));
           }
@@ -1054,30 +1069,23 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
   const int32_t frame_count = tvp.number_of_fields / 2;
   const bool has_audio =
       !sc.pcm_path.empty() && deps_->has_audio_file(sc.pcm_path);
-  const std::string efm_meta =
-      sc.efm_path.empty() ? "" : sc.efm_path + ".meta";
+  const std::string efm_meta = sc.efm_path.empty() ? "" : sc.efm_path + ".meta";
   const bool has_efm =
       !sc.efm_path.empty() && deps_->has_efm_files(sc.efm_path, efm_meta);
-  const std::string ac3_meta =
-      sc.ac3_path.empty() ? "" : sc.ac3_path + ".meta";
+  const std::string ac3_meta = sc.ac3_path.empty() ? "" : sc.ac3_path + ".meta";
   const bool has_ac3 =
       !sc.ac3_path.empty() && deps_->has_ac3_files(sc.ac3_path, ac3_meta);
 
   // Build SourceParameters.
-  SourceParameters src_params =
-      build_source_params(tvp, frame_count);
+  SourceParameters src_params = build_source_params(tvp, frame_count);
 
   // Create representation.
   auto repr = std::make_shared<TBCDecodedFrameRepresentation>(
-      tvp, src_params, std::move(field_meta), deps_,
-      tbc_path, is_yc ? c_path : std::string{},
-      has_audio ? sc.pcm_path : std::string{},
-      has_efm ? sc.efm_path : std::string{},
-      has_efm ? efm_meta : std::string{},
-      has_ac3 ? sc.ac3_path : std::string{},
-      has_ac3 ? ac3_meta : std::string{},
-      has_audio, has_efm, has_ac3,
-      ArtifactID{}, Provenance{});
+      tvp, src_params, std::move(field_meta), deps_, tbc_path,
+      is_yc ? c_path : std::string{}, has_audio ? sc.pcm_path : std::string{},
+      has_efm ? sc.efm_path : std::string{}, has_efm ? efm_meta : std::string{},
+      has_ac3 ? sc.ac3_path : std::string{}, has_ac3 ? ac3_meta : std::string{},
+      has_audio, has_efm, has_ac3, ArtifactID{}, Provenance{});
 
   // Update display name.
   const std::string new_display = make_display_name(tvp.system, is_yc);
@@ -1120,23 +1128,22 @@ std::vector<ParameterDescriptor> TBCSourceStage::get_parameter_descriptors(
       "Path to the composite .tbc file from ld-decode (YC: leave empty and "
       "use y_path/c_path instead)",
       ".tbc"));
-  descs.push_back(make_path(
-      "y_path", "Luma TBC File Path (YC)",
-      "Path to the luma .tbc file for YC sources", ".tbc"));
-  descs.push_back(make_path(
-      "c_path", "Chroma TBC File Path (YC)",
-      "Path to the chroma .tbc file for YC sources", ".tbc"));
+  descs.push_back(make_path("y_path", "Luma TBC File Path (YC)",
+                            "Path to the luma .tbc file for YC sources",
+                            ".tbc"));
+  descs.push_back(make_path("c_path", "Chroma TBC File Path (YC)",
+                            "Path to the chroma .tbc file for YC sources",
+                            ".tbc"));
   descs.push_back(make_path(
       "pcm_path", "PCM Audio File Path",
       "Path to the analogue audio .pcm sidecar (raw 16-bit stereo PCM at "
       "44.1 kHz)",
       ".pcm"));
-  descs.push_back(make_path(
-      "efm_path", "EFM Data File Path",
-      "Path to the EFM t-value .efm sidecar", ".efm"));
-  descs.push_back(make_path(
-      "ac3rf_path", "AC3 RF Symbols File Path",
-      "Path to the AC3 RF symbols .ac3sym sidecar", ".ac3sym"));
+  descs.push_back(make_path("efm_path", "EFM Data File Path",
+                            "Path to the EFM t-value .efm sidecar", ".efm"));
+  descs.push_back(make_path("ac3rf_path", "AC3 RF Symbols File Path",
+                            "Path to the AC3 RF symbols .ac3sym sidecar",
+                            ".ac3sym"));
   return descs;
 }
 
@@ -1189,10 +1196,10 @@ std::optional<StageReport> TBCSourceStage::generate_report() const {
   };
 
   const std::string comp_path = get_str("input_path");
-  const std::string y_path    = get_str("y_path");
-  const std::string c_path    = get_str("c_path");
+  const std::string y_path = get_str("y_path");
+  const std::string c_path = get_str("c_path");
   const bool is_yc = (!y_path.empty() && !c_path.empty());
-  const std::string tbc_path  = is_yc ? y_path : comp_path;
+  const std::string tbc_path = is_yc ? y_path : comp_path;
 
   if (tbc_path.empty()) {
     report.items.push_back({"Source File", "Not configured"});
@@ -1208,13 +1215,16 @@ std::optional<StageReport> TBCSourceStage::generate_report() const {
     if (repr) {
       auto params = repr->get_video_parameters();
       if (params) {
-        report.items.push_back({"Video System",
-                                [&]() -> std::string {
+        report.items.push_back({"Video System", [&]() -> std::string {
                                   switch (params->system) {
-                                    case VideoSystem::PAL:   return "PAL";
-                                    case VideoSystem::NTSC:  return "NTSC";
-                                    case VideoSystem::PAL_M: return "PAL-M";
-                                    default:                 return "Unknown";
+                                    case VideoSystem::PAL:
+                                      return "PAL";
+                                    case VideoSystem::NTSC:
+                                      return "NTSC";
+                                    case VideoSystem::PAL_M:
+                                      return "PAL-M";
+                                    default:
+                                      return "Unknown";
                                   }
                                 }()});
         report.items.push_back(

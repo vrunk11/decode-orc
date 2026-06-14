@@ -58,8 +58,9 @@ class OutputBackend {
     bool embed_audio = false;  ///< Embed audio in output (requires audio data)
     const class VideoFrameRepresentation* vfr =
         nullptr;  ///< VFrameR for audio access (if embed_audio=true)
-    uint64_t start_field_index = 0;  ///< Starting field index for audio/CC extraction
-    uint64_t num_fields = 0;         ///< Number of fields to extract audio from
+    uint64_t start_field_index =
+        0;                    ///< Starting field index for audio/CC extraction
+    uint64_t num_fields = 0;  ///< Number of fields to extract audio from
 
     // Closed caption settings (MP4 only, converts EIA-608 to mov_text)
     bool embed_closed_captions =

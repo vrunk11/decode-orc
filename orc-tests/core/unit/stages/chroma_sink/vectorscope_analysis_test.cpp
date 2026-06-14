@@ -18,8 +18,8 @@ namespace orc_unit_test {
 TEST(VectorscopeAnalysisTest,
      ExtractFromComponentFrame_UsesActivePictureWindow) {
   orc::SourceParameters source_parameters;
-  source_parameters.field_width = 8;
-  source_parameters.field_height = 4;
+  source_parameters.system = orc::VideoSystem::NTSC;
+  source_parameters.frame_width_nominal = 8;
   source_parameters.active_video_start = 2;
   source_parameters.active_video_end = 6;
   source_parameters.first_active_frame_line = 1;

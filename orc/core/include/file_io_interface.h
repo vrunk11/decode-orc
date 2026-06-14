@@ -35,8 +35,7 @@ class IFileWriter {
    * @param mode Open mode flags (default: binary | trunc)
    * @return true if opened successfully
    */
-  virtual bool open(const std::string& filepath,
-                    std::ios::openmode mode) = 0;
+  virtual bool open(const std::string& filepath, std::ios::openmode mode) = 0;
 
   bool open(const std::string& filepath) {
     return open(filepath, std::ios::binary | std::ios::trunc);

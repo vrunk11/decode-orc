@@ -48,8 +48,9 @@ struct LineDropout {
 // ============================================================================
 // CorrectedVideoFrameRepresentation
 // ============================================================================
-class CorrectedVideoFrameRepresentation : public VideoFrameRepresentationWrapper,
-                                          public Artifact {
+class CorrectedVideoFrameRepresentation
+    : public VideoFrameRepresentationWrapper,
+      public Artifact {
  public:
   CorrectedVideoFrameRepresentation(
       std::shared_ptr<const VideoFrameRepresentation> source,
@@ -132,12 +133,14 @@ class DropoutCorrectStage : public DAGStage,
       VideoSystem project_format, SourceType source_type) const override;
   using ParameterizedStage::get_parameter_descriptors;
   std::map<std::string, ParameterValue> get_parameters() const override;
-  bool set_parameters(const std::map<std::string, ParameterValue>& params) override;
+  bool set_parameters(
+      const std::map<std::string, ParameterValue>& params) override;
 
   // Public for lazy correction from CorrectedVideoFrameRepresentation
-  void correct_single_frame(CorrectedVideoFrameRepresentation* corrected,
-                            std::shared_ptr<const VideoFrameRepresentation> source,
-                            FrameID frame_id) const;
+  void correct_single_frame(
+      CorrectedVideoFrameRepresentation* corrected,
+      std::shared_ptr<const VideoFrameRepresentation> source,
+      FrameID frame_id) const;
 
   // Public for unit testing
   static std::vector<LineDropout> runs_to_line_dropouts(
@@ -149,13 +152,12 @@ class DropoutCorrectStage : public DAGStage,
   enum class DropoutLocation { COLOUR_BURST, VISIBLE_LINE, UNKNOWN };
   enum class Channel { COMPOSITE, LUMA, CHROMA };
 
-  DropoutLocation classify_dropout(const LineDropout& dropout,
-                                   const FrameDescriptor& desc,
-                                   const std::optional<SourceParameters>& params) const;
+  DropoutLocation classify_dropout(
+      const LineDropout& dropout, const FrameDescriptor& desc,
+      const std::optional<SourceParameters>& params) const;
 
   std::vector<LineDropout> split_dropout_regions(
-      const std::vector<LineDropout>& dropouts,
-      const FrameDescriptor& desc,
+      const std::vector<LineDropout>& dropouts, const FrameDescriptor& desc,
       const std::optional<SourceParameters>& params) const;
 
   struct ReplacementLine {
@@ -169,8 +171,9 @@ class DropoutCorrectStage : public DAGStage,
 
   ReplacementLine find_replacement_line(
       const VideoFrameRepresentation& source, FrameID frame_id, uint32_t line,
-      const LineDropout& dropout, bool intrafield, bool match_chroma_phase_override,
-      size_t field1_lines, Channel channel = Channel::COMPOSITE) const;
+      const LineDropout& dropout, bool intrafield,
+      bool match_chroma_phase_override, size_t field1_lines,
+      Channel channel = Channel::COMPOSITE) const;
 
   void apply_correction(std::vector<int16_t>& line_data,
                         const LineDropout& dropout,

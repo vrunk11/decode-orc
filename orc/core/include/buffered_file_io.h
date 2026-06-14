@@ -73,8 +73,7 @@ class BufferedFileWriter : public IFileWriter<T> {
    * @return true if opened successfully
    */
   using IFileWriter<T>::open;
-  bool open(const std::string& filepath,
-            std::ios::openmode mode) override {
+  bool open(const std::string& filepath, std::ios::openmode mode) override {
     if (is_open_) {
       close();
     }

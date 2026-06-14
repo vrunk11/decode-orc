@@ -63,9 +63,10 @@ class DropoutMappedFrameRepresentation : public VideoFrameRepresentationWrapper,
   std::map<uint64_t, FrameDropoutMapEntry> dropout_map_;
 
   // Convert (frame_id, line, sample_start, sample_end) to a DropoutRun.
-  static std::optional<DropoutRun> entry_to_run(
-      VideoSystem sys, int32_t nominal_spl, FrameID frame_id,
-      const DropoutEntrySpec& entry);
+  static std::optional<DropoutRun> entry_to_run(VideoSystem sys,
+                                                int32_t nominal_spl,
+                                                FrameID frame_id,
+                                                const DropoutEntrySpec& entry);
 };
 
 // ============================================================================

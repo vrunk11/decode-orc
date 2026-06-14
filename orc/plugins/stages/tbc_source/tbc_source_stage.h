@@ -39,7 +39,8 @@ struct TBCVideoParams {
   int32_t number_of_fields = 0;  // total fields in the TBC file
   int32_t field_width = 0;       // nominal samples per line
   // PAL: field1_height=312 (TBC field 1, odd), field2_height=313 (TBC field 2)
-  // NTSC/PAL_M: field1_height=262, field2_height=263 (both stored at 263 in TBC)
+  // NTSC/PAL_M: field1_height=262, field2_height=263 (both stored at 263 in
+  // TBC)
   int32_t field1_height = 0;
   int32_t field2_height = 0;
   int32_t blanking_16b = 0;  // TBC-domain blanking level (blanking_16b_ire)
@@ -65,7 +66,7 @@ struct TBCFieldMeta {
   std::optional<int32_t> audio_sample_count;  // stereo pairs for this field
   std::optional<int32_t> efm_t_value_count;
   std::optional<int32_t> ac3rf_symbol_count;
-  std::optional<int64_t> file_location;       // byte offset in .tbc (informational)
+  std::optional<int64_t> file_location;  // byte offset in .tbc (informational)
 };
 
 // ---------------------------------------------------------------------------
@@ -114,7 +115,7 @@ class ITBCSourceStageDeps {
   // EFM: returns true when both .efm binary and .efm.meta SQLite sidecars are
   // present.
   virtual bool has_efm_files(const std::string& efm_bin_path,
-                              const std::string& efm_meta_path) const = 0;
+                             const std::string& efm_meta_path) const = 0;
 
   // Read and concatenate EFM t-values for two consecutive fields (forming one
   // frame).  Returns nullopt when either sidecar is absent.
@@ -124,7 +125,7 @@ class ITBCSourceStageDeps {
 
   // AC3 RF symbols: same structure as EFM but for .ac3 / .ac3.meta.
   virtual bool has_ac3_files(const std::string& ac3_bin_path,
-                              const std::string& ac3_meta_path) const = 0;
+                             const std::string& ac3_meta_path) const = 0;
 
   virtual std::optional<std::vector<uint8_t>> read_ac3_for_frame(
       const std::string& ac3_bin_path, const std::string& ac3_meta_path,
@@ -156,8 +157,7 @@ class TBCSourceStage : public DAGStage,
                        public ParameterizedStage,
                        public PreviewableStage {
  public:
-  explicit TBCSourceStage(
-      std::shared_ptr<ITBCSourceStageDeps> deps = nullptr);
+  explicit TBCSourceStage(std::shared_ptr<ITBCSourceStageDeps> deps = nullptr);
   ~TBCSourceStage() override = default;
 
   void set_deps_override(std::shared_ptr<ITBCSourceStageDeps> deps) {

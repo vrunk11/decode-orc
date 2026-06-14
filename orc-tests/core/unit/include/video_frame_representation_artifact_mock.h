@@ -11,9 +11,8 @@
 #define DECODE_ORC_ROOT_VIDEO_FRAME_REPRESENTATION_ARTIFACT_MOCK_H
 
 #include <artifact.h>
-#include <video_frame_representation.h>
-
 #include <gmock/gmock.h>
+#include <video_frame_representation.h>
 
 // Combines VideoFrameRepresentation with Artifact so the mock can be passed as
 // ArtifactPtr while the ChromaSinkStage dynamic_pointer_cast succeeds.

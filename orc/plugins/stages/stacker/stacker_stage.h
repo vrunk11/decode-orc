@@ -46,8 +46,8 @@ class StackedVideoFrameRepresentation : public VideoFrameRepresentationWrapper,
                                         public Artifact {
  public:
   StackedVideoFrameRepresentation(
-      const std::vector<
-          std::shared_ptr<const VideoFrameRepresentation>>& sources,
+      const std::vector<std::shared_ptr<const VideoFrameRepresentation>>&
+          sources,
       StackerStage* stage);
 
   ~StackedVideoFrameRepresentation() override = default;
@@ -169,8 +169,8 @@ class StackerStage : public DAGStage,
   std::optional<StageReport> generate_report() const override;
 
   std::shared_ptr<const VideoFrameRepresentation> process(
-      const std::vector<
-          std::shared_ptr<const VideoFrameRepresentation>>& sources) const;
+      const std::vector<std::shared_ptr<const VideoFrameRepresentation>>&
+          sources) const;
 
   static size_t min_input_count() { return 1; }
   static size_t max_input_count() { return 16; }
@@ -232,7 +232,7 @@ class StackerStage : public DAGStage,
   // Differential dropout detection: recover samples that are all marked as
   // dropout but are similar enough to be real signal.
   std::vector<int16_t> diff_dod(const std::vector<int16_t>& input,
-                                 int32_t black_level) const;
+                                int32_t black_level) const;
 
   // Line processing (parallel-friendly)
   void process_lines_range(
@@ -240,12 +240,9 @@ class StackerStage : public DAGStage,
       const std::vector<std::vector<sample_type>>& all_frames,
       const std::vector<bool>& frame_valid,
       const std::vector<std::vector<DropoutRun>>& all_dropouts,
-      size_t num_sources,
-      int32_t black_level,
-      int32_t nominal_width,
+      size_t num_sources, int32_t black_level, int32_t nominal_width,
       std::vector<sample_type>& output_samples,
-      std::vector<DropoutRun>& output_dropouts,
-      size_t& total_dropouts,
+      std::vector<DropoutRun>& output_dropouts, size_t& total_dropouts,
       size_t& total_stacked) const;
 
   void process_lines_range_yc(
@@ -254,13 +251,10 @@ class StackerStage : public DAGStage,
       const std::vector<std::vector<sample_type>>& all_chroma,
       const std::vector<bool>& frame_valid,
       const std::vector<std::vector<DropoutRun>>& all_dropouts,
-      size_t num_sources,
-      int32_t black_level,
-      int32_t nominal_width,
+      size_t num_sources, int32_t black_level, int32_t nominal_width,
       std::vector<sample_type>& output_luma,
       std::vector<sample_type>& output_chroma,
-      std::vector<DropoutRun>& output_dropouts,
-      size_t& total_dropouts,
+      std::vector<DropoutRun>& output_dropouts, size_t& total_dropouts,
       size_t& total_stacked) const;
 
   // Audio and EFM stacking helpers

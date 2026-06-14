@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "../../../../orc/common/include/error_types.h"
-#include "../../../../orc/core/include/cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
 #include "../../../../orc/core/include/observation_context.h"
 #include "../source_common/source_stage_descriptor_test_utils.h"
 

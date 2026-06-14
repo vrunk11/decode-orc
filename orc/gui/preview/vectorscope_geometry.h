@@ -130,7 +130,7 @@ inline orc::UVSample normalizedRgbToUv(double red, double green, double blue,
                                        double amplitude_scale) {
   // ITU-R BT.470-6 §1.1.2 / EBU Tech. 3280-E §2.1
   const double u = (red * -0.147141) + (green * -0.288869) + (blue * 0.436010);
-  const double v = (red *  0.614975) + (green * -0.514965) + (blue * -0.100010);
+  const double v = (red * 0.614975) + (green * -0.514965) + (blue * -0.100010);
   return {u * amplitude_scale, v * amplitude_scale};
 }
 
@@ -170,7 +170,8 @@ inline orc::UVSample vectorscopeTargetUv(int rgb, double percent,
                                          double ire_range,
                                          orc::VideoSystem /*system*/) {
   // system not used: BT.601 UV positions are the same for PAL and NTSC before
-  // display calibration.  Call vectorscopeDisplayTargetUv() for calibrated NTSC.
+  // display calibration.  Call vectorscopeDisplayTargetUv() for calibrated
+  // NTSC.
   const double red = percent * static_cast<double>((rgb >> 2) & 1);
   const double green = percent * static_cast<double>((rgb >> 1) & 1);
   const double blue = percent * static_cast<double>(rgb & 1);

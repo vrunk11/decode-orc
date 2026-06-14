@@ -39,13 +39,15 @@ TEST(ColourFrameCarrierTest, ValidWhenAllPlanes_MatchDimensions) {
 }
 
 TEST(ColourCarrierConversionTest, Produces_ValidRgbImage) {
+  // Y values must be in the ld-decode TBC 16-bit domain [kTbcBlanking=16384,
+  // kTbcWhite=54400].
   orc::ColourFrameCarrier carrier{};
   carrier.width = 2;
   carrier.height = 1;
   carrier.black_16b_ire = 0.0;
-  carrier.white_16b_ire = 1000.0;
+  carrier.white_16b_ire = 65535.0;
   carrier.colorimetry = orc::ColorimetricMetadata::default_ntsc();
-  carrier.y_plane = {200.0, 800.0};
+  carrier.y_plane = {20000.0, 46000.0};  // dim and bright, both in TBC domain
   carrier.u_plane = {0.0, 0.0};
   carrier.v_plane = {0.0, 0.0};
 
@@ -65,15 +67,19 @@ TEST(ColourCarrierConversionTest, Produces_ValidRgbImage) {
 }
 
 TEST(ColourCarrierConversionTest, MatrixSelection_AffectsRgbResult) {
+  // Values in TBC domain: Y in [kTbcBlanking=16384, kTbcWhite=54400];
+  // U/V also scaled by the same TBC range so chroma is large enough for the
+  // small coefficient difference between BT601_525 and NTSC1953_FCC to survive
+  // 8-bit quantization.
   orc::ColourFrameCarrier ntsc{};
   ntsc.width = 1;
   ntsc.height = 1;
   ntsc.black_16b_ire = 0.0;
-  ntsc.white_16b_ire = 1000.0;
+  ntsc.white_16b_ire = 65535.0;
   ntsc.colorimetry = orc::ColorimetricMetadata::default_ntsc();
-  ntsc.y_plane = {500.0};
-  ntsc.u_plane = {150.0};
-  ntsc.v_plane = {50.0};
+  ntsc.y_plane = {30000.0};
+  ntsc.u_plane = {12000.0};
+  ntsc.v_plane = {5000.0};
 
   orc::ColourFrameCarrier fcc = ntsc;
   fcc.colorimetry.matrix_coefficients =
@@ -141,13 +147,14 @@ TEST(ColourCarrierConversionTest, InvalidCarrier_ReturnsInvalidImage) {
 
 TEST(ColourCarrierConversionTest, Gamma28Transfer_ProducesValidRgbImage) {
   // PAL recording using BT.601-625 matrix with 2.8 gamma transfer.
+  // Y values in TBC domain [kTbcBlanking=16384, kTbcWhite=54400].
   orc::ColourFrameCarrier carrier{};
   carrier.width = 2;
   carrier.height = 1;
   carrier.black_16b_ire = 0.0;
-  carrier.white_16b_ire = 1000.0;
+  carrier.white_16b_ire = 65535.0;
   carrier.colorimetry = orc::ColorimetricMetadata::default_pal();
-  carrier.y_plane = {200.0, 800.0};
+  carrier.y_plane = {20000.0, 46000.0};  // dim and bright, both in TBC domain
   carrier.u_plane = {0.0, 0.0};
   carrier.v_plane = {0.0, 0.0};
 
@@ -168,15 +175,16 @@ TEST(ColourCarrierConversionTest,
      Bt709Transfer_ProducesDistinctOutputFromGamma22) {
   // BT.709 OETF is piecewise-linear near black, unlike pure power-law gamma,
   // so the resulting display values should differ for the same input.
+  // Y in TBC domain [kTbcBlanking=16384, kTbcWhite=54400]; neutral chroma.
   orc::ColourFrameCarrier gamma22{};
   gamma22.width = 1;
   gamma22.height = 1;
   gamma22.black_16b_ire = 0.0;
-  gamma22.white_16b_ire = 1000.0;
+  gamma22.white_16b_ire = 65535.0;
   gamma22.colorimetry = orc::ColorimetricMetadata::default_ntsc();
   gamma22.colorimetry.transfer_characteristics =
       orc::ColorimetricTransferCharacteristics::Gamma22;
-  gamma22.y_plane = {300.0};
+  gamma22.y_plane = {25000.0};
   gamma22.u_plane = {0.0};
   gamma22.v_plane = {0.0};
 

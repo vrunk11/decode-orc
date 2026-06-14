@@ -35,10 +35,10 @@ struct CVBSExtensionFrameRef {
 
 // Extended per-capture metadata read from <basename>.meta.
 struct CVBSMetadataRecord {
-  std::string preset;                 // video_standard_preset (PAL/NTSC/PAL_M)
-  std::string sample_encoding_preset; // CVBS_U10_4FSC / CVBS_U16_4FSC / etc.
-  std::string signal_state_preset;    // must be STANDARD_TBC_LOCKED
-  std::string signal_type;            // composite / yc
+  std::string preset;                  // video_standard_preset (PAL/NTSC/PAL_M)
+  std::string sample_encoding_preset;  // CVBS_U10_4FSC / CVBS_U16_4FSC / etc.
+  std::string signal_state_preset;     // must be STANDARD_TBC_LOCKED
+  std::string signal_type;             // composite / yc
   int32_t number_of_sequential_frames = 0;
   // audio_locked: true=frame-locked, false=free-running, nullopt=absent/NULL
   std::optional<bool> audio_locked;
@@ -95,8 +95,9 @@ class ICVBSSourceStageDeps {
 
   // Load the efm_frame index table from <basename>.efm.meta.
   // Returns nullopt when either sidecar file is absent.
-  virtual std::optional<std::vector<CVBSExtensionFrameRef>> load_efm_frame_table(
-      const std::string& efm_meta_path, std::string& error_message) const = 0;
+  virtual std::optional<std::vector<CVBSExtensionFrameRef>>
+  load_efm_frame_table(const std::string& efm_meta_path,
+                       std::string& error_message) const = 0;
 
   // Read count bytes at byte_offset from the <basename>.efm binary file.
   virtual std::vector<uint8_t> read_efm_bytes_at(
@@ -105,8 +106,9 @@ class ICVBSSourceStageDeps {
 
   // Load the ac3_frame index table from <basename>.ac3.meta.
   // Returns nullopt when either sidecar file is absent.
-  virtual std::optional<std::vector<CVBSExtensionFrameRef>> load_ac3_frame_table(
-      const std::string& ac3_meta_path, std::string& error_message) const = 0;
+  virtual std::optional<std::vector<CVBSExtensionFrameRef>>
+  load_ac3_frame_table(const std::string& ac3_meta_path,
+                       std::string& error_message) const = 0;
 
   // Read count bytes at byte_offset from the <basename>.ac3 binary file.
   virtual std::vector<uint8_t> read_ac3_bytes_at(
@@ -136,8 +138,7 @@ class FixedFormatCVBSSourceStage : public DAGStage,
   explicit FixedFormatCVBSSourceStage(
       const char* stage_name, const char* fixed_display_name,
       const char* description, VideoFormatCompatibility compatible_formats,
-      VideoSystem system,
-      std::shared_ptr<ICVBSSourceStageDeps> deps = nullptr);
+      VideoSystem system, std::shared_ptr<ICVBSSourceStageDeps> deps = nullptr);
   ~FixedFormatCVBSSourceStage() override = default;
 
   void set_deps_override(std::shared_ptr<ICVBSSourceStageDeps> deps) {

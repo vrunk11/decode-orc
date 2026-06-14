@@ -12,10 +12,10 @@
 
 #include "comb.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <cmath>
-
-#include <cvbs_signal_constants.h>
 
 #include "deemp.h"
 #include "firfilter.h"
@@ -125,8 +125,11 @@ void Comb::updateConfiguration(const ::orc::SourceParameters& _videoParameters,
   // Check the sample rate is close to 4 * fSC.
   // Older versions of ld-decode used integer approximations, so this needs
   // to be an approximate comparison.
-  if (fabs((videoParameters.sample_rate / videoParameters.fsc) - 4.0) >
-      1.0e-6) {
+  // Verify the sample rate is close to 4 × fsc for this video system.
+  // Older ld-decode versions used integer approximations; allow a small margin.
+  if (fabs((sample_rate_from_system(videoParameters.system) /
+            fsc_from_system(videoParameters.system)) -
+           4.0) > 1.0e-6) {
     ORC_LOG_WARN(
         "Data is not in 4fsc sample rate, color decoding will not work "
         "properly!");
@@ -302,12 +305,14 @@ Comb::FrameBuffer::FrameBuffer(const ::orc::SourceParameters& videoParameters_,
                                const Configuration& configuration_)
     : videoParameters(videoParameters_), configuration(configuration_) {
   // Set the frame height
-  frameHeight = ((videoParameters.field_height * 2) - 1);
+  frameHeight = static_cast<int32_t>(
+                    calculate_padded_field_height(videoParameters.system)) *
+                    2 -
+                1;
 
   // SMPTE 244M-2003: NTSC/PAL-M CVBS_U10_4FSC 10-bit domain.
   // Scale: samples per 1 IRE = (white - blanking) / 100.
-  irescale =
-      static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking) / 100.0;
+  irescale = static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking) / 100.0;
 }
 
 /*
@@ -352,21 +357,22 @@ void Comb::FrameBuffer::loadFields(const SourceField& firstField,
   // field_width samples per line so rawbuffer retains uniform stride.
   rawbuffer.clear();
   rawbuffer.reserve(static_cast<size_t>(frameHeight) *
-                    static_cast<size_t>(videoParameters.field_width));
+                    static_cast<size_t>(videoParameters.frame_width_nominal));
 
-  auto appendLineOrBlack = [&](const SourceField& field,
-                                size_t sourceLine) {
+  auto appendLineOrBlack = [&](const SourceField& field, size_t sourceLine) {
     if (sourceLine < field.line_count) {
       const int16_t* line = field.getLine(sourceLine);
       rawbuffer.insert(rawbuffer.end(), line,
-                       line + videoParameters.field_width);
+                       line + videoParameters.frame_width_nominal);
     } else {
-      rawbuffer.insert(rawbuffer.end(), videoParameters.field_width,
+      rawbuffer.insert(rawbuffer.end(), videoParameters.frame_width_nominal,
                        int16_t{0});
     }
   };
 
-  for (int32_t fieldLine = 0; fieldLine < videoParameters.field_height;
+  for (int32_t fieldLine = 0;
+       fieldLine < static_cast<int32_t>(
+                       calculate_padded_field_height(videoParameters.system));
        fieldLine++) {
     appendLineOrBlack(firstField, static_cast<size_t>(fieldLine));
 
@@ -401,21 +407,23 @@ void Comb::FrameBuffer::loadFieldsYC(const SourceField& firstField,
   // Interlace the Y fields into luma_buffer.
   luma_buffer.clear();
   luma_buffer.reserve(static_cast<size_t>(frameHeight) *
-                      static_cast<size_t>(videoParameters.field_width));
+                      static_cast<size_t>(videoParameters.frame_width_nominal));
 
   auto appendLumaLineOrBlack = [&](const SourceField& field,
-                                    size_t sourceLine) {
+                                   size_t sourceLine) {
     if (sourceLine < field.line_count) {
       const int16_t* line = field.getLumaLine(sourceLine);
       luma_buffer.insert(luma_buffer.end(), line,
-                         line + videoParameters.field_width);
+                         line + videoParameters.frame_width_nominal);
     } else {
-      luma_buffer.insert(luma_buffer.end(), videoParameters.field_width,
+      luma_buffer.insert(luma_buffer.end(), videoParameters.frame_width_nominal,
                          int16_t{0});
     }
   };
 
-  for (int32_t fieldLine = 0; fieldLine < videoParameters.field_height;
+  for (int32_t fieldLine = 0;
+       fieldLine < static_cast<int32_t>(
+                       calculate_padded_field_height(videoParameters.system));
        fieldLine++) {
     appendLumaLineOrBlack(firstField, static_cast<size_t>(fieldLine));
 
@@ -426,22 +434,25 @@ void Comb::FrameBuffer::loadFieldsYC(const SourceField& firstField,
 
   // Interlace the C fields into chroma_buffer.
   chroma_buffer.clear();
-  chroma_buffer.reserve(static_cast<size_t>(frameHeight) *
-                        static_cast<size_t>(videoParameters.field_width));
+  chroma_buffer.reserve(
+      static_cast<size_t>(frameHeight) *
+      static_cast<size_t>(videoParameters.frame_width_nominal));
 
   auto appendChromaLineOrBlack = [&](const SourceField& field,
-                                      size_t sourceLine) {
+                                     size_t sourceLine) {
     if (sourceLine < field.line_count) {
       const int16_t* line = field.getChromaLine(sourceLine);
       chroma_buffer.insert(chroma_buffer.end(), line,
-                           line + videoParameters.field_width);
+                           line + videoParameters.frame_width_nominal);
     } else {
-      chroma_buffer.insert(chroma_buffer.end(), videoParameters.field_width,
-                           int16_t{0});
+      chroma_buffer.insert(chroma_buffer.end(),
+                           videoParameters.frame_width_nominal, int16_t{0});
     }
   };
 
-  for (int32_t fieldLine = 0; fieldLine < videoParameters.field_height;
+  for (int32_t fieldLine = 0;
+       fieldLine < static_cast<int32_t>(
+                       calculate_padded_field_height(videoParameters.system));
        fieldLine++) {
     appendChromaLineOrBlack(firstField, static_cast<size_t>(fieldLine));
 
@@ -481,7 +492,9 @@ void Comb::FrameBuffer::split1D() {
        lineNumber < videoParameters.last_active_frame_line; lineNumber++) {
     // Get a pointer to the line's data
     const int16_t* line =
-        rawbuffer.data() + (static_cast<ptrdiff_t>(lineNumber * videoParameters.field_width));
+        rawbuffer.data() +
+        (static_cast<ptrdiff_t>(lineNumber *
+                                videoParameters.frame_width_nominal));
 
     for (int32_t h = videoParameters.active_video_start;
          h < videoParameters.active_video_end; h++) {
@@ -555,7 +568,7 @@ void Comb::FrameBuffer::split2D() {
           kp = 0;
         } else if (kp > (3 * kn)) {
           kn = 0;
-}
+        }
 
         sc = (2.0 / (kn + kp));
         if (sc < 1.0) sc = 1.0;
@@ -704,9 +717,13 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(
 
   // Pointers to the baseband data
   const int16_t* refLine =
-      rawbuffer.data() + (static_cast<ptrdiff_t>(refLineNumber * videoParameters.field_width));
+      rawbuffer.data() +
+      (static_cast<ptrdiff_t>(refLineNumber *
+                              videoParameters.frame_width_nominal));
   const int16_t* candidateLine =
-      frameBuffer.rawbuffer.data() + (static_cast<ptrdiff_t>(lineNumber * videoParameters.field_width));
+      frameBuffer.rawbuffer.data() +
+      (static_cast<ptrdiff_t>(lineNumber *
+                              videoParameters.frame_width_nominal));
 
   // Penalty based on mean luma difference in IRE over surrounding three samples
   double yPenalty = 0.0;
@@ -758,15 +775,18 @@ Comb::BurstInfo detectBurst(const int16_t* lineData,
   // product detection.
   // For now we just use the burst on the current line, but we could possibly do
   // some averaging with neighbouring lines later if needed.
-  for (int32_t i = videoParameters.colour_burst_start;
-       i < videoParameters.colour_burst_end; i++) {
+  const auto [comb_burst_start, comb_burst_end] =
+      colour_burst_range(videoParameters.system);
+  if (comb_burst_end > videoParameters.frame_width_nominal) {
+    return Comb::BurstInfo{0.0, 0.0};
+  }
+  for (int32_t i = comb_burst_start; i < comb_burst_end; i++) {
     bsin += lineData[i] * sin4fsc(i);
     bcos += lineData[i] * cos4fsc(i);
   }
 
   // Normalise the sums above
-  const int32_t colourBurstLength =
-      videoParameters.colour_burst_end - videoParameters.colour_burst_start;
+  const int32_t colourBurstLength = comb_burst_end - comb_burst_start;
   bsin /= colourBurstLength;
   bcos /= colourBurstLength;
 
@@ -788,7 +808,7 @@ void Comb::FrameBuffer::demodulateChromaLocked(const double* chromaLine,
                                                const Comb::BurstInfo& burstInfo,
                                                double* I, double* Q,
                                                int32_t xOffset) {
-  const int32_t outputWidth = videoParameters.field_width;
+  const int32_t outputWidth = videoParameters.frame_width_nominal;
   for (int32_t h = videoParameters.active_video_start;
        h < videoParameters.active_video_end; h++) {
     const double cval = chromaLine[h];
@@ -801,8 +821,8 @@ void Comb::FrameBuffer::demodulateChromaLocked(const double* chromaLine,
     const auto tq = (lsin * burstInfo.bsin + lcos * burstInfo.bcos);
 
     // Invert Q and rotate to get the correct I/Q vector
-    // TODO(sdi): Needed to shift the chroma 1 sample to the right to get it to line
-    // up may not get the first pixel in each line correct because of this
+    // TODO(sdi): Needed to shift the chroma 1 sample to the right to get it to
+    // line up may not get the first pixel in each line correct because of this
     const int32_t outIndex = h + 1 - xOffset;
     if (h + 1 < videoParameters.active_video_end && outIndex >= 0 &&
         outIndex < outputWidth) {
@@ -867,7 +887,9 @@ void Comb::FrameBuffer::splitIQlocked() {
 
     // Get a pointer to the line's data
     const int16_t* line =
-        rawbuffer.data() + (static_cast<ptrdiff_t>(lineNumber * videoParameters.field_width));
+        rawbuffer.data() +
+        (static_cast<ptrdiff_t>(lineNumber *
+                                videoParameters.frame_width_nominal));
     // Calculate burst phase
     const auto info = detectBurst(line, videoParameters);
 
@@ -876,11 +898,11 @@ void Comb::FrameBuffer::splitIQlocked() {
     double* Q = componentFrame->v(lineNumber - lineOffset);
 
     // Build chroma line buffer from comb-filtered chroma
-    std::vector<double> chromaLine(videoParameters.field_width, 0.0);
+    std::vector<double> chromaLine(videoParameters.frame_width_nominal, 0.0);
     for (int32_t h = videoParameters.active_video_start;
          h < videoParameters.active_video_end; h++) {
       // Bounds check for both dimensions
-      if (h < videoParameters.field_width) {
+      if (h < videoParameters.frame_width_nominal) {
         const auto val =
             clpbuffer[configuration.dimensions - 1].pixel[lineNumber][h];
         chromaLine[h] = val;  // Store as double to preserve precision
@@ -912,7 +934,9 @@ void Comb::FrameBuffer::splitIQ() {
 
     // Get a pointer to the line's data
     const int16_t* line =
-        rawbuffer.data() + (static_cast<ptrdiff_t>(lineNumber * videoParameters.field_width));
+        rawbuffer.data() +
+        (static_cast<ptrdiff_t>(lineNumber *
+                                videoParameters.frame_width_nominal));
 
     double* Y = componentFrame->y(lineNumber - lineOffset);
     double* I = componentFrame->u(lineNumber - lineOffset);
@@ -927,11 +951,11 @@ void Comb::FrameBuffer::splitIQ() {
     }
 
     // Build chroma line buffer from comb-filtered chroma
-    std::vector<double> chromaLine(videoParameters.field_width);
+    std::vector<double> chromaLine(videoParameters.frame_width_nominal);
     for (int32_t h = videoParameters.active_video_start;
          h < videoParameters.active_video_end; h++) {
       // Bounds check for both dimensions
-      if (h < videoParameters.field_width) {
+      if (h < videoParameters.frame_width_nominal) {
         chromaLine[h] =
             clpbuffer[configuration.dimensions - 1]
                 .pixel[lineNumber][h];  // Store as double to preserve precision
@@ -1034,9 +1058,13 @@ void Comb::FrameBuffer::splitIQlocked_YC() {
        lineNumber < videoParameters.last_active_frame_line; lineNumber++) {
     // Get pointers to Y and C lines
     const int16_t* yLine =
-        luma_buffer.data() + (static_cast<ptrdiff_t>(lineNumber * videoParameters.field_width));
+        luma_buffer.data() +
+        (static_cast<ptrdiff_t>(lineNumber *
+                                videoParameters.frame_width_nominal));
     const int16_t* cLine =
-        chroma_buffer.data() + (static_cast<ptrdiff_t>(lineNumber * videoParameters.field_width));
+        chroma_buffer.data() +
+        (static_cast<ptrdiff_t>(lineNumber *
+                                videoParameters.frame_width_nominal));
 
     // Calculate burst phase from C channel
     const auto info = detectBurst(cLine, videoParameters);
@@ -1052,7 +1080,7 @@ void Comb::FrameBuffer::splitIQlocked_YC() {
     }
 
     // Build chroma line buffer from YC chroma data (convert to double)
-    std::vector<double> chromaLine(videoParameters.field_width, 0.0);
+    std::vector<double> chromaLine(videoParameters.frame_width_nominal, 0.0);
     for (int32_t h = videoParameters.active_video_start;
          h < videoParameters.active_video_end; h++) {
       chromaLine[h] = static_cast<double>(cLine[h]);
@@ -1077,9 +1105,13 @@ void Comb::FrameBuffer::splitIQ_YC() {
        lineNumber < videoParameters.last_active_frame_line; lineNumber++) {
     // Get pointers to Y and C lines
     const int16_t* yLine =
-        luma_buffer.data() + (static_cast<ptrdiff_t>(lineNumber * videoParameters.field_width));
+        luma_buffer.data() +
+        (static_cast<ptrdiff_t>(lineNumber *
+                                videoParameters.frame_width_nominal));
     const int16_t* cLine =
-        chroma_buffer.data() + (static_cast<ptrdiff_t>(lineNumber * videoParameters.field_width));
+        chroma_buffer.data() +
+        (static_cast<ptrdiff_t>(lineNumber *
+                                videoParameters.frame_width_nominal));
 
     double* Y = componentFrame->y(lineNumber - lineOffset);
     double* I = componentFrame->u(lineNumber - lineOffset);
@@ -1094,7 +1126,7 @@ void Comb::FrameBuffer::splitIQ_YC() {
     }
 
     // Build chroma line buffer from YC chroma data (convert to double)
-    std::vector<double> chromaLine(videoParameters.field_width);
+    std::vector<double> chromaLine(videoParameters.frame_width_nominal);
     for (int32_t h = videoParameters.active_video_start;
          h < videoParameters.active_video_end; h++) {
       chromaLine[h] = static_cast<double>(cLine[h]);

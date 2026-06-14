@@ -9,6 +9,7 @@
 
 #include "fm_code_observer.h"
 
+#include <cvbs_signal_constants.h>
 #include "logging.h"
 #include "vbi_utilities.h"
 
@@ -52,9 +53,11 @@ void FmCodeObserver::process_field(
 
   if (auto video_params_opt = representation.get_video_parameters()) {
     const auto& vp = *video_params_opt;
-    zero_crossing = static_cast<uint16_t>(
-        ((vp.white_16b_ire - vp.black_16b_ire) / 2) + vp.black_16b_ire);
-    sample_rate = vp.sample_rate;
+    // ld-decode TBC 16-bit domain normative levels.
+    zero_crossing =
+        static_cast<uint16_t>(((kTbcWhite - kTbcBlanking) / 2) + kTbcBlanking);
+    // 4FSC sample rate is fully determined by the video system.
+    sample_rate = sample_rate_from_system(vp.system);
     active_start = vp.active_video_start;
   } else {
     // Fallback to legacy constants

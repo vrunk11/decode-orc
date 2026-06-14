@@ -22,8 +22,11 @@ void ComponentFrame::merge_luma_from(const ComponentFrame& luma_source) {
 
 void ComponentFrame::init(const ::orc::SourceParameters& videoParameters,
                           bool mono) {
-  width = videoParameters.field_width;
-  height = (videoParameters.field_height * 2) - 1;
+  width = videoParameters.frame_width_nominal;
+  height = static_cast<int32_t>(
+               ::orc::calculate_padded_field_height(videoParameters.system)) *
+               2 -
+           1;
 
   const int32_t size = width * height;
 

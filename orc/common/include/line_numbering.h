@@ -98,11 +98,13 @@ inline LineLabel make_line_label(size_t frame_line, VideoSystem sys,
     frame_height = 625;
     field1_lines = 313;
   } else if (sys == VideoSystem::NTSC) {
-    // SMPTE 170M-2004 §11.3: 525-line NTSC; VFR field 1 = top spatial (263 lines)
+    // SMPTE 170M-2004 §11.3: 525-line NTSC; VFR field 1 = top spatial (263
+    // lines)
     frame_height = 525;
     field1_lines = 263;
   } else if (sys == VideoSystem::PAL_M) {
-    // ITU-R BT.1700-1 Annex 1 Part B: 525-line PAL_M; VFR field 1 = top spatial (263 lines)
+    // ITU-R BT.1700-1 Annex 1 Part B: 525-line PAL_M; VFR field 1 = top spatial
+    // (263 lines)
     frame_height = 525;
     field1_lines = 263;
   } else {

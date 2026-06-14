@@ -125,7 +125,8 @@ class PreviewRenderer {
    * @return Rendered image result
    *
    * Examples:
-   * - render_output("node_1", PreviewOutputType::Frame_Field1, 100) -> field 100
+   * - render_output("node_1", PreviewOutputType::Frame_Field1, 100) -> field
+   * 100
    * - render_output("node_1", PreviewOutputType::Frame_EvenOdd, 50) -> frame 50
    * (even first)
    */
@@ -423,7 +424,7 @@ class PreviewRenderer {
    * Maps blanking_level → 0, white_level → 255. Only clamps the 8-bit output.
    */
   uint8_t cvbs_sample_to_8bit(int16_t sample, int32_t blanking_level,
-                               int32_t white_level);
+                              int32_t white_level);
 
   // ========================================================================
   // Stage preview support (new interface for sources/transforms)

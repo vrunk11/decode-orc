@@ -7,6 +7,8 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
+#include <common_types.h>
+#include <cvbs_signal_constants.h>
 #include <sqlite3.h>
 #include <tbc_metadata_writer.h>
 
@@ -251,25 +253,36 @@ bool TBCMetadataWriter::write_video_parameters(const SourceParameters& params) {
     return false;
   }
 
+  // Compute values for DB columns that mirror deprecated SourceParameters
+  // fields. The DB schema is retained for round-trip compatibility with
+  // ld-decode tools.
+  const int32_t db_field_width = params.frame_width_nominal;
+  const int32_t db_field_height =
+      static_cast<int32_t>(calculate_padded_field_height(params.system));
+  const int32_t db_sequential_fields = params.number_of_sequential_frames * 2;
+  const auto [db_burst_start, db_burst_end] = colour_burst_range(params.system);
+  const double db_sample_rate = sample_rate_from_system(params.system);
+
   std::string system_str = video_system_to_string(params.system);
   sqlite3_bind_text(stmt, 1, system_str.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, params.decoder.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 3, params.git_branch.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 4, params.git_commit.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_double(stmt, 5, params.sample_rate);
+  sqlite3_bind_double(stmt, 5, db_sample_rate);
   sqlite3_bind_int(stmt, 6, params.active_video_start);
   sqlite3_bind_int(stmt, 7, params.active_video_end);
-  sqlite3_bind_int(stmt, 8, params.field_width);
-  sqlite3_bind_int(stmt, 9, params.field_height);
-  sqlite3_bind_int(stmt, 10, params.number_of_sequential_fields);
-  sqlite3_bind_int(stmt, 11, params.colour_burst_start);
-  sqlite3_bind_int(stmt, 12, params.colour_burst_end);
+  sqlite3_bind_int(stmt, 8, db_field_width);
+  sqlite3_bind_int(stmt, 9, db_field_height);
+  sqlite3_bind_int(stmt, 10, db_sequential_fields);
+  sqlite3_bind_int(stmt, 11, db_burst_start);
+  sqlite3_bind_int(stmt, 12, db_burst_end);
   sqlite3_bind_int(stmt, 13, params.is_mapped ? 1 : 0);
-  sqlite3_bind_int(stmt, 14, params.is_subcarrier_locked ? 1 : 0);
+  sqlite3_bind_int(stmt, 14,
+                   1);  // is_subcarrier_locked: always true (deprecated field)
   sqlite3_bind_int(stmt, 15, params.is_widescreen ? 1 : 0);
-  sqlite3_bind_int(stmt, 16, params.white_16b_ire);
-  sqlite3_bind_int(stmt, 17, params.black_16b_ire);
-  sqlite3_bind_int(stmt, 18, params.blanking_16b_ire);
+  sqlite3_bind_int(stmt, 16, kTbcWhite);
+  sqlite3_bind_int(stmt, 17, kTbcBlanking);
+  sqlite3_bind_int(stmt, 18, kTbcBlanking);
   sqlite3_bind_text(stmt, 19, "", -1, SQLITE_TRANSIENT);  // capture_notes
 
   rc = sqlite3_step(stmt);

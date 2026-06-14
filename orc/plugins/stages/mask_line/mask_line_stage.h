@@ -41,7 +41,9 @@ class MaskedFrameRepresentation : public VideoFrameRepresentationWrapper,
       std::shared_ptr<const VideoFrameRepresentation> source,
       const std::string& line_spec, double mask_ire);
 
-  std::string type_name() const override { return "masked_frame_representation"; }
+  std::string type_name() const override {
+    return "masked_frame_representation";
+  }
 
   const sample_type* get_line(FrameID id, size_t line) const override;
   std::vector<sample_type> get_frame_copy(FrameID id) const override;
@@ -121,11 +123,10 @@ class MaskLineStage : public DAGStage,
                               PreviewNavigationHint hint) const override;
 
   std::vector<StageToolDescriptor> get_stage_tools() const override {
-    return {StageToolDescriptor{
-        "mask_line_config", "Mask Line Config",
-        "Open mask-line helper dialog for line presets",
-        StageToolKind::ConfigDialog, false,
-        "decode-orc.stage-tools.mask-line-config.v1"}};
+    return {StageToolDescriptor{"mask_line_config", "Mask Line Config",
+                                "Open mask-line helper dialog for line presets",
+                                StageToolKind::ConfigDialog, false,
+                                "decode-orc.stage-tools.mask-line-config.v1"}};
   }
 
  private:

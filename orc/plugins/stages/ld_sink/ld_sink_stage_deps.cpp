@@ -9,6 +9,7 @@
 
 #include "ld_sink_stage_deps.h"
 
+#include <common_types.h>
 #include <orc/plugin/orc_stage_services.h>
 
 #include <algorithm>
@@ -16,11 +17,10 @@
 #include <cstddef>
 #include <utility>
 
-#include "cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
 #include "dropout_util.h"
 #include "file_io_interface.h"
 #include "logging.h"
-#include <common_types.h>
 
 namespace orc {
 
@@ -38,8 +38,8 @@ namespace {
 // Formula: tbc = round((cvbs − cvbs_blanking) × (tbc_white − tbc_blanking)
 //                       / (cvbs_white − cvbs_blanking) + tbc_blanking)
 inline uint16_t cvbs_to_tbc(int16_t cvbs, int32_t tbc_blanking,
-                             int32_t tbc_white, int32_t cvbs_blanking,
-                             int32_t cvbs_white) {
+                            int32_t tbc_white, int32_t cvbs_blanking,
+                            int32_t cvbs_white) {
   const double n = static_cast<double>(cvbs - cvbs_blanking) /
                    static_cast<double>(cvbs_white - cvbs_blanking);
   const double tbc =
@@ -80,8 +80,7 @@ void split_dropout_run(VideoSystem sys, const DropoutRun& run,
       // frame_sample_to_field_line uses field-local line; reconstruct frame
       // line to check for non-orthogonal status.
       int32_t frame_line =
-          (fls.field == 1) ? fls.line
-                           : (kPalField1Lines + fls.line);
+          (fls.field == 1) ? fls.line : (kPalField1Lines + fls.line);
       line_width = is_pal_extra_sample_line(frame_line)
                        ? kPalMaxSamplesPerLine
                        : (kPalMaxSamplesPerLine - 1);
@@ -102,7 +101,8 @@ void split_dropout_run(VideoSystem sys, const DropoutRun& run,
     di.end_sample =
         static_cast<uint32_t>(fls.sample + static_cast<int32_t>(run_on_line));
 
-    // All systems: VFR field 1 (top) → TBC field 2, VFR field 2 (bottom) → TBC field 1
+    // All systems: VFR field 1 (top) → TBC field 2, VFR field 2 (bottom) → TBC
+    // field 1
     if (fls.field == 2) {
       tbc_f1_dropouts.push_back(di);
     } else {
@@ -116,8 +116,7 @@ void split_dropout_run(VideoSystem sys, const DropoutRun& run,
 }  // namespace
 
 bool LDSinkStageDeps::write_tbc_and_metadata(
-    const VideoFrameRepresentation* representation,
-    const std::string& tbc_path,
+    const VideoFrameRepresentation* representation, const std::string& tbc_path,
     IObservationContext& observation_context) {
   (void)observation_context;
 
@@ -196,7 +195,8 @@ bool LDSinkStageDeps::write_tbc_and_metadata(
     }
 
     if (!metadata_writer_->open(db_path)) {
-      ORC_LOG_ERROR("Failed to open metadata database for writing: {}", db_path);
+      ORC_LOG_ERROR("Failed to open metadata database for writing: {}",
+                    db_path);
       tbc_writer->close();
       return false;
     }
@@ -243,8 +243,10 @@ bool LDSinkStageDeps::write_tbc_and_metadata(
       nominal_line_width = kNtscSamplesPerLine;
     }
 
-    video_params->number_of_sequential_fields =
-        static_cast<int32_t>(expected_field_count);
+    // Store total frame count; the writer derives number_of_sequential_fields
+    // for the DB column as number_of_sequential_frames * 2.
+    video_params->number_of_sequential_frames =
+        static_cast<int32_t>(frame_count);
     if (!metadata_writer_->write_video_parameters(*video_params)) {
       ORC_LOG_ERROR("Failed to write video parameters");
       metadata_writer_->close();
@@ -252,10 +254,9 @@ bool LDSinkStageDeps::write_tbc_and_metadata(
       return false;
     }
 
-    ORC_LOG_DEBUG(
-        "LDSink: {} frames → {} fields; blanking={} white={} sys={}",
-        frame_count, expected_field_count, tbc_blanking, tbc_white,
-        static_cast<int>(sys));
+    ORC_LOG_DEBUG("LDSink: {} frames → {} fields; blanking={} white={} sys={}",
+                  frame_count, expected_field_count, tbc_blanking, tbc_white,
+                  static_cast<int>(sys));
 
     metadata_writer_->begin_transaction();
     size_t fields_exported = 0;
@@ -297,15 +298,23 @@ bool LDSinkStageDeps::write_tbc_and_metadata(
       }
 
       // Describe the two TBC fields to extract from this CVBS frame.
-      // All systems: VFR field 1 (top, field1_cvbs_line_count lines) → TBC field 2
-      //              VFR field 2 (bottom, remaining lines)            → TBC field 1
+      // All systems: VFR field 1 (top, field1_cvbs_line_count lines) → TBC
+      // field 2
+      //              VFR field 2 (bottom, remaining lines)            → TBC
+      //              field 1
       //
-      // PAL:    TBC field 1 (is_first_field=true, 312 lines) = VFR lines [313, 625)
-      //         TBC field 2 (is_first_field=false, 313 lines) = VFR lines [0, 313)
-      // NTSC:   TBC field 1 (is_first_field=true, 262 lines) = VFR lines [263, 525)
-      //         TBC field 2 (is_first_field=false, 263 lines) = VFR lines [0, 263)
-      // PAL_M:  TBC field 1 (is_first_field=true, 262 lines) = VFR lines [263, 525)
-      //         TBC field 2 (is_first_field=false, 263 lines) = VFR lines [0, 263)
+      // PAL:    TBC field 1 (is_first_field=true, 312 lines) = VFR lines [313,
+      // 625)
+      //         TBC field 2 (is_first_field=false, 313 lines) = VFR lines [0,
+      //         313)
+      // NTSC:   TBC field 1 (is_first_field=true, 262 lines) = VFR lines [263,
+      // 525)
+      //         TBC field 2 (is_first_field=false, 263 lines) = VFR lines [0,
+      //         263)
+      // PAL_M:  TBC field 1 (is_first_field=true, 262 lines) = VFR lines [263,
+      // 525)
+      //         TBC field 2 (is_first_field=false, 263 lines) = VFR lines [0,
+      //         263)
       struct FieldExtract {
         int32_t cvbs_start;
         int32_t cvbs_end;  // exclusive
@@ -378,10 +387,10 @@ bool LDSinkStageDeps::write_tbc_and_metadata(
       }
 
       if (fields_exported % 20 == 0 && progress_callback_) {
-        progress_callback_(
-            fields_exported, expected_field_count,
-            "Exporting field " + std::to_string(fields_exported) + "/" +
-                std::to_string(expected_field_count));
+        progress_callback_(fields_exported, expected_field_count,
+                           "Exporting field " +
+                               std::to_string(fields_exported) + "/" +
+                               std::to_string(expected_field_count));
       }
     }
 

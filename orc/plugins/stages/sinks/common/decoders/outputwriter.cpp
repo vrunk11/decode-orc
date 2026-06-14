@@ -10,6 +10,8 @@
 
 #include "outputwriter.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdlib>
@@ -114,11 +116,15 @@ const char* OutputWriter::getPixelName() const {
 
 void OutputWriter::printOutputInfo() const {
   // Show output information to the user
-  const int32_t frameHeight = (videoParameters.field_height * 2) - 1;
+  const int32_t frameHeight =
+      static_cast<int32_t>(
+          orc::calculate_padded_field_height(videoParameters.system)) *
+          2 -
+      1;
   ORC_LOG_DEBUG(
       "Input video of {}x{} will be colourised and trimmed to {}x{} {} frames",
-      videoParameters.field_width, frameHeight, activeWidth, outputHeight,
-      getPixelName());
+      videoParameters.frame_width_nominal, frameHeight, activeWidth,
+      outputHeight, getPixelName());
 }
 
 std::string OutputWriter::getStreamHeader() const {
@@ -222,7 +228,8 @@ void OutputWriter::clearPadLines(int32_t firstLine, int32_t numLines,
   switch (config.pixelFormat) {
     case RGB48: {
       // Fill with RGB black
-      uint16_t* out = outputFrame.data() + (static_cast<ptrdiff_t>(activeWidth * firstLine * 3));
+      uint16_t* out = outputFrame.data() +
+                      (static_cast<ptrdiff_t>(activeWidth * firstLine * 3));
 
       for (int32_t i = 0; i < numLines * activeWidth * 3; i++) {
         out[i] = 0;
@@ -232,9 +239,12 @@ void OutputWriter::clearPadLines(int32_t firstLine, int32_t numLines,
     }
     case YUV444P16: {
       // Fill Y with black, no chroma
-      uint16_t* outY = outputFrame.data() + (static_cast<ptrdiff_t>(activeWidth * firstLine));
-      uint16_t* outCB = outY + (static_cast<ptrdiff_t>(activeWidth * outputHeight));
-      uint16_t* outCR = outCB + (static_cast<ptrdiff_t>(activeWidth * outputHeight));
+      uint16_t* outY = outputFrame.data() +
+                       (static_cast<ptrdiff_t>(activeWidth * firstLine));
+      uint16_t* outCB =
+          outY + (static_cast<ptrdiff_t>(activeWidth * outputHeight));
+      uint16_t* outCR =
+          outCB + (static_cast<ptrdiff_t>(activeWidth * outputHeight));
 
       for (int32_t i = 0; i < numLines * activeWidth; i++) {
         outY[i] = static_cast<uint16_t>(Y_ZERO);
@@ -246,7 +256,8 @@ void OutputWriter::clearPadLines(int32_t firstLine, int32_t numLines,
     }
     case GRAY16: {
       // Fill with black
-      uint16_t* out = outputFrame.data() + (static_cast<ptrdiff_t>(activeWidth * firstLine));
+      uint16_t* out = outputFrame.data() +
+                      (static_cast<ptrdiff_t>(activeWidth * firstLine));
 
       for (int32_t i = 0; i < numLines * activeWidth; i++) {
         out[i] = static_cast<uint16_t>(Y_ZERO);
@@ -282,14 +293,15 @@ void OutputWriter::convertLine(int32_t lineNumber,
 
   const int32_t outputLine = topPadLines + lineNumber;
 
-  const double yOffset = videoParameters.black_16b_ire;
-  double yRange = videoParameters.white_16b_ire - videoParameters.black_16b_ire;
+  const double yOffset = orc::kTbcBlanking;
+  double yRange = orc::kTbcWhite - orc::kTbcBlanking;
   const double uvRange = yRange;
 
   switch (config.pixelFormat) {
     case RGB48: {
       // Convert Y'UV to full-range R'G'B' [Poynton eq 28.6 p337]
-      uint16_t* out = outputFrame.data() + (static_cast<ptrdiff_t>(activeWidth * outputLine * 3));
+      uint16_t* out = outputFrame.data() +
+                      (static_cast<ptrdiff_t>(activeWidth * outputLine * 3));
 
       const double yScale = 65535.0 / yRange;
       const double uvScale = 65535.0 / uvRange;
@@ -314,9 +326,12 @@ void OutputWriter::convertLine(int32_t lineNumber,
     }
     case YUV444P16: {
       // Convert Y'UV to Y'CbCr [Poynton eq 25.5 p307]
-      uint16_t* outY = outputFrame.data() + (static_cast<ptrdiff_t>(activeWidth * outputLine));
-      uint16_t* outCB = outY + (static_cast<ptrdiff_t>(activeWidth * outputHeight));
-      uint16_t* outCR = outCB + (static_cast<ptrdiff_t>(activeWidth * outputHeight));
+      uint16_t* outY = outputFrame.data() +
+                       (static_cast<ptrdiff_t>(activeWidth * outputLine));
+      uint16_t* outCB =
+          outY + (static_cast<ptrdiff_t>(activeWidth * outputHeight));
+      uint16_t* outCR =
+          outCB + (static_cast<ptrdiff_t>(activeWidth * outputHeight));
 
       const double yScale = Y_SCALE / yRange;
       const double cbScale = (C_SCALE / (ONE_MINUS_Kb * kB)) / uvRange;
@@ -335,7 +350,8 @@ void OutputWriter::convertLine(int32_t lineNumber,
     }
     case GRAY16: {
       // Throw away UV and just convert Y' to the same scale as Y'CbCr
-      uint16_t* out = outputFrame.data() + (static_cast<ptrdiff_t>(activeWidth * outputLine));
+      uint16_t* out = outputFrame.data() +
+                      (static_cast<ptrdiff_t>(activeWidth * outputLine));
 
       const double yScale = Y_SCALE / yRange;
 

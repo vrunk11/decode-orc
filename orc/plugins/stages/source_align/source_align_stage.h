@@ -37,7 +37,9 @@ class SourceAlignStage : public DAGStage,
   std::string version() const override { return "1.0"; }
 
   NodeTypeInfo get_node_type_info() const override {
-    return NodeTypeInfo{NodeType::COMPLEX, "source_align", "Source Align",
+    return NodeTypeInfo{NodeType::COMPLEX,
+                        "source_align",
+                        "Source Align",
                         "Synchronize multiple sources by VBI frame number",
                         1,
                         16,
@@ -70,7 +72,8 @@ class SourceAlignStage : public DAGStage,
       VideoSystem project_format, SourceType source_type) const override;
   using ParameterizedStage::get_parameter_descriptors;
   std::map<std::string, ParameterValue> get_parameters() const override;
-  bool set_parameters(const std::map<std::string, ParameterValue>& params) override;
+  bool set_parameters(
+      const std::map<std::string, ParameterValue>& params) override;
 
  private:
   std::vector<FrameID> find_alignment_offsets(

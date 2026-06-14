@@ -10,11 +10,11 @@
 
 #include "transformpal3d.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-
-#include <cvbs_signal_constants.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -60,8 +60,10 @@ TransformPal3D::TransformPal3D() : TransformPal(XCOMPLEX, YCOMPLEX, ZCOMPLEX) {
   // Allocate buffers for FFTW. These must be allocated using FFTW's own
   // functions so they're properly aligned for SIMD operations.
   fftReal = fftw_alloc_real(static_cast<size_t>(ZTILE) * YTILE * XTILE);
-  fftComplexIn = fftw_alloc_complex(static_cast<size_t>(ZCOMPLEX) * YCOMPLEX * XCOMPLEX);
-  fftComplexOut = fftw_alloc_complex(static_cast<size_t>(ZCOMPLEX) * YCOMPLEX * XCOMPLEX);
+  fftComplexIn =
+      fftw_alloc_complex(static_cast<size_t>(ZCOMPLEX) * YCOMPLEX * XCOMPLEX);
+  fftComplexOut =
+      fftw_alloc_complex(static_cast<size_t>(ZCOMPLEX) * YCOMPLEX * XCOMPLEX);
 
   // Plan FFTW operations
   forwardPlan = fftw_plan_dft_r2c_3d(ZTILE, YTILE, XTILE, fftReal, fftComplexIn,
@@ -131,8 +133,10 @@ void TransformPal3D::filterFields(const std::vector<SourceField>& inputFields,
   // Allocate and clear output buffers
   chromaBuf.resize(endIndex - startIndex);
   for (int32_t i = 0; i < static_cast<int32_t>(chromaBuf.size()); i++) {
-    chromaBuf[i].resize(static_cast<size_t>(videoParameters.field_width) *
-                        videoParameters.field_height);
+    chromaBuf[i].resize(
+        static_cast<size_t>(videoParameters.frame_width_nominal) *
+        static_cast<int32_t>(
+            calculate_padded_field_height(videoParameters.system)));
     std::fill(chromaBuf[i].begin(), chromaBuf[i].end(), 0.0);
     outputFields[i] = chromaBuf[i].data();
   }
@@ -245,7 +249,9 @@ void TransformPal3D::inverseFFTTile(int32_t tileX, int32_t tileY, int32_t tileZ,
       }
 
       const int32_t outputLine = (tileY + y) / 2;
-      double* b = outputPtr + (static_cast<ptrdiff_t>(outputLine * videoParameters.field_width));
+      double* b =
+          outputPtr + (static_cast<ptrdiff_t>(
+                          outputLine * videoParameters.frame_width_nominal));
       for (int32_t x = startX; x < endX; x++) {
         b[tileX + x] +=
             fftReal[(((z * YTILE) + y) * XTILE) + x] / (ZTILE * YTILE * XTILE);
@@ -297,14 +303,20 @@ void TransformPal3D::applyFilter() {
       const int32_t y_ref = ((YTILE / 4) + YTILE - y) % YTILE;
 
       // Input data for this line and its reflection
-      const fftw_complex* bi = fftComplexIn + (static_cast<ptrdiff_t>(((z * YCOMPLEX) + y) * XCOMPLEX));
+      const fftw_complex* bi =
+          fftComplexIn +
+          (static_cast<ptrdiff_t>(((z * YCOMPLEX) + y) * XCOMPLEX));
       const fftw_complex* bi_ref =
-          fftComplexIn + (static_cast<ptrdiff_t>(((z_ref * YCOMPLEX) + y_ref) * XCOMPLEX));
+          fftComplexIn +
+          (static_cast<ptrdiff_t>(((z_ref * YCOMPLEX) + y_ref) * XCOMPLEX));
 
       // Output data for this line and its reflection
-      fftw_complex* bo = fftComplexOut + (static_cast<ptrdiff_t>(((z * YCOMPLEX) + y) * XCOMPLEX));
+      fftw_complex* bo =
+          fftComplexOut +
+          (static_cast<ptrdiff_t>(((z * YCOMPLEX) + y) * XCOMPLEX));
       fftw_complex* bo_ref =
-          fftComplexOut + (static_cast<ptrdiff_t>(((z_ref * YCOMPLEX) + y_ref) * XCOMPLEX));
+          fftComplexOut +
+          (static_cast<ptrdiff_t>(((z_ref * YCOMPLEX) + y_ref) * XCOMPLEX));
 
       // We only need to look at horizontal frequencies that might be chroma
       // (0.5fSC to 1.5fSC).
@@ -354,9 +366,13 @@ void TransformPal3D::overlayFFTFrame(
     const std::vector<SourceField>& inputFields, int32_t fieldIndex,
     ComponentFrame& componentFrame) {
   // Do nothing if the tile isn't within the frame
-  if (positionX < 0 || positionX + XTILE > videoParameters.field_width ||
+  if (positionX < 0 ||
+      positionX + XTILE > videoParameters.frame_width_nominal ||
       positionY < 0 ||
-      positionY + YTILE > (2 * videoParameters.field_height) + 1) {
+      positionY + YTILE >
+          (2 * static_cast<int32_t>(
+                   calculate_padded_field_height(videoParameters.system))) +
+              1) {
     return;
   }
 

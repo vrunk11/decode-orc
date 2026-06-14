@@ -25,9 +25,8 @@ class CVBSSinkStageDeps : public ICVBSSinkStageDeps {
   void init(TriggerProgressCallback progress_callback,
             std::atomic<bool>* cancel_requested) override;
 
-  CVBSSinkWriteResult write_cvbs(
-      const VideoFrameRepresentation* representation,
-      const std::string& output_path) override;
+  CVBSSinkWriteResult write_cvbs(const VideoFrameRepresentation* representation,
+                                 const std::string& output_path) override;
 
  private:
   TriggerProgressCallback progress_callback_;

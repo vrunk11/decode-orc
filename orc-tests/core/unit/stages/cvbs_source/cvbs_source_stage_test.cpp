@@ -29,7 +29,7 @@
 #include "../../../../orc/common/include/common_types.h"
 #include "../../../../orc/common/include/error_types.h"
 #include "../../../../orc/common/include/parameter_types.h"
-#include "../../../../orc/core/include/cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
 #include "../../../../orc/core/include/dropout_run.h"
 #include "../../../../orc/core/include/observation_context.h"
 #include "../../../../orc/core/include/video_frame_representation.h"

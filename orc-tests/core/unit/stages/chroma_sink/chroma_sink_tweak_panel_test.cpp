@@ -26,27 +26,19 @@ namespace {
 orc::SourceParameters make_video_params(orc::VideoSystem system) {
   orc::SourceParameters params;
   params.system = system;
-  params.field_width = 1135;
-  params.field_height = 312;
+  params.frame_width_nominal = 1135;
   params.active_video_start = 0;
   params.active_video_end = 702;
   params.first_active_frame_line = 0;
   params.last_active_frame_line =
       (system == orc::VideoSystem::NTSC) ? 486 : 576;
-  params.colour_burst_start = 20;
-  params.colour_burst_end = 60;
-  params.black_16b_ire = 0;
-  params.white_16b_ire = 65535;
-  params.sample_rate = 4.0;
-  params.fsc = 1.0;
   return params;
 }
 
 orc::StagePreviewCapability capability_for_system(orc::VideoSystem system) {
   orc::ChromaSinkStage stage;
   orc::ObservationContext observation_context;
-  auto vfr =
-      std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*vfr, get_video_parameters())
       .WillRepeatedly(Return(make_video_params(system)));

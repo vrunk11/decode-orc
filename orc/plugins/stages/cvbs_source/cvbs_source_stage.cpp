@@ -23,7 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
 #include "error_types.h"
 #include "logging.h"
 #include "preview_helpers.h"

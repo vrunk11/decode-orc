@@ -9,6 +9,8 @@
 
 #include "hintsdialog.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <QFont>
 #include <QFontDatabase>
 #include <QGridLayout>
@@ -270,27 +272,35 @@ void HintsDialog::updateVideoParameters(
     colour_burst_range_label_->setText("-");
   }
 
-  // IRE levels (16-bit A/D counts) shown as distinct labels
-  if (params->white_ire >= 0) {
-    white_level_label_->setText(QString::number(params->white_ire));
+  // Signal levels in CVBS_U10_4FSC 10-bit domain (0–1023).
+  if (params->white_level >= 0) {
+    white_level_label_->setText(QString::number(params->white_level));
   } else {
     white_level_label_->setText("-");
   }
-  if (params->blanking_ire >= 0) {
-    blanking_level_label_->setText(QString::number(params->blanking_ire));
+  if (params->blanking_level >= 0) {
+    blanking_level_label_->setText(QString::number(params->blanking_level));
   } else {
     blanking_level_label_->setText("-");
   }
-  if (params->black_ire >= 0) {
-    black_level_label_->setText(QString::number(params->black_ire));
+  if (params->black_level >= 0) {
+    black_level_label_->setText(QString::number(params->black_level));
   } else {
     black_level_label_->setText("-");
   }
 
-  // Sample rate
-  if (params->sample_rate > 0) {
-    sample_rate_label_->setText(
-        QString("%1 Hz").arg(params->sample_rate, 0, 'f', 0));
+  // Sample rate derived from the video system standard.
+  const auto sys = [&]() -> orc::VideoSystem {
+    switch (params->system) {
+      case orc::presenters::VideoSystem::PAL:   return orc::VideoSystem::PAL;
+      case orc::presenters::VideoSystem::NTSC:  return orc::VideoSystem::NTSC;
+      case orc::presenters::VideoSystem::PAL_M: return orc::VideoSystem::PAL_M;
+      default: return orc::VideoSystem::Unknown;
+    }
+  }();
+  const double sr = orc::sample_rate_from_system(sys);
+  if (sr > 0.0) {
+    sample_rate_label_->setText(QString("%1 Hz").arg(sr, 0, 'f', 0));
   } else {
     sample_rate_label_->setText("-");
   }

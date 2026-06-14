@@ -13,6 +13,7 @@
 #include <cmath>
 #include <numeric>
 
+#include <cvbs_signal_constants.h>
 #include "../include/field_id.h"
 #include "../include/logging.h"
 #include "../include/observation_context.h"
@@ -33,19 +34,9 @@ void BurstLevelObserver::process_field(
 
   const auto& video_params = video_params_opt.value();
 
-  // Check if we have valid color burst range
-  if (video_params.colour_burst_start < 0 ||
-      video_params.colour_burst_end < 0) {
-    ORC_LOG_TRACE("BurstLevelObserver: Invalid burst range for field {}",
-                  field_id.value());
-    return;
-  }
-
-  if (video_params.colour_burst_start >= video_params.colour_burst_end) {
-    ORC_LOG_TRACE("BurstLevelObserver: Invalid burst range for field {}",
-                  field_id.value());
-    return;
-  }
+  // Colour burst range derived from video system constant (always valid).
+  const auto [sys_burst_start, sys_burst_end] =
+      colour_burst_range(video_params.system);
 
   // Get field descriptor
   auto descriptor_opt = representation.get_descriptor(field_id);
@@ -64,7 +55,7 @@ void BurstLevelObserver::process_field(
   size_t start_line = 11;
   size_t end_line =
       std::min(descriptor.height - 10,
-               static_cast<size_t>(video_params.last_active_field_line));
+               static_cast<size_t>(video_params.last_active_frame_line / 2));
 
   // Sample just 3 lines (top, middle, bottom) for performance
   std::vector<size_t> sample_lines = {
@@ -79,9 +70,9 @@ void BurstLevelObserver::process_field(
       continue;
     }
 
-    // Extract burst region samples
-    size_t burst_start = static_cast<size_t>(video_params.colour_burst_start);
-    size_t burst_end = static_cast<size_t>(video_params.colour_burst_end);
+    // Extract burst region samples using system-derived constants.
+    size_t burst_start = static_cast<size_t>(sys_burst_start);
+    size_t burst_end = static_cast<size_t>(sys_burst_end);
 
     // Make sure we don't exceed line width
     if (burst_end >= descriptor.width) {
@@ -126,9 +117,7 @@ void BurstLevelObserver::process_field(
 
     // Skip if burst level is unreasonably high (> 30 IRE equivalent in raw
     // units)
-    double ire_per_unit =
-        100.0 / static_cast<double>(video_params.white_16b_ire -
-                                    video_params.black_16b_ire);
+    double ire_per_unit = 100.0 / static_cast<double>(kTbcWhite - kTbcBlanking);
     if (peak_amplitude * ire_per_unit > 30.0) {
       continue;  // Skip outliers
     }
@@ -146,8 +135,8 @@ void BurstLevelObserver::process_field(
   double median_raw = calculate_median(burst_levels_raw);
 
   // Convert to IRE
-  double ire_per_unit = 100.0 / static_cast<double>(video_params.white_16b_ire -
-                                                    video_params.black_16b_ire);
+  constexpr double ire_per_unit =
+      100.0 / static_cast<double>(kTbcWhite - kTbcBlanking);
   double median_burst_ire = median_raw * ire_per_unit;
 
   // Store in observation context

@@ -32,7 +32,8 @@ namespace orc {
 //
 // Usage:
 //   std::vector<int16_t> raw = read_whole_pcm(path);
-//   auto frames = NtscPalMAudioResampler::resample_and_segment(raw, frame_count);
+//   auto frames = NtscPalMAudioResampler::resample_and_segment(raw,
+//   frame_count);
 //   // frames[i] contains exactly kNtscAudioPairsPerFrame × 2 int16_t values.
 //
 // Thread-safety: stateless static methods — safe to call from any thread.
@@ -55,8 +56,7 @@ class NtscPalMAudioResampler {
   // in_rate  = 44100.0 (raw PCM)
   // out_rate = 44100000.0 / 1001.0 (frame-locked NTSC/PAL_M)
   static std::vector<std::vector<int16_t>> resample_and_segment(
-      const std::vector<int16_t>& raw_stereo_44100,
-      size_t frame_count);
+      const std::vector<int16_t>& raw_stereo_44100, size_t frame_count);
 };
 
 }  // namespace orc

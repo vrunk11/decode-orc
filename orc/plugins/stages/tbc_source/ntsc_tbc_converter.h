@@ -27,9 +27,10 @@ namespace orc {
 //
 // TBC field ordering (SMPTE 244M-2003 §3.2 / SMPTE 170M-2004 §11.3):
 //   ld-decode stores both fields at 263 lines in the TBC file.
-//   TBC field 1 (even file index) = odd/earlier temporal, 262 real lines → VFR field 2 (bottom)
-//   TBC field 2 (odd file index)  = even/later temporal, 263 real lines → VFR field 1 (top)
-//   VFR frame layout: [VFR field 1 = TBC field 2 (263 lines, top spatial)]
+//   TBC field 1 (even file index) = odd/earlier temporal, 262 real lines → VFR
+//   field 2 (bottom) TBC field 2 (odd file index)  = even/later temporal, 263
+//   real lines → VFR field 1 (top) VFR frame layout: [VFR field 1 = TBC field 2
+//   (263 lines, top spatial)]
 //                      [VFR field 2 = TBC field 1 (262 lines, bottom spatial)]
 //   Field order swap matches PAL convention; VFR field 1 is always the top
 //   spatial field per broadcast specification.
@@ -46,7 +47,7 @@ class NtscTBCConverter {
   // headroom below sync tip and above peak white is preserved in the int16_t
   // result.
   static int16_t tbc_to_cvbs(uint16_t tbc_sample, int32_t tbc_blanking,
-                              int32_t tbc_white);
+                             int32_t tbc_white);
 
   // -------------------------------------------------------------------------
   // Frame assembly

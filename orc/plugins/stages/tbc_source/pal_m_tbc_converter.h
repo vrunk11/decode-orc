@@ -35,7 +35,8 @@ namespace orc {
 //   Both fields stored at 263 lines in the TBC file.
 //   TBC field 1 (earlier temporal, 262 real lines) → VFR field 2 (bottom)
 //   TBC field 2 (later temporal,  263 real lines)  → VFR field 1 (top)
-//   VFR frame layout: [VFR field 1 (top): 263 × 909][VFR field 2 (bottom): 262 × 909]
+//   VFR frame layout: [VFR field 1 (top): 263 × 909][VFR field 2 (bottom): 262
+//   × 909]
 class PalMTBCConverter {
  public:
   // -------------------------------------------------------------------------
@@ -46,7 +47,7 @@ class PalMTBCConverter {
   // CVBS_U10_4FSC.  Level constants are identical to NTSC (kNtscBlanking,
   // kNtscWhite).  No output clamping.
   static int16_t tbc_to_cvbs(uint16_t tbc_sample, int32_t tbc_blanking,
-                              int32_t tbc_white);
+                             int32_t tbc_white);
 
   // -------------------------------------------------------------------------
   // Frame assembly

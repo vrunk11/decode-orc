@@ -7,6 +7,7 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
+#include <cvbs_signal_constants.h>
 #include <sqlite3.h>
 #include <tbc_metadata.h>
 
@@ -54,7 +55,7 @@ VideoSystem video_system_from_string(const std::string& name) {
   if (name == "NTSC") return VideoSystem::NTSC;
   if (name == "PAL_M") {
     return VideoSystem::PAL_M;  // SQLite: only underscore form
-}
+  }
   return VideoSystem::Unknown;
 }
 
@@ -272,68 +273,66 @@ TBCMetadataSqliteReader::read_video_parameters() {
   int step_rc = sqlite3_step(stmt);
   if (step_rc == SQLITE_ROW) {
     params.system = video_system_from_string(impl_->get_string(stmt, 0));
-    params.sample_rate = impl_->get_double(stmt, 1);
+    // DB columns 1–11 (video_sample_rate, field_width, field_height, etc.) are
+    // read for back-compatibility validation but are NOT propagated to the
+    // struct; canonical values are derived from params.system below.
     // active_video_start/end in database are HORIZONTAL sample positions
     // (x-axis)
     params.active_video_start = impl_->get_int(stmt, 2);
     params.active_video_end = impl_->get_int(stmt, 3);
-    params.field_width = impl_->get_int(stmt, 4);
-    params.field_height = impl_->get_int(stmt, 5);
-    params.number_of_sequential_fields = impl_->get_int(stmt, 6);
-    params.colour_burst_start = impl_->get_int(stmt, 7);
-    params.colour_burst_end = impl_->get_int(stmt, 8);
+    // Read number_of_sequential_fields from DB for validation; derive frames.
+    const int32_t db_sequential_fields = impl_->get_int(stmt, 6);
+    params.number_of_sequential_frames =
+        (db_sequential_fields > 0) ? db_sequential_fields / 2 : -1;
     params.is_mapped = impl_->get_bool(stmt, 9);
-    params.is_subcarrier_locked = impl_->get_bool(stmt, 10);
+    // is_subcarrier_locked (col 10) skipped — deprecated field; value is a
+    // DB-only round-trip artefact and has no meaning in the pipeline.
     params.is_widescreen = impl_->get_bool(stmt, 11);
 
     int col_offset = 12;
     if (has_blanking_column) {
-      params.blanking_16b_ire = impl_->get_int(stmt, col_offset);
-      col_offset++;
-      params.black_16b_ire = impl_->get_int(stmt, col_offset);
-      params.white_16b_ire = impl_->get_int(stmt, col_offset + 1);
-      params.decoder = impl_->get_string(stmt, col_offset + 2);
-      params.git_branch = impl_->get_string(stmt, col_offset + 3);
-      params.git_commit = impl_->get_string(stmt, col_offset + 4);
+      // Skip blanking/black/white — derive from system constants instead.
+      col_offset += 3;  // skip blanking_16b_ire, black_16b_ire, white_16b_ire
+      params.decoder = impl_->get_string(stmt, col_offset);
+      params.git_branch = impl_->get_string(stmt, col_offset + 1);
+      params.git_commit = impl_->get_string(stmt, col_offset + 2);
     } else {
-      // Fallback: blanking_16b_ire not in database, set it to black_16b_ire
-      // value
-      params.black_16b_ire = impl_->get_int(stmt, col_offset);
-      params.blanking_16b_ire = params.black_16b_ire;
-      params.white_16b_ire = impl_->get_int(stmt, col_offset + 1);
-      params.decoder = impl_->get_string(stmt, col_offset + 2);
-      params.git_branch = impl_->get_string(stmt, col_offset + 3);
-      params.git_commit = impl_->get_string(stmt, col_offset + 4);
-      ORC_LOG_WARN(
-          "read_video_parameters: blanking_16b_ire not in database, defaulting "
-          "to black_16b_ire value ({})",
-          params.black_16b_ire);
+      // Fallback: no blanking column; skip black/white.
+      col_offset += 2;  // skip black_16b_ire, white_16b_ire
+      params.decoder = impl_->get_string(stmt, col_offset);
+      params.git_branch = impl_->get_string(stmt, col_offset + 1);
+      params.git_commit = impl_->get_string(stmt, col_offset + 2);
     }
 
-    // FSC is not stored in database - leave unset (-1.0)
-    // Will be populated by source stage based on video system
-    params.fsc = -1.0;
+    // Populate canonical CVBS_U10_4FSC fields derived from the video system.
+    // These replace the deprecated per-disc fields.
+    // EBU Tech. 3280-E §1.1 (PAL) / SMPTE 244M-2003 §4.1 (NTSC) /
+    // ITU-R BT.1700-1 Annex 1 Part B (PAL_M).
+    switch (params.system) {
+      case VideoSystem::PAL:
+        params.frame_width_nominal = kPalMaxSamplesPerLine - 1;  // 1135
+        params.frame_height = kPalFrameLines;                    // 625
+        break;
+      case VideoSystem::PAL_M:
+        params.frame_width_nominal = kPalMSamplesPerLine;  // 909
+        params.frame_height = kPalMFrameLines;             // 525
+        break;
+      default:                                             // NTSC
+        params.frame_width_nominal = kNtscSamplesPerLine;  // 910
+        params.frame_height = kNtscFrameLines;             // 525
+        break;
+    }
 
-    // Vertical field line boundaries must be inferred from video system format
-    // defaults These match the values from
-    // legacy-tools/library/tbc/lddecodemetadata.cpp For PAL (even frame lines),
-    // field lines can be calculated as frame/2 For NTSC (odd frame lines), we
-    // use hardcoded values to match ld-chroma-decoder
+    // Active line boundaries from legacy-tools/library/tbc/lddecodemetadata.cpp
+    // For PAL: field lines calculated as frame/2.
+    // For NTSC/PAL_M: hardcoded to match ld-chroma-decoder.
     if (params.system == VideoSystem::PAL) {
       params.first_active_frame_line = 44;
       params.last_active_frame_line = 620;
-      params.first_active_field_line =
-          params.first_active_frame_line / 2;                             // 22
-      params.last_active_field_line = params.last_active_frame_line / 2;  // 310
-    } else if (params.system == VideoSystem::NTSC ||
-               params.system == VideoSystem::PAL_M) {
-      // PAL-M uses same line boundaries as NTSC
+    } else {
+      // NTSC and PAL-M share the same line boundaries.
       params.first_active_frame_line = 40;
       params.last_active_frame_line = 525;
-      params.first_active_field_line =
-          20;  // Hardcoded to match ld-chroma-decoder
-      params.last_active_field_line =
-          259;  // Not 262 (525/2) - must match baseline
     }
 
     sqlite3_finalize(stmt);
@@ -483,7 +482,7 @@ TBCMetadataSqliteReader::read_all_field_metadata() {
     metadata.efm_t_values = impl_->get_optional_int(stmt, 10);
     if (has_ac3_symbols) {
       metadata.ac3rf_symbols = impl_->get_optional_int(stmt, 11);
-}
+    }
 
     result[FieldID(metadata.seq_no)] = metadata;
   }
@@ -731,12 +730,13 @@ bool TBCMetadataSqliteReader::validate_metadata(
 
   const auto& params = *params_opt;
 
-  // Check that number_of_sequential_fields is set
-  if (params.number_of_sequential_fields <= 0) {
+  // Check that number_of_sequential_frames is set (derived from DB field count
+  // / 2).
+  if (params.number_of_sequential_frames <= 0) {
     if (error_message) {
       *error_message =
-          "Metadata does not specify valid number_of_sequential_fields (" +
-          std::to_string(params.number_of_sequential_fields) + ")";
+          "Metadata does not specify valid number_of_sequential_frames (" +
+          std::to_string(params.number_of_sequential_frames) + ")";
     }
     ORC_LOG_ERROR("validate_metadata: {}", *error_message);
     return false;
@@ -752,16 +752,18 @@ bool TBCMetadataSqliteReader::validate_metadata(
     return false;
   }
 
-  // Check consistency between capture table and field_record table
+  // Check consistency between capture table and field_record table.
+  // The DB stores number_of_sequential_fields; compare against 2× frames.
   // Warning: Some TBC files have mismatches where field_record has more entries
-  // than number_of_sequential_fields indicates. This is a known issue with
-  // certain ld-decode versions. We use field_record count to match ld-discmap
-  // behavior.
-  if (field_record_count != params.number_of_sequential_fields) {
+  // than the capture table indicates.  This is a known issue with certain
+  // ld-decode versions.  We use the field_record count to match ld-discmap
+  // behaviour.
+  const int32_t expected_field_count = params.number_of_sequential_frames * 2;
+  if (field_record_count != expected_field_count) {
     if (error_message) {
       *error_message =
           "Metadata inconsistency: capture table specifies " +
-          std::to_string(params.number_of_sequential_fields) +
+          std::to_string(expected_field_count) +
           " fields, but field_record table contains " +
           std::to_string(field_record_count) + " records. " +
           "This TBC file has inconsistent metadata, likely from a buggy " +
@@ -770,12 +772,11 @@ bool TBCMetadataSqliteReader::validate_metadata(
     return false;
   }
 
-  // Validate field dimensions
-  if (params.field_width <= 0 || params.field_height <= 0) {
+  // Validate frame width (canonical CVBS_U10_4FSC field).
+  if (params.frame_width_nominal <= 0) {
     if (error_message) {
-      *error_message =
-          "Invalid field dimensions: " + std::to_string(params.field_width) +
-          "x" + std::to_string(params.field_height);
+      *error_message = "Invalid frame_width_nominal: " +
+                       std::to_string(params.frame_width_nominal);
     }
     return false;
   }

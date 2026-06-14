@@ -14,6 +14,7 @@
 #include <cstddef>
 
 #include "../../../plugins/stages/sinks/common/decoders/componentframe.h"
+#include <cvbs_signal_constants.h>
 #include "../../include/video_frame_representation.h"
 #include "../analysis_registry.h"
 #include "logging.h"
@@ -126,7 +127,8 @@ VectorscopeData VectorscopeAnalysisTool::extractFromRGB(
   }
 
   // Reserve space for samples (with subsampling)
-  size_t estimated_samples = static_cast<size_t>(width / subsample) * (height / subsample);
+  size_t estimated_samples =
+      static_cast<size_t>(width / subsample) * (height / subsample);
   data.samples.reserve(estimated_samples);
 
   // Extract U/V from RGB
@@ -165,7 +167,8 @@ VectorscopeData VectorscopeAnalysisTool::extractFromInterlacedRGB(
   }
 
   // Reserve space for samples from both fields (with subsampling)
-  size_t estimated_samples = static_cast<size_t>(width / subsample) * (height / subsample);
+  size_t estimated_samples =
+      static_cast<size_t>(width / subsample) * (height / subsample);
   data.samples.reserve(estimated_samples);
 
   // Process both fields separately
@@ -282,8 +285,9 @@ VectorscopeData VectorscopeAnalysisTool::extractFromColourFrameCarrier(
   VectorscopeData data;
   data.field_number = field_number;
   data.system = carrier.system;
-  data.white_16b_ire = static_cast<int32_t>(carrier.white_16b_ire);
-  data.black_16b_ire = static_cast<int32_t>(carrier.black_16b_ire);
+  // ld-decode TBC 16-bit domain normative levels (kTbcBlanking / kTbcWhite).
+  data.white_16b_ire = kTbcWhite;
+  data.black_16b_ire = kTbcBlanking;
 
   if (!carrier.is_valid() || subsample == 0) {
     return data;
@@ -380,18 +384,19 @@ VectorscopeData VectorscopeAnalysisTool::extractFromCompositeRepresentation(
   size_t y_end = frame_height;
 
   if (active_area_only) {
-    if (vp.active_video_start >= 0 && vp.active_video_end > vp.active_video_start) {
-      x_start = static_cast<size_t>(
-          std::min<int32_t>(vp.active_video_start, static_cast<int32_t>(frame_width)));
-      x_end = static_cast<size_t>(
-          std::min<int32_t>(vp.active_video_end, static_cast<int32_t>(frame_width)));
+    if (vp.active_video_start >= 0 &&
+        vp.active_video_end > vp.active_video_start) {
+      x_start = static_cast<size_t>(std::min<int32_t>(
+          vp.active_video_start, static_cast<int32_t>(frame_width)));
+      x_end = static_cast<size_t>(std::min<int32_t>(
+          vp.active_video_end, static_cast<int32_t>(frame_width)));
     }
     if (vp.first_active_frame_line >= 0 &&
         vp.last_active_frame_line > vp.first_active_frame_line) {
-      y_start = static_cast<size_t>(
-          std::min<int32_t>(vp.first_active_frame_line, static_cast<int32_t>(frame_height)));
-      y_end = static_cast<size_t>(
-          std::min<int32_t>(vp.last_active_frame_line, static_cast<int32_t>(frame_height)));
+      y_start = static_cast<size_t>(std::min<int32_t>(
+          vp.first_active_frame_line, static_cast<int32_t>(frame_height)));
+      y_end = static_cast<size_t>(std::min<int32_t>(
+          vp.last_active_frame_line, static_cast<int32_t>(frame_height)));
     }
   }
 
@@ -409,16 +414,15 @@ VectorscopeData VectorscopeAnalysisTool::extractFromCompositeRepresentation(
   const double level_range =
       std::max(1.0, static_cast<double>(vp.white_level - vp.blanking_level));
 
-  // Phase step: CVBS_U10_4FSC is nominally 4xFsc so quadrature can be
-  // approximated with the {1,0,-1,0} / {0,-1,0,1} 4-point table.
-  // Fall back to the continuous formula when fsc/sample_rate are available.
-  const bool approx_4fsc =
-      vp.fsc > 0.0 && vp.sample_rate > 0.0 &&
-      std::abs((vp.sample_rate / vp.fsc) - 4.0) < 1.0e-3;
-  const double phase_step =
-      (vp.fsc > 0.0 && vp.sample_rate > 0.0)
-          ? (2.0 * kPi * vp.fsc / vp.sample_rate)
-          : 0.0;
+  // Phase step: CVBS_U10_4FSC is nominally 4×Fsc so the sample rate is always
+  // 4×Fsc — the approximate 4-point {1,0,-1,0}/{0,-1,0,1} table is valid.
+  // Use the exact continuous formula derived from system constants.
+  // EBU Tech. 3280-E §1.1 (PAL) / SMPTE 244M-2003 §4.1 (NTSC) /
+  // ITU-R BT.1700-1 Annex 1 Part B (PAL_M).
+  const double sys_fsc = fsc_from_system(vp.system);
+  const double sys_sample_rate = sample_rate_from_system(vp.system);
+  const bool approx_4fsc = std::abs((sys_sample_rate / sys_fsc) - 4.0) < 1.0e-3;
+  const double phase_step = 2.0 * kPi * sys_fsc / sys_sample_rate;
 
   // Determine field1 boundary for PAL V-alternation in frame-flat context.
   // PAL: field1 = lines [0, 312], field2 = lines [313, 624].
@@ -427,7 +431,8 @@ VectorscopeData VectorscopeAnalysisTool::extractFromCompositeRepresentation(
   size_t field1_line_count = 0;
   if (vp.system == VideoSystem::PAL) {
     field1_line_count = 313;
-  } else if (vp.system == VideoSystem::NTSC || vp.system == VideoSystem::PAL_M) {
+  } else if (vp.system == VideoSystem::NTSC ||
+             vp.system == VideoSystem::PAL_M) {
     field1_line_count = 262;
   }
 
@@ -435,14 +440,16 @@ VectorscopeData VectorscopeAnalysisTool::extractFromCompositeRepresentation(
                        ((y_end - y_start) / subsample));
 
   for (size_t y = y_start; y < y_end; y += static_cast<size_t>(subsample)) {
-    const int16_t* line = has_chroma ? representation.get_line_chroma(frame_id, y)
-                                     : representation.get_line(frame_id, y);
+    const int16_t* line = has_chroma
+                              ? representation.get_line_chroma(frame_id, y)
+                              : representation.get_line(frame_id, y);
     if (!line) continue;
 
     // PAL V-axis alternation at frame-flat level (ITU-R BT.470-6 §3.5.1).
     // Within each field the V component alternates sign on alternating lines.
     // Frame-flat: determine which field this line belongs to, then apply
-    // the same `((line_in_field + field_id) & 1U)` rule as the field-based code.
+    // the same `((line_in_field + field_id) & 1U)` rule as the field-based
+    // code.
     bool negate_v = false;
     if ((vp.system == VideoSystem::PAL || vp.system == VideoSystem::PAL_M) &&
         field1_line_count > 0) {
@@ -460,10 +467,22 @@ VectorscopeData VectorscopeAnalysisTool::extractFromCompositeRepresentation(
       if (approx_4fsc) {
         // CVBS_U10_4FSC 4-point quadrature table
         switch (x & 3U) {
-          case 0U: sin_ref =  1.0; cos_ref =  0.0; break;
-          case 1U: sin_ref =  0.0; cos_ref = -1.0; break;
-          case 2U: sin_ref = -1.0; cos_ref =  0.0; break;
-          default: sin_ref =  0.0; cos_ref =  1.0; break;
+          case 0U:
+            sin_ref = 1.0;
+            cos_ref = 0.0;
+            break;
+          case 1U:
+            sin_ref = 0.0;
+            cos_ref = -1.0;
+            break;
+          case 2U:
+            sin_ref = -1.0;
+            cos_ref = 0.0;
+            break;
+          default:
+            sin_ref = 0.0;
+            cos_ref = 1.0;
+            break;
         }
       } else if (phase_step > 0.0) {
         const double phase = phase_step * static_cast<double>(x);
@@ -477,7 +496,8 @@ VectorscopeData VectorscopeAnalysisTool::extractFromCompositeRepresentation(
       double v = (2.0 * c * cos_ref) / level_range;
       if (negate_v) v = -v;
 
-      const uint8_t fid = (field1_line_count > 0 && y >= field1_line_count) ? 1U : 0U;
+      const uint8_t fid =
+          (field1_line_count > 0 && y >= field1_line_count) ? 1U : 0U;
 
       UVSample sample;
       sample.u = clamp_normalized(u) * 32767.0;
@@ -490,8 +510,8 @@ VectorscopeData VectorscopeAnalysisTool::extractFromCompositeRepresentation(
   ORC_LOG_DEBUG(
       "Extracted {} composite vectorscope samples from frame {} ({} area, "
       "subsample={})",
-      data.samples.size(), frame_id,
-      active_area_only ? "active" : "full", subsample);
+      data.samples.size(), frame_id, active_area_only ? "active" : "full",
+      subsample);
 
   return data;
 }

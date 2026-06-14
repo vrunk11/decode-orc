@@ -14,14 +14,14 @@
 #include <frame_id.h>
 #include <orc_source_parameters.h>
 
-#include "../hints/active_line_hint.h"
-#include "video_metadata_types.h"
-
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
+
+#include "../hints/active_line_hint.h"
+#include "video_metadata_types.h"
 
 namespace orc {
 
@@ -274,9 +274,7 @@ class VideoFrameRepresentationWrapper : public VideoFrameRepresentation {
   }
 
   // EFM
-  bool has_efm() const override {
-    return source_ ? source_->has_efm() : false;
-  }
+  bool has_efm() const override { return source_ ? source_->has_efm() : false; }
   uint32_t get_efm_sample_count(FrameID id) const override {
     return source_ ? source_->get_efm_sample_count(id) : 0;
   }

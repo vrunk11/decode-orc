@@ -46,9 +46,17 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
        [] {
          return orc::StageRegistry::instance().create_stage("tbc_source");
        }},
-      {"cvbs_source", PublicStageFamily::Source, true,
+      {"PAL_CVBS_Source", PublicStageFamily::Source, true,
        [] {
-         return orc::StageRegistry::instance().create_stage("cvbs_source");
+         return orc::StageRegistry::instance().create_stage("PAL_CVBS_Source");
+       }},
+      {"NTSC_CVBS_Source", PublicStageFamily::Source, true,
+       [] {
+         return orc::StageRegistry::instance().create_stage("NTSC_CVBS_Source");
+       }},
+      {"PALM_CVBS_Source", PublicStageFamily::Source, true,
+       [] {
+         return orc::StageRegistry::instance().create_stage("PALM_CVBS_Source");
        }},
       {"stacker", PublicStageFamily::Transform, true,
        [] { return orc::StageRegistry::instance().create_stage("stacker"); }},
@@ -57,9 +65,7 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
          return orc::StageRegistry::instance().create_stage("frame_field_swap");
        }},
       {"frame_map", PublicStageFamily::Transform, true,
-       [] {
-         return orc::StageRegistry::instance().create_stage("frame_map");
-       }},
+       [] { return orc::StageRegistry::instance().create_stage("frame_map"); }},
       {"frame_phase_corrector", PublicStageFamily::Transform, true,
        [] {
          return orc::StageRegistry::instance().create_stage(
@@ -102,10 +108,8 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
        [] { return orc::StageRegistry::instance().create_stage("CCSink"); }},
       {"ld_sink", PublicStageFamily::Sink, true,
        [] { return orc::StageRegistry::instance().create_stage("ld_sink"); }},
-      {"cvbs_sink", PublicStageFamily::Sink, true,
-       [] {
-         return orc::StageRegistry::instance().create_stage("cvbs_sink");
-       }},
+      {"CVBSSink", PublicStageFamily::Sink, true,
+       [] { return orc::StageRegistry::instance().create_stage("CVBSSink"); }},
       {"EFMSink", PublicStageFamily::Sink, true,
        [] { return orc::StageRegistry::instance().create_stage("EFMSink"); }},
       {"RawEFMSink", PublicStageFamily::Sink, true,
@@ -113,9 +117,7 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
          return orc::StageRegistry::instance().create_stage("RawEFMSink");
        }},
       {"AC3RFSink", PublicStageFamily::Sink, true,
-       [] {
-         return orc::StageRegistry::instance().create_stage("AC3RFSink");
-       }},
+       [] { return orc::StageRegistry::instance().create_stage("AC3RFSink"); }},
       {"dropout_analysis_sink", PublicStageFamily::Sink, true,
        [] {
          return orc::StageRegistry::instance().create_stage(

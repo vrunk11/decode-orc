@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
 #include "error_types.h"
 #include "logging.h"
 #include "preview_helpers.h"
@@ -60,8 +60,8 @@ std::vector<LineDropout> DropoutCorrectStage::runs_to_line_dropouts(
       const uint32_t line = static_cast<uint32_t>(offset / nominal_spl);
       const uint32_t start = static_cast<uint32_t>(offset % nominal_spl);
       const uint32_t avail = static_cast<uint32_t>(nominal_spl) - start;
-      const uint32_t count =
-          static_cast<uint32_t>(std::min(remaining, static_cast<uint64_t>(avail)));
+      const uint32_t count = static_cast<uint32_t>(
+          std::min(remaining, static_cast<uint64_t>(avail)));
       result.push_back({line, start, static_cast<uint32_t>(start + count - 1)});
       offset += count;
       remaining -= count;
@@ -208,13 +208,13 @@ const int16_t* CorrectedVideoFrameRepresentation::get_line_chroma(
 DropoutCorrectStage::DropoutLocation DropoutCorrectStage::classify_dropout(
     const LineDropout& dropout, const FrameDescriptor& /*desc*/,
     const std::optional<SourceParameters>& params) const {
-  uint32_t cb_end = 100;
+  // Colour burst end derived from video system constant; active_video_end from
+  // the canonical SourceParameters field.
+  uint32_t cb_end = static_cast<uint32_t>(kNtscColourBurstEnd);  // safe default
   uint32_t av_end = 800;
 
   if (params) {
-    if (params->colour_burst_end >= 0) {
-      cb_end = static_cast<uint32_t>(params->colour_burst_end);
-    }
+    cb_end = static_cast<uint32_t>(colour_burst_range(params->system).second);
     if (params->active_video_end >= 0) {
       av_end = static_cast<uint32_t>(params->active_video_end);
     }
@@ -230,18 +230,17 @@ DropoutCorrectStage::DropoutLocation DropoutCorrectStage::classify_dropout(
 }
 
 std::vector<LineDropout> DropoutCorrectStage::split_dropout_regions(
-    const std::vector<LineDropout>& dropouts,
-    const FrameDescriptor& desc,
+    const std::vector<LineDropout>& dropouts, const FrameDescriptor& desc,
     const std::optional<SourceParameters>& params) const {
   std::vector<LineDropout> result;
 
-  uint32_t cb_end = 100;
+  // Colour burst end derived from video system constant; active_video_end from
+  // the canonical SourceParameters field.
+  uint32_t cb_end = static_cast<uint32_t>(kNtscColourBurstEnd);  // safe default
   uint32_t av_end = 800;
 
   if (params) {
-    if (params->colour_burst_end >= 0) {
-      cb_end = static_cast<uint32_t>(params->colour_burst_end);
-    }
+    cb_end = static_cast<uint32_t>(colour_burst_range(params->system).second);
     if (params->active_video_end >= 0) {
       av_end = static_cast<uint32_t>(params->active_video_end);
     }
@@ -249,9 +248,10 @@ std::vector<LineDropout> DropoutCorrectStage::split_dropout_regions(
 
   for (const auto& d : dropouts) {
     if (d.line >= desc.height) {
-      ORC_LOG_DEBUG("split_dropout_regions: skipping dropout on line {} "
-                    "(frame height {})",
-                    d.line, desc.height);
+      ORC_LOG_DEBUG(
+          "split_dropout_regions: skipping dropout on line {} "
+          "(frame height {})",
+          d.line, desc.height);
       continue;
     }
     const auto loc = classify_dropout(d, desc, params);
@@ -464,16 +464,14 @@ void DropoutCorrectStage::apply_correction(std::vector<int16_t>& line_data,
                                            int16_t highlight_value,
                                            bool highlight) const {
   for (uint32_t s = dropout.start_sample;
-       s <= dropout.end_sample &&
-       s < static_cast<uint32_t>(line_data.size());
+       s <= dropout.end_sample && s < static_cast<uint32_t>(line_data.size());
        ++s) {
     line_data[s] = highlight ? highlight_value : replacement_data[s];
   }
 }
 
 double DropoutCorrectStage::calculate_line_quality(
-    const int16_t* line_data, size_t width,
-    const LineDropout& dropout) const {
+    const int16_t* line_data, size_t width, const LineDropout& dropout) const {
   if (dropout.start_sample >= dropout.end_sample ||
       dropout.end_sample >= width) {
     return 0.0;
@@ -523,8 +521,7 @@ void DropoutCorrectStage::correct_single_frame(
   if (dropouts.empty()) {
     if (source->has_separate_channels()) {
       corrected->corrected_luma_frames_.put(frame_id, std::vector<int16_t>{});
-      corrected->corrected_chroma_frames_.put(frame_id,
-                                              std::vector<int16_t>{});
+      corrected->corrected_chroma_frames_.put(frame_id, std::vector<int16_t>{});
     } else {
       corrected->corrected_frames_.put(frame_id, std::vector<int16_t>{});
     }
@@ -588,10 +585,9 @@ void DropoutCorrectStage::correct_single_frame(
       int16_t* ly_ptr = &luma_data[d.line * spl];
       int16_t* lc_ptr = &chroma_data[d.line * spl];
 
-      auto repl = find_replacement_line(*source, frame_id, d.line, d,
-                                        config_.intrafield_only,
-                                        config_.match_chroma_phase, field1_lines,
-                                        Channel::LUMA);
+      auto repl = find_replacement_line(
+          *source, frame_id, d.line, d, config_.intrafield_only,
+          config_.match_chroma_phase, field1_lines, Channel::LUMA);
       if (!repl.found && !config_.intrafield_only) {
         repl = find_replacement_line(*source, frame_id, d.line, d, false,
                                      config_.match_chroma_phase, field1_lines,
@@ -600,8 +596,7 @@ void DropoutCorrectStage::correct_single_frame(
 
       if (repl.found) {
         const int16_t* ry = source->get_line_luma(frame_id, repl.source_line);
-        const int16_t* rc =
-            source->get_line_chroma(frame_id, repl.source_line);
+        const int16_t* rc = source->get_line_chroma(frame_id, repl.source_line);
         for (uint32_t s = d.start_sample; s <= d.end_sample && s < spl; ++s) {
           if (corrected->highlight_corrections_) {
             ly_ptr[s] = highlight_val;
@@ -647,32 +642,31 @@ void DropoutCorrectStage::correct_single_frame(
     const auto loc = classify_dropout(d, desc, video_params);
 
     if (loc == DropoutLocation::VISIBLE_LINE) {
-      auto luma_repl = find_replacement_line(
-          *source, frame_id, d.line, d, config_.intrafield_only, false,
-          field1_lines, Channel::COMPOSITE);
+      auto luma_repl = find_replacement_line(*source, frame_id, d.line, d,
+                                             config_.intrafield_only, false,
+                                             field1_lines, Channel::COMPOSITE);
       if (!luma_repl.found && !config_.intrafield_only) {
-        luma_repl = find_replacement_line(*source, frame_id, d.line, d, false,
-                                          false, field1_lines,
-                                          Channel::COMPOSITE);
+        luma_repl =
+            find_replacement_line(*source, frame_id, d.line, d, false, false,
+                                  field1_lines, Channel::COMPOSITE);
       }
 
       auto chroma_repl = find_replacement_line(
           *source, frame_id, d.line, d, config_.intrafield_only,
           config_.match_chroma_phase, field1_lines, Channel::COMPOSITE);
       if (!chroma_repl.found && !config_.intrafield_only) {
-        chroma_repl = find_replacement_line(
-            *source, frame_id, d.line, d, false, config_.match_chroma_phase,
-            field1_lines, Channel::COMPOSITE);
+        chroma_repl = find_replacement_line(*source, frame_id, d.line, d, false,
+                                            config_.match_chroma_phase,
+                                            field1_lines, Channel::COMPOSITE);
       }
 
       if (luma_repl.found || chroma_repl.found) {
         if (luma_repl.found && chroma_repl.found &&
             luma_repl.source_line == chroma_repl.source_line) {
           std::vector<int16_t> tmp_line(line_ptr, line_ptr + spl);
-          apply_correction(
-              tmp_line, d,
-              source->get_line(frame_id, luma_repl.source_line), highlight_val,
-              corrected->highlight_corrections_);
+          apply_correction(tmp_line, d,
+                           source->get_line(frame_id, luma_repl.source_line),
+                           highlight_val, corrected->highlight_corrections_);
           std::copy(tmp_line.begin(), tmp_line.end(), line_ptr);
         } else {
           if (luma_repl.found) {
@@ -691,12 +685,12 @@ void DropoutCorrectStage::correct_single_frame(
         corrections++;
       }
     } else {
-      auto repl = find_replacement_line(
-          *source, frame_id, d.line, d, config_.intrafield_only, false,
-          field1_lines, Channel::COMPOSITE);
+      auto repl = find_replacement_line(*source, frame_id, d.line, d,
+                                        config_.intrafield_only, false,
+                                        field1_lines, Channel::COMPOSITE);
       if (!repl.found && !config_.intrafield_only) {
-        repl = find_replacement_line(*source, frame_id, d.line, d, false,
-                                     false, field1_lines, Channel::COMPOSITE);
+        repl = find_replacement_line(*source, frame_id, d.line, d, false, false,
+                                     field1_lines, Channel::COMPOSITE);
       }
       if (repl.found) {
         std::vector<int16_t> tmp_line(line_ptr, line_ptr + spl);
@@ -710,9 +704,8 @@ void DropoutCorrectStage::correct_single_frame(
   }
 
   corrected->corrected_frames_.put(frame_id, std::move(frame_data));
-  ORC_LOG_DEBUG(
-      "DropoutCorrectStage: composite frame {} done - {} corrections",
-      frame_id, corrections);
+  ORC_LOG_DEBUG("DropoutCorrectStage: composite frame {} done - {} corrections",
+                frame_id, corrections);
 }
 
 // ============================================================================
@@ -722,38 +715,57 @@ void DropoutCorrectStage::correct_single_frame(
 std::vector<ParameterDescriptor> DropoutCorrectStage::get_parameter_descriptors(
     VideoSystem, SourceType) const {
   return {
-      ParameterDescriptor{
-          "overcorrect_extension", "Overcorrect (samples)",
-          "Extend dropout regions by N samples on each side "
-          "(0 = disabled, 24 = typical for damaged sources).",
-          ParameterType::UINT32,
-          ParameterConstraints{ParameterValue(0U), ParameterValue(48U),
-                               ParameterValue(0U), {}, false, std::nullopt}},
+      ParameterDescriptor{"overcorrect_extension", "Overcorrect (samples)",
+                          "Extend dropout regions by N samples on each side "
+                          "(0 = disabled, 24 = typical for damaged sources).",
+                          ParameterType::UINT32,
+                          ParameterConstraints{ParameterValue(0U),
+                                               ParameterValue(48U),
+                                               ParameterValue(0U),
+                                               {},
+                                               false,
+                                               std::nullopt}},
       ParameterDescriptor{
           "intrafield_only", "Intrafield Only",
           "Restrict replacement to the same field (no interfield correction).",
           ParameterType::BOOL,
-          ParameterConstraints{std::nullopt, std::nullopt, ParameterValue(false),
-                               {}, false, std::nullopt}},
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue(false),
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
           "max_replacement_distance", "Max Replacement Distance (lines)",
           "Maximum distance (in lines) to search for a replacement line.",
           ParameterType::UINT32,
-          ParameterConstraints{ParameterValue(1U), ParameterValue(100U),
-                               ParameterValue(10U), {}, false, std::nullopt}},
+          ParameterConstraints{ParameterValue(1U),
+                               ParameterValue(100U),
+                               ParameterValue(10U),
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
           "match_chroma_phase", "Match Chroma Phase",
           "Prefer replacement lines with matching chroma phase.",
           ParameterType::BOOL,
-          ParameterConstraints{std::nullopt, std::nullopt, ParameterValue(true),
-                               {}, false, std::nullopt}},
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue(true),
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
           "highlight_corrections", "Highlight Corrections",
           "Fill corrections with white level instead of replacement data "
           "(for debugging).",
           ParameterType::BOOL,
-          ParameterConstraints{std::nullopt, std::nullopt,
-                               ParameterValue(false), {}, false, std::nullopt}},
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue(false),
+                               {},
+                               false,
+                               std::nullopt}},
   };
 }
 
@@ -764,11 +776,9 @@ std::map<std::string, ParameterValue> DropoutCorrectStage::get_parameters()
        ParameterValue{static_cast<uint32_t>(config_.overcorrect_extension)}},
       {"intrafield_only", ParameterValue{config_.intrafield_only}},
       {"max_replacement_distance",
-       ParameterValue{
-           static_cast<uint32_t>(config_.max_replacement_distance)}},
+       ParameterValue{static_cast<uint32_t>(config_.max_replacement_distance)}},
       {"match_chroma_phase", ParameterValue{config_.match_chroma_phase}},
-      {"highlight_corrections",
-       ParameterValue{config_.highlight_corrections}},
+      {"highlight_corrections", ParameterValue{config_.highlight_corrections}},
   };
 }
 
@@ -823,9 +833,9 @@ std::vector<PreviewOption> DropoutCorrectStage::get_preview_options() const {
   return PreviewHelpers::get_standard_preview_options(cached_output_);
 }
 
-PreviewImage DropoutCorrectStage::render_preview(const std::string& option_id,
-                                                 uint64_t index,
-                                                 PreviewNavigationHint hint) const {
+PreviewImage DropoutCorrectStage::render_preview(
+    const std::string& option_id, uint64_t index,
+    PreviewNavigationHint hint) const {
   return PreviewHelpers::render_standard_preview(cached_output_, option_id,
                                                  index, hint);
 }

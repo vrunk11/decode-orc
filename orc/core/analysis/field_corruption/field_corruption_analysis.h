@@ -1,7 +1,8 @@
 /*
  * File:        field_corruption_analysis.h
  * Module:      analysis
- * Purpose:     Field corruption pattern generator for testing disc mapper algorithms
+ * Purpose:     Field corruption pattern generator for testing disc mapper
+ * algorithms
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors

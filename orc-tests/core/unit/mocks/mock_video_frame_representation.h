@@ -9,9 +9,8 @@
 
 #pragma once
 
-#include <video_frame_representation.h>
-
 #include <gmock/gmock.h>
+#include <video_frame_representation.h>
 
 // Using a distinct namespace to allow test files to use the same type names as
 // the module under test without collision.
@@ -47,8 +46,8 @@ class MockVideoFrameRepresentation : public orc::VideoFrameRepresentation {
               (const, override));
 
   // Hints
-  MOCK_METHOD((std::vector<orc::DropoutRun>), get_dropout_hints,
-              (orc::FrameID), (const, override));
+  MOCK_METHOD((std::vector<orc::DropoutRun>), get_dropout_hints, (orc::FrameID),
+              (const, override));
   MOCK_METHOD((std::optional<int>), get_frame_phase_hint, (orc::FrameID),
               (const, override));
   MOCK_METHOD((std::optional<orc::ActiveLineHint>), get_active_line_hint, (),

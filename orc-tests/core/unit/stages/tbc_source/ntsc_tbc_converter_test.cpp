@@ -1,8 +1,8 @@
 /*
  * File:        ntsc_tbc_converter_test.cpp
  * Module:      orc-tests/core/unit/stages/tbc_source
- * Purpose:     Unit tests for NtscTBCConverter level mapping and frame assembly,
- *              NtscTBCYCConverter phase alignment, and PalMTBCConverter.
+ * Purpose:     Unit tests for NtscTBCConverter level mapping and frame
+ * assembly, NtscTBCYCConverter phase alignment, and PalMTBCConverter.
  *
  * Tests:
  *   NtscTBCConverter:
@@ -26,8 +26,6 @@
  */
 
 #include "../../../../orc/plugins/stages/tbc_source/ntsc_tbc_converter.h"
-#include "../../../../orc/plugins/stages/tbc_source/ntsc_tbc_yc_converter.h"
-#include "../../../../orc/plugins/stages/tbc_source/pal_m_tbc_converter.h"
 
 #include <gtest/gtest.h>
 
@@ -36,7 +34,9 @@
 #include <stdexcept>
 #include <vector>
 
-#include "../../../../orc/core/include/cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
+#include "../../../../orc/plugins/stages/tbc_source/ntsc_tbc_yc_converter.h"
+#include "../../../../orc/plugins/stages/tbc_source/pal_m_tbc_converter.h"
 
 namespace orc_unit_test {
 
@@ -54,15 +54,21 @@ static std::vector<uint16_t> make_field_u16(int32_t lines, int32_t width,
 constexpr int32_t kRefBlanking = 16384;
 constexpr int32_t kRefWhite = 54400;
 
-// NTSC expected field line counts.
-constexpr int32_t kNtscF1Lines = orc::kNtscField1Lines;                    // 262
-constexpr int32_t kNtscF2Lines = orc::kNtscFrameLines - orc::kNtscField1Lines;  // 263
-constexpr int32_t kNtscLineW = orc::kNtscSamplesPerLine;                   // 910
+// NTSC TBC field line counts (raw ld-decode TBC convention, NOT VFR field
+// sizes). TBC field 1 = earlier temporal, 262 real lines → VFR field 2 (bottom
+// spatial). TBC field 2 = later temporal,  263 real lines → VFR field 1 (top
+// spatial). kNtscField1Lines = VFR field 1 = 263; TBC field 1 = kNtscFrameLines
+// - kNtscField1Lines = 262.
+constexpr int32_t kNtscF1Lines =
+    orc::kNtscFrameLines - orc::kNtscField1Lines;         // 262 (TBC f1)
+constexpr int32_t kNtscF2Lines = orc::kNtscField1Lines;   // 263 (TBC f2)
+constexpr int32_t kNtscLineW = orc::kNtscSamplesPerLine;  // 910
 
-// PAL_M expected field line counts.
-constexpr int32_t kPalMF1Lines = orc::kPalMField1Lines;                     // 262
-constexpr int32_t kPalMF2Lines = orc::kPalMFrameLines - orc::kPalMField1Lines;  // 263
-constexpr int32_t kPalMLineW = orc::kPalMSamplesPerLine;                    // 909
+// PAL_M TBC field line counts (same swap convention as NTSC).
+constexpr int32_t kPalMF1Lines =
+    orc::kPalMFrameLines - orc::kPalMField1Lines;         // 262 (TBC f1)
+constexpr int32_t kPalMF2Lines = orc::kPalMField1Lines;   // 263 (TBC f2)
+constexpr int32_t kPalMLineW = orc::kPalMSamplesPerLine;  // 909
 
 // ============================================================================
 // NtscTBCConverter — level mapping
@@ -101,75 +107,84 @@ TEST(NtscTBCConverterTest,
 // NtscTBCConverter — frame assembly
 // ============================================================================
 
-TEST(NtscTBCConverterTest, AssembleFrame_OutputSampleCountEqualsKNtscFrameSamples) {
+TEST(NtscTBCConverterTest,
+     AssembleFrame_OutputSampleCountEqualsKNtscFrameSamples) {
   auto f1 = make_field_u16(kNtscF1Lines, kNtscLineW,
                            static_cast<uint16_t>(kRefBlanking));
   auto f2 = make_field_u16(kNtscF2Lines, kNtscLineW,
                            static_cast<uint16_t>(kRefBlanking));
 
-  const auto frame = orc::NtscTBCConverter::assemble_frame(
-      f1, f2, kRefBlanking, kRefWhite);
+  const auto frame =
+      orc::NtscTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
   EXPECT_EQ(static_cast<int32_t>(frame.size()), orc::kNtscFrameSamples);
 }
 
 TEST(NtscTBCConverterTest, AssembleFrame_ThrowsOnWrongField1Size) {
   // Field 1 must be exactly 262 × 910 = 238,220 samples.
-  auto bad_f1 = make_field_u16(kNtscF2Lines, kNtscLineW,
-                               static_cast<uint16_t>(kRefBlanking));  // 263, wrong
+  auto bad_f1 =
+      make_field_u16(kNtscF2Lines, kNtscLineW,
+                     static_cast<uint16_t>(kRefBlanking));  // 263, wrong
   auto f2 = make_field_u16(kNtscF2Lines, kNtscLineW,
                            static_cast<uint16_t>(kRefBlanking));
   EXPECT_THROW(orc::NtscTBCConverter::assemble_frame(bad_f1, f2, kRefBlanking,
-                                                      kRefWhite),
+                                                     kRefWhite),
                std::invalid_argument);
 }
 
 TEST(NtscTBCConverterTest, AssembleFrame_ThrowsOnWrongField2Size) {
   auto f1 = make_field_u16(kNtscF1Lines, kNtscLineW,
                            static_cast<uint16_t>(kRefBlanking));
-  auto bad_f2 = make_field_u16(kNtscF1Lines, kNtscLineW,
-                               static_cast<uint16_t>(kRefBlanking));  // 262, wrong
+  auto bad_f2 =
+      make_field_u16(kNtscF1Lines, kNtscLineW,
+                     static_cast<uint16_t>(kRefBlanking));  // 262, wrong
   EXPECT_THROW(orc::NtscTBCConverter::assemble_frame(f1, bad_f2, kRefBlanking,
-                                                      kRefWhite),
+                                                     kRefWhite),
                std::invalid_argument);
 }
 
-TEST(NtscTBCConverterTest, AssembleFrame_Field1IsFirst262Lines) {
-  // Fill field 1 with white, field 2 with blanking.
-  // The first 262 × 910 samples in the output must be white-level.
+TEST(NtscTBCConverterTest, AssembleFrame_VfrField1IsFirstFromTbcField2) {
+  // TBC field 2 (later temporal, 263 lines) → VFR field 1 (top spatial, first
+  // in output). TBC field 1 (earlier temporal, 262 lines) → VFR field 2 (bottom
+  // spatial, second in output).
   const uint16_t tbc_white = static_cast<uint16_t>(kRefWhite);
   const uint16_t tbc_blank = static_cast<uint16_t>(kRefBlanking);
 
-  auto f1 = make_field_u16(kNtscF1Lines, kNtscLineW, tbc_white);
-  auto f2 = make_field_u16(kNtscF2Lines, kNtscLineW, tbc_blank);
+  auto f1 = make_field_u16(kNtscF1Lines, kNtscLineW,
+                           tbc_blank);  // TBC f1 = 262 lines, blank
+  auto f2 = make_field_u16(kNtscF2Lines, kNtscLineW,
+                           tbc_white);  // TBC f2 = 263 lines, white
 
-  const auto frame = orc::NtscTBCConverter::assemble_frame(
-      f1, f2, kRefBlanking, kRefWhite);
+  const auto frame =
+      orc::NtscTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
-  // First sample must be from field 1 (white).
+  // First sample in output is from TBC field 2 (white → VFR field 1, top).
   EXPECT_EQ(frame[0], static_cast<int16_t>(orc::kNtscWhite));
 
-  // First sample of field 2 is at offset 262 × 910 = 238,220.
-  const size_t field2_start =
-      static_cast<size_t>(kNtscF1Lines) * static_cast<size_t>(kNtscLineW);
-  ASSERT_LT(field2_start, frame.size());
-  EXPECT_EQ(frame[field2_start], static_cast<int16_t>(orc::kNtscBlanking));
+  // VFR field 2 (from TBC field 1 = blank) begins at offset 263 × 910 =
+  // 239,530.
+  const size_t vfr_field2_start =
+      static_cast<size_t>(kNtscF2Lines) * static_cast<size_t>(kNtscLineW);
+  ASSERT_LT(vfr_field2_start, frame.size());
+  EXPECT_EQ(frame[vfr_field2_start], static_cast<int16_t>(orc::kNtscBlanking));
 }
 
 TEST(NtscTBCConverterTest, AssembleFrame_NoExtraSamplesInserted) {
   // NTSC is orthogonal: output size = exactly 477,750 with no padding or
-  // extra samples.  Verified via: 262×910 + 263×910 = 477,750 = kNtscFrameSamples.
+  // extra samples.  Verified via: 262×910 + 263×910 = 477,750 =
+  // kNtscFrameSamples.
   auto f1 = make_field_u16(kNtscF1Lines, kNtscLineW,
                            static_cast<uint16_t>(kRefBlanking));
   auto f2 = make_field_u16(kNtscF2Lines, kNtscLineW,
                            static_cast<uint16_t>(kRefBlanking));
 
-  const auto frame = orc::NtscTBCConverter::assemble_frame(
-      f1, f2, kRefBlanking, kRefWhite);
+  const auto frame =
+      orc::NtscTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
-  EXPECT_EQ(frame.size(),
-            static_cast<size_t>(kNtscF1Lines) * static_cast<size_t>(kNtscLineW) +
-                static_cast<size_t>(kNtscF2Lines) * static_cast<size_t>(kNtscLineW));
+  EXPECT_EQ(
+      frame.size(),
+      static_cast<size_t>(kNtscF1Lines) * static_cast<size_t>(kNtscLineW) +
+          static_cast<size_t>(kNtscF2Lines) * static_cast<size_t>(kNtscLineW));
 }
 
 // ============================================================================
@@ -193,14 +208,12 @@ TEST(NtscTBCConverterTest, ColourFrameIndex_OutOfRange_ReturnsMinusOne) {
 
 TEST(NtscTBCConverterTest, ColourFrameIndex_Phase1_ReturnsZeroFrameA) {
   // SMPTE 244M-2003 §3.2: field_phase_id 1 → frame A → colour_frame_index 0.
-  EXPECT_EQ(orc::NtscTBCConverter::map_field_phase_to_colour_frame_index(1),
-            0);
+  EXPECT_EQ(orc::NtscTBCConverter::map_field_phase_to_colour_frame_index(1), 0);
 }
 
 TEST(NtscTBCConverterTest, ColourFrameIndex_Phase2_ReturnsOneFrameB) {
   // SMPTE 244M-2003 §3.2: field_phase_id 2 → frame B → colour_frame_index 1.
-  EXPECT_EQ(orc::NtscTBCConverter::map_field_phase_to_colour_frame_index(2),
-            1);
+  EXPECT_EQ(orc::NtscTBCConverter::map_field_phase_to_colour_frame_index(2), 1);
 }
 
 // ============================================================================
@@ -227,8 +240,7 @@ TEST(NtscTBCYCConverterTest, ErrorString_EmptyWhenAligned) {
 }
 
 TEST(NtscTBCYCConverterTest, ErrorString_NonEmptyWhenMisaligned) {
-  const std::string msg =
-      orc::NtscTBCYCConverter::yc_alignment_error(0, 1);
+  const std::string msg = orc::NtscTBCYCConverter::yc_alignment_error(0, 1);
   EXPECT_FALSE(msg.empty());
   // Message should mention NTSC.
   EXPECT_NE(msg.find("NTSC"), std::string::npos);
@@ -255,14 +267,15 @@ TEST(PalMTBCConverterTest, LevelMapping_WhiteInputYieldsCVBSWhite) {
 // PalMTBCConverter — frame assembly
 // ============================================================================
 
-TEST(PalMTBCConverterTest, AssembleFrame_OutputSampleCountEqualsKPalMFrameSamples) {
+TEST(PalMTBCConverterTest,
+     AssembleFrame_OutputSampleCountEqualsKPalMFrameSamples) {
   auto f1 = make_field_u16(kPalMF1Lines, kPalMLineW,
                            static_cast<uint16_t>(kRefBlanking));
   auto f2 = make_field_u16(kPalMF2Lines, kPalMLineW,
                            static_cast<uint16_t>(kRefBlanking));
 
-  const auto frame = orc::PalMTBCConverter::assemble_frame(
-      f1, f2, kRefBlanking, kRefWhite);
+  const auto frame =
+      orc::PalMTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
   EXPECT_EQ(static_cast<int32_t>(frame.size()), orc::kPalMFrameSamples);
 }
@@ -273,7 +286,7 @@ TEST(PalMTBCConverterTest, AssembleFrame_ThrowsOnWrongFieldSize) {
   auto f2 = make_field_u16(kPalMF2Lines, kPalMLineW,
                            static_cast<uint16_t>(kRefBlanking));
   EXPECT_THROW(orc::PalMTBCConverter::assemble_frame(bad_f1, f2, kRefBlanking,
-                                                      kRefWhite),
+                                                     kRefWhite),
                std::invalid_argument);
 }
 
@@ -284,12 +297,13 @@ TEST(PalMTBCConverterTest, AssembleFrame_OrthogonalNoExtraSamples) {
   auto f2 = make_field_u16(kPalMF2Lines, kPalMLineW,
                            static_cast<uint16_t>(kRefBlanking));
 
-  const auto frame = orc::PalMTBCConverter::assemble_frame(
-      f1, f2, kRefBlanking, kRefWhite);
+  const auto frame =
+      orc::PalMTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
-  EXPECT_EQ(frame.size(),
-            static_cast<size_t>(kPalMF1Lines) * static_cast<size_t>(kPalMLineW) +
-                static_cast<size_t>(kPalMF2Lines) * static_cast<size_t>(kPalMLineW));
+  EXPECT_EQ(
+      frame.size(),
+      static_cast<size_t>(kPalMF1Lines) * static_cast<size_t>(kPalMLineW) +
+          static_cast<size_t>(kPalMF2Lines) * static_cast<size_t>(kPalMLineW));
 }
 
 // ============================================================================

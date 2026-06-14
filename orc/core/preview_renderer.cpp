@@ -21,7 +21,7 @@
 
 #include "colour_preview_conversion.h"
 #include "colour_preview_provider.h"
-#include "cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
 #include "dag_executor.h"
 #include "logging.h"
 #include "plugin_safe_call.h"

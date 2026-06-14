@@ -41,7 +41,7 @@ class IColourPreviewProvider {
   std::optional<ColourFrameCarrier> get_colour_preview_carrier(
       uint64_t frame_index) const {
     return get_colour_preview_carrier(frame_index,
-                                     PreviewNavigationHint::Random);
+                                      PreviewNavigationHint::Random);
   }
 };
 

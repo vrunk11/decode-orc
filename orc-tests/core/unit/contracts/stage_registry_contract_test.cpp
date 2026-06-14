@@ -158,7 +158,9 @@ TEST(StageRegistryContractTest, Migrated_StagesLoadFromRuntimePlugins) {
   }
 
   EXPECT_TRUE(loaded_stage_names.count("tbc_source") > 0);
-  EXPECT_TRUE(loaded_stage_names.count("cvbs_source") > 0);
+  EXPECT_TRUE(loaded_stage_names.count("PAL_CVBS_Source") > 0);
+  EXPECT_TRUE(loaded_stage_names.count("NTSC_CVBS_Source") > 0);
+  EXPECT_TRUE(loaded_stage_names.count("PALM_CVBS_Source") > 0);
   EXPECT_TRUE(loaded_stage_names.count("frame_field_swap") > 0);
   EXPECT_TRUE(loaded_stage_names.count("frame_map") > 0);
   EXPECT_TRUE(loaded_stage_names.count("frame_phase_corrector") > 0);
@@ -174,7 +176,7 @@ TEST(StageRegistryContractTest, Migrated_StagesLoadFromRuntimePlugins) {
   EXPECT_TRUE(loaded_stage_names.count("ffmpeg_video_sink") > 0);
   EXPECT_TRUE(loaded_stage_names.count("daphne_vbi_sink") > 0);
   EXPECT_TRUE(loaded_stage_names.count("ld_sink") > 0);
-  EXPECT_TRUE(loaded_stage_names.count("cvbs_sink") > 0);
+  EXPECT_TRUE(loaded_stage_names.count("CVBSSink") > 0);
   EXPECT_TRUE(loaded_stage_names.count("RawEFMSink") > 0);
   EXPECT_TRUE(loaded_stage_names.count("EFMSink") > 0);
   EXPECT_TRUE(loaded_stage_names.count("AC3RFSink") > 0);

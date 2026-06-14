@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 
+#include <cvbs_signal_constants.h>
 #include "../include/field_id.h"
 #include "../include/logging.h"
 #include "../include/observation_context.h"
@@ -529,11 +530,13 @@ void BiphaseObserver::process_field(
 
   const auto& video_params = video_params_opt.value();
 
-  // Calculate IRE zero-crossing point (midpoint between black and white)
-  uint16_t zero_crossing = static_cast<uint16_t>(
-      (video_params.white_16b_ire + video_params.black_16b_ire) / 2);
+  // Calculate IRE zero-crossing point (midpoint between black and white).
+  // ld-decode TBC 16-bit domain normative levels (kTbcBlanking / kTbcWhite).
+  uint16_t zero_crossing =
+      static_cast<uint16_t>((kTbcWhite + kTbcBlanking) / 2);
   size_t active_start = video_params.active_video_start;
-  double sample_rate = static_cast<double>(video_params.sample_rate);
+  // 4FSC sample rate is fully determined by the video system.
+  double sample_rate = sample_rate_from_system(video_params.system);
 
   // Decode lines 16, 17, 18 (VBI lines use 1-based numbering in specs, 0-based
   // in code) Lines 15, 16, 17 in 0-based indexing

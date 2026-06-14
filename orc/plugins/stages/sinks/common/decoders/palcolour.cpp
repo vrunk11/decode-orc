@@ -14,6 +14,8 @@
 
 #include "palcolour.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -151,10 +153,14 @@ void PalColour::buildLookUpTables() {
   // SMPTE 170M-2004: NTSC burst reference is the -I axis.
   // ITU-R BT.1700-1 Annex 1 Part B: PAL-M burst reference follows PAL-M
   // conventions (same sign convention as PAL for V-switch).
-  if (videoParameters.field_height != 263) {
-    for (int32_t i = 0; i < videoParameters.field_width; i++) {
-      const double rad =
-          2 * M_PI * i * videoParameters.fsc / videoParameters.sample_rate;
+  const double fsc = fsc_from_system(videoParameters.system);
+  const double sample_rate = sample_rate_from_system(videoParameters.system);
+  const int32_t field_width = videoParameters.frame_width_nominal;
+  const size_t padded_field_height =
+      calculate_padded_field_height(videoParameters.system);
+  if (padded_field_height != 263) {
+    for (int32_t i = 0; i < field_width; i++) {
+      const double rad = 2 * M_PI * i * fsc / sample_rate;
       sine[i] = sin(rad);
       cosine[i] = cos(rad);
     }
@@ -162,9 +168,8 @@ void PalColour::buildLookUpTables() {
     // HACK - For whatever reason Pal-M ends up with the vectors swapped and out
     // of phase swapping the cos and sin references seem to work around that.
     // TODO(sdi): Find a proper solution to this.
-    for (int32_t i = 0; i < videoParameters.field_width; i++) {
-      const double rad =
-          2 * M_PI * i * videoParameters.fsc / videoParameters.sample_rate;
+    for (int32_t i = 0; i < field_width; i++) {
+      const double rad = 2 * M_PI * i * fsc / sample_rate;
       sine[i] = cos(rad);
       cosine[i] = sin(rad);
     }
@@ -196,8 +201,8 @@ void PalColour::buildLookUpTables() {
   // FILTER_SIZE must be wide enough to hold both filters (and ideally no
   // wider, else we're doing more computation than we need to).
   // XXX where does the 0.5* come from?
-  const double ca = 0.5 * videoParameters.sample_rate / chromaBandwidthHz;
-  const double ya = 0.5 * videoParameters.sample_rate / chromaBandwidthHz;
+  const double ca = 0.5 * sample_rate / chromaBandwidthHz;
+  const double ya = 0.5 * sample_rate / chromaBandwidthHz;
   assert(FILTER_SIZE >= static_cast<int32_t>(ca));
   assert(FILTER_SIZE >= static_cast<int32_t>(ya));
 
@@ -395,11 +400,12 @@ void PalColour::decodeFieldYC(const SourceField& inputField,
     double* outV = componentFrame.v(lineNumber);
 
     // Apply 2D chroma filter to extract U and V from the C channel
-    apply2DChromaFilter(inputField, line, fieldLine, firstLine, lastLine,
-                        outU, outV);
+    apply2DChromaFilter(inputField, line, fieldLine, firstLine, lastLine, outU,
+                        outV);
 
     // Copy clean Y data directly (no filtering needed for YC sources)
-    const int16_t* yLine = inputField.getLumaLine(static_cast<size_t>(fieldLine));
+    const int16_t* yLine =
+        inputField.getLumaLine(static_cast<size_t>(fieldLine));
     const auto endPos = std::min(videoParameters.active_video_end, MAX_WIDTH);
     for (int32_t i = videoParameters.active_video_start; i < endPos; i++) {
       int32_t outIdx = videoParameters.active_area_cropping_applied
@@ -419,10 +425,9 @@ void PalColour::decodeFieldYC(const SourceField& inputField,
 // This is shared between composite and YC decode paths (YC path only in
 // practice, since composite uses the 2D filter inside decodeLine).
 void PalColour::apply2DChromaFilter(const SourceField& inputField,
-                                    const LineInfo& line,
-                                    int32_t fieldLine, int32_t firstLine,
-                                    int32_t lastLine, double* outU,
-                                    double* outV) {
+                                    const LineInfo& line, int32_t fieldLine,
+                                    int32_t firstLine, int32_t lastLine,
+                                    double* outU, double* outV) {
   // Black line used when the filter needs to look outside the field.
   static constexpr int16_t blackLine[MAX_WIDTH] = {0};
 
@@ -516,7 +521,7 @@ PalColour::LineInfo::LineInfo(int32_t _number) : number(_number) {}
 // use_chroma_channel: true to read from the C channel (YC path), false for
 // composite (or the V-switch is detected on the composite channel).
 void PalColour::detectBurst(LineInfo& line, const SourceField& inputField,
-                             bool use_chroma_channel) {
+                            bool use_chroma_channel) {
   // Dummy black line, used when the filter needs to look outside the field.
   static constexpr int16_t blackLine[MAX_WIDTH] = {0};
 
@@ -553,8 +558,15 @@ void PalColour::detectBurst(LineInfo& line, const SourceField& inputField,
   //
   // EBU Tech. 3280-E §1.2: PAL burst phase at 135°/225° relative to +U axis.
   double bp = 0, bq = 0, bpo = 0, bqo = 0;
-  for (int32_t i = videoParameters.colour_burst_start;
-       i < videoParameters.colour_burst_end; i++) {
+  const auto [burst_start, burst_end] =
+      colour_burst_range(videoParameters.system);
+  if (burst_end > videoParameters.frame_width_nominal) {
+    line.bp = 0.0;
+    line.bq = 0.0;
+    line.Vsw = -1;
+    return;
+  }
+  for (int32_t i = burst_start; i < burst_end; i++) {
     // Promote int16_t to int32_t before addition to avoid signed overflow.
     const double d0 = in0[i] - (static_cast<int32_t>(in3[i]) + in4[i]) / 2.0;
     bp += (d0 / 2.0) * sine[i];
@@ -565,8 +577,7 @@ void PalColour::detectBurst(LineInfo& line, const SourceField& inputField,
   }
 
   // Normalise the sums above
-  const int32_t colourBurstLength =
-      videoParameters.colour_burst_end - videoParameters.colour_burst_start;
+  const int32_t colourBurstLength = burst_end - burst_start;
   bp /= colourBurstLength;
   bq /= colourBurstLength;
   bpo /= colourBurstLength;
@@ -678,7 +689,7 @@ void PalColour::decodeLine(const SourceField& inputField,
       return inputField.getLine(static_cast<size_t>(ln));
     } else {
       return chromaData +
-             static_cast<ptrdiff_t>(ln * videoParameters.field_width);
+             static_cast<ptrdiff_t>(ln * videoParameters.frame_width_nominal);
     }
   };
 
@@ -811,8 +822,7 @@ void PalColour::decodeLine(const SourceField& inputField,
 
   // Composite signal for luma computation (int16_t path); accessed via
   // getLine() to handle PAL non-uniform line lengths correctly.
-  const int16_t* comp =
-      inputField.getLine(static_cast<size_t>(line.number));
+  const int16_t* comp = inputField.getLine(static_cast<size_t>(line.number));
 
   // Pointers to component output
   const int32_t absoluteLineNumber = (line.number * 2) + inputField.getOffset();

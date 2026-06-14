@@ -9,6 +9,7 @@
 
 #include "white_flag_observer.h"
 
+#include <cvbs_signal_constants.h>
 #include "logging.h"
 
 namespace orc {
@@ -37,14 +38,9 @@ void WhiteFlagObserver::process_field(
     return;
   }
 
-  uint16_t zero_crossing = 0;
-  if (auto video_params_opt = representation.get_video_parameters()) {
-    const auto& vp = *video_params_opt;
-    zero_crossing = static_cast<uint16_t>(
-        ((vp.white_16b_ire - vp.black_16b_ire) / 2) + vp.black_16b_ire);
-  } else {
-    zero_crossing = static_cast<uint16_t>((50000 + 15000) / 2);
-  }
+  // IRE zero-crossing: midpoint of ld-decode TBC 16-bit normative range.
+  constexpr uint16_t zero_crossing =
+      static_cast<uint16_t>((kTbcWhite - kTbcBlanking) / 2 + kTbcBlanking);
 
   size_t active_start = descriptor->width / 8;
   size_t active_end = descriptor->width * 7 / 8;

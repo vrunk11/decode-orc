@@ -66,20 +66,22 @@ struct SourceField {
   // -------------------------------------------------------------------------
   // Geometry
   // -------------------------------------------------------------------------
-  // Number of lines in this field (e.g. 313 for PAL field 1, 263 for NTSC field 1).
+  // Number of lines in this field (e.g. 313 for PAL field 1, 263 for NTSC field
+  // 1).
   size_t line_count = 0;
 
-  // Nominal samples per line.  For PAL this is 1135; for NTSC 910; for PAL_M 909.
-  // PAL non-orthogonal lines carry one extra sample — use line_ptrs in that case.
+  // Nominal samples per line.  For PAL this is 1135; for NTSC 910; for PAL_M
+  // 909. PAL non-orthogonal lines carry one extra sample — use line_ptrs in
+  // that case.
   size_t samples_per_line = 0;
 
   // Per-line pointers for PAL non-uniform lines.  Non-empty only for PAL
   // composite and YC fields.  When non-empty, line k starts at line_ptrs[k]
   // (for both the composite `data` and YC `luma_data`/`chroma_data` paths).
   // luma_line_ptrs and chroma_line_ptrs are populated for YC PAL fields.
-  std::vector<const int16_t*> line_ptrs;        // Composite or luma pointers.
-  std::vector<const int16_t*> luma_line_ptrs;   // YC luma pointers (PAL).
-  std::vector<const int16_t*> chroma_line_ptrs; // YC chroma pointers (PAL).
+  std::vector<const int16_t*> line_ptrs;         // Composite or luma pointers.
+  std::vector<const int16_t*> luma_line_ptrs;    // YC luma pointers (PAL).
+  std::vector<const int16_t*> chroma_line_ptrs;  // YC chroma pointers (PAL).
 
   // -------------------------------------------------------------------------
   // Helpers

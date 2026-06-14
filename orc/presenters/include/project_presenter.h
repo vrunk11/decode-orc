@@ -463,8 +463,7 @@ class ProjectPresenter : public IProjectPresenter {
    * @param progress_callback Optional progress callback
    * @return true on success
    */
-  bool triggerNode(NodeID node_id,
-                   ProgressCallback progress_callback) override;
+  bool triggerNode(NodeID node_id, ProgressCallback progress_callback) override;
 
   /**
    * @brief Trigger all sink nodes in the project

@@ -183,15 +183,18 @@ class PreviewDialog : public QDialog {
    *
    * @param node_id          Stage node identifier
    * @param stage_index      1-based pipeline stage number
-   * @param field_index      0-based field index (used as frame_id during migration)
+   * @param field_index      0-based field index (used as frame_id during
+   * migration)
    * @param line_number      1-based field line number
    * @param sample_x         Sample X position that was clicked
-   * @param samples          16-bit composite samples (converted to int16_t internally)
+   * @param samples          16-bit composite samples (converted to int16_t
+   * internally)
    * @param video_params     Optional video parameters for level markers
    * @param preview_image_width  Pixel width of preview image
    * @param original_sample_x    Preview-space X (for cross-hair sync)
    * @param original_image_y     Preview-space Y (for refresh)
-   * @param preview_mode     Current preview mode (kept for callers; ignored internally)
+   * @param preview_mode     Current preview mode (kept for callers; ignored
+   * internally)
    * @param y_samples        Optional luma samples (YC sources)
    * @param c_samples        Optional chroma samples (YC sources)
    */

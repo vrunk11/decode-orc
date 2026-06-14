@@ -212,7 +212,8 @@ class ChromaSinkStage : public DAGStage,
   bool embed_audio_;            // Embed analogue audio in output (MP4/MKV only)
   bool embed_closed_captions_;  // Embed closed captions in MP4 output (MP4
                                 // only, converted to mov_text)
-  bool embed_chapter_metadata_;  // Write chapter markers from VBI data (MKV/MP4/MOV)
+  bool embed_chapter_metadata_;  // Write chapter markers from VBI data
+                                 // (MKV/MP4/MOV)
 
   // Encoder quality parameters (for FFmpeg output)
   std::string encoder_preset_;    // "fast", "medium", "slow", "veryslow"
@@ -242,9 +243,9 @@ class ChromaSinkStage : public DAGStage,
   // Build a non-owning SourceField view into the VFrameR frame buffer.
   // For PAL, populates line_ptrs (and luma/chroma_line_ptrs for YC sources)
   // to handle non-uniform 1135/1136-sample lines.
-  SourceField convertToSourceField(const orc::VideoFrameRepresentation* vfr,
-                                   orc::FrameID frame_id, bool is_first_field,
-                                   const orc::SourceParameters& videoParams) const;
+  SourceField convertToSourceField(
+      const orc::VideoFrameRepresentation* vfr, orc::FrameID frame_id,
+      bool is_first_field, const orc::SourceParameters& videoParams) const;
 
   bool writeOutputFile(
       const std::string& output_path, const std::string& format,

@@ -44,7 +44,7 @@ class PalTBCConverter {
   // headroom below sync tip and above peak white is preserved in the int16_t
   // result.
   static int16_t tbc_to_cvbs(uint16_t tbc_sample, int32_t tbc_blanking,
-                              int32_t tbc_white);
+                             int32_t tbc_white);
 
   // -------------------------------------------------------------------------
   // Frame assembly

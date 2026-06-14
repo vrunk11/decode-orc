@@ -9,6 +9,9 @@
 
 #include "fieldtimingwidget.h"
 
+#include <common_types.h>
+#include <cvbs_signal_constants.h>
+
 #include <QApplication>
 #include <QMouseEvent>
 #include <QPainter>
@@ -22,6 +25,22 @@
 
 #include "plotwidget.h"
 #include "theme_color_tokens.h"
+
+// Convert presenter-layer VideoSystem to the core orc::VideoSystem used by
+// calculate_padded_field_height().  The two enums are mirrors; this keeps the
+// GUI layer decoupled from core types.
+static orc::VideoSystem toOrcVideoSystem(orc::presenters::VideoSystem sys) {
+  switch (sys) {
+    case orc::presenters::VideoSystem::PAL:
+      return orc::VideoSystem::PAL;
+    case orc::presenters::VideoSystem::NTSC:
+      return orc::VideoSystem::NTSC;
+    case orc::presenters::VideoSystem::PAL_M:
+      return orc::VideoSystem::PAL_M;
+    default:
+      return orc::VideoSystem::Unknown;
+  }
+}
 
 namespace {
 std::vector<uint16_t> buildCombinedYPlusC(
@@ -65,19 +84,10 @@ double FieldTimingWidget::convertSampleToMV(uint16_t sample) const {
 
   double mv_value = static_cast<double>(sample);
 
-  // Convert to mV via IRE if we have video parameters
-  if (vp.blanking_ire >= 0 && vp.white_ire >= 0) {
-    // Use blanking as reference for 0 IRE, white as 100 IRE
-    double ire =
-        (mv_value - vp.blanking_ire) * 100.0 / (vp.white_ire - vp.blanking_ire);
-    // Then convert IRE to mV
-    mv_value = ire * ire_to_mv;
-  } else if (vp.black_ire >= 0 && vp.white_ire >= 0) {
-    // Fallback to black level if blanking is not available
-    double ire =
-        (mv_value - vp.black_ire) * 100.0 / (vp.white_ire - vp.black_ire);
-    mv_value = ire * ire_to_mv;
-  }
+  // TBC samples are in the 16-bit domain; use fixed TBC reference levels.
+  constexpr double kTbcRange = orc::kTbcWhite - orc::kTbcBlanking;
+  double ire = (mv_value - orc::kTbcBlanking) * 100.0 / kTbcRange;
+  mv_value = ire * ire_to_mv;
 
   return mv_value;
 }
@@ -98,25 +108,10 @@ double FieldTimingWidget::getMVRange(double& min_mv, double& max_mv) const {
     ire_to_mv = 7.143;
   }
 
-  if (vp.blanking_ire >= 0 && vp.white_ire >= 0) {
-    // Convert 16-bit extremes to mV via IRE
-    double raw_min_ire =
-        (0.0 - vp.blanking_ire) * 100.0 / (vp.white_ire - vp.blanking_ire);
-    double raw_max_ire =
-        (65535.0 - vp.blanking_ire) * 100.0 / (vp.white_ire - vp.blanking_ire);
-    min_mv = raw_min_ire * ire_to_mv;
-    max_mv = raw_max_ire * ire_to_mv;
-  } else if (vp.black_ire >= 0 && vp.white_ire >= 0) {
-    double raw_min_ire =
-        (0.0 - vp.black_ire) * 100.0 / (vp.white_ire - vp.black_ire);
-    double raw_max_ire =
-        (65535.0 - vp.black_ire) * 100.0 / (vp.white_ire - vp.black_ire);
-    min_mv = raw_min_ire * ire_to_mv;
-    max_mv = raw_max_ire * ire_to_mv;
-  } else {
-    min_mv = -200;
-    max_mv = 1000;
-  }
+  // TBC samples are in the 16-bit domain; use fixed TBC reference levels.
+  constexpr double kTbcRange = orc::kTbcWhite - orc::kTbcBlanking;
+  min_mv = (0.0 - orc::kTbcBlanking) * 100.0 / kTbcRange * ire_to_mv;
+  max_mv = (65535.0 - orc::kTbcBlanking) * 100.0 / kTbcRange * ire_to_mv;
 
   return max_mv - min_mv;
 }
@@ -198,13 +193,14 @@ void FieldTimingWidget::scrollToMarker() {
 }
 
 void FieldTimingWidget::scrollToLine(int line_number) {
-  if (!video_params_.has_value() || video_params_->field_width <= 0) {
+  if (!video_params_.has_value() || video_params_->frame_width_nominal <= 0) {
     return;
   }
 
   // Convert line number (1-based) to sample position
   // Line 1 starts at sample 0
-  int line_start_sample = (line_number - 1) * video_params_->field_width;
+  int line_start_sample =
+      (line_number - 1) * video_params_->frame_width_nominal;
 
   // Calculate the visible width in samples
   int visible_width =
@@ -294,7 +290,7 @@ void FieldTimingWidget::setDraftRenderMode(bool enabled) {
 double FieldTimingWidget::getBasePixelsPerSample() const {
   // Calculate pixels per sample needed to fit ALL samples horizontally at
   // zoom_factor = 1.0 This means at zoom 1.0, we show all available lines
-  if (!video_params_.has_value() || video_params_->field_width <= 0) {
+  if (!video_params_.has_value() || video_params_->frame_width_nominal <= 0) {
     return PIXELS_PER_SAMPLE;  // Fallback to default
   }
 
@@ -513,7 +509,7 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
       QString label = QString::number(static_cast<int>(mv_value)) + " mV";
       // Draw label to the left of the graph area, well separated from the axis
       QRect label_rect(MARGIN, y - 6, graph_area.left() - MARGIN - 5, 12);
-      painter.drawText(label_rect, Qt::AlignRight | Qt::AlignVCenter, label);
+      painter.drawText(label_rect, static_cast<int>(Qt::AlignRight | Qt::AlignVCenter), label);
     }
   }
 
@@ -542,31 +538,41 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
       }
     };
 
-    // Draw level lines
-    if (vp.blanking_ire >= 0 && vp.white_ire >= 0) {
-      // Blanking level - convert the blanking_ire sample value to mV
-      double blanking_mv = convertSampleToMV(vp.blanking_ire);
-      drawLevelLine(blanking_mv, theme_tokens::neutralLine(palette, 0.35),
-                    Qt::DashLine);
+    // Draw level lines using TBC 16-bit reference levels.
+    double blanking_mv = convertSampleToMV(orc::kTbcBlanking);
+    drawLevelLine(blanking_mv, theme_tokens::neutralLine(palette, 0.35),
+                  Qt::DashLine);
 
-      // Black level (if different from blanking)
-      if (vp.black_ire >= 0 && vp.black_ire != vp.blanking_ire) {
-        double black_mv = convertSampleToMV(vp.black_ire);
-        drawLevelLine(black_mv, theme_tokens::neutralLine(palette, 0.5),
-                      Qt::DashDotLine);
-      }
-
-      // White level
-      double white_mv = convertSampleToMV(vp.white_ire);
-      drawLevelLine(white_mv, theme_tokens::neutralLine(palette, 0.7),
-                    Qt::DashLine);
+    // Draw black level if it differs from blanking (NTSC 7.5 IRE pedestal).
+    if (vp.black_level >= 0 && vp.blanking_level >= 0 &&
+        vp.white_level > vp.blanking_level &&
+        vp.black_level != vp.blanking_level) {
+      const int32_t tbc_black =
+          orc::kTbcBlanking +
+          static_cast<int32_t>((static_cast<double>(vp.black_level -
+                                                     vp.blanking_level) /
+                                 (vp.white_level - vp.blanking_level)) *
+                                (orc::kTbcWhite - orc::kTbcBlanking));
+      double black_mv = convertSampleToMV(tbc_black);
+      drawLevelLine(black_mv, theme_tokens::neutralLine(palette, 0.5),
+                    Qt::DashDotLine);
     }
+
+    double white_mv = convertSampleToMV(orc::kTbcWhite);
+    drawLevelLine(white_mv, theme_tokens::neutralLine(palette, 0.7),
+                  Qt::DashLine);
   }
 
   // Draw vertical field line markers
   if (video_params_.has_value()) {
     const auto& vp = video_params_.value();
-    if (vp.field_width > 0 && vp.field_height > 0) {
+    // Use frame_width_nominal (canonical field name) for samples-per-line;
+    // derive field height from the video system rather than the deprecated
+    // field_height field in VideoParametersView.
+    const int fw = vp.frame_width_nominal;
+    const int fh = static_cast<int>(
+        orc::calculate_padded_field_height(toOrcVideoSystem(vp.system)));
+    if (fw > 0 && fh > 0) {
       // Determine which samples to use for line count
       size_t total_samples =
           std::max({field1_samples_.size(), field2_samples_.size(),
@@ -585,7 +591,7 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
       // Adapt marker density to current zoom level so marker drawing cost
       // scales smoothly instead of jumping at an arbitrary visible-line
       // threshold.
-      double pixels_per_line = vp.field_width * effective_pixels_per_sample;
+      double pixels_per_line = fw * effective_pixels_per_sample;
       int marker_interval = 1;
       int label_interval = 1;
       if (pixels_per_line > 0.0) {
@@ -601,8 +607,8 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
       painter.setFont(line_num_font);
 
       // Draw vertical markers at field line boundaries
-      for (int line = 0; line * vp.field_width < end_sample; ++line) {
-        int sample_pos = line * vp.field_width;
+      for (int line = 0; line * fw < end_sample; ++line) {
+        int sample_pos = line * fw;
         if (sample_pos >= start_sample && sample_pos <= end_sample) {
           // Only draw markers at the specified interval.
           if (line % marker_interval == 0) {
@@ -765,8 +771,9 @@ void FieldTimingWidget::drawSamples(QPainter& painter, const QRect& graph_area,
   getMVRange(min_mv, max_mv);
 
   int lines_visible = 0;
-  if (video_params_.has_value() && video_params_->field_width > 0) {
-    lines_visible = std::max(1, samples_per_view / video_params_->field_width);
+  if (video_params_.has_value() && video_params_->frame_width_nominal > 0) {
+    lines_visible =
+        std::max(1, samples_per_view / video_params_->frame_width_nominal);
   }
 
   if (draft_render_mode_) {
@@ -865,7 +872,7 @@ void FieldTimingWidget::drawSamples(QPainter& painter, const QRect& graph_area,
       if (bucket_start >= bucket_end ||
           bucket_start >= static_cast<int>(samples.size())) {
         continue;
-}
+      }
 
       // Find min and max sample values in this pixel column
       uint16_t min_sample = samples[bucket_start];

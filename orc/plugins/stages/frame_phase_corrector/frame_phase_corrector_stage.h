@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <cvbs_signal_constants.h>
+
 #include <cstddef>
 #include <map>
 #include <memory>
@@ -18,7 +20,6 @@
 
 #include "../../../sdk/include/orc/plugin/orc_stage_preview.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
-#include "cvbs_signal_constants.h"
 #include "frame_descriptor.h"
 #include "frame_id.h"
 #include "stage_parameter.h"
@@ -163,14 +164,12 @@ class FramePhaseCorrectorStage : public DAGStage,
   // the colour burst region.  Returns the mean burst phase angle in degrees,
   // or a sentinel value when the burst is absent.
   static double measure_field_burst_phase(const VideoFrameRepresentation& src,
-                                          FrameID id,
-                                          bool second_field,
+                                          FrameID id, bool second_field,
                                           VideoSystem sys);
 
   // Determine whether the two field blocks in the frame appear to be swapped
   // based on burst phase progression.
-  static bool detect_field_swap(const VideoFrameRepresentation& src,
-                                FrameID id,
+  static bool detect_field_swap(const VideoFrameRepresentation& src, FrameID id,
                                 VideoSystem sys);
 
   // Expected next colour_frame_index.

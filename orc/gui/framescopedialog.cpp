@@ -9,6 +9,8 @@
 
 #include "framescopedialog.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <QHBoxLayout>
 #include <QHideEvent>
 #include <QLabel>
@@ -123,24 +125,30 @@ void FrameScopeDialog::setupUI() {
   channel_selector_->setCurrentIndex(2);
   channel_selector_->setVisible(false);
   channel_selector_label_->setVisible(false);
-  connect(channel_selector_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-          this, &FrameScopeDialog::onChannelSelectionChanged);
+  connect(channel_selector_,
+          QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          &FrameScopeDialog::onChannelSelectionChanged);
   controlRow->addWidget(channel_selector_label_);
   controlRow->addWidget(channel_selector_);
 
   // Line numbering mode selector
   numbering_mode_label_ = new QLabel("Line numbering:");
   numbering_mode_combo_ = new QComboBox(this);
-  numbering_mode_combo_->addItem("Frame flat (0-based)",
-                                 static_cast<int>(orc::LineNumberingMode::kFrameFlat0Based));
-  numbering_mode_combo_->addItem("Frame sequential (1-based)",
-                                 static_cast<int>(orc::LineNumberingMode::kFrameSequential1Based));
-  numbering_mode_combo_->addItem("Field relative",
-                                 static_cast<int>(orc::LineNumberingMode::kFieldRelative));
-  numbering_mode_combo_->addItem("Broadcast interlaced",
-                                 static_cast<int>(orc::LineNumberingMode::kBroadcastInterlaced));
-  connect(numbering_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-          this, &FrameScopeDialog::onNumberingModeChanged);
+  numbering_mode_combo_->addItem(
+      "Frame flat (0-based)",
+      static_cast<int>(orc::LineNumberingMode::kFrameFlat0Based));
+  numbering_mode_combo_->addItem(
+      "Frame sequential (1-based)",
+      static_cast<int>(orc::LineNumberingMode::kFrameSequential1Based));
+  numbering_mode_combo_->addItem(
+      "Field relative",
+      static_cast<int>(orc::LineNumberingMode::kFieldRelative));
+  numbering_mode_combo_->addItem(
+      "Broadcast interlaced",
+      static_cast<int>(orc::LineNumberingMode::kBroadcastInterlaced));
+  connect(numbering_mode_combo_,
+          QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          &FrameScopeDialog::onNumberingModeChanged);
   controlRow->addWidget(numbering_mode_label_);
   controlRow->addWidget(numbering_mode_combo_);
 
@@ -216,8 +224,7 @@ QString FrameScopeDialog::formatLineLabel() const {
   if (!current_video_params_.has_value()) {
     return QString::number(current_frame_line_);
   }
-  const orc::VideoSystem sys =
-      toOrcVideoSystem(current_video_params_->system);
+  const orc::VideoSystem sys = toOrcVideoSystem(current_video_params_->system);
   const orc::LineNumberingMode mode =
       indexToMode(numbering_mode_combo_->currentIndex());
   const orc::LineLabel label =
@@ -273,17 +280,15 @@ void FrameScopeDialog::setFrameLineSamples(
     }
   }
   const QString yc_suffix = is_yc_source_ ? " (YC)" : "";
-  setWindowTitle(
-      QString("Stage %1 – Frame %2, Line %3%4%5")
-          .arg(stage_index)
-          .arg(frame_id + 1)  // 1-based frame number for display
-          .arg(formatLineLabel())
-          .arg(system_suffix)
-          .arg(yc_suffix));
+  setWindowTitle(QString("Stage %1 – Frame %2, Line %3%4%5")
+                     .arg(stage_index)
+                     .arg(frame_id + 1)  // 1-based frame number for display
+                     .arg(formatLineLabel())
+                     .arg(system_suffix)
+                     .arg(yc_suffix));
 
-  ORC_LOG_DEBUG(
-      "FrameScopeDialog: frameID={}, frameLine={}, line_label={}",
-      frame_id, frame_line, formatLineLabel().toStdString());
+  ORC_LOG_DEBUG("FrameScopeDialog: frameID={}, frameLine={}, line_label={}",
+                frame_id, frame_line, formatLineLabel().toStdString());
 
   if (samples.empty() && !is_yc_source_) {
     plot_widget_->showNoDataMessage("No data available for this line");
@@ -364,9 +369,10 @@ void FrameScopeDialog::updatePlotData() {
     points.reserve(static_cast<qsizetype>(samps.size()));
 
     double us_per_sample = 1.0;
-    if (current_video_params_.has_value() &&
-        current_video_params_->sample_rate > 0) {
-      us_per_sample = 1000000.0 / current_video_params_->sample_rate;
+    if (current_video_params_.has_value()) {
+      const double sr = orc::sample_rate_from_system(
+          toOrcVideoSystem(current_video_params_->system));
+      if (sr > 0.0) us_per_sample = 1000000.0 / sr;
     }
 
     for (size_t i = 0; i < samps.size(); ++i) {
@@ -399,22 +405,37 @@ void FrameScopeDialog::updatePlotData() {
     } else {
       line_series_->setTitle("Y+C");
     }
-    if (y_series_) { plot_widget_->removeSeries(y_series_); y_series_ = nullptr; }
-    if (c_series_) { plot_widget_->removeSeries(c_series_); c_series_ = nullptr; }
-    line_series_->setPen(QPen(
-        theme_tokens::plotColor(theme_tokens::PlotColorToken::CompositePrimary, is_dark), 1));
+    if (y_series_) {
+      plot_widget_->removeSeries(y_series_);
+      y_series_ = nullptr;
+    }
+    if (c_series_) {
+      plot_widget_->removeSeries(c_series_);
+      c_series_ = nullptr;
+    }
+    line_series_->setPen(
+        QPen(theme_tokens::plotColor(
+                 theme_tokens::PlotColorToken::CompositePrimary, is_dark),
+             1));
     line_series_->setData(convertSamplesToPoints(combined));
 
-  } else if (is_yc_source_ && channel_mode == 2 && !current_y_samples_.empty() &&
-             !current_c_samples_.empty()) {
+  } else if (is_yc_source_ && channel_mode == 2 &&
+             !current_y_samples_.empty() && !current_c_samples_.empty()) {
     plot_widget_->setLegendEnabled(true);
     if (!y_series_) y_series_ = plot_widget_->addSeries("Luma (Y)");
     if (!c_series_) c_series_ = plot_widget_->addSeries("Chroma (C)");
-    if (line_series_) { plot_widget_->removeSeries(line_series_); line_series_ = nullptr; }
-    y_series_->setPen(QPen(
-        theme_tokens::plotColor(theme_tokens::PlotColorToken::LumaPrimary, is_dark), 1));
-    c_series_->setPen(QPen(
-        theme_tokens::plotColor(theme_tokens::PlotColorToken::ChromaPrimary, is_dark), 1));
+    if (line_series_) {
+      plot_widget_->removeSeries(line_series_);
+      line_series_ = nullptr;
+    }
+    y_series_->setPen(
+        QPen(theme_tokens::plotColor(theme_tokens::PlotColorToken::LumaPrimary,
+                                     is_dark),
+             1));
+    c_series_->setPen(
+        QPen(theme_tokens::plotColor(
+                 theme_tokens::PlotColorToken::ChromaPrimary, is_dark),
+             1));
     y_series_->setData(convertSamplesToPoints(current_y_samples_));
     c_series_->setData(convertSamplesToPoints(current_c_samples_));
 
@@ -429,24 +450,42 @@ void FrameScopeDialog::updatePlotData() {
     } else {
       line_series_->setTitle(label);
     }
-    if (y_series_) { plot_widget_->removeSeries(y_series_); y_series_ = nullptr; }
-    if (c_series_) { plot_widget_->removeSeries(c_series_); c_series_ = nullptr; }
+    if (y_series_) {
+      plot_widget_->removeSeries(y_series_);
+      y_series_ = nullptr;
+    }
+    if (c_series_) {
+      plot_widget_->removeSeries(c_series_);
+      c_series_ = nullptr;
+    }
 
     QColor line_color;
     if (is_yc_source_ && channel_mode == 0) {
-      line_color = theme_tokens::plotColor(theme_tokens::PlotColorToken::LumaPrimary, is_dark);
+      line_color = theme_tokens::plotColor(
+          theme_tokens::PlotColorToken::LumaPrimary, is_dark);
     } else if (is_yc_source_ && channel_mode == 1) {
-      line_color = theme_tokens::plotColor(theme_tokens::PlotColorToken::ChromaPrimary, is_dark);
+      line_color = theme_tokens::plotColor(
+          theme_tokens::PlotColorToken::ChromaPrimary, is_dark);
     } else {
-      line_color = theme_tokens::plotColor(theme_tokens::PlotColorToken::CompositePrimary, is_dark);
+      line_color = theme_tokens::plotColor(
+          theme_tokens::PlotColorToken::CompositePrimary, is_dark);
     }
     line_series_->setPen(QPen(line_color, 1));
     line_series_->setData(convertSamplesToPoints(*display_samples));
 
   } else {
-    if (line_series_) { plot_widget_->removeSeries(line_series_); line_series_ = nullptr; }
-    if (y_series_) { plot_widget_->removeSeries(y_series_); y_series_ = nullptr; }
-    if (c_series_) { plot_widget_->removeSeries(c_series_); c_series_ = nullptr; }
+    if (line_series_) {
+      plot_widget_->removeSeries(line_series_);
+      line_series_ = nullptr;
+    }
+    if (y_series_) {
+      plot_widget_->removeSeries(y_series_);
+      y_series_ = nullptr;
+    }
+    if (c_series_) {
+      plot_widget_->removeSeries(c_series_);
+      c_series_ = nullptr;
+    }
     return;
   }
 
@@ -456,10 +495,10 @@ void FrameScopeDialog::updatePlotData() {
 
   if (have_10bit_levels && current_video_params_.has_value()) {
     const auto& vp = current_video_params_.value();
-    y_min_mv = cvbs_sample_to_mv(
-        static_cast<int16_t>(vp.sync_tip_level), blanking_level, white_level, a_mv);
-    y_max_mv = cvbs_sample_to_mv(
-        static_cast<int16_t>(vp.peak_level), blanking_level, white_level, a_mv);
+    y_min_mv = cvbs_sample_to_mv(static_cast<int16_t>(vp.sync_tip_level),
+                                 blanking_level, white_level, a_mv);
+    y_max_mv = cvbs_sample_to_mv(static_cast<int16_t>(vp.peak_level),
+                                 blanking_level, white_level, a_mv);
     // Add 5% headroom
     const double span = y_max_mv - y_min_mv;
     y_min_mv -= span * 0.05;
@@ -474,10 +513,14 @@ void FrameScopeDialog::updatePlotData() {
     sample_count = current_y_samples_.size();
   }
   double us_per_sample = 1.0;
-  if (current_video_params_.has_value() && current_video_params_->sample_rate > 0) {
-    us_per_sample = 1000000.0 / current_video_params_->sample_rate;
+  if (current_video_params_.has_value()) {
+    const double sr = orc::sample_rate_from_system(
+        toOrcVideoSystem(current_video_params_->system));
+    if (sr > 0.0) us_per_sample = 1000000.0 / sr;
   }
-  const double max_time_us = static_cast<double>(sample_count > 0 ? sample_count - 1 : 0) * us_per_sample;
+  const double max_time_us =
+      static_cast<double>(sample_count > 0 ? sample_count - 1 : 0) *
+      us_per_sample;
 
   plot_widget_->setAxisRange(Qt::Horizontal, 0, max_time_us);
   plot_widget_->setAxisRange(Qt::Vertical, y_min_mv, y_max_mv);
@@ -515,9 +558,10 @@ void FrameScopeDialog::updatePlotData() {
         auto* m = plot_widget_->addMarker();
         m->setStyle(PlotMarker::VLine);
         m->setPosition(QPointF(static_cast<double>(s) * ups, 0));
-        m->setPen(QPen(theme_tokens::plotColor(
-                           theme_tokens::PlotColorToken::RegionActiveVideo, is_dark),
-                       1, Qt::DashLine));
+        m->setPen(
+            QPen(theme_tokens::plotColor(
+                     theme_tokens::PlotColorToken::RegionActiveVideo, is_dark),
+                 1, Qt::DashLine));
       }
     }
 
@@ -546,14 +590,14 @@ void FrameScopeDialog::updatePlotData() {
 
       for (const auto& lv : levels) {
         if (lv.raw < 0) continue;
-        const double mv = cvbs_sample_to_mv(
-            static_cast<int16_t>(lv.raw), blanking_level, white_level, a_mv);
+        const double mv = cvbs_sample_to_mv(static_cast<int16_t>(lv.raw),
+                                            blanking_level, white_level, a_mv);
         auto* m = plot_widget_->addMarker();
         m->setStyle(PlotMarker::HLine);
         m->setPosition(QPointF(0, mv));
         m->setLabel(QString::fromUtf8(lv.label));
-        m->setPen(QPen(
-            theme_tokens::neutralLine(palette(), lv.alpha), 1, lv.style));
+        m->setPen(
+            QPen(theme_tokens::neutralLine(palette(), lv.alpha), 1, lv.style));
       }
     }
   }
@@ -568,8 +612,7 @@ void FrameScopeDialog::updateSampleMarker(int sample_x) {
   const std::vector<int16_t>* samples_for_marker = &current_samples_;
   if (is_yc_source_) {
     const int ch = channel_selector_->currentIndex();
-    samples_for_marker =
-        (ch == 1) ? &current_c_samples_ : &current_y_samples_;
+    samples_for_marker = (ch == 1) ? &current_c_samples_ : &current_y_samples_;
   }
 
   if (samples_for_marker->empty()) return;
@@ -579,7 +622,8 @@ void FrameScopeDialog::updateSampleMarker(int sample_x) {
     sample_marker_ = nullptr;
   }
 
-  if (sample_x < 0 || sample_x >= static_cast<int>(samples_for_marker->size())) {
+  if (sample_x < 0 ||
+      sample_x >= static_cast<int>(samples_for_marker->size())) {
     sample_info_label_->setText("");
     return;
   }
@@ -587,8 +631,10 @@ void FrameScopeDialog::updateSampleMarker(int sample_x) {
   current_sample_x_ = sample_x;
 
   double us_per_sample = 1.0;
-  if (current_video_params_.has_value() && current_video_params_->sample_rate > 0) {
-    us_per_sample = 1000000.0 / current_video_params_->sample_rate;
+  if (current_video_params_.has_value()) {
+    const double sr = orc::sample_rate_from_system(
+        toOrcVideoSystem(current_video_params_->system));
+    if (sr > 0.0) us_per_sample = 1000000.0 / sr;
   }
   const double time_us = static_cast<double>(sample_x) * us_per_sample;
 
@@ -618,10 +664,12 @@ void FrameScopeDialog::updateSampleMarker(int sample_x) {
       if (have_levels) {
         const auto& vp = current_video_params_.value();
         const double a_mv = active_video_mv(vp.system);
-        const double y_mv = cvbs_sample_to_mv(
-            current_y_samples_[sample_x], vp.blanking_level, vp.white_level, a_mv);
-        const double c_mv = cvbs_sample_to_mv(
-            current_c_samples_[sample_x], vp.blanking_level, vp.white_level, a_mv);
+        const double y_mv =
+            cvbs_sample_to_mv(current_y_samples_[sample_x], vp.blanking_level,
+                              vp.white_level, a_mv);
+        const double c_mv =
+            cvbs_sample_to_mv(current_c_samples_[sample_x], vp.blanking_level,
+                              vp.white_level, a_mv);
         info += QString("\nY: %1 mV  C: %2 mV")
                     .arg(y_mv, 0, 'f', 1)
                     .arg(c_mv, 0, 'f', 1);
@@ -633,8 +681,9 @@ void FrameScopeDialog::updateSampleMarker(int sample_x) {
     }
   } else if (have_levels) {
     const auto& vp = current_video_params_.value();
-    const double mv = cvbs_sample_to_mv(
-        sample_val, vp.blanking_level, vp.white_level, active_video_mv(vp.system));
+    const double mv =
+        cvbs_sample_to_mv(sample_val, vp.blanking_level, vp.white_level,
+                          active_video_mv(vp.system));
     info += QString("\nmV: %1  10-bit: %2")
                 .arg(mv, 0, 'f', 1)
                 .arg(static_cast<int>(sample_val));
@@ -687,28 +736,28 @@ void FrameScopeDialog::onNumberingModeChanged(int /*index*/) {
         break;
     }
     const QString yc_suffix = is_yc_source_ ? " (YC)" : "";
-    setWindowTitle(
-        QString("Stage %1 – Frame %2, Line %3%4%5")
-            .arg(current_stage_index_)
-            .arg(current_frame_id_ + 1)
-            .arg(formatLineLabel())
-            .arg(system_suffix)
-            .arg(yc_suffix));
+    setWindowTitle(QString("Stage %1 – Frame %2, Line %3%4%5")
+                       .arg(current_stage_index_)
+                       .arg(current_frame_id_ + 1)
+                       .arg(formatLineLabel())
+                       .arg(system_suffix)
+                       .arg(yc_suffix));
   }
 }
 
 void FrameScopeDialog::onPlotClicked(const QPointF& dataPoint) {
   double us_per_sample = 1.0;
-  if (current_video_params_.has_value() && current_video_params_->sample_rate > 0) {
-    us_per_sample = 1000000.0 / current_video_params_->sample_rate;
+  if (current_video_params_.has_value()) {
+    const double sr = orc::sample_rate_from_system(
+        toOrcVideoSystem(current_video_params_->system));
+    if (sr > 0.0) us_per_sample = 1000000.0 / sr;
   }
   int new_sample_x = qRound(dataPoint.x() / us_per_sample);
 
   const std::vector<int16_t>* samples_to_check = &current_samples_;
   if (is_yc_source_) {
     const int ch = channel_selector_->currentIndex();
-    samples_to_check =
-        (ch == 1) ? &current_c_samples_ : &current_y_samples_;
+    samples_to_check = (ch == 1) ? &current_c_samples_ : &current_y_samples_;
   }
   if (samples_to_check->empty()) return;
 
@@ -720,18 +769,18 @@ void FrameScopeDialog::onPlotClicked(const QPointF& dataPoint) {
 }
 
 void FrameScopeDialog::onLineUp() {
-  const bool has_data =
-      !current_samples_.empty() ||
-      !current_y_samples_.empty() || !current_c_samples_.empty();
+  const bool has_data = !current_samples_.empty() ||
+                        !current_y_samples_.empty() ||
+                        !current_c_samples_.empty();
   if (!has_data) return;
   emit lineNavigationRequested(-1, current_frame_id_, current_frame_line_,
                                original_sample_x_, preview_image_width_);
 }
 
 void FrameScopeDialog::onLineDown() {
-  const bool has_data =
-      !current_samples_.empty() ||
-      !current_y_samples_.empty() || !current_c_samples_.empty();
+  const bool has_data = !current_samples_.empty() ||
+                        !current_y_samples_.empty() ||
+                        !current_c_samples_.empty();
   if (!has_data) return;
   emit lineNavigationRequested(+1, current_frame_id_, current_frame_line_,
                                original_sample_x_, preview_image_width_);

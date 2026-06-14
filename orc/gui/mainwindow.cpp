@@ -18,13 +18,13 @@
 #include "ffmpegpresetdialog.h"
 #include "field_frame_presentation.h"
 #include "fieldpreviewwidget.h"
-#include "frametimingdialog.h"
 #include "fieldtimingwidget.h"
+#include "framescopedialog.h"
+#include "frametimingdialog.h"
 #include "generic_analysis_dialog.h"
 #include "hintsdialog.h"
 #include "inspection_dialog.h"
 #include "line_navigation_mapper.h"
-#include "framescopedialog.h"
 #include "logging.h"
 #include "masklineconfigdialog.h"
 #include "ntscobserverdialog.h"
@@ -124,14 +124,24 @@ orc::presenters::SourceType toPresenterSourceType(orc::SourceType type) {
 
 std::map<std::string, orc::ParameterValue>
 sourceParametersToVideoParamsStageValues(const orc::SourceParameters& params) {
-  return {{"colourBurstStart", params.colour_burst_start},
-          {"colourBurstEnd", params.colour_burst_end},
+  // Colour burst range and IRE levels derived from system constants.
+  // EBU Tech. 3280-E §1.1 (PAL) / SMPTE 244M-2003 §4.1 (NTSC) /
+  // ITU-R BT.1700-1 Annex 1 Part B (PAL_M).
+  // Colour burst sample range: EBU Tech. 3280-E Table 1 (PAL) /
+  // SMPTE 244M-2003 Table 1 (NTSC/PAL_M).
+  const int32_t cb_start = (params.system == orc::VideoSystem::PAL) ? 98 : 72;
+  const int32_t cb_end = (params.system == orc::VideoSystem::PAL) ? 138 : 108;
+  // ld-decode TBC 16-bit domain normative levels.
+  constexpr int32_t kTbcBlanking = 16384;  // 0 IRE blanking (0x4000 = 25 %)
+  constexpr int32_t kTbcWhite = 54400;     // 100 IRE white  (≈ 83 % of 65535)
+  return {{"colourBurstStart", cb_start},
+          {"colourBurstEnd", cb_end},
           {"activeVideoStart", params.active_video_start},
           {"activeVideoEnd", params.active_video_end},
-          {"firstActiveFieldLine", params.first_active_field_line},
-          {"lastActiveFieldLine", params.last_active_field_line},
-          {"white16bIRE", params.white_16b_ire},
-          {"black16bIRE", params.black_16b_ire}};
+          {"firstActiveFieldLine", params.first_active_frame_line / 2},
+          {"lastActiveFieldLine", params.last_active_frame_line / 2},
+          {"white16bIRE", kTbcWhite},
+          {"black16bIRE", kTbcBlanking}};
 }
 
 orc::ParameterValue resolveEffectiveParameterValue(
@@ -264,7 +274,8 @@ MainWindow::MainWindow(QWidget* parent)
       last_snr_mode_(orc::SNRAnalysisMode::WHITE),
       last_snr_output_type_(orc::PreviewOutputType::Frame_Field1_First),
       current_output_type_(orc::PreviewOutputType::Frame_Field1_First),
-      current_option_id_("interlaced_clamped")  // Default to "Interlaced Clamped" option
+      current_option_id_(
+          "interlaced_clamped")  // Default to "Interlaced Clamped" option
       ,
       current_aspect_ratio_mode_(
           orc::AspectRatioMode::DAR_4_3)  // Default to 4:3
@@ -1265,11 +1276,12 @@ void MainWindow::quickProject(const QString& filename) {
       QMessageBox msgBox(this);
       msgBox.setWindowTitle("Legacy Metadata Format");
       msgBox.setIcon(QMessageBox::Warning);
-      msgBox.setText(QString("The TBC source '%1' has legacy JSON metadata. This is just "
-                          "a warning - the source will load regardless.\n\n"
-                          "For best long-term results, consider re-decoding with a "
-                          "current version of ld-decode/vhs-decode.")
-                         .arg(filename));
+      msgBox.setText(
+          QString("The TBC source '%1' has legacy JSON metadata. This is just "
+                  "a warning - the source will load regardless.\n\n"
+                  "For best long-term results, consider re-decoding with a "
+                  "current version of ld-decode/vhs-decode.")
+              .arg(filename));
       QPushButton* continueBtn =
           msgBox.addButton("Continue", QMessageBox::AcceptRole);
       msgBox.addButton("Cancel", QMessageBox::RejectRole);
@@ -1661,7 +1673,8 @@ void MainWindow::onPreviewModeChanged(int index) {
   } else if (!previous_is_field && new_is_field) {
     // Converting from frame to field: select first field of current frame
     // Frame F maps to first field at: F*2 + offset
-    new_position = (static_cast<uint64_t>(current_position * 2)) + first_field_offset;
+    new_position =
+        (static_cast<uint64_t>(current_position * 2)) + first_field_offset;
     ORC_LOG_DEBUG("Frame->Field conversion: frame {} -> field {} (offset: {})",
                   current_position, new_position, first_field_offset);
   }
@@ -1846,7 +1859,8 @@ void MainWindow::updatePreviewInfo() {
 
     slider_min_text = QString::number(min_field_id + 1);  // 1-indexed
     slider_max_text = QString::number(max_field_id + 1);  // 1-indexed
-  } else if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
+  } else if (current_output_type_ ==
+                 orc::PreviewOutputType::Frame_Field1_First ||
              current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
     // Frame mode: show 1-indexed frame numbers with constituent field numbers
     uint64_t frame_index = static_cast<uint64_t>(current_index);
@@ -4098,8 +4112,7 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
     }
   }
 
-  if (!video_params.has_value() || video_params->field_width <= 0 ||
-      video_params->field_height <= 0) {
+  if (!video_params.has_value() || video_params->frame_width_nominal <= 0) {
     ORC_LOG_WARN("No video parameters available for set crosshairs");
     return;
   }
@@ -4111,7 +4124,7 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
     return;
   }
 
-  const int fw = video_params->field_width;
+  const int fw = video_params->frame_width_nominal;
 
   // Get the actual field heights from the dialog (these come from VFR
   // descriptors) This is important for PAL where first field = 312 lines,
@@ -4163,7 +4176,7 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
   // Clamp to valid range using the actual field height for this specific field
   if (line_number >= field_height_for_sample) {
     line_number = field_height_for_sample - 1;
-}
+  }
   if (sample_x >= fw) sample_x = fw - 1;
 
   ORC_LOG_DEBUG(
@@ -4230,11 +4243,21 @@ void MainWindow::onFieldTimingDataReady(
 
   // Set the field data and show the dialog
   std::optional<int> marker_sample;
-  if (video_params.has_value() && video_params->field_width > 0 &&
+  if (video_params.has_value() && video_params->frame_width_nominal > 0 &&
       last_line_scope_field_index_ != std::numeric_limits<uint64_t>::max() &&
       last_line_scope_image_x_ >= 0 && last_line_scope_line_number_ >= 0) {
-    const int fw = video_params->field_width;
-    const int fallback_fh = video_params->field_height;
+    const int fw = video_params->frame_width_nominal;
+    // Derive the fallback field height from the video system.
+    const auto vp_sys = [&]() -> orc::VideoSystem {
+      switch (video_params->system) {
+        case orc::presenters::VideoSystem::PAL:   return orc::VideoSystem::PAL;
+        case orc::presenters::VideoSystem::NTSC:  return orc::VideoSystem::NTSC;
+        case orc::presenters::VideoSystem::PAL_M: return orc::VideoSystem::PAL_M;
+        default: return orc::VideoSystem::Unknown;
+      }
+    }();
+    const int fallback_fh =
+        static_cast<int>(orc::calculate_padded_field_height(vp_sys));
     const int first_fh =
         (first_field_height > 0) ? first_field_height : fallback_fh;
     const int second_fh =
@@ -5064,7 +5087,8 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
       // For split mode, use first field of the pair
       uint64_t pair_index = preview_dialog_->previewSlider()->value();
       last_line_scope_field_index_ = pair_index * 2;
-    } else if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
+    } else if (current_output_type_ ==
+                   orc::PreviewOutputType::Frame_Field1_First ||
                current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
       // For frame mode, get fields from frame and use first one
       auto frame_fields = render_coordinator_->getFrameFields(
@@ -5146,8 +5170,8 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
                 new_field_index, last_line_scope_line_number_, sample_x);
 
   pending_line_sample_request_id_ = render_coordinator_->requestLineSamples(
-      current_view_node_id_, orc::PreviewOutputType::Frame_Field1, new_field_index,
-      last_line_scope_line_number_, sample_x, preview_width);
+      current_view_node_id_, orc::PreviewOutputType::Frame_Field1,
+      new_field_index, last_line_scope_line_number_, sample_x, preview_width);
 }
 
 void MainWindow::onLineNavigation(int direction, uint64_t current_field,

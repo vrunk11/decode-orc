@@ -15,7 +15,7 @@
 #include <stdexcept>
 
 #include "analysis_sink_results.h"
-#include "../core/include/cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
 #include "../core/include/dag_executor.h"
 #include "../core/include/dag_frame_renderer.h"
 #include "../core/include/logging.h"

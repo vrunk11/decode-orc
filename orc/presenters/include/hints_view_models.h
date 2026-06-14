@@ -69,24 +69,16 @@ struct VideoParametersView {
   // Format
   VideoSystem system = VideoSystem::Unknown;
 
-  // Field/frame dimensions
-  int field_width = -1;
-  int field_height = -1;
+  // Frame geometry — canonical field names matching SourceParameters.
+  // frame_width_nominal: nominal samples per line (1135 PAL, 910 NTSC, 909
+  // PAL_M).
+  int frame_width_nominal = -1;
 
   // Sample ranges
   int color_burst_start = -1;
   int color_burst_end = -1;
   int active_video_start = -1;
   int active_video_end = -1;
-
-  // IRE levels (16-bit) — deprecated; populated from SourceParameters legacy
-  // fields for existing callers.  Migrate callers to the 10-bit fields below.
-  int white_ire = -1;
-  int black_ire = -1;
-  int blanking_ire = -1;
-
-  // Sample rate (Hz) — deprecated legacy field
-  double sample_rate = 0.0;
 
   // CVBS_U10_4FSC 10-bit domain signal levels (from SourceParameters).
   // -1 means not populated (source has not been migrated to Phase 3+ pipeline).

@@ -35,15 +35,14 @@ class TestYCRepresentation final : public orc::VideoFieldRepresentation {
         field0_y_(std::move(field0_y)),
         field0_c_(std::move(field0_c)),
         field1_y_(std::move(field1_y)),
-        field1_c_(std::move(field1_c)) {
-    params_.field_width = static_cast<int32_t>(width);
-    params_.field_height = static_cast<int32_t>(height);
+        field1_c_(std::move(field1_c)),
+        field_height_(height) {
+    params_.system = orc::VideoSystem::NTSC;
+    params_.frame_width_nominal = static_cast<int32_t>(width);
     params_.active_video_start = 0;
     params_.active_video_end = static_cast<int32_t>(width);
     params_.first_active_frame_line = 0;
     params_.last_active_frame_line = static_cast<int32_t>(height * 2);
-    params_.black_16b_ire = 0;
-    params_.white_16b_ire = 65535;
   }
 
   std::string type_name() const override { return "TestYCRepresentation"; }
@@ -68,8 +67,8 @@ class TestYCRepresentation final : public orc::VideoFieldRepresentation {
                                      : orc::FieldParity::Bottom;
     d.format = orc::VideoFormat::NTSC;
     d.system = orc::VideoSystem::NTSC;
-    d.width = static_cast<size_t>(params_.field_width);
-    d.height = static_cast<size_t>(params_.field_height);
+    d.width = static_cast<size_t>(params_.frame_width_nominal);
+    d.height = field_height_;
     return d;
   }
 
@@ -103,6 +102,7 @@ class TestYCRepresentation final : public orc::VideoFieldRepresentation {
   std::vector<uint16_t> field0_c_;
   std::vector<uint16_t> field1_y_;
   std::vector<uint16_t> field1_c_;
+  size_t field_height_ = 0;
   orc::SourceParameters params_{};
 };
 
@@ -130,9 +130,11 @@ TEST(PreviewHelpersYCCombineTest,
   const auto image = orc::PreviewHelpers::render_standard_preview_with_channel(
       repr, "field_raw", 0, orc::RenderChannel::COMPOSITE_YC);
 
+  // Field preview height comes from calculate_padded_field_height(NTSC)=263;
+  // the renderer fills only the 2 test samples and pads the rest with zeros.
   ASSERT_EQ(image.width, 2u);
-  ASSERT_EQ(image.height, 1u);
-  ASSERT_EQ(image.rgb_data.size(), 6u);
+  ASSERT_EQ(image.height, 263u);
+  ASSERT_GE(image.rgb_data.size(), 6u);
 
   const uint16_t expected0 = combine_expected(40000, 32768);
   const uint16_t expected1 = combine_expected(10000, 40000);

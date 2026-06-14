@@ -99,9 +99,7 @@ class FrameMappedRepresentation : public VideoFrameRepresentationWrapper,
   std::vector<int16_t> get_audio_samples(FrameID id) const override;
 
   // EFM / AC3
-  bool has_efm() const override {
-    return source_ ? source_->has_efm() : false;
-  }
+  bool has_efm() const override { return source_ ? source_->has_efm() : false; }
   uint32_t get_efm_sample_count(FrameID id) const override;
   std::vector<uint8_t> get_efm_samples(FrameID id) const override;
   bool has_ac3_rf() const override {
@@ -210,17 +208,15 @@ class FrameMapStage : public DAGStage,
 
   // Apply duplicate-frame removal: when two consecutive frames share the same
   // colour_frame_index, drop the second.  Returns removed-count.
-  static size_t apply_remove_duplicates(
-      std::vector<FrameID>& mapping,
-      const VideoFrameRepresentation& source);
+  static size_t apply_remove_duplicates(std::vector<FrameID>& mapping,
+                                        const VideoFrameRepresentation& source);
 
   // Detect gaps in the colour_frame_index sequence and insert padding frames.
   // Returns number of padding frames inserted; fills padding_descriptors_out.
   static size_t apply_pad_gaps(
       std::vector<FrameID>& mapping,
       std::vector<FrameMappedRepresentation::PaddingDescriptor>& pads,
-      const VideoFrameRepresentation& source,
-      const std::string& pad_strategy,
+      const VideoFrameRepresentation& source, const std::string& pad_strategy,
       std::string& gap_positions_out);
 
   // Expected next colour_frame_index after 'current' for the given system.

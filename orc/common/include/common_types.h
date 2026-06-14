@@ -94,8 +94,8 @@ enum class PreviewOutputType {
                        ///< temporal order)
   Frame_Reversed,      ///< Interlaced frame display, field 2 on top (reversed
                        ///< temporal order)
-  Split,  ///< Frame with field 1 stacked above field 2 (non-interlaced)
-  Luma,   ///< Luma component only
+  Split,     ///< Frame with field 1 stacked above field 2 (non-interlaced)
+  Luma,      ///< Luma component only
   Chroma,    ///< Chroma component only (future)
   Composite  ///< Composite video (future)
 };

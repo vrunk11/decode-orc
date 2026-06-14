@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#include "cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
 #include "logging.h"
 
 namespace orc {
@@ -67,8 +67,9 @@ std::vector<PreviewOption> get_standard_preview_options(
     return options;
   }
 
-  uint32_t width = video_params->field_width;
-  uint32_t height = video_params->field_height;
+  uint32_t width = static_cast<uint32_t>(video_params->frame_width_nominal);
+  uint32_t height = static_cast<uint32_t>(
+      calculate_padded_field_height(video_params->system));
 
   // Calculate DAR correction based on active video region
   // For 4:3 DAR, we want the active area to display at 4:3 ratio
@@ -119,12 +120,12 @@ std::vector<PreviewOption> get_standard_preview_options(
                                     height * 2, pair_count, dar_correction});
     options.push_back(PreviewOption{"split_raw", "Split (Raw)", false, width,
                                     height * 2, pair_count, dar_correction});
-    options.push_back(
-        PreviewOption{"sequential_clamped", "Sequential Clamped", false, width,
-                      height * 2, frame_count, dar_correction});
-    options.push_back(
-        PreviewOption{"sequential_raw", "Sequential Raw", false, width,
-                      height * 2, frame_count, dar_correction});
+    options.push_back(PreviewOption{"sequential_clamped", "Sequential Clamped",
+                                    false, width, height * 2, frame_count,
+                                    dar_correction});
+    options.push_back(PreviewOption{"sequential_raw", "Sequential Raw", false,
+                                    width, height * 2, frame_count,
+                                    dar_correction});
   }
 
   return options;
@@ -154,8 +155,8 @@ PreviewImage render_field_preview(
   result.rgb_data.resize(static_cast<size_t>(result.width) * result.height * 3);
 
   // Calculate scaling parameters (fixed-point integer math)
-  double blackIRE = video_params->black_16b_ire;
-  double whiteIRE = video_params->white_16b_ire;
+  double blackIRE = kTbcBlanking;
+  double whiteIRE = kTbcWhite;
   double ireRange = whiteIRE - blackIRE;
   int32_t ire_black = static_cast<int32_t>(blackIRE);
   int32_t ire_mult =
@@ -222,8 +223,8 @@ PreviewImage render_split_preview(
   result.rgb_data.resize(static_cast<size_t>(result.width) * result.height * 3);
 
   // Calculate scaling parameters (fixed-point integer math)
-  double blackIRE = video_params->black_16b_ire;
-  double whiteIRE = video_params->white_16b_ire;
+  double blackIRE = kTbcBlanking;
+  double whiteIRE = kTbcWhite;
   double ireRange = whiteIRE - blackIRE;
   int32_t ire_black = static_cast<int32_t>(blackIRE);
   int32_t ire_mult =
@@ -243,7 +244,8 @@ PreviewImage render_split_preview(
         uint8_t gray = scale_16bit_to_8bit(line[x], apply_ire_scaling,
                                            ire_black, ire_mult, raw_mult);
 
-        size_t offset = (static_cast<size_t>(y + y_offset) * result.width + x) * 3;
+        size_t offset =
+            (static_cast<size_t>(y + y_offset) * result.width + x) * 3;
         result.rgb_data[offset + 0] = gray;
         result.rgb_data[offset + 1] = gray;
         result.rgb_data[offset + 2] = gray;
@@ -322,8 +324,8 @@ PreviewImage render_frame_preview(
   result.rgb_data.resize(static_cast<size_t>(result.width) * result.height * 3);
 
   // Calculate scaling parameters
-  double blackIRE = video_params->black_16b_ire;
-  double whiteIRE = video_params->white_16b_ire;
+  double blackIRE = kTbcBlanking;
+  double whiteIRE = kTbcWhite;
   double ireRange = whiteIRE - blackIRE;
   const double ire_scale = 255.0 / ireRange;
   const double raw_scale = 255.0 / 65535.0;
@@ -362,7 +364,8 @@ PreviewImage render_frame_preview(
     get_line_calls++;
     if (!line) continue;
 
-    uint8_t* rgb_line = &result.rgb_data[static_cast<size_t>(y) * result.width * 3];
+    uint8_t* rgb_line =
+        &result.rgb_data[static_cast<size_t>(y) * result.width * 3];
 
     for (uint32_t x = 0; x < result.width; ++x) {
       uint8_t gray = scale_16bit_to_8bit(line[x], apply_ire_scaling, ire_black,
@@ -554,8 +557,8 @@ static PreviewImage render_split_preview_with_channel(
   }
 
   // Calculate scaling parameters
-  double blackIRE = video_params->black_16b_ire;
-  double whiteIRE = video_params->white_16b_ire;
+  double blackIRE = kTbcBlanking;
+  double whiteIRE = kTbcWhite;
   double ireRange = whiteIRE - blackIRE;
   const double ire_scale = 255.0 / ireRange;
   const double raw_scale = 255.0 / 65535.0;
@@ -602,7 +605,9 @@ static PreviewImage render_split_preview_with_channel(
       }
 
       size_t offset =
-          (static_cast<size_t>(y + static_cast<uint32_t>(desc_first->height)) * result.width + x) *
+          (static_cast<size_t>(y + static_cast<uint32_t>(desc_first->height)) *
+               result.width +
+           x) *
           3;
       result.rgb_data[offset + 0] = gray;
       result.rgb_data[offset + 1] = gray;
@@ -674,8 +679,8 @@ static PreviewImage render_frame_preview_with_channel(
   }
 
   // Calculate scaling parameters
-  double blackIRE = video_params->black_16b_ire;
-  double whiteIRE = video_params->white_16b_ire;
+  double blackIRE = kTbcBlanking;
+  double whiteIRE = kTbcWhite;
   double ireRange = whiteIRE - blackIRE;
   const double ire_scale = 255.0 / ireRange;
   const double raw_scale = 255.0 / 65535.0;
@@ -781,8 +786,9 @@ PreviewImage render_field_grayscale(
     return PreviewImage{};
   }
 
-  uint32_t width = video_params->field_width;
-  uint32_t height = video_params->field_height;
+  uint32_t width = static_cast<uint32_t>(video_params->frame_width_nominal);
+  uint32_t height = static_cast<uint32_t>(
+      calculate_padded_field_height(video_params->system));
 
   // Get field data based on channel selection
   std::vector<uint16_t> field_data;
@@ -819,8 +825,8 @@ PreviewImage render_field_grayscale(
   }
 
   // Calculate scaling parameters (fixed-point integer math)
-  double blackIRE = video_params->black_16b_ire;
-  double whiteIRE = video_params->white_16b_ire;
+  double blackIRE = kTbcBlanking;
+  double whiteIRE = kTbcWhite;
   double ireRange = whiteIRE - blackIRE;
   int32_t ire_black = static_cast<int32_t>(blackIRE);
   int32_t ire_mult =
@@ -862,7 +868,8 @@ inline uint8_t scale_10bit_to_8bit(int16_t sample, bool apply_level_scaling,
   if (apply_level_scaling) {
     int32_t range = white_level - black_level;
     if (range <= 0) return 0;
-    int32_t scaled = ((static_cast<int32_t>(sample) - black_level) * 255) / range;
+    int32_t scaled =
+        ((static_cast<int32_t>(sample) - black_level) * 255) / range;
     return static_cast<uint8_t>(std::max(0, std::min(255, scaled)));
   } else {
     // Raw: map [sync_tip_level, peak_level] → [0, 255] so the full analogue
@@ -906,9 +913,9 @@ std::vector<PreviewOption> get_standard_preview_options(
           video_params->first_active_frame_line) {
     uint32_t active_width = static_cast<uint32_t>(
         video_params->active_video_end - video_params->active_video_start);
-    uint32_t active_height = static_cast<uint32_t>(
-        video_params->last_active_frame_line -
-        video_params->first_active_frame_line);
+    uint32_t active_height =
+        static_cast<uint32_t>(video_params->last_active_frame_line -
+                              video_params->first_active_frame_line);
     double active_ratio =
         static_cast<double>(active_width) / static_cast<double>(active_height);
     dar_correction = (4.0 / 3.0) / active_ratio;
@@ -930,8 +937,7 @@ std::vector<PreviewOption> get_standard_preview_options(
 
 PreviewImage render_standard_preview(
     const std::shared_ptr<const VideoFrameRepresentation>& representation,
-    const std::string& option_id, uint64_t index,
-    PreviewNavigationHint hint) {
+    const std::string& option_id, uint64_t index, PreviewNavigationHint hint) {
   (void)hint;
   PreviewImage result{};
 
@@ -974,7 +980,8 @@ PreviewImage render_standard_preview(
   int32_t peak_level = video_params->peak_level;
 
   // Determine field-line count and dominance for interlaced weaving.
-  // VFR field 1 is always the top spatial field; all systems use even display rows.
+  // VFR field 1 is always the top spatial field; all systems use even display
+  // rows.
   //   PAL:   field 1 (313 lines, top) → even display rows.
   //   NTSC:  field 1 (263 lines, top) → even display rows.
   //   PAL_M: field 1 (263 lines, top) → even display rows.
@@ -1006,10 +1013,9 @@ PreviewImage render_standard_preview(
   for (uint32_t display_row = 0; display_row < height; ++display_row) {
     size_t buf_line;
     if (do_interlace) {
-      const bool use_field1 =
-          (display_row % 2 == 0) == field1_on_even_rows;
-      buf_line = use_field1 ? (display_row / 2)
-                            : (field1_lines + display_row / 2);
+      const bool use_field1 = (display_row % 2 == 0) == field1_on_even_rows;
+      buf_line =
+          use_field1 ? (display_row / 2) : (field1_lines + display_row / 2);
       if (buf_line >= static_cast<size_t>(height)) {
         buf_line = static_cast<size_t>(height) - 1;
       }
@@ -1022,9 +1028,9 @@ PreviewImage render_standard_preview(
     if (!line) continue;
 
     for (uint32_t x = 0; x < width; ++x) {
-      uint8_t gray = scale_10bit_to_8bit(line[x], apply_level_scaling,
-                                         black_level, white_level,
-                                         sync_tip_level, peak_level);
+      uint8_t gray =
+          scale_10bit_to_8bit(line[x], apply_level_scaling, black_level,
+                              white_level, sync_tip_level, peak_level);
       size_t offset = (static_cast<size_t>(display_row) * width + x) * 3;
       result.rgb_data[offset + 0] = gray;
       result.rgb_data[offset + 1] = gray;

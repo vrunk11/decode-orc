@@ -7,6 +7,7 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
+#include <cvbs_signal_constants.h>
 #include <tbc_metadata_json_reader.h>
 
 #include "lddecodemetadata.h"
@@ -44,39 +45,55 @@ bool TBCMetadataJsonReader::open(const std::string& json_path) {
       break;
   }
 
-  sp.sample_rate = vp.sampleRate;
+  // Read legacy JSON fields for backwards-compatibility; do NOT populate
+  // deprecated struct fields.  Canonical values are derived from sp.system.
+
+  // Active video region (horizontal sample positions — not deprecated).
   sp.active_video_start = vp.activeVideoStart;
   sp.active_video_end = vp.activeVideoEnd;
-  sp.field_width = vp.fieldWidth;
-  sp.field_height = vp.fieldHeight;
-  sp.number_of_sequential_fields = vp.numberOfSequentialFields;
-  sp.colour_burst_start = vp.colourBurstStart;
-  sp.colour_burst_end = vp.colourBurstEnd;
+
+  // Number of frames: legacy JSON stores field count; convert to frames.
+  sp.number_of_sequential_frames =
+      (vp.numberOfSequentialFields > 0) ? vp.numberOfSequentialFields / 2 : -1;
+
+  // Source metadata.
   sp.is_mapped = vp.isMapped;
-  sp.is_subcarrier_locked = vp.isSubcarrierLocked;
+  // is_subcarrier_locked skipped — deprecated field; DB-only round-trip value.
   sp.is_widescreen = vp.isWidescreen;
-  sp.white_16b_ire = vp.white16bIre;
-  sp.black_16b_ire = vp.black16bIre;
-  sp.blanking_16b_ire =
-      vp.black16bIre;  // legacy JSON: no blanking level, use black
   sp.git_branch = vp.gitBranch;
   sp.git_commit = vp.gitCommit;
   sp.tape_format = vp.tapeFormat;
   sp.decoder = "ld-decode";
-  sp.fsc = -1.0;  // not stored; computed by source stage from video system
 
-  // Active line boundaries — mirrors
-  // TBCMetadataSqliteReader::read_video_parameters()
+  // Canonical CVBS_U10_4FSC fields derived from video system.
+  // Legacy per-disc values (vp.sampleRate, vp.fieldWidth, etc.) are ignored;
+  // spec-defined constants are always authoritative.
+  // EBU Tech. 3280-E §1.1 (PAL) / SMPTE 244M-2003 §4.1 (NTSC) /
+  // ITU-R BT.1700-1 Annex 1 Part B (PAL_M).
+  switch (sp.system) {
+    case VideoSystem::PAL:
+      sp.frame_width_nominal = kPalMaxSamplesPerLine - 1;  // 1135
+      sp.frame_height = kPalFrameLines;                    // 625
+      break;
+    case VideoSystem::PAL_M:
+      sp.frame_width_nominal = kPalMSamplesPerLine;  // 909
+      sp.frame_height = kPalMFrameLines;             // 525
+      break;
+    default:                                         // NTSC
+      sp.frame_width_nominal = kNtscSamplesPerLine;  // 910
+      sp.frame_height = kNtscFrameLines;             // 525
+      break;
+  }
+
+  // Active line boundaries — mirrors TBCMetadataSqliteReader.
+  // For PAL: first/last_active_frame_line from legacy-tools/lddecodemetadata.
+  // For NTSC/PAL_M: hardcoded to match ld-chroma-decoder baseline.
   if (sp.system == VideoSystem::PAL) {
     sp.first_active_frame_line = 44;
     sp.last_active_frame_line = 620;
-    sp.first_active_field_line = 22;
-    sp.last_active_field_line = 310;
   } else {  // NTSC and PAL_M
     sp.first_active_frame_line = 40;
     sp.last_active_frame_line = 525;
-    sp.first_active_field_line = 20;
-    sp.last_active_field_line = 259;
   }
 
   source_params_ = sp;
@@ -284,7 +301,7 @@ bool TBCMetadataJsonReader::validate_metadata(
   if (!source_params_) {
     if (error_message) {
       *error_message = "Failed to read video parameters from metadata";
-}
+    }
     ORC_LOG_ERROR("validate_metadata: {} - check debug logs for details",
                   error_message ? *error_message : "Unknown error");
     return false;
@@ -292,24 +309,26 @@ bool TBCMetadataJsonReader::validate_metadata(
 
   const auto& params = *source_params_;
 
-  if (params.number_of_sequential_fields <= 0) {
+  if (params.number_of_sequential_frames <= 0) {
     if (error_message) {
       *error_message =
-          "Metadata does not specify valid number_of_sequential_fields (" +
-          std::to_string(params.number_of_sequential_fields) + ")";
+          "Metadata does not specify valid number_of_sequential_frames (" +
+          std::to_string(params.number_of_sequential_frames) + ")";
     }
     ORC_LOG_ERROR(
         "validate_metadata: {}",
-        error_message ? *error_message : "invalid number_of_sequential_fields");
+        error_message ? *error_message : "invalid number_of_sequential_frames");
     return false;
   }
 
+  // Legacy JSON stores per-field records; compare against 2× frames.
   int32_t field_count = get_field_record_count();
-  if (field_count != params.number_of_sequential_fields) {
+  const int32_t expected_field_count = params.number_of_sequential_frames * 2;
+  if (field_count != expected_field_count) {
     if (error_message) {
       *error_message =
           "Metadata inconsistency: video parameters specifies " +
-          std::to_string(params.number_of_sequential_fields) + " fields, but " +
+          std::to_string(expected_field_count) + " fields, but " +
           std::to_string(field_count) +
           " field records loaded. "
           "This TBC file has inconsistent metadata, likely from a buggy "
@@ -318,11 +337,10 @@ bool TBCMetadataJsonReader::validate_metadata(
     return false;
   }
 
-  if (params.field_width <= 0 || params.field_height <= 0) {
+  if (params.frame_width_nominal <= 0) {
     if (error_message) {
-      *error_message =
-          "Invalid field dimensions: " + std::to_string(params.field_width) +
-          "x" + std::to_string(params.field_height);
+      *error_message = "Invalid frame_width_nominal: " +
+                       std::to_string(params.frame_width_nominal);
     }
     return false;
   }

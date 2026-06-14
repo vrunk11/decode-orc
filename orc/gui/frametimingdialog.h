@@ -26,7 +26,7 @@
 //   PAL       → "1" … "4"  (ITU-R BT.470-6 §3.5.2 / four-field sequence)
 //   NTSC/PAL_M → "A" or "B"  (SMPTE 170M-2004 §11.2 / two-field sequence)
 inline QString formatColourFrameIndex(int cfi,
-                                       orc::presenters::VideoSystem system) {
+                                      orc::presenters::VideoSystem system) {
   if (cfi < 0) return "Unknown";
   switch (system) {
     case orc::presenters::VideoSystem::PAL:
@@ -74,7 +74,8 @@ class FrameTimingDialog : public QDialog {
    *                           0-1=NTSC/PAL_M
    * @param video_params      Optional video parameters (system, levels, etc.)
    * @param marker_sample     Optional sample position for the cross-hair marker
-   * @param frame_height      Total line count for the frame (0 = use system default)
+   * @param frame_height      Total line count for the frame (0 = use system
+   * default)
    * @param y_samples         Optional luma samples (YC sources)
    * @param c_samples         Optional chroma samples (YC sources)
    */

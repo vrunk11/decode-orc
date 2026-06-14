@@ -9,13 +9,14 @@
 
 #pragma once
 
+#include <cvbs_signal_constants.h>
+
 #include <cstddef>
 #include <memory>
 #include <vector>
 
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
 #include "artifact.h"
-#include "cvbs_signal_constants.h"
 #include "dropout_util.h"
 #include "preview_renderer.h"
 #include "stage_parameter.h"
@@ -44,10 +45,18 @@ class FrameFieldSwapRepresentation : public VideoFrameRepresentationWrapper,
     auto params = source_ ? source_->get_video_parameters() : std::nullopt;
     if (params.has_value()) {
       switch (params->system) {
-        case VideoSystem::PAL:   field1_lines_ = kPalField1Lines;  break;
-        case VideoSystem::NTSC:  field1_lines_ = kNtscField1Lines; break;
-        case VideoSystem::PAL_M: field1_lines_ = kPalMField1Lines; break;
-        default:                 field1_lines_ = 0;                break;
+        case VideoSystem::PAL:
+          field1_lines_ = kPalField1Lines;
+          break;
+        case VideoSystem::NTSC:
+          field1_lines_ = kNtscField1Lines;
+          break;
+        case VideoSystem::PAL_M:
+          field1_lines_ = kPalMField1Lines;
+          break;
+        default:
+          field1_lines_ = 0;
+          break;
       }
     }
   }

@@ -25,7 +25,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include "../../../../orc/core/include/cvbs_signal_constants.h"
+#include <cvbs_signal_constants.h>
 
 namespace orc_unit_test {
 
