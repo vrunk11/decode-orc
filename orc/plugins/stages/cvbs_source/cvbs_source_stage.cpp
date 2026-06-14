@@ -303,9 +303,12 @@ PreviewImage render_vfr_frame_as_grayscale(
     return PreviewImage{0, 0, {}, {}, {}};
   }
 
-  const int32_t blanking = params_opt->blanking_level;
+  const int32_t black = params_opt->black_level;
   const int32_t white = params_opt->white_level;
-  const int32_t range = (white > blanking) ? (white - blanking) : 1;
+  const int32_t sync_tip = params_opt->sync_tip_level;
+  const int32_t peak = params_opt->peak_level;
+  const int32_t clamped_range = (white > black) ? (white - black) : 1;
+  const int32_t raw_range = (peak > sync_tip) ? (peak - sync_tip) : 1;
 
   PreviewImage img;
   img.width = static_cast<uint32_t>(width);
@@ -316,14 +319,16 @@ PreviewImage render_vfr_frame_as_grayscale(
     const int16_t* line_ptr = vfr.get_line(frame_id, line);
     for (size_t s = 0; s < width; ++s) {
       const int32_t raw =
-          line_ptr ? static_cast<int32_t>(line_ptr[s]) : blanking;
-      uint8_t grey;
+          line_ptr ? static_cast<int32_t>(line_ptr[s]) : black;
+      int32_t scaled;
       if (apply_level_scaling) {
-        const int32_t scaled = (raw - blanking) * 255 / range;
-        grey = static_cast<uint8_t>(std::clamp(scaled, 0, 255));
+        // Clamped: black level → 0, white level → 255
+        scaled = (raw - black) * 255 / clamped_range;
       } else {
-        grey = static_cast<uint8_t>(std::clamp(raw * 255 / 1023, 0, 255));
+        // Raw: sync tip (-300 mV) → 0, peak (1000 mV) → 255
+        scaled = (raw - sync_tip) * 255 / raw_range;
       }
+      const uint8_t grey = static_cast<uint8_t>(std::clamp(scaled, 0, 255));
       img.rgb_data.push_back(grey);
       img.rgb_data.push_back(grey);
       img.rgb_data.push_back(grey);

@@ -858,16 +858,23 @@ PreviewImage render_field_grayscale(
 // ============================================================================
 
 // Scale a 10-bit CVBS_U10_4FSC int16_t sample to an 8-bit grayscale value.
+// Clamped mode maps [black_level, white_level] → [0, 255].
+// Raw mode maps [sync_tip_level (-300 mV), peak_level (1000 mV)] → [0, 255].
 inline uint8_t scale_10bit_to_8bit(int16_t sample, bool apply_level_scaling,
-                                   int32_t black_level, int32_t white_level) {
+                                   int32_t black_level, int32_t white_level,
+                                   int32_t sync_tip_level, int32_t peak_level) {
   if (apply_level_scaling) {
     int32_t range = white_level - black_level;
     if (range <= 0) return 0;
     int32_t scaled = ((static_cast<int32_t>(sample) - black_level) * 255) / range;
     return static_cast<uint8_t>(std::max(0, std::min(255, scaled)));
   } else {
-    // Raw: map full 10-bit range [0, 1023] to [0, 255]
-    int32_t scaled = (static_cast<int32_t>(sample) * 255) / 1023;
+    // Raw: map [sync_tip_level, peak_level] → [0, 255] so the full analogue
+    // signal range (-300 mV to 1000 mV) spans the display range.
+    int32_t range = peak_level - sync_tip_level;
+    if (range <= 0) return 0;
+    int32_t scaled =
+        ((static_cast<int32_t>(sample) - sync_tip_level) * 255) / range;
     return static_cast<uint8_t>(std::max(0, std::min(255, scaled)));
   }
 }
@@ -954,6 +961,8 @@ PreviewImage render_standard_preview(
   uint32_t height = static_cast<uint32_t>(descriptor->height);
   int32_t black_level = video_params->black_level;
   int32_t white_level = video_params->white_level;
+  int32_t sync_tip_level = video_params->sync_tip_level;
+  int32_t peak_level = video_params->peak_level;
 
   result.width = width;
   result.height = height;
@@ -966,7 +975,8 @@ PreviewImage render_standard_preview(
 
     for (uint32_t x = 0; x < width; ++x) {
       uint8_t gray = scale_10bit_to_8bit(line[x], apply_level_scaling,
-                                         black_level, white_level);
+                                         black_level, white_level,
+                                         sync_tip_level, peak_level);
       size_t offset = (static_cast<size_t>(y) * width + x) * 3;
       result.rgb_data[offset + 0] = gray;
       result.rgb_data[offset + 1] = gray;

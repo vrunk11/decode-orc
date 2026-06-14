@@ -1177,7 +1177,7 @@ std::vector<PreviewOption> TBCSourceStage::get_preview_options() const {
   };
 }
 
-PreviewImage TBCSourceStage::render_preview(const std::string& /*option_id*/,
+PreviewImage TBCSourceStage::render_preview(const std::string& option_id,
                                             uint64_t index,
                                             PreviewNavigationHint /*hint*/) const {
   if (!cached_representation_) return PreviewImage{0, 0, {}, {}, {}};
@@ -1193,9 +1193,14 @@ PreviewImage TBCSourceStage::render_preview(const std::string& /*option_id*/,
 
   const size_t height = static_cast<size_t>(params_opt->frame_height);
   const size_t width = static_cast<size_t>(params_opt->frame_width_nominal);
-  const int32_t blanking = params_opt->blanking_level;
+  const int32_t black = params_opt->black_level;
   const int32_t white = params_opt->white_level;
-  const int32_t range = (white > blanking) ? (white - blanking) : 1;
+  const int32_t sync_tip = params_opt->sync_tip_level;
+  const int32_t peak = params_opt->peak_level;
+  const int32_t clamped_range = (white > black) ? (white - black) : 1;
+  const int32_t raw_range = (peak > sync_tip) ? (peak - sync_tip) : 1;
+
+  const bool apply_level_scaling = (option_id != "frame_raw");
 
   PreviewImage img;
   img.width = static_cast<uint32_t>(width);
@@ -1205,10 +1210,16 @@ PreviewImage TBCSourceStage::render_preview(const std::string& /*option_id*/,
   for (size_t line = 0; line < height; ++line) {
     const VideoFrameRepresentation::sample_type* row = repr->get_line(fid, line);
     for (size_t s = 0; s < width; ++s) {
-      const int32_t raw = row ? static_cast<int32_t>(row[s]) : blanking;
-      const int32_t scaled = (raw - blanking) * 255 / range;
-      const uint8_t grey =
-          static_cast<uint8_t>(std::clamp(scaled, 0, 255));
+      const int32_t raw = row ? static_cast<int32_t>(row[s]) : black;
+      int32_t scaled;
+      if (apply_level_scaling) {
+        // Clamped: black level → 0, white level → 255
+        scaled = (raw - black) * 255 / clamped_range;
+      } else {
+        // Raw: sync tip (-300 mV) → 0, peak (1000 mV) → 255
+        scaled = (raw - sync_tip) * 255 / raw_range;
+      }
+      const uint8_t grey = static_cast<uint8_t>(std::clamp(scaled, 0, 255));
       img.rgb_data.push_back(grey);
       img.rgb_data.push_back(grey);
       img.rgb_data.push_back(grey);
