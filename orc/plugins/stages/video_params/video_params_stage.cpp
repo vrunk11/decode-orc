@@ -13,6 +13,7 @@
 
 #include "error_types.h"
 #include "logging.h"
+#include "preview_helpers.h"
 
 namespace orc {
 
@@ -194,60 +195,15 @@ bool VideoParamsStage::set_parameters(
   return true;
 }
 
-namespace {
-
-PreviewImage render_vfr_grayscale(const VideoFrameRepresentation& vfr,
-                                  FrameID fid, bool scale) {
-  auto desc = vfr.get_frame_descriptor(fid);
-  auto params = vfr.get_video_parameters();
-  if (!desc || !params) return PreviewImage{0, 0, {}, {}, {}};
-  const size_t H = desc->height;
-  const size_t W = static_cast<size_t>(params->frame_width_nominal);
-  const int32_t b = params->blanking_level;
-  const int32_t w = params->white_level;
-  const int32_t range = (w > b) ? (w - b) : 1;
-  PreviewImage img;
-  img.width = static_cast<uint32_t>(W);
-  img.height = static_cast<uint32_t>(H);
-  img.rgb_data.reserve(W * H * 3);
-  for (size_t line = 0; line < H; ++line) {
-    const int16_t* ptr = vfr.get_line(fid, line);
-    for (size_t s = 0; s < W; ++s) {
-      const int32_t raw = ptr ? static_cast<int32_t>(ptr[s]) : b;
-      const uint8_t grey =
-          scale ? static_cast<uint8_t>(std::clamp((raw - b) * 255 / range, 0, 255))
-                : static_cast<uint8_t>(std::clamp(raw * 255 / 1023, 0, 255));
-      img.rgb_data.push_back(grey);
-      img.rgb_data.push_back(grey);
-      img.rgb_data.push_back(grey);
-    }
-  }
-  return img;
-}
-
-}  // namespace
-
 std::vector<PreviewOption> VideoParamsStage::get_preview_options() const {
-  if (!cached_output_) return {};
-  auto params = cached_output_->get_video_parameters();
-  const size_t fc = cached_output_->frame_count();
-  if (fc == 0 || !params) return {};
-  const uint32_t w = static_cast<uint32_t>(params->frame_width_nominal);
-  const uint32_t h = static_cast<uint32_t>(params->frame_height);
-  return {PreviewOption{"sequential_clamped", "Sequential Clamped", false, w, h,
-                        static_cast<uint64_t>(fc), 0.7},
-          PreviewOption{"sequential_raw", "Sequential Raw", false, w, h,
-                        static_cast<uint64_t>(fc), 0.7}};
+  return PreviewHelpers::get_standard_preview_options(cached_output_);
 }
 
 PreviewImage VideoParamsStage::render_preview(const std::string& option_id,
                                               uint64_t index,
-                                              PreviewNavigationHint) const {
-  if (!cached_output_) return PreviewImage{};
-  const FrameID fid = static_cast<FrameID>(index);
-  if (!cached_output_->has_frame(fid)) return PreviewImage{};
-  return render_vfr_grayscale(*cached_output_, fid,
-                              option_id != "sequential_raw");
+                                              PreviewNavigationHint hint) const {
+  return PreviewHelpers::render_standard_preview(cached_output_, option_id,
+                                                 index, hint);
 }
 
 }  // namespace orc

@@ -24,6 +24,7 @@
 #include "audio_resampler.h"
 #include "error_types.h"
 #include "logging.h"
+#include "preview_helpers.h"
 #include "ntsc_tbc_converter.h"
 #include "ntsc_tbc_yc_converter.h"
 #include "pal_m_tbc_converter.h"
@@ -1161,124 +1162,17 @@ bool TBCSourceStage::supports_preview() const {
 }
 
 std::vector<PreviewOption> TBCSourceStage::get_preview_options() const {
-  if (!cached_representation_) return {};
-
-  const auto* repr =
-      dynamic_cast<const TBCDecodedFrameRepresentation*>(
-          cached_representation_.get());
-  if (!repr) return {};
-
-  const size_t fc = repr->frame_count();
-  if (fc == 0) return {};
-
-  auto params_opt = repr->get_video_parameters();
-  if (!params_opt) return {};
-
-  const uint32_t width =
-      static_cast<uint32_t>(params_opt->frame_width_nominal);
-  const uint32_t height = static_cast<uint32_t>(params_opt->frame_height);
-  constexpr double dar = 0.7;
-
-  return {
-      PreviewOption{"interlaced_clamped", "Interlaced Clamped", false, width,
-                    height, fc, dar},
-      PreviewOption{"interlaced_raw", "Interlaced Raw", false, width, height,
-                    fc, dar},
-      PreviewOption{"sequential_clamped", "Sequential Clamped", false, width,
-                    height, fc, dar},
-      PreviewOption{"sequential_raw", "Sequential Raw", false, width, height,
-                    fc, dar},
-  };
+  auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(
+      cached_representation_);
+  return PreviewHelpers::get_standard_preview_options(vfr);
 }
 
 PreviewImage TBCSourceStage::render_preview(const std::string& option_id,
                                             uint64_t index,
-                                            PreviewNavigationHint /*hint*/) const {
-  if (!cached_representation_) return PreviewImage{0, 0, {}, {}, {}};
-  const auto* repr = dynamic_cast<const TBCDecodedFrameRepresentation*>(
-      cached_representation_.get());
-  if (!repr) return PreviewImage{0, 0, {}, {}, {}};
-
-  const FrameID fid = static_cast<FrameID>(index);
-  if (!repr->has_frame(fid)) return PreviewImage{0, 0, {}, {}, {}};
-
-  auto params_opt = repr->get_video_parameters();
-  if (!params_opt) return PreviewImage{0, 0, {}, {}, {}};
-
-  const size_t height = static_cast<size_t>(params_opt->frame_height);
-  const size_t width = static_cast<size_t>(params_opt->frame_width_nominal);
-  const int32_t black = params_opt->black_level;
-  const int32_t white = params_opt->white_level;
-  const int32_t sync_tip = params_opt->sync_tip_level;
-  const int32_t peak = params_opt->peak_level;
-  const int32_t clamped_range = (white > black) ? (white - black) : 1;
-  const int32_t raw_range = (peak > sync_tip) ? (peak - sync_tip) : 1;
-
-  const bool apply_level_scaling =
-      (option_id == "sequential_clamped" || option_id == "interlaced_clamped");
-  const bool do_interlace =
-      (option_id == "interlaced_clamped" || option_id == "interlaced_raw");
-
-  // Determine field-line count and which display rows carry field 1.
-  // VFR field 1 is always the top spatial field for all systems:
-  //   PAL:    field 1 (313 lines, top) → even display rows.
-  //   NTSC:   field 1 (263 lines, top) → even display rows.
-  //   PAL_M:  field 1 (263 lines, top) → even display rows.
-  size_t field1_lines = height / 2;
-  bool field1_on_even_rows = true;
-  switch (params_opt->system) {
-    case VideoSystem::PAL:
-      field1_lines = static_cast<size_t>(kPalField1Lines);
-      field1_on_even_rows = true;
-      break;
-    case VideoSystem::NTSC:
-      field1_lines = static_cast<size_t>(kNtscField1Lines);
-      field1_on_even_rows = true;
-      break;
-    case VideoSystem::PAL_M:
-      field1_lines = static_cast<size_t>(kPalMField1Lines);
-      field1_on_even_rows = true;
-      break;
-    default:
-      break;
-  }
-
-  PreviewImage img;
-  img.width = static_cast<uint32_t>(width);
-  img.height = static_cast<uint32_t>(height);
-  img.rgb_data.reserve(width * height * 3);
-
-  for (size_t display_row = 0; display_row < height; ++display_row) {
-    size_t buf_line;
-    if (do_interlace) {
-      const bool use_field1 =
-          (display_row % 2 == 0) == field1_on_even_rows;
-      buf_line = use_field1 ? (display_row / 2)
-                            : (field1_lines + display_row / 2);
-      if (buf_line >= height) buf_line = height - 1;
-    } else {
-      buf_line = display_row;
-    }
-
-    const VideoFrameRepresentation::sample_type* row =
-        repr->get_line(fid, buf_line);
-    for (size_t s = 0; s < width; ++s) {
-      const int32_t raw = row ? static_cast<int32_t>(row[s]) : black;
-      int32_t scaled;
-      if (apply_level_scaling) {
-        // Clamped: black level → 0, white level → 255
-        scaled = (raw - black) * 255 / clamped_range;
-      } else {
-        // Raw: sync tip (-300 mV) → 0, peak (1000 mV) → 255
-        scaled = (raw - sync_tip) * 255 / raw_range;
-      }
-      const uint8_t grey = static_cast<uint8_t>(std::clamp(scaled, 0, 255));
-      img.rgb_data.push_back(grey);
-      img.rgb_data.push_back(grey);
-      img.rgb_data.push_back(grey);
-    }
-  }
-  return img;
+                                            PreviewNavigationHint hint) const {
+  auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(
+      cached_representation_);
+  return PreviewHelpers::render_standard_preview(vfr, option_id, index, hint);
 }
 
 std::optional<StageReport> TBCSourceStage::generate_report() const {

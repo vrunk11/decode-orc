@@ -8,6 +8,7 @@
  */
 
 #include <logging.h>
+#include <preview_helpers.h>
 #include <stacker_stage.h>
 
 #include <algorithm>
@@ -1245,87 +1246,15 @@ std::optional<StageReport> StackerStage::generate_report() const {
   return r;
 }
 
-namespace {
-
-PreviewImage render_stacker_grayscale(const VideoFrameRepresentation& vfr,
-                                      FrameID frame_id, bool apply_scaling) {
-  auto desc = vfr.get_frame_descriptor(frame_id);
-  auto params = vfr.get_video_parameters();
-  if (!desc || !params) { return PreviewImage{0, 0, {}, {}, {}}; }
-
-  const size_t height = desc->height;
-  const size_t width = static_cast<size_t>(params->frame_width_nominal);
-  if (height == 0 || width == 0) { return PreviewImage{0, 0, {}, {}, {}}; }
-
-  const int32_t blanking = params->blanking_level;
-  const int32_t white = params->white_level;
-  const int32_t range = (white > blanking) ? (white - blanking) : 1;
-
-  PreviewImage img;
-  img.width = static_cast<uint32_t>(width);
-  img.height = static_cast<uint32_t>(height);
-  img.rgb_data.reserve(width * height * 3);
-
-  for (size_t line = 0; line < height; ++line) {
-    const int16_t* ptr = vfr.get_line(frame_id, line);
-    for (size_t s = 0; s < width; ++s) {
-      const int32_t raw = ptr ? static_cast<int32_t>(ptr[s]) : blanking;
-      uint8_t grey;
-      if (apply_scaling) {
-        grey = static_cast<uint8_t>(
-            std::clamp((raw - blanking) * 255 / range, 0, 255));
-      } else {
-        grey = static_cast<uint8_t>(std::clamp(raw * 255 / 1023, 0, 255));
-      }
-      img.rgb_data.push_back(grey);
-      img.rgb_data.push_back(grey);
-      img.rgb_data.push_back(grey);
-    }
-  }
-  return img;
-}
-
-}  // namespace
-
 std::vector<PreviewOption> StackerStage::get_preview_options() const {
-  if (!cached_output_) { return {}; }
-
-  auto params = cached_output_->get_video_parameters();
-  const size_t fc = cached_output_->frame_count();
-  if (fc == 0 || !params.has_value()) { return {}; }
-
-  const uint32_t w = static_cast<uint32_t>(params->frame_width_nominal);
-  const uint32_t h = static_cast<uint32_t>(params->frame_height);
-
-  double dar = 0.7;
-  if (params->active_video_start >= 0 &&
-      params->active_video_end > params->active_video_start &&
-      params->first_active_frame_line >= 0 &&
-      params->last_active_frame_line > params->first_active_frame_line) {
-    const double aw = static_cast<double>(params->active_video_end -
-                                          params->active_video_start);
-    const double ah = static_cast<double>(params->last_active_frame_line -
-                                          params->first_active_frame_line);
-    dar = (4.0 / 3.0) / (aw / ah);
-  }
-
-  return {
-      PreviewOption{"sequential_clamped", "Sequential Clamped", false, w, h,
-                    static_cast<uint64_t>(fc), dar},
-      PreviewOption{"sequential_raw", "Sequential Raw", false, w, h,
-                    static_cast<uint64_t>(fc), dar},
-  };
+  return PreviewHelpers::get_standard_preview_options(cached_output_);
 }
 
 PreviewImage StackerStage::render_preview(const std::string& option_id,
                                           uint64_t index,
-                                          PreviewNavigationHint /*hint*/) const {
-  if (!cached_output_) { return PreviewImage{0, 0, {}, {}, {}}; }
-  const FrameID fid = static_cast<FrameID>(index);
-  if (!cached_output_->has_frame(fid)) { return PreviewImage{0, 0, {}, {}, {}}; }
-
-  bool apply_scaling = (option_id == "sequential_clamped");
-  return render_stacker_grayscale(*cached_output_, fid, apply_scaling);
+                                          PreviewNavigationHint hint) const {
+  return PreviewHelpers::render_standard_preview(cached_output_, option_id,
+                                                 index, hint);
 }
 
 }  // namespace orc

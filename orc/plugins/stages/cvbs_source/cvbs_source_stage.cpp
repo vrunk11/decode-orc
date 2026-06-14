@@ -26,6 +26,7 @@
 #include "cvbs_signal_constants.h"
 #include "error_types.h"
 #include "logging.h"
+#include "preview_helpers.h"
 
 namespace orc {
 
@@ -285,98 +286,6 @@ SourceParameters build_source_parameters(VideoSystem system,
   }
 
   return sp;
-}
-
-// ---------------------------------------------------------------------------
-// Inline frame preview rendering (VFR → RGB888 grayscale)
-// ---------------------------------------------------------------------------
-
-PreviewImage render_vfr_frame_as_grayscale(
-    const VideoFrameRepresentation& vfr, FrameID frame_id,
-    bool apply_level_scaling, bool do_interlace = false) {
-  auto desc_opt = vfr.get_frame_descriptor(frame_id);
-  auto params_opt = vfr.get_video_parameters();
-  if (!desc_opt || !params_opt) {
-    return PreviewImage{0, 0, {}, {}, {}};
-  }
-
-  const size_t height = desc_opt->height;
-  const size_t width =
-      static_cast<size_t>(params_opt->frame_width_nominal);
-  if (height == 0 || width == 0) {
-    return PreviewImage{0, 0, {}, {}, {}};
-  }
-
-  const int32_t black = params_opt->black_level;
-  const int32_t white = params_opt->white_level;
-  const int32_t sync_tip = params_opt->sync_tip_level;
-  const int32_t peak = params_opt->peak_level;
-  const int32_t clamped_range = (white > black) ? (white - black) : 1;
-  const int32_t raw_range = (peak > sync_tip) ? (peak - sync_tip) : 1;
-
-  // Determine field-line count and which display rows carry field 1.
-  // VFR field 1 is always the top spatial field for all systems:
-  //   PAL:   field 1 (313 lines, top) → even display rows.
-  //   NTSC:  field 1 (263 lines, top) → even display rows.
-  //   PAL_M: field 1 (263 lines, top) → even display rows.
-  size_t field1_lines = height / 2;
-  bool field1_on_even_rows = true;
-  if (do_interlace) {
-    switch (params_opt->system) {
-      case VideoSystem::PAL:
-        field1_lines = static_cast<size_t>(kPalField1Lines);
-        field1_on_even_rows = true;
-        break;
-      case VideoSystem::NTSC:
-        field1_lines = static_cast<size_t>(kNtscField1Lines);
-        field1_on_even_rows = true;
-        break;
-      case VideoSystem::PAL_M:
-        field1_lines = static_cast<size_t>(kPalMField1Lines);
-        field1_on_even_rows = true;
-        break;
-      default:
-        break;
-    }
-  }
-
-  PreviewImage img;
-  img.width = static_cast<uint32_t>(width);
-  img.height = static_cast<uint32_t>(height);
-  img.rgb_data.reserve(width * height * 3);
-
-  for (size_t display_row = 0; display_row < height; ++display_row) {
-    size_t buf_line;
-    if (do_interlace) {
-      const bool use_field1 =
-          (display_row % 2 == 0) == field1_on_even_rows;
-      buf_line = use_field1 ? (display_row / 2)
-                            : (field1_lines + display_row / 2);
-      if (buf_line >= height) buf_line = height - 1;
-    } else {
-      buf_line = display_row;
-    }
-
-    const int16_t* line_ptr = vfr.get_line(frame_id, buf_line);
-    for (size_t s = 0; s < width; ++s) {
-      const int32_t raw =
-          line_ptr ? static_cast<int32_t>(line_ptr[s]) : black;
-      int32_t scaled;
-      if (apply_level_scaling) {
-        // Clamped: black level → 0, white level → 255
-        scaled = (raw - black) * 255 / clamped_range;
-      } else {
-        // Raw: sync tip (-300 mV) → 0, peak (1000 mV) → 255
-        scaled = (raw - sync_tip) * 255 / raw_range;
-      }
-      const uint8_t grey = static_cast<uint8_t>(std::clamp(scaled, 0, 255));
-      img.rgb_data.push_back(grey);
-      img.rgb_data.push_back(grey);
-      img.rgb_data.push_back(grey);
-    }
-  }
-
-  return img;
 }
 
 // ---------------------------------------------------------------------------
@@ -1313,68 +1222,17 @@ bool FixedFormatCVBSSourceStage::supports_preview() const {
 
 std::vector<PreviewOption> FixedFormatCVBSSourceStage::get_preview_options()
     const {
-  if (!cached_representation_) return {};
-
-  auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(
+  auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(
       cached_representation_);
-  if (!vfr) return {};
-
-  const size_t fc = vfr->frame_count();
-  if (fc == 0) return {};
-
-  auto params_opt = vfr->get_video_parameters();
-  if (!params_opt) return {};
-
-  const uint32_t w =
-      static_cast<uint32_t>(params_opt->frame_width_nominal);
-  const uint32_t h =
-      static_cast<uint32_t>(params_opt->frame_height);
-
-  // Display aspect ratio from active video region (target 4:3).
-  double dar_correction = 0.7;
-  if (params_opt->active_video_start >= 0 &&
-      params_opt->active_video_end > params_opt->active_video_start &&
-      params_opt->first_active_frame_line >= 0 &&
-      params_opt->last_active_frame_line >
-          params_opt->first_active_frame_line) {
-    const double aw = static_cast<double>(params_opt->active_video_end -
-                                          params_opt->active_video_start);
-    const double ah = static_cast<double>(params_opt->last_active_frame_line -
-                                          params_opt->first_active_frame_line);
-    dar_correction = (4.0 / 3.0) / (aw / ah);
-  }
-
-  return {
-      PreviewOption{"interlaced_clamped", "Interlaced Clamped", false, w, h,
-                    static_cast<uint64_t>(fc), dar_correction},
-      PreviewOption{"interlaced_raw", "Interlaced Raw", false, w, h,
-                    static_cast<uint64_t>(fc), dar_correction},
-      PreviewOption{"sequential_clamped", "Sequential Clamped", false, w, h,
-                    static_cast<uint64_t>(fc), dar_correction},
-      PreviewOption{"sequential_raw", "Sequential Raw", false, w, h,
-                    static_cast<uint64_t>(fc), dar_correction},
-  };
+  return PreviewHelpers::get_standard_preview_options(vfr);
 }
 
 PreviewImage FixedFormatCVBSSourceStage::render_preview(
     const std::string& option_id, uint64_t index,
-    PreviewNavigationHint /*hint*/) const {
-  if (!cached_representation_) {
-    return PreviewImage{0, 0, {}, {}, {}};
-  }
-
-  auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(
+    PreviewNavigationHint hint) const {
+  auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(
       cached_representation_);
-  if (!vfr || !vfr->has_frame(static_cast<FrameID>(index))) {
-    return PreviewImage{0, 0, {}, {}, {}};
-  }
-
-  const bool apply_scaling =
-      (option_id == "sequential_clamped" || option_id == "interlaced_clamped");
-  const bool do_interlace =
-      (option_id == "interlaced_clamped" || option_id == "interlaced_raw");
-  return render_vfr_frame_as_grayscale(*vfr, static_cast<FrameID>(index),
-                                       apply_scaling, do_interlace);
+  return PreviewHelpers::render_standard_preview(vfr, option_id, index, hint);
 }
 
 std::optional<StageReport> FixedFormatCVBSSourceStage::generate_report() const {

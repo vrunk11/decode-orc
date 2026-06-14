@@ -16,7 +16,7 @@
 #include "daphne_vbi_sink_stage_deps.h"
 #include "daphne_vbi_writer_util.h"
 #include "logging.h"
-#include "preview_renderer.h"
+#include "preview_helpers.h"
 
 namespace orc {
 
@@ -43,10 +43,26 @@ std::vector<ArtifactPtr> DaphneVBISinkStage::execute(
     const std::vector<ArtifactPtr>& inputs,
     const std::map<std::string, ParameterValue>& parameters [[maybe_unused]],
     ObservationContext& observation_context) {
-  (void)inputs;
   (void)observation_context;
 
+  cached_input_ = nullptr;
+  if (!inputs.empty()) {
+    cached_input_ =
+        std::dynamic_pointer_cast<const VideoFrameRepresentation>(inputs[0]);
+  }
+
   return {};  // No outputs
+}
+
+std::vector<PreviewOption> DaphneVBISinkStage::get_preview_options() const {
+  return PreviewHelpers::get_standard_preview_options(cached_input_);
+}
+
+PreviewImage DaphneVBISinkStage::render_preview(const std::string& option_id,
+                                                uint64_t index,
+                                                PreviewNavigationHint hint) const {
+  return PreviewHelpers::render_standard_preview(cached_input_, option_id,
+                                                 index, hint);
 }
 
 std::vector<ParameterDescriptor> DaphneVBISinkStage::get_parameter_descriptors(

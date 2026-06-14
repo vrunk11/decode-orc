@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 
+#include "../../../sdk/include/orc/plugin/orc_stage_preview.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
 #include "stage_parameter.h"
 #include "triggerable_stage.h"
@@ -38,14 +39,13 @@ class IDaphneVBISinkStageDeps;
  * When triggered, it reads all fields from its input and writes them to:
  * - .vbi file: Binary data.
  *
- * This sink does not support preview.
- *
  * Parameters:
  * - output_path: Output file path
  */
 class DaphneVBISinkStage : public DAGStage,
                            public ParameterizedStage,
-                           public TriggerableStage {
+                           public TriggerableStage,
+                           public PreviewableStage {
  public:
   explicit DaphneVBISinkStage(IStageServices* stage_services);
 
@@ -91,6 +91,12 @@ class DaphneVBISinkStage : public DAGStage,
 
   void cancel_trigger() override { cancel_requested_.store(true); }
 
+  // PreviewableStage interface
+  bool supports_preview() const override { return cached_input_ != nullptr; }
+  std::vector<PreviewOption> get_preview_options() const override;
+  PreviewImage render_preview(const std::string& option_id, uint64_t index,
+                              PreviewNavigationHint hint) const override;
+
  private:
   std::string output_path_;
   std::string trigger_status_;
@@ -100,6 +106,7 @@ class DaphneVBISinkStage : public DAGStage,
   std::atomic<bool> cancel_requested_{false};
   IStageServices* stage_services_{nullptr};
   std::shared_ptr<IDaphneVBISinkStageDeps> deps_override_;
+  mutable std::shared_ptr<const VideoFrameRepresentation> cached_input_;
 };
 }  // namespace orc
 
