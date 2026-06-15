@@ -86,9 +86,9 @@ TEST(CVBSSinkStageTest, Trigger_FailsWhenInputIsNotVideoFrameRepresentation) {
   orc::CVBSSinkStage stage;
   MockObservationContext observation_context;
 
-  const bool result = stage.trigger(
-      {nullptr}, {{"output_path", std::string("out.cvbs")}},
-      observation_context);
+  const bool result =
+      stage.trigger({nullptr}, {{"output_path", std::string("out.cvbs")}},
+                    observation_context);
 
   EXPECT_FALSE(result);
   EXPECT_THAT(stage.get_trigger_status(),
@@ -118,8 +118,8 @@ TEST(CVBSSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*deps, write_cvbs(vfr.get(), "out.cvbs"))
-      .WillOnce(Return(orc::CVBSSinkWriteResult{
-          true, 42, "Written 42 frames to out.cvbs"}));
+      .WillOnce(Return(
+          orc::CVBSSinkWriteResult{true, 42, "Written 42 frames to out.cvbs"}));
 
   const bool result = stage.trigger(
       {vfr}, {{"output_path", std::string("out.cvbs")}}, observation_context);
@@ -138,7 +138,8 @@ TEST(CVBSSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*deps, write_cvbs(vfr.get(), "out.cvbs"))
-      .WillOnce(Return(orc::CVBSSinkWriteResult{false, 0, "Cancelled by user"}));
+      .WillOnce(
+          Return(orc::CVBSSinkWriteResult{false, 0, "Cancelled by user"}));
 
   const bool result = stage.trigger(
       {vfr}, {{"output_path", std::string("out.cvbs")}}, observation_context);

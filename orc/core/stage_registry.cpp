@@ -466,7 +466,7 @@ void StageRegistry::initialize_runtime_plugins() {
               for (const auto& d : plugin_diagnostics_) {
                 if (d.message.find(stage_name) != std::string::npos) {
                   return true;
-}
+                }
               }
               return false;
             }();

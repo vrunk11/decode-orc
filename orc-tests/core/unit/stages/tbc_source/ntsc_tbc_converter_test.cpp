@@ -27,6 +27,7 @@
 
 #include "../../../../orc/plugins/stages/tbc_source/ntsc_tbc_converter.h"
 
+#include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -34,7 +35,6 @@
 #include <stdexcept>
 #include <vector>
 
-#include <cvbs_signal_constants.h>
 #include "../../../../orc/plugins/stages/tbc_source/ntsc_tbc_yc_converter.h"
 #include "../../../../orc/plugins/stages/tbc_source/pal_m_tbc_converter.h"
 

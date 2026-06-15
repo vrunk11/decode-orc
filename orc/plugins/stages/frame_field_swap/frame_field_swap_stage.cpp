@@ -38,10 +38,11 @@ size_t FrameFieldSwapRepresentation::remap_line(size_t output_line,
     VideoSystem sys, size_t src_line, int32_t nominal_spl) {
   if (sys != VideoSystem::PAL) return static_cast<size_t>(nominal_spl);
   // EBU Tech. 3280-E §1.3.1: four lines carry one extra sample.
-  const bool extra = (src_line == static_cast<size_t>(kPalExtraSampleLines[0]) ||
-                      src_line == static_cast<size_t>(kPalExtraSampleLines[1]) ||
-                      src_line == static_cast<size_t>(kPalExtraSampleLines[2]) ||
-                      src_line == static_cast<size_t>(kPalExtraSampleLines[3]));
+  const bool extra =
+      (src_line == static_cast<size_t>(kPalExtraSampleLines[0]) ||
+       src_line == static_cast<size_t>(kPalExtraSampleLines[1]) ||
+       src_line == static_cast<size_t>(kPalExtraSampleLines[2]) ||
+       src_line == static_cast<size_t>(kPalExtraSampleLines[3]));
   return extra ? static_cast<size_t>(nominal_spl + 1)
                : static_cast<size_t>(nominal_spl);
 }
@@ -68,7 +69,8 @@ FrameFieldSwapRepresentation::get_frame_copy(FrameID id) const {
 
   for (size_t out_line = 0; out_line < height; ++out_line) {
     const size_t src_line = remap_line(out_line, height);
-    const size_t width = line_sample_width(params->system, src_line, nominal_spl);
+    const size_t width =
+        line_sample_width(params->system, src_line, nominal_spl);
     const sample_type* ptr = source_->get_line(id, src_line);
     if (ptr) {
       result.insert(result.end(), ptr, ptr + width);
@@ -79,8 +81,8 @@ FrameFieldSwapRepresentation::get_frame_copy(FrameID id) const {
   return result;
 }
 
-std::vector<DropoutRun>
-FrameFieldSwapRepresentation::get_dropout_hints(FrameID id) const {
+std::vector<DropoutRun> FrameFieldSwapRepresentation::get_dropout_hints(
+    FrameID id) const {
   if (!source_) return {};
   auto runs = source_->get_dropout_hints(id);
   if (runs.empty()) return {};
@@ -97,7 +99,8 @@ FrameFieldSwapRepresentation::get_dropout_hints(FrameID id) const {
   const size_t field2_lines = frame_height - field1_lines_;
 
   // Build output-frame cumulative line-offset table for flat-offset remapping.
-  // output_offsets[i] = flat sample offset of output line i in the OUTPUT frame.
+  // output_offsets[i] = flat sample offset of output line i in the OUTPUT
+  // frame.
   std::vector<uint64_t> out_offsets(frame_height + 1, 0);
   for (size_t out_line = 0; out_line < frame_height; ++out_line) {
     const size_t src_line = remap_line(out_line, frame_height);

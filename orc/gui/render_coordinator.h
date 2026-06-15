@@ -509,7 +509,7 @@ class IRenderPresenter {
  * @brief Coordinator that owns all core rendering state in a worker thread
  *
  * Architecture:
- * - Worker thread owns: DAG, PreviewRenderer, DAGFieldRenderer, all decoders
+ * - Worker thread owns: DAG, PreviewRenderer, DAGFrameRenderer, all decoders
  * - GUI thread sends requests via thread-safe queue
  * - Worker thread processes requests serially (no races possible)
  * - Responses sent back via Qt signals (thread-safe)

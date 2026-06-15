@@ -9,10 +9,9 @@
 
 #include "vbi_presenter.h"
 
-#include "../core/include/dag_field_renderer.h"
+#include "../core/include/dag_frame_renderer.h"
 #include "../core/include/vbi_decoder.h"
 #include "../core/include/vbi_types.h"
-#include "../core/include/video_field_representation.h"
 #include "vbi_view_models.h"
 
 namespace orc::presenters {
@@ -201,11 +200,12 @@ std::optional<VBIFieldInfoView> VbiPresenter::getVbiForField(
   auto dag = std::static_pointer_cast<const orc::DAG>(dag_void);
 
   try {
-    DAGFieldRenderer renderer(dag);
-    auto render_result = renderer.render_field_at_node(node_id, field_id);
+    orc::FrameID frame_id = static_cast<orc::FrameID>(field_id.value() / 2);
+    DAGFrameRenderer renderer(dag);
+    auto render_result = renderer.render_frame_at_node(node_id, frame_id);
     if (!render_result.is_valid || !render_result.representation) {
       return std::nullopt;
-}
+    }
 
     const auto& obs = renderer.get_observation_context();
     auto vbi = VBIDecoder::decode_vbi(obs, field_id);

@@ -16,7 +16,6 @@
 #include "../../core/include/dag_executor.h"
 #include "../../core/include/logging.h"
 #include "../../core/include/project.h"
-#include "../../core/include/video_field_representation.h"
 #include "../../core/stages/stage.h"
 
 namespace orc::presenters {

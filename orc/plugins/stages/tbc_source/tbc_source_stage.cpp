@@ -12,7 +12,6 @@
 #include <cvbs_signal_constants.h>
 #include <tbc_metadata.h>
 #include <tbc_reader.h>
-#include <video_field_representation.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -767,9 +766,12 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
     tvp.git_branch = sp->git_branch;
     tvp.git_commit = sp->git_commit;
     tvp.is_widescreen = sp->is_widescreen;
-    // TBC 16-bit domain levels — always the ld-decode normative constants.
-    tvp.blanking_16b = kTbcBlanking;
-    tvp.white_16b = kTbcWhite;
+    // Read actual ld-decode 16-bit domain levels from the metadata.
+    // These are the blanking/white levels the original ld-decode decoder
+    // recorded; using them gives accurate CVBS_U10_4FSC conversion.
+    const auto tbc_levels = reader.read_tbc_domain_levels();
+    tvp.blanking_16b = tbc_levels ? tbc_levels->blanking_16b : kTbcBlanking;
+    tvp.white_16b = tbc_levels ? tbc_levels->white_16b : kTbcWhite;
     tvp.number_of_fields = sp->number_of_sequential_frames * 2;
     tvp.field_width = sp->frame_width_nominal;
 

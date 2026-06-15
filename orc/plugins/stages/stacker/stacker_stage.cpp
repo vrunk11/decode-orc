@@ -108,20 +108,28 @@ std::vector<FrameID> StackedVideoFrameRepresentation::collect_source_frame_ids(
       for (int sign : {0, 1}) {
         int64_t off = (sign == 0) ? delta : -delta;
         int64_t raw = static_cast<int64_t>(ref_id) + off;
-        if (raw < 0) { continue; }
+        if (raw < 0) {
+          continue;
+        }
         FrameID candidate = static_cast<FrameID>(raw);
         if (candidate < src_range.first || candidate > src_range.last) {
           continue;
         }
-        if (!src->has_frame(candidate)) { continue; }
+        if (!src->has_frame(candidate)) {
+          continue;
+        }
         auto cd = src->get_frame_descriptor(candidate);
-        if (!cd || cd->is_padding_frame) { continue; }
+        if (!cd || cd->is_padding_frame) {
+          continue;
+        }
         if (cd->colour_frame_index == ref_cfi) {
           best = candidate;
           break;
         }
       }
-      if (best != kInvalid) { break; }
+      if (best != kInvalid) {
+        break;
+      }
     }
 
     ids.push_back(best);
@@ -130,19 +138,25 @@ std::vector<FrameID> StackedVideoFrameRepresentation::collect_source_frame_ids(
   return ids;
 }
 
-FrameID StackedVideoFrameRepresentation::resolve_source_frame(size_t src_idx,
-                                                              FrameID ref_id) const {
+FrameID StackedVideoFrameRepresentation::resolve_source_frame(
+    size_t src_idx, FrameID ref_id) const {
   auto ids = collect_source_frame_ids(ref_id);
-  if (src_idx >= ids.size()) { return UINT64_MAX; }
+  if (src_idx >= ids.size()) {
+    return UINT64_MAX;
+  }
   return ids[src_idx];
 }
 
 size_t StackedVideoFrameRepresentation::get_source_count(FrameID ref_id) const {
   size_t count = 0;
   for (const auto& src : sources_) {
-    if (!src || !src->has_frame(ref_id)) { continue; }
+    if (!src || !src->has_frame(ref_id)) {
+      continue;
+    }
     auto desc = src->get_frame_descriptor(ref_id);
-    if (desc && !desc->is_padding_frame) { ++count; }
+    if (desc && !desc->is_padding_frame) {
+      ++count;
+    }
   }
   return count;
 }
@@ -150,18 +164,26 @@ size_t StackedVideoFrameRepresentation::get_source_count(FrameID ref_id) const {
 size_t StackedVideoFrameRepresentation::get_best_source_index(
     FrameID id) const {
   std::lock_guard<std::mutex> lk(cache_mutex_);
-  if (const auto* p = best_source_cache_.get_ptr(id)) { return *p; }
+  if (const auto* p = best_source_cache_.get_ptr(id)) {
+    return *p;
+  }
 
   auto src_ids = collect_source_frame_ids(id);
   size_t best = 0;
   size_t min_dropouts = SIZE_MAX;
 
   for (size_t i = 0; i < sources_.size() && i < src_ids.size(); ++i) {
-    if (src_ids[i] == UINT64_MAX) { continue; }
-    if (!sources_[i]) { continue; }
+    if (src_ids[i] == UINT64_MAX) {
+      continue;
+    }
+    if (!sources_[i]) {
+      continue;
+    }
     auto runs = sources_[i]->get_dropout_hints(src_ids[i]);
     size_t total = 0;
-    for (const auto& r : runs) { total += r.sample_count; }
+    for (const auto& r : runs) {
+      total += r.sample_count;
+    }
     if (total < min_dropouts) {
       min_dropouts = total;
       best = i;
@@ -173,7 +195,9 @@ size_t StackedVideoFrameRepresentation::get_best_source_index(
 }
 
 void StackedVideoFrameRepresentation::ensure_frame_stacked(FrameID id) const {
-  if (stacked_frames_.contains(id) && stacked_dropouts_.contains(id)) { return; }
+  if (stacked_frames_.contains(id) && stacked_dropouts_.contains(id)) {
+    return;
+  }
 
   ORC_LOG_DEBUG("StackedVideoFrameRepresentation: stacking frame {}", id);
 
@@ -222,10 +246,14 @@ StackedVideoFrameRepresentation::get_line(FrameID id, size_t line) const {
   std::lock_guard<std::mutex> lk(cache_mutex_);
   ensure_frame_stacked(id);
   const auto* p = stacked_frames_.get_ptr(id);
-  if (!p || p->empty()) { return nullptr; }
+  if (!p || p->empty()) {
+    return nullptr;
+  }
 
   auto desc = source_ ? source_->get_frame_descriptor(id) : std::nullopt;
-  if (!desc || line >= desc->height) { return nullptr; }
+  if (!desc || line >= desc->height) {
+    return nullptr;
+  }
   size_t stride = desc->samples_per_line_nominal;
   return p->data() + line * stride;
 }
@@ -236,7 +264,9 @@ StackedVideoFrameRepresentation::get_frame_copy(FrameID id) const {
     std::lock_guard<std::mutex> lk(cache_mutex_);
     if (stacked_frames_.contains(id) && stacked_dropouts_.contains(id)) {
       const auto* p = stacked_frames_.get_ptr(id);
-      if (p) { return *p; }
+      if (p) {
+        return *p;
+      }
     }
   }
 
@@ -259,7 +289,9 @@ StackedVideoFrameRepresentation::get_frame_copy(FrameID id) const {
 
 const VideoFrameRepresentation::sample_type*
 StackedVideoFrameRepresentation::get_frame_luma(FrameID id) const {
-  if (!has_separate_channels()) { return nullptr; }
+  if (!has_separate_channels()) {
+    return nullptr;
+  }
   std::lock_guard<std::mutex> lk(cache_mutex_);
   ensure_frame_stacked_yc(id);
   const auto* p = stacked_luma_.get_ptr(id);
@@ -268,7 +300,9 @@ StackedVideoFrameRepresentation::get_frame_luma(FrameID id) const {
 
 const VideoFrameRepresentation::sample_type*
 StackedVideoFrameRepresentation::get_frame_chroma(FrameID id) const {
-  if (!has_separate_channels()) { return nullptr; }
+  if (!has_separate_channels()) {
+    return nullptr;
+  }
   std::lock_guard<std::mutex> lk(cache_mutex_);
   ensure_frame_stacked_yc(id);
   const auto* p = stacked_chroma_.get_ptr(id);
@@ -277,30 +311,43 @@ StackedVideoFrameRepresentation::get_frame_chroma(FrameID id) const {
 
 const VideoFrameRepresentation::sample_type*
 StackedVideoFrameRepresentation::get_line_luma(FrameID id, size_t line) const {
-  if (!has_separate_channels()) { return nullptr; }
+  if (!has_separate_channels()) {
+    return nullptr;
+  }
   std::lock_guard<std::mutex> lk(cache_mutex_);
   ensure_frame_stacked_yc(id);
   const auto* p = stacked_luma_.get_ptr(id);
-  if (!p || p->empty()) { return nullptr; }
+  if (!p || p->empty()) {
+    return nullptr;
+  }
   auto desc = source_ ? source_->get_frame_descriptor(id) : std::nullopt;
-  if (!desc || line >= desc->height) { return nullptr; }
+  if (!desc || line >= desc->height) {
+    return nullptr;
+  }
   return p->data() + line * desc->samples_per_line_nominal;
 }
 
 const VideoFrameRepresentation::sample_type*
 StackedVideoFrameRepresentation::get_line_chroma(FrameID id,
-                                                  size_t line) const {
-  if (!has_separate_channels()) { return nullptr; }
+                                                 size_t line) const {
+  if (!has_separate_channels()) {
+    return nullptr;
+  }
   std::lock_guard<std::mutex> lk(cache_mutex_);
   ensure_frame_stacked_yc(id);
   const auto* p = stacked_chroma_.get_ptr(id);
-  if (!p || p->empty()) { return nullptr; }
+  if (!p || p->empty()) {
+    return nullptr;
+  }
   auto desc = source_ ? source_->get_frame_descriptor(id) : std::nullopt;
-  if (!desc || line >= desc->height) { return nullptr; }
+  if (!desc || line >= desc->height) {
+    return nullptr;
+  }
   return p->data() + line * desc->samples_per_line_nominal;
 }
 
-// ── Dropout hints ─────────────────────────────────────────────────────────────
+// ── Dropout hints
+// ─────────────────────────────────────────────────────────────
 
 std::vector<DropoutRun> StackedVideoFrameRepresentation::get_dropout_hints(
     FrameID id) const {
@@ -308,7 +355,9 @@ std::vector<DropoutRun> StackedVideoFrameRepresentation::get_dropout_hints(
     std::lock_guard<std::mutex> lk(cache_mutex_);
     if (stacked_dropouts_.contains(id)) {
       const auto* p = stacked_dropouts_.get_ptr(id);
-      if (p) { return *p; }
+      if (p) {
+        return *p;
+      }
     }
   }
 
@@ -319,18 +368,23 @@ std::vector<DropoutRun> StackedVideoFrameRepresentation::get_dropout_hints(
   return p ? *p : std::vector<DropoutRun>{};
 }
 
-// ── Audio ─────────────────────────────────────────────────────────────────────
+// ── Audio
+// ─────────────────────────────────────────────────────────────────────
 
 bool StackedVideoFrameRepresentation::has_audio() const {
   for (const auto& src : sources_) {
-    if (src && src->has_audio()) { return true; }
+    if (src && src->has_audio()) {
+      return true;
+    }
   }
   return false;
 }
 
 bool StackedVideoFrameRepresentation::audio_locked() const {
   for (const auto& src : sources_) {
-    if (src && src->has_audio()) { return src->audio_locked(); }
+    if (src && src->has_audio()) {
+      return src->audio_locked();
+    }
   }
   return false;
 }
@@ -347,11 +401,15 @@ uint32_t StackedVideoFrameRepresentation::get_audio_sample_count(
 
 std::vector<int16_t> StackedVideoFrameRepresentation::get_audio_samples(
     FrameID id) const {
-  if (!has_audio()) { return {}; }
+  if (!has_audio()) {
+    return {};
+  }
 
   {
     std::lock_guard<std::mutex> lk(cache_mutex_);
-    if (const auto* p = stacked_audio_.get_ptr(id)) { return *p; }
+    if (const auto* p = stacked_audio_.get_ptr(id)) {
+      return *p;
+    }
   }
 
   size_t best = get_best_source_index(id);
@@ -359,7 +417,9 @@ std::vector<int16_t> StackedVideoFrameRepresentation::get_audio_samples(
   auto result = stage_->stack_audio(src_ids, sources_, best);
 
   std::lock_guard<std::mutex> lk(cache_mutex_);
-  if (!stacked_audio_.contains(id)) { stacked_audio_.put(id, result); }
+  if (!stacked_audio_.contains(id)) {
+    stacked_audio_.put(id, result);
+  }
   return result;
 }
 
@@ -367,7 +427,9 @@ std::vector<int16_t> StackedVideoFrameRepresentation::get_audio_samples(
 
 bool StackedVideoFrameRepresentation::has_efm() const {
   for (const auto& src : sources_) {
-    if (src && src->has_efm()) { return true; }
+    if (src && src->has_efm()) {
+      return true;
+    }
   }
   return false;
 }
@@ -384,11 +446,15 @@ uint32_t StackedVideoFrameRepresentation::get_efm_sample_count(
 
 std::vector<uint8_t> StackedVideoFrameRepresentation::get_efm_samples(
     FrameID id) const {
-  if (!has_efm()) { return {}; }
+  if (!has_efm()) {
+    return {};
+  }
 
   {
     std::lock_guard<std::mutex> lk(cache_mutex_);
-    if (const auto* p = stacked_efm_.get_ptr(id)) { return *p; }
+    if (const auto* p = stacked_efm_.get_ptr(id)) {
+      return *p;
+    }
   }
 
   size_t best = get_best_source_index(id);
@@ -396,7 +462,9 @@ std::vector<uint8_t> StackedVideoFrameRepresentation::get_efm_samples(
   auto result = stage_->stack_efm(src_ids, sources_, best);
 
   std::lock_guard<std::mutex> lk(cache_mutex_);
-  if (!stacked_efm_.contains(id)) { stacked_efm_.put(id, result); }
+  if (!stacked_efm_.contains(id)) {
+    stacked_efm_.put(id, result);
+  }
   return result;
 }
 
@@ -462,10 +530,8 @@ std::vector<ArtifactPtr> StackerStage::execute(
 
   // Multi-source path: result is a StackedVideoFrameRepresentation which
   // inherits from both VideoFrameRepresentationWrapper and Artifact.
-  auto stacked =
-      std::const_pointer_cast<StackedVideoFrameRepresentation>(
-          std::dynamic_pointer_cast<const StackedVideoFrameRepresentation>(
-              result));
+  auto stacked = std::const_pointer_cast<StackedVideoFrameRepresentation>(
+      std::dynamic_pointer_cast<const StackedVideoFrameRepresentation>(result));
   if (!stacked) {
     // Fallback: should not happen
     return {inputs[0]};
@@ -474,35 +540,46 @@ std::vector<ArtifactPtr> StackerStage::execute(
 }
 
 std::shared_ptr<const VideoFrameRepresentation> StackerStage::process(
-    const std::vector<std::shared_ptr<const VideoFrameRepresentation>>&
-        sources) const {
-  if (sources.empty()) { return nullptr; }
-  if (sources.size() == 1) { return sources[0]; }
+    const std::vector<std::shared_ptr<const VideoFrameRepresentation>>& sources)
+    const {
+  if (sources.empty()) {
+    return nullptr;
+  }
+  if (sources.size() == 1) {
+    return sources[0];
+  }
 
   return std::make_shared<StackedVideoFrameRepresentation>(
       sources, const_cast<StackerStage*>(this));
 }
 
-// ── Core stacking ─────────────────────────────────────────────────────────────
+// ── Core stacking
+// ─────────────────────────────────────────────────────────────
 
 void StackerStage::stack_frame(
     const std::vector<FrameID>& source_ids,
     const std::vector<std::shared_ptr<const VideoFrameRepresentation>>& sources,
     std::vector<sample_type>& output_samples,
     std::vector<DropoutRun>& output_dropouts) const {
-  if (source_ids.size() != sources.size()) { return; }
+  if (source_ids.size() != sources.size()) {
+    return;
+  }
 
   std::optional<FrameDescriptor> ref_desc;
   size_t ref_src = 0;
   for (size_t i = 0; i < source_ids.size(); ++i) {
-    if (source_ids[i] == UINT64_MAX || !sources[i]) { continue; }
+    if (source_ids[i] == UINT64_MAX || !sources[i]) {
+      continue;
+    }
     ref_desc = sources[i]->get_frame_descriptor(source_ids[i]);
     if (ref_desc) {
       ref_src = i;
       break;
     }
   }
-  if (!ref_desc) { return; }
+  if (!ref_desc) {
+    return;
+  }
 
   size_t height = ref_desc->height;
   size_t nominal_width = ref_desc->samples_per_line_nominal;
@@ -519,10 +596,16 @@ void StackerStage::stack_frame(
   std::vector<std::vector<DropoutRun>> all_dropouts(sources.size());
 
   for (size_t i = 0; i < sources.size(); ++i) {
-    if (source_ids[i] == UINT64_MAX || !sources[i]) { continue; }
-    if (!sources[i]->has_frame(source_ids[i])) { continue; }
+    if (source_ids[i] == UINT64_MAX || !sources[i]) {
+      continue;
+    }
+    if (!sources[i]->has_frame(source_ids[i])) {
+      continue;
+    }
     auto d = sources[i]->get_frame_descriptor(source_ids[i]);
-    if (!d || d->is_padding_frame) { continue; }
+    if (!d || d->is_padding_frame) {
+      continue;
+    }
     all_frames[i] = sources[i]->get_frame_copy(source_ids[i]);
     if (!all_frames[i].empty()) {
       frame_valid[i] = true;
@@ -533,9 +616,13 @@ void StackerStage::stack_frame(
   size_t n_threads = static_cast<size_t>(m_thread_count);
   if (n_threads == 0) {
     n_threads = std::thread::hardware_concurrency();
-    if (n_threads == 0) { n_threads = 4; }
+    if (n_threads == 0) {
+      n_threads = 4;
+    }
   }
-  if (n_threads == 1 || height < n_threads * 4) { n_threads = 1; }
+  if (n_threads == 1 || height < n_threads * 4) {
+    n_threads = 1;
+  }
 
   size_t total_do = 0;
   size_t total_stacked = 0;
@@ -555,7 +642,9 @@ void StackerStage::stack_frame(
     for (size_t t = 0; t < n_threads; ++t) {
       size_t s = t * lpt;
       size_t e = std::min(s + lpt, height);
-      if (s >= height) { break; }
+      if (s >= height) {
+        break;
+      }
       threads.emplace_back([&, t, s, e]() {
         process_lines_range(s, e, nominal_width, all_frames, frame_valid,
                             all_dropouts, sources.size(), black_level,
@@ -563,7 +652,9 @@ void StackerStage::stack_frame(
                             thread_dos[t], thread_do[t], thread_st[t]);
       });
     }
-    for (auto& th : threads) { th.join(); }
+    for (auto& th : threads) {
+      th.join();
+    }
     for (size_t t = 0; t < n_threads; ++t) {
       output_dropouts.insert(output_dropouts.end(), thread_dos[t].begin(),
                              thread_dos[t].end());
@@ -583,19 +674,25 @@ void StackerStage::stack_frame_yc(
     std::vector<sample_type>& output_luma,
     std::vector<sample_type>& output_chroma,
     std::vector<DropoutRun>& output_dropouts) const {
-  if (source_ids.size() != sources.size()) { return; }
+  if (source_ids.size() != sources.size()) {
+    return;
+  }
 
   std::optional<FrameDescriptor> ref_desc;
   size_t ref_src = 0;
   for (size_t i = 0; i < source_ids.size(); ++i) {
-    if (source_ids[i] == UINT64_MAX || !sources[i]) { continue; }
+    if (source_ids[i] == UINT64_MAX || !sources[i]) {
+      continue;
+    }
     ref_desc = sources[i]->get_frame_descriptor(source_ids[i]);
     if (ref_desc) {
       ref_src = i;
       break;
     }
   }
-  if (!ref_desc) { return; }
+  if (!ref_desc) {
+    return;
+  }
 
   size_t height = ref_desc->height;
   size_t nominal_width = ref_desc->samples_per_line_nominal;
@@ -614,13 +711,21 @@ void StackerStage::stack_frame_yc(
   std::vector<std::vector<DropoutRun>> all_dropouts(sources.size());
 
   for (size_t i = 0; i < sources.size(); ++i) {
-    if (source_ids[i] == UINT64_MAX || !sources[i]) { continue; }
-    if (!sources[i]->has_frame(source_ids[i])) { continue; }
+    if (source_ids[i] == UINT64_MAX || !sources[i]) {
+      continue;
+    }
+    if (!sources[i]->has_frame(source_ids[i])) {
+      continue;
+    }
     auto d = sources[i]->get_frame_descriptor(source_ids[i]);
-    if (!d || d->is_padding_frame) { continue; }
+    if (!d || d->is_padding_frame) {
+      continue;
+    }
     const sample_type* lp = sources[i]->get_frame_luma(source_ids[i]);
     const sample_type* cp = sources[i]->get_frame_chroma(source_ids[i]);
-    if (!lp || !cp) { continue; }
+    if (!lp || !cp) {
+      continue;
+    }
     all_luma[i].assign(lp, lp + total);
     all_chroma[i].assign(cp, cp + total);
     frame_valid[i] = true;
@@ -630,9 +735,13 @@ void StackerStage::stack_frame_yc(
   size_t n_threads = static_cast<size_t>(m_thread_count);
   if (n_threads == 0) {
     n_threads = std::thread::hardware_concurrency();
-    if (n_threads == 0) { n_threads = 4; }
+    if (n_threads == 0) {
+      n_threads = 4;
+    }
   }
-  if (n_threads == 1 || height < n_threads * 4) { n_threads = 1; }
+  if (n_threads == 1 || height < n_threads * 4) {
+    n_threads = 1;
+  }
 
   size_t total_do = 0;
   size_t total_stacked = 0;
@@ -653,7 +762,9 @@ void StackerStage::stack_frame_yc(
     for (size_t t = 0; t < n_threads; ++t) {
       size_t s = t * lpt;
       size_t e = std::min(s + lpt, height);
-      if (s >= height) { break; }
+      if (s >= height) {
+        break;
+      }
       threads.emplace_back([&, t, s, e]() {
         process_lines_range_yc(s, e, nominal_width, all_luma, all_chroma,
                                frame_valid, all_dropouts, sources.size(),
@@ -662,7 +773,9 @@ void StackerStage::stack_frame_yc(
                                thread_do[t], thread_st[t]);
       });
     }
-    for (auto& th : threads) { th.join(); }
+    for (auto& th : threads) {
+      th.join();
+    }
     for (size_t t = 0; t < n_threads; ++t) {
       output_dropouts.insert(output_dropouts.end(), thread_dos[t].begin(),
                              thread_dos[t].end());
@@ -672,16 +785,16 @@ void StackerStage::stack_frame_yc(
   (void)total_stacked;
 }
 
-// ── Per-line processing ───────────────────────────────────────────────────────
+// ── Per-line processing
+// ───────────────────────────────────────────────────────
 
 namespace {
 
-bool is_sample_dropout(const std::vector<DropoutRun>& runs,
-                       size_t line, size_t x, size_t width) {
+bool is_sample_dropout(const std::vector<DropoutRun>& runs, size_t line,
+                       size_t x, size_t width) {
   uint64_t offset = static_cast<uint64_t>(line * width + x);
   for (const auto& r : runs) {
-    if (offset >= r.sample_start &&
-        offset < r.sample_start + r.sample_count) {
+    if (offset >= r.sample_start && offset < r.sample_start + r.sample_count) {
       return true;
     }
   }
@@ -695,12 +808,9 @@ void StackerStage::process_lines_range(
     const std::vector<std::vector<sample_type>>& all_frames,
     const std::vector<bool>& frame_valid,
     const std::vector<std::vector<DropoutRun>>& all_dropouts,
-    size_t num_sources,
-    int32_t black_level,
-    int32_t /*nominal_width*/,
+    size_t num_sources, int32_t black_level, int32_t /*nominal_width*/,
     std::vector<sample_type>& output_samples,
-    std::vector<DropoutRun>& output_dropouts,
-    size_t& total_dropouts,
+    std::vector<DropoutRun>& output_dropouts, size_t& total_dropouts,
     size_t& total_stacked) const {
   for (size_t y = start_line; y < end_line; ++y) {
     bool in_dropout = false;
@@ -712,9 +822,13 @@ void StackerStage::process_lines_range(
       std::vector<bool> is_do(num_sources, true);
 
       for (size_t si = 0; si < num_sources; ++si) {
-        if (!frame_valid[si]) { continue; }
+        if (!frame_valid[si]) {
+          continue;
+        }
         size_t off = y * width + x;
-        if (off >= all_frames[si].size()) { continue; }
+        if (off >= all_frames[si].size()) {
+          continue;
+        }
         int16_t val = all_frames[si][off];
         bool do_flag = is_sample_dropout(all_dropouts[si], y, x, width);
         is_do[si] = do_flag;
@@ -725,8 +839,8 @@ void StackerStage::process_lines_range(
         }
       }
 
-      bool all_do = std::all_of(is_do.begin(), is_do.end(),
-                                [](bool b) { return b; });
+      bool all_do =
+          std::all_of(is_do.begin(), is_do.end(), [](bool b) { return b; });
 
       if (all_do && num_sources >= 3 && !m_no_diff_dod &&
           !dropout_values.empty()) {
@@ -748,8 +862,7 @@ void StackerStage::process_lines_range(
           DropoutRun r;
           r.frame_id = 0;
           r.sample_start = do_start;
-          r.sample_count =
-              static_cast<uint32_t>(y * width + x - do_start);
+          r.sample_count = static_cast<uint32_t>(y * width + x - do_start);
           r.severity = 50;
           output_dropouts.push_back(r);
           in_dropout = false;
@@ -775,13 +888,10 @@ void StackerStage::process_lines_range_yc(
     const std::vector<std::vector<sample_type>>& all_chroma,
     const std::vector<bool>& frame_valid,
     const std::vector<std::vector<DropoutRun>>& all_dropouts,
-    size_t num_sources,
-    int32_t black_level,
-    int32_t /*nominal_width*/,
+    size_t num_sources, int32_t black_level, int32_t /*nominal_width*/,
     std::vector<sample_type>& output_luma,
     std::vector<sample_type>& output_chroma,
-    std::vector<DropoutRun>& output_dropouts,
-    size_t& total_dropouts,
+    std::vector<DropoutRun>& output_dropouts, size_t& total_dropouts,
     size_t& total_stacked) const {
   for (size_t y = start_line; y < end_line; ++y) {
     bool in_dropout = false;
@@ -793,9 +903,13 @@ void StackerStage::process_lines_range_yc(
       std::vector<bool> is_do(num_sources, true);
 
       for (size_t si = 0; si < num_sources; ++si) {
-        if (!frame_valid[si]) { continue; }
+        if (!frame_valid[si]) {
+          continue;
+        }
         size_t off = y * width + x;
-        if (off >= all_luma[si].size()) { continue; }
+        if (off >= all_luma[si].size()) {
+          continue;
+        }
         bool do_flag = is_sample_dropout(all_dropouts[si], y, x, width);
         is_do[si] = do_flag;
         if (!do_flag) {
@@ -806,8 +920,8 @@ void StackerStage::process_lines_range_yc(
         }
       }
 
-      bool all_do = std::all_of(is_do.begin(), is_do.end(),
-                                [](bool b) { return b; });
+      bool all_do =
+          std::all_of(is_do.begin(), is_do.end(), [](bool b) { return b; });
 
       int16_t out_luma;
       int16_t out_chroma;
@@ -821,16 +935,14 @@ void StackerStage::process_lines_range_yc(
         }
       } else {
         out_luma = stack_mode(good_luma, all_do);
-        out_chroma = good_chroma.empty()
-                         ? static_cast<int16_t>(black_level)
-                         : stack_mode(good_chroma, all_do);
+        out_chroma = good_chroma.empty() ? static_cast<int16_t>(black_level)
+                                         : stack_mode(good_chroma, all_do);
         ++total_stacked;
         if (in_dropout) {
           DropoutRun r;
           r.frame_id = 0;
           r.sample_start = do_start;
-          r.sample_count =
-              static_cast<uint32_t>(y * width + x - do_start);
+          r.sample_count = static_cast<uint32_t>(y * width + x - do_start);
           r.severity = 50;
           output_dropouts.push_back(r);
           in_dropout = false;
@@ -853,14 +965,19 @@ void StackerStage::process_lines_range_yc(
   }
 }
 
-// ── Stacking mode ─────────────────────────────────────────────────────────────
+// ── Stacking mode
+// ─────────────────────────────────────────────────────────────
 
 int16_t StackerStage::stack_mode(const std::vector<int16_t>& values,
-                                  bool /*all_dropout*/) const {
-  if (values.empty()) { return 0; }
+                                 bool /*all_dropout*/) const {
+  if (values.empty()) {
+    return 0;
+  }
 
   int32_t mode = m_mode;
-  if (mode == -1) { mode = (static_cast<int32_t>(values.size()) >= 3) ? 2 : 0; }
+  if (mode == -1) {
+    mode = (static_cast<int32_t>(values.size()) >= 3) ? 2 : 0;
+  }
 
   switch (mode) {
     case 0:
@@ -877,7 +994,9 @@ int16_t StackerStage::stack_mode(const std::vector<int16_t>& values,
           ++count;
         }
       }
-      if (count == 0) { return med; }
+      if (count == 0) {
+        return med;
+      }
       return static_cast<int16_t>(sum / static_cast<int32_t>(count));
     }
     default:
@@ -886,7 +1005,9 @@ int16_t StackerStage::stack_mode(const std::vector<int16_t>& values,
 }
 
 int16_t StackerStage::compute_median(std::vector<int16_t> v) const {
-  if (v.empty()) { return 0; }
+  if (v.empty()) {
+    return 0;
+  }
   size_t n = v.size();
   std::sort(v.begin(), v.end());
   if (n % 2 == 0) {
@@ -897,20 +1018,28 @@ int16_t StackerStage::compute_median(std::vector<int16_t> v) const {
 }
 
 int32_t StackerStage::compute_mean(const std::vector<int16_t>& v) const {
-  if (v.empty()) { return 0; }
+  if (v.empty()) {
+    return 0;
+  }
   int64_t sum = 0;
-  for (int16_t s : v) { sum += s; }
+  for (int16_t s : v) {
+    sum += s;
+  }
   return static_cast<int32_t>(sum / static_cast<int64_t>(v.size()));
 }
 
 std::vector<int16_t> StackerStage::diff_dod(const std::vector<int16_t>& input,
-                                             int32_t /*black_level*/) const {
-  if (input.size() < 3) { return {}; }
+                                            int32_t /*black_level*/) const {
+  if (input.size() < 3) {
+    return {};
+  }
   std::vector<int16_t> cp(input);
   int16_t med = compute_median(cp);
   std::vector<int16_t> result;
   for (int16_t v : input) {
-    if (std::abs(static_cast<int32_t>(v) - med) < 500) { result.push_back(v); }
+    if (std::abs(static_cast<int32_t>(v) - med) < 500) {
+      result.push_back(v);
+    }
   }
   return result;
 }
@@ -931,7 +1060,9 @@ std::vector<int16_t> StackerStage::stack_audio(
 
   // Free-running audio: pass from first unlocked source unchanged.
   for (size_t i = 0; i < sources.size(); ++i) {
-    if (source_ids[i] == UINT64_MAX || !sources[i]) { continue; }
+    if (source_ids[i] == UINT64_MAX || !sources[i]) {
+      continue;
+    }
     if (sources[i]->has_audio() && !sources[i]->audio_locked()) {
       return sources[i]->get_audio_samples(source_ids[i]);
     }
@@ -940,23 +1071,33 @@ std::vector<int16_t> StackerStage::stack_audio(
   // Locked audio: collect and stack.
   std::vector<std::vector<int16_t>> all_audio;
   for (size_t i = 0; i < sources.size(); ++i) {
-    if (source_ids[i] == UINT64_MAX || !sources[i]) { continue; }
+    if (source_ids[i] == UINT64_MAX || !sources[i]) {
+      continue;
+    }
     if (!sources[i]->has_audio() || !sources[i]->has_frame(source_ids[i])) {
       continue;
     }
     auto s = sources[i]->get_audio_samples(source_ids[i]);
-    if (!s.empty()) { all_audio.push_back(std::move(s)); }
+    if (!s.empty()) {
+      all_audio.push_back(std::move(s));
+    }
   }
 
-  if (all_audio.empty()) { return {}; }
-  if (all_audio.size() == 1) { return all_audio[0]; }
+  if (all_audio.empty()) {
+    return {};
+  }
+  if (all_audio.size() == 1) {
+    return all_audio[0];
+  }
 
   size_t n = all_audio[0].size();
   std::vector<int16_t> result(n);
   for (size_t si = 0; si < n; ++si) {
     std::vector<int16_t> vals;
     for (const auto& a : all_audio) {
-      if (si < a.size()) { vals.push_back(a[si]); }
+      if (si < a.size()) {
+        vals.push_back(a[si]);
+      }
     }
     if (m_audio_stacking_mode == AudioStackingMode::MEDIAN) {
       result[si] = audio_median(vals);
@@ -981,23 +1122,33 @@ std::vector<uint8_t> StackerStage::stack_efm(
 
   std::vector<std::vector<uint8_t>> all_efm;
   for (size_t i = 0; i < sources.size(); ++i) {
-    if (source_ids[i] == UINT64_MAX || !sources[i]) { continue; }
+    if (source_ids[i] == UINT64_MAX || !sources[i]) {
+      continue;
+    }
     if (!sources[i]->has_efm() || !sources[i]->has_frame(source_ids[i])) {
       continue;
     }
     auto s = sources[i]->get_efm_samples(source_ids[i]);
-    if (!s.empty()) { all_efm.push_back(std::move(s)); }
+    if (!s.empty()) {
+      all_efm.push_back(std::move(s));
+    }
   }
 
-  if (all_efm.empty()) { return {}; }
-  if (all_efm.size() == 1) { return all_efm[0]; }
+  if (all_efm.empty()) {
+    return {};
+  }
+  if (all_efm.size() == 1) {
+    return all_efm[0];
+  }
 
   size_t n = all_efm[0].size();
   std::vector<uint8_t> result(n);
   for (size_t si = 0; si < n; ++si) {
     std::vector<uint8_t> vals;
     for (const auto& e : all_efm) {
-      if (si < e.size()) { vals.push_back(e[si]); }
+      if (si < e.size()) {
+        vals.push_back(e[si]);
+      }
     }
     if (m_efm_stacking_mode == EFMStackingMode::MEDIAN) {
       result[si] = efm_median(vals);
@@ -1009,17 +1160,23 @@ std::vector<uint8_t> StackerStage::stack_efm(
 }
 
 int16_t StackerStage::audio_mean(const std::vector<int16_t>& v) const {
-  if (v.empty()) { return 0; }
+  if (v.empty()) {
+    return 0;
+  }
   int64_t s = 0;
-  for (int16_t x : v) { s += x; }
+  for (int16_t x : v) {
+    s += x;
+  }
   return static_cast<int16_t>(s / static_cast<int64_t>(v.size()));
 }
 
 int16_t StackerStage::audio_median(std::vector<int16_t> v) const {
-  if (v.empty()) { return 0; }
+  if (v.empty()) {
+    return 0;
+  }
   size_t n = v.size();
-  std::nth_element(v.begin(),
-                   v.begin() + static_cast<std::ptrdiff_t>(n / 2), v.end());
+  std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(n / 2),
+                   v.end());
   if (n % 2 == 0) {
     std::nth_element(v.begin(),
                      v.begin() + static_cast<std::ptrdiff_t>((n - 1) / 2),
@@ -1031,17 +1188,23 @@ int16_t StackerStage::audio_median(std::vector<int16_t> v) const {
 }
 
 uint8_t StackerStage::efm_mean(const std::vector<uint8_t>& v) const {
-  if (v.empty()) { return 0; }
+  if (v.empty()) {
+    return 0;
+  }
   uint32_t s = 0;
-  for (uint8_t x : v) { s += x; }
+  for (uint8_t x : v) {
+    s += x;
+  }
   return static_cast<uint8_t>(s / static_cast<uint32_t>(v.size()));
 }
 
 uint8_t StackerStage::efm_median(std::vector<uint8_t> v) const {
-  if (v.empty()) { return 0; }
+  if (v.empty()) {
+    return 0;
+  }
   size_t n = v.size();
-  std::nth_element(v.begin(),
-                   v.begin() + static_cast<std::ptrdiff_t>(n / 2), v.end());
+  std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(n / 2),
+                   v.end());
   if (n % 2 == 0) {
     std::nth_element(v.begin(),
                      v.begin() + static_cast<std::ptrdiff_t>((n - 1) / 2),
@@ -1052,82 +1215,91 @@ uint8_t StackerStage::efm_median(std::vector<uint8_t> v) const {
   return v[n / 2];
 }
 
-// ── Parameters ────────────────────────────────────────────────────────────────
+// ── Parameters
+// ────────────────────────────────────────────────────────────────
 
 std::vector<ParameterDescriptor> StackerStage::get_parameter_descriptors(
     VideoSystem /*project_format*/, SourceType /*source_type*/) const {
   std::vector<ParameterDescriptor> d;
 
   d.push_back({"mode", "Stacking Mode", "Algorithm for combining sources",
-                ParameterType::STRING,
-                ParameterConstraints{std::nullopt, std::nullopt,
-                                     ParameterValue{std::string("Auto")},
-                                     {"Auto", "Mean", "Median", "Smart Mean",
-                                      "Smart Neighbor", "Neighbor"},
-                                     false, std::nullopt}});
+               ParameterType::STRING,
+               ParameterConstraints{std::nullopt,
+                                    std::nullopt,
+                                    ParameterValue{std::string("Auto")},
+                                    {"Auto", "Mean", "Median", "Smart Mean",
+                                     "Smart Neighbor", "Neighbor"},
+                                    false,
+                                    std::nullopt}});
   d.push_back({"smart_threshold", "Smart Threshold",
-                "Threshold for Smart Mean mode (0-128, default 15)",
-                ParameterType::INT32,
-                ParameterConstraints{ParameterValue{static_cast<int32_t>(0)},
-                                     ParameterValue{static_cast<int32_t>(128)},
-                                     ParameterValue{static_cast<int32_t>(15)},
-                                     {},
-                                     false,
-                                     std::nullopt}});
+               "Threshold for Smart Mean mode (0-128, default 15)",
+               ParameterType::INT32,
+               ParameterConstraints{ParameterValue{static_cast<int32_t>(0)},
+                                    ParameterValue{static_cast<int32_t>(128)},
+                                    ParameterValue{static_cast<int32_t>(15)},
+                                    {},
+                                    false,
+                                    std::nullopt}});
   d.push_back({"no_diff_dod", "Disable Differential Dropout Detection",
-                "Strictly trust dropout markings; disable diff_dod recovery",
-                ParameterType::BOOL,
-                ParameterConstraints{std::nullopt, std::nullopt,
-                                     ParameterValue{false},
-                                     {},
-                                     false,
-                                     std::nullopt}});
+               "Strictly trust dropout markings; disable diff_dod recovery",
+               ParameterType::BOOL,
+               ParameterConstraints{std::nullopt,
+                                    std::nullopt,
+                                    ParameterValue{false},
+                                    {},
+                                    false,
+                                    std::nullopt}});
   d.push_back({"passthrough", "Passthrough Universal Dropouts",
-                "Preserve dropout regions present in all sources",
-                ParameterType::BOOL,
-                ParameterConstraints{std::nullopt, std::nullopt,
-                                     ParameterValue{false},
-                                     {},
-                                     false,
-                                     std::nullopt}});
+               "Preserve dropout regions present in all sources",
+               ParameterType::BOOL,
+               ParameterConstraints{std::nullopt,
+                                    std::nullopt,
+                                    ParameterValue{false},
+                                    {},
+                                    false,
+                                    std::nullopt}});
   d.push_back({"audio_stacking", "Audio Stacking Mode",
-                "How to combine audio: Disabled | Mean | Median",
-                ParameterType::STRING,
-                ParameterConstraints{std::nullopt, std::nullopt,
-                                     ParameterValue{std::string("Mean")},
-                                     {"Disabled", "Mean", "Median"},
-                                     false,
-                                     std::nullopt}});
+               "How to combine audio: Disabled | Mean | Median",
+               ParameterType::STRING,
+               ParameterConstraints{std::nullopt,
+                                    std::nullopt,
+                                    ParameterValue{std::string("Mean")},
+                                    {"Disabled", "Mean", "Median"},
+                                    false,
+                                    std::nullopt}});
   d.push_back({"efm_stacking", "EFM Stacking Mode",
-                "How to combine EFM t-values: Disabled | Mean | Median",
-                ParameterType::STRING,
-                ParameterConstraints{std::nullopt, std::nullopt,
-                                     ParameterValue{std::string("Mean")},
-                                     {"Disabled", "Mean", "Median"},
-                                     false,
-                                     std::nullopt}});
+               "How to combine EFM t-values: Disabled | Mean | Median",
+               ParameterType::STRING,
+               ParameterConstraints{std::nullopt,
+                                    std::nullopt,
+                                    ParameterValue{std::string("Mean")},
+                                    {"Disabled", "Mean", "Median"},
+                                    false,
+                                    std::nullopt}});
   return d;
 }
 
 std::map<std::string, ParameterValue> StackerStage::get_parameters() const {
-  const char* mode_names[] = {"Auto", "Mean", "Median",
-                               "Smart Mean", "Smart Neighbor", "Neighbor"};
+  const char* mode_names[] = {"Auto",       "Mean",           "Median",
+                              "Smart Mean", "Smart Neighbor", "Neighbor"};
   int mi = m_mode + 1;
-  if (mi < 0 || mi > 5) { mi = 0; }
+  if (mi < 0 || mi > 5) {
+    mi = 0;
+  }
 
   const char* audio_names[] = {"Disabled", "Mean", "Median"};
   const char* efm_names[] = {"Disabled", "Mean", "Median"};
 
-  return {{"mode", ParameterValue{std::string(mode_names[mi])}},
-          {"smart_threshold", ParameterValue{m_smart_threshold}},
-          {"no_diff_dod", ParameterValue{m_no_diff_dod}},
-          {"passthrough", ParameterValue{m_passthrough}},
-          {"audio_stacking",
-           ParameterValue{std::string(
-               audio_names[static_cast<int>(m_audio_stacking_mode)])}},
-          {"efm_stacking",
-           ParameterValue{std::string(
-               efm_names[static_cast<int>(m_efm_stacking_mode)])}}};
+  return {
+      {"mode", ParameterValue{std::string(mode_names[mi])}},
+      {"smart_threshold", ParameterValue{m_smart_threshold}},
+      {"no_diff_dod", ParameterValue{m_no_diff_dod}},
+      {"passthrough", ParameterValue{m_passthrough}},
+      {"audio_stacking",
+       ParameterValue{
+           std::string(audio_names[static_cast<int>(m_audio_stacking_mode)])}},
+      {"efm_stacking", ParameterValue{std::string(
+                           efm_names[static_cast<int>(m_efm_stacking_mode)])}}};
 }
 
 bool StackerStage::set_parameters(
@@ -1154,14 +1326,18 @@ bool StackerStage::set_parameters(
           return false;
         }
       } else if (const auto* iv = std::get_if<int32_t>(&value)) {
-        if (*iv < -1 || *iv > 4) { return false; }
+        if (*iv < -1 || *iv > 4) {
+          return false;
+        }
         m_mode = *iv;
       } else {
         return false;
       }
     } else if (key == "smart_threshold") {
       if (const auto* v = std::get_if<int32_t>(&value)) {
-        if (*v < 0 || *v > 128) { return false; }
+        if (*v < 0 || *v > 128) {
+          return false;
+        }
         m_smart_threshold = *v;
       } else {
         return false;
@@ -1213,30 +1389,31 @@ bool StackerStage::set_parameters(
   return true;
 }
 
-// ── Report / Preview ──────────────────────────────────────────────────────────
+// ── Report / Preview
+// ──────────────────────────────────────────────────────────
 
 std::optional<StageReport> StackerStage::generate_report() const {
   StageReport r;
   r.summary = "Stacker Configuration";
 
-  const char* mode_names[] = {"Auto", "Mean", "Median",
-                               "Smart Mean", "Smart Neighbor", "Neighbor"};
+  const char* mode_names[] = {"Auto",       "Mean",           "Median",
+                              "Smart Mean", "Smart Neighbor", "Neighbor"};
   int mi = m_mode + 1;
-  if (mi < 0 || mi > 5) { mi = 0; }
+  if (mi < 0 || mi > 5) {
+    mi = 0;
+  }
 
   const char* stack_names[] = {"Disabled", "Mean", "Median"};
   r.items.push_back({"Stacking Mode", mode_names[mi]});
   r.items.push_back({"Smart Threshold", std::to_string(m_smart_threshold)});
   r.items.push_back({"Differential Dropout Detection",
-                      m_no_diff_dod ? "Disabled" : "Enabled"});
-  r.items.push_back({"Dropout Passthrough",
-                      m_passthrough ? "Enabled" : "Disabled"});
+                     m_no_diff_dod ? "Disabled" : "Enabled"});
   r.items.push_back(
-      {"Audio Stacking",
-       stack_names[static_cast<int>(m_audio_stacking_mode)]});
+      {"Dropout Passthrough", m_passthrough ? "Enabled" : "Disabled"});
   r.items.push_back(
-      {"EFM Stacking",
-       stack_names[static_cast<int>(m_efm_stacking_mode)]});
+      {"Audio Stacking", stack_names[static_cast<int>(m_audio_stacking_mode)]});
+  r.items.push_back(
+      {"EFM Stacking", stack_names[static_cast<int>(m_efm_stacking_mode)]});
 
   r.metrics["mode"] = static_cast<int64_t>(m_mode);
   r.metrics["smart_threshold"] = static_cast<int64_t>(m_smart_threshold);

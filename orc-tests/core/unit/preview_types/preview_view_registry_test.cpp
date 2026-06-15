@@ -130,8 +130,8 @@ class TestColourPreviewStage final : public orc::DAGStage,
     carrier.y_plane = {0.25, 0.5, 0.75, 1.0};
     carrier.u_plane = {0.0, 0.1, -0.1, 0.0};
     carrier.v_plane = {0.0, -0.1, 0.1, 0.0};
-    carrier.white_16b_ire = 65535.0;
-    carrier.black_16b_ire = 0.0;
+    carrier.cvbs_white = 65535.0;
+    carrier.cvbs_blanking = 0.0;
 
     orc::VectorscopeData vectorscope{};
     vectorscope.width = 2;
@@ -290,8 +290,8 @@ class TestColourPreviewStageNoVectorscope final
     carrier.y_plane = {0.25, 0.5, 0.75, 1.0};
     carrier.u_plane = {0.0, 0.0, 0.0, 0.0};
     carrier.v_plane = {0.0, 0.0, 0.0, 0.0};
-    carrier.white_16b_ire = 65535.0;
-    carrier.black_16b_ire = 0.0;
+    carrier.cvbs_white = 65535.0;
+    carrier.cvbs_blanking = 0.0;
     // vectorscope_data intentionally absent
     return carrier;
   }

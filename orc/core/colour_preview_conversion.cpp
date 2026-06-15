@@ -12,8 +12,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include <cvbs_signal_constants.h>
-
 namespace orc {
 namespace {
 
@@ -93,13 +91,13 @@ PreviewImage render_preview_from_colour_carrier(
       coefficients_for(carrier.colorimetry.matrix_coefficients);
   const double kg = 1.0 - matrix.kr - matrix.kb;
 
-  // ld-decode TBC 16-bit domain normative levels (kTbcBlanking / kTbcWhite).
-  const double yuv_range = kTbcWhite - kTbcBlanking;
+  // CVBS_U10_4FSC normative levels from carrier (set by chroma_sink).
+  const double yuv_range = carrier.cvbs_white - carrier.cvbs_blanking;
 
   const size_t samples =
       static_cast<size_t>(carrier.width) * static_cast<size_t>(carrier.height);
   for (size_t i = 0; i < samples; ++i) {
-    double y = (carrier.y_plane[i] - kTbcBlanking) / yuv_range;
+    double y = (carrier.y_plane[i] - carrier.cvbs_blanking) / yuv_range;
     double u = carrier.u_plane[i] / yuv_range;
     double v = carrier.v_plane[i] / yuv_range;
 

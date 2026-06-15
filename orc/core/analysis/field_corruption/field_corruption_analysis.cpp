@@ -17,7 +17,7 @@
 #include "../../include/dag_executor.h"
 #include "../../include/logging.h"
 #include "../../include/project.h"
-#include "../../include/video_field_representation.h"
+#include "../../include/video_frame_representation.h"
 #include "../analysis_registry.h"
 #include "field_corruption_analyzer.h"
 
@@ -113,8 +113,7 @@ bool FieldCorruptionAnalysisTool::canAnalyze(
 
 bool FieldCorruptionAnalysisTool::isApplicableToStage(
     const std::string& stage_name) const {
-  // Apply to FieldMapStage
-  return stage_name == "field_map";
+  return stage_name == "frame_map";
 }
 
 AnalysisResult FieldCorruptionAnalysisTool::analyze(
@@ -145,8 +144,8 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
     }
   }
 
-  // Get input field count by executing the input node
-  uint64_t field_count = 0;
+  // Get input frame count by executing the input node
+  uint64_t frame_count = 0;
 
   if (ctx.dag && ctx.node_id.is_valid()) {
     const auto& dag_nodes = ctx.dag->nodes();
@@ -163,14 +162,14 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
 
         if (output_it != all_outputs.end() && !output_it->second.empty()) {
           for (const auto& artifact : output_it->second) {
-            auto source =
-                std::dynamic_pointer_cast<const orc::VideoFieldRepresentation>(
+            auto vfr =
+                std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
                     artifact);
-            if (source) {
-              field_count = source->field_count();
+            if (vfr) {
+              frame_count = vfr->frame_count();
               ORC_LOG_DEBUG(
-                  "Field Corruption Generator: Got field count {} from input",
-                  field_count);
+                  "Field Corruption Generator: Got frame count {} from input",
+                  frame_count);
               break;
             }
           }
@@ -183,12 +182,13 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
     }
   }
 
-  if (field_count == 0) {
+  if (frame_count == 0) {
     result.status = AnalysisResult::Failed;
     result.summary =
-        "Cannot determine input field count.\n\n"
-        "Field Corruption Generator requires a field-based input.\n"
-        "Ensure this field_map stage has an input connection.";
+        "Cannot determine input frame count.\n\n"
+        "Field Corruption Generator requires a VideoFrameRepresentation "
+        "input.\n"
+        "Ensure this frame_map stage has an input connection.";
     return result;
   }
 
@@ -240,7 +240,7 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   }
 
   // Create analyzer and generate
-  FieldCorruptionAnalyzer analyzer(field_count, *pattern_it, seed);
+  FieldCorruptionAnalyzer analyzer(frame_count, *pattern_it, seed);
   auto analysis_result = analyzer.analyze();
 
   if (progress) {
@@ -257,7 +257,7 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   std::ostringstream summary;
   summary << "Pattern: " << pattern_it->name << "\n";
   summary << "Description: " << pattern_it->description << "\n";
-  summary << "Input fields: " << field_count << "\n";
+  summary << "Input frames: " << frame_count << "\n";
   summary << "Seed: " << seed;
   if (existing_seed != 0) {
     summary << (regenerate_seed ? " (regenerated)" : " (reused)");
@@ -266,9 +266,9 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   }
   summary << "\n\n";
 
-  // Add field mapping specification preview
+  // Add frame mapping specification preview
   summary << "==================================================\n";
-  summary << "Generated Field Mapping Specification:\n";
+  summary << "Generated Frame Mapping Specification:\n";
   summary << "==================================================\n";
   if (analysis_result.mapping_spec.length() > 500) {
     summary << analysis_result.mapping_spec.substr(0, 500) << "...\n\n";
@@ -355,7 +355,7 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   }
 
   ORC_LOG_DEBUG(
-      "Field corruption analysis complete: {} events, {} output fields",
+      "Field corruption analysis complete: {} events, {} output frames",
       analysis_result.events.size(), analysis_result.stats.total_output_fields);
 
   return result;
@@ -392,8 +392,8 @@ bool FieldCorruptionAnalysisTool::applyToGraph(AnalysisResult& result,
     return false;
   }
 
-  if (node_it->stage_name != "field_map") {
-    ORC_LOG_ERROR("Node {} is not a field_map stage (type: {})", node_id,
+  if (node_it->stage_name != "frame_map") {
+    ORC_LOG_ERROR("Node {} is not a frame_map stage (type: {})", node_id,
                   node_it->stage_name);
     return false;
   }

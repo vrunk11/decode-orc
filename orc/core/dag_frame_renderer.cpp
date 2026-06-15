@@ -13,6 +13,14 @@
 #include <sstream>
 
 #include "logging.h"
+#include "observers/biphase_observer.h"
+#include "observers/black_psnr_observer.h"
+#include "observers/burst_level_observer.h"
+#include "observers/closed_caption_observer.h"
+#include "observers/field_quality_observer.h"
+#include "observers/fm_code_observer.h"
+#include "observers/white_flag_observer.h"
+#include "observers/white_snr_observer.h"
 
 namespace orc {
 
@@ -87,7 +95,7 @@ void DAGFrameRenderer::update_dag(std::shared_ptr<const DAG> new_dag) {
 void DAGFrameRenderer::clear_cache() { render_cache_.clear(); }
 
 FrameRenderResult DAGFrameRenderer::render_frame_at_node(NodeID node_id,
-                                                          FrameID frame_id) {
+                                                         FrameID frame_id) {
   ORC_LOG_TRACE("DAGFrameRenderer: render_frame_at_node node='{}' frame={}",
                 node_id.to_string(), frame_id);
 
@@ -128,7 +136,7 @@ FrameRenderResult DAGFrameRenderer::render_frame_at_node(NodeID node_id,
 }
 
 FrameRenderResult DAGFrameRenderer::execute_to_node(NodeID node_id,
-                                                     FrameID frame_id) {
+                                                    FrameID frame_id) {
   FrameRenderResult result;
   result.node_id = node_id;
   result.frame_id = frame_id;
@@ -150,8 +158,7 @@ FrameRenderResult DAGFrameRenderer::execute_to_node(NodeID node_id,
           [&node_id](const auto& n) { return n.node_id == node_id; });
       if (dag_it != dag_nodes.end() && dag_it->stage) {
         auto ntype = dag_it->stage->get_node_type_info().type;
-        is_sink =
-            (ntype == NodeType::SINK || ntype == NodeType::ANALYSIS_SINK);
+        is_sink = (ntype == NodeType::SINK || ntype == NodeType::ANALYSIS_SINK);
       }
 
       if (is_sink) {
@@ -169,16 +176,16 @@ FrameRenderResult DAGFrameRenderer::execute_to_node(NodeID node_id,
       return result;
     }
 
-    auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(
-        it->second[0]);
+    auto vfr =
+        std::dynamic_pointer_cast<VideoFrameRepresentation>(it->second[0]);
     if (!vfr) {
       ORC_LOG_ERROR(
-          "DAGFrameRenderer: node '{}' output is not a VideoFrameRepresentation",
+          "DAGFrameRenderer: node '{}' output is not a "
+          "VideoFrameRepresentation",
           node_id.to_string());
       result.is_valid = false;
-      result.error_message =
-          "Node '" + node_id.to_string() +
-          "' did not produce a VideoFrameRepresentation";
+      result.error_message = "Node '" + node_id.to_string() +
+                             "' did not produce a VideoFrameRepresentation";
       return result;
     }
 
@@ -195,17 +202,43 @@ FrameRenderResult DAGFrameRenderer::execute_to_node(NodeID node_id,
     result.is_valid = true;
     result.representation = vfr;
 
-    ORC_LOG_DEBUG(
-        "DAGFrameRenderer: node '{}' frame {} rendered successfully",
-        node_id.to_string(), frame_id);
+    // Run all observers to populate observation context for both fields of this
+    // frame.
+    auto& obs_ctx = executor_->get_observation_context();
+    BiphaseObserver biphase_observer;
+    biphase_observer.process_frame(*vfr, frame_id, obs_ctx);
+
+    FmCodeObserver fm_code_observer;
+    fm_code_observer.process_frame(*vfr, frame_id, obs_ctx);
+
+    WhiteFlagObserver white_flag_observer;
+    white_flag_observer.process_frame(*vfr, frame_id, obs_ctx);
+
+    FieldQualityObserver field_quality_observer;
+    field_quality_observer.process_frame(*vfr, frame_id, obs_ctx);
+
+    BurstLevelObserver burst_level_observer;
+    burst_level_observer.process_frame(*vfr, frame_id, obs_ctx);
+
+    WhiteSNRObserver white_snr_observer;
+    white_snr_observer.process_frame(*vfr, frame_id, obs_ctx);
+
+    BlackPSNRObserver black_psnr_observer;
+    black_psnr_observer.process_frame(*vfr, frame_id, obs_ctx);
+
+    ClosedCaptionObserver closed_caption_observer;
+    closed_caption_observer.process_frame(*vfr, frame_id, obs_ctx);
+
+    ORC_LOG_DEBUG("DAGFrameRenderer: node '{}' frame {} rendered successfully",
+                  node_id.to_string(), frame_id);
     return result;
 
   } catch (const std::exception& e) {
     result.is_valid = false;
-    result.error_message =
-        std::string("Error rendering frame: ") + e.what();
-    ORC_LOG_ERROR("DAGFrameRenderer: exception rendering frame {} at node '{}': {}",
-                  frame_id, node_id.to_string(), e.what());
+    result.error_message = std::string("Error rendering frame: ") + e.what();
+    ORC_LOG_ERROR(
+        "DAGFrameRenderer: exception rendering frame {} at node '{}': {}",
+        frame_id, node_id.to_string(), e.what());
     return result;
   }
 }

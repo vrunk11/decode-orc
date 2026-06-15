@@ -231,8 +231,7 @@ TEST(PresentationLineTest, GetPresentationFieldLinePALFirstField_StartsAt1) {
   EXPECT_EQ(line, 312);
 }
 
-TEST(PresentationLineTest,
-     GetPresentationFieldLinePALSecondField_StartsAt313) {
+TEST(PresentationLineTest, GetPresentationFieldLinePALSecondField_StartsAt313) {
   // PAL second field (odd fieldID): lines 313..625
   int line = getPresentationFieldLine(1, 0, true);  // fieldID 1, line 0
   EXPECT_EQ(line, 313);

@@ -154,9 +154,10 @@ void WriterWavMetadata::write(const AudioSection& audioSection) {
         if (!m_noAudioConcealment) {
           outputString = m_errorRangeStart + "\t" + rangeEnd +
                          "\tSilenced: " + sampleTimeStamp + "\n";
-}
+        }
 
-        m_file.write(outputString.c_str(), static_cast<std::streamsize>(outputString.size()));
+        m_file.write(outputString.c_str(),
+                     static_cast<std::streamsize>(outputString.size()));
         m_inErrorRange = false;
       }
 
@@ -194,7 +195,8 @@ void WriterWavMetadata::write(const AudioSection& audioSection) {
         std::string sampleTimeStamp = m_absoluteSectionTime.toString();
         std::string outputString = m_concealedRangeStart + "\t" + rangeEnd +
                                    "\tConcealed: " + sampleTimeStamp + "\n";
-        m_file.write(outputString.c_str(), static_cast<std::streamsize>(outputString.size()));
+        m_file.write(outputString.c_str(),
+                     static_cast<std::streamsize>(outputString.size()));
         m_inConcealedRange = false;
       }
     }
@@ -244,7 +246,8 @@ void WriterWavMetadata::flush() {
       std::string outputString = trackAbsStartTime + "\t" + trackAbsEndTime +
                                  "\tTrack: " + trackNumber + " " + trackTime +
                                  "\n";
-      m_file.write(outputString.c_str(), static_cast<std::streamsize>(outputString.size()));
+      m_file.write(outputString.c_str(),
+                   static_cast<std::streamsize>(outputString.size()));
 
       ORC_LOG_DEBUG("WriterWavMetadata::flush(): Wrote track metadata: {}",
                     m_trackAbsStartTimes[i].toString() + " " +
@@ -270,7 +273,8 @@ void WriterWavMetadata::close() {
   if (m_inErrorRange) {
     std::string outputString = m_errorRangeStart + "\t" + m_errorRangeStart +
                                "\tError: Incomplete range\n";
-    m_file.write(outputString.c_str(), static_cast<std::streamsize>(outputString.size()));
+    m_file.write(outputString.c_str(),
+                 static_cast<std::streamsize>(outputString.size()));
   }
 
   m_file.close();
@@ -306,8 +310,8 @@ std::string WriterWavMetadata::convertToAudacityTimestamp(int32_t minutes,
   total_seconds += subsection / (FRAME_RATE * SUBSECTIONS_PER_FRAME);
 
   // Convert sample to fractional time
-  total_seconds += (sample / 2) / (FRAME_RATE * SUBSECTIONS_PER_FRAME *  // NOLINT(bugprone-integer-division)
-                                   SAMPLES_PER_SUBSECTION);
+  total_seconds += (static_cast<double>(sample) / 2.0) /
+                   (FRAME_RATE * SUBSECTIONS_PER_FRAME * SAMPLES_PER_SUBSECTION);
 
   // Format the output string with 6 decimal places
   return fmt::format("{:.6f}", total_seconds);

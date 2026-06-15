@@ -68,7 +68,7 @@ SectionMetadata Subcode::fromData(const std::vector<uint8_t>& data) {
   // If the q-channel CRC is not valid, attempt to repair the data
   if (!isCrcValid(qChannelData)) {
     sectionMetadata.setRepaired(repairData(qChannelData));
-}
+  }
 
   if (isCrcValid(qChannelData)) {
     // Set the q-channel data from the subcode data
@@ -430,7 +430,7 @@ std::vector<uint8_t> Subcode::toData(const SectionMetadata& sectionMetadata) {
       pChannelData[i] = 0xFF;
     } else {
       pChannelData[i] = 0x00;
-}
+    }
   }
 
   // Create the control and address nybbles

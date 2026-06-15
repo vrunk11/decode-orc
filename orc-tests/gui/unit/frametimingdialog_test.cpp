@@ -67,8 +67,10 @@ TEST(FormatColourFrameIndexTest, PAL_M_Returns_B_For_1) {
 
 TEST(FormatColourFrameIndexTest, Unknown_System_ReturnsNumericString) {
   using orc::presenters::VideoSystem;
-  EXPECT_EQ(::formatColourFrameIndex(0, VideoSystem::Unknown).toStdString(), "0");
-  EXPECT_EQ(::formatColourFrameIndex(2, VideoSystem::Unknown).toStdString(), "2");
+  EXPECT_EQ(::formatColourFrameIndex(0, VideoSystem::Unknown).toStdString(),
+            "0");
+  EXPECT_EQ(::formatColourFrameIndex(2, VideoSystem::Unknown).toStdString(),
+            "2");
 }
 
 // ============================================================================

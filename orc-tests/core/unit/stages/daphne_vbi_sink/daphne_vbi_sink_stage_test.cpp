@@ -159,7 +159,8 @@ TEST_F(DaphneVBISinkStage, SetParameters_AcceptsOutputPathString) {
 }
 
 TEST_F(DaphneVBISinkStage, SetParameters_RejectsNonStringOutputPath) {
-  const bool result = instance_->set_parameters({{"output_path", static_cast<int32_t>(7)}});
+  const bool result =
+      instance_->set_parameters({{"output_path", static_cast<int32_t>(7)}});
 
   EXPECT_FALSE(result);
 }

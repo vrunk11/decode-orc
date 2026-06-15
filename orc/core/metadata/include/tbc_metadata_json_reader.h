@@ -39,6 +39,7 @@ class TBCMetadataJsonReader : public ITBCMetadataReader {
   bool is_open() const override;
 
   std::optional<SourceParameters> read_video_parameters() override;
+  std::optional<TbcDomainLevels> read_tbc_domain_levels() override;
   std::optional<PcmAudioParameters> read_pcm_audio_parameters() override;
 
   std::optional<FieldMetadata> read_field_metadata(FieldID field_id) override;
@@ -60,6 +61,7 @@ class TBCMetadataJsonReader : public ITBCMetadataReader {
  private:
   bool is_open_ = false;
   std::optional<SourceParameters> source_params_;
+  std::optional<TbcDomainLevels> tbc_domain_levels_;
   std::optional<PcmAudioParameters> audio_params_;
   std::map<FieldID, FieldMetadata> field_cache_;
   std::map<FieldID, VbiData> vbi_cache_;

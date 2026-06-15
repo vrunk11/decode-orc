@@ -27,8 +27,7 @@ static constexpr FrameID kPaddingFrameID{UINT64_MAX};
 FrameMappedRepresentation::FrameMappedRepresentation(
     std::shared_ptr<const VideoFrameRepresentation> source,
     std::vector<FrameID> frame_mapping,
-    std::vector<PaddingDescriptor> padding_descriptors,
-    const std::string& tag)
+    std::vector<PaddingDescriptor> padding_descriptors, const std::string& tag)
     : VideoFrameRepresentationWrapper(std::move(source)),
       Artifact(ArtifactID("frame_map_" + tag), Provenance{}),
       frame_mapping_(std::move(frame_mapping)),
@@ -36,7 +35,9 @@ FrameMappedRepresentation::FrameMappedRepresentation(
 
 std::optional<size_t> FrameMappedRepresentation::resolve_index(
     FrameID id) const {
-  if (id >= static_cast<FrameID>(frame_mapping_.size())) { return std::nullopt; }
+  if (id >= static_cast<FrameID>(frame_mapping_.size())) {
+    return std::nullopt;
+  }
   return static_cast<size_t>(id);
 }
 
@@ -57,12 +58,11 @@ void FrameMappedRepresentation::ensure_black_frame() const {
   if (!source_) return;
   auto params = source_->get_video_parameters();
   if (!params) return;
-  size_t total = static_cast<size_t>(params->number_of_sequential_frames > 0
-                                         ? params->frame_width_nominal
-                                         : 0) *
-                 static_cast<size_t>(params->frame_height > 0
-                                         ? params->frame_height
-                                         : 0);
+  size_t total =
+      static_cast<size_t>(params->number_of_sequential_frames > 0
+                              ? params->frame_width_nominal
+                              : 0) *
+      static_cast<size_t>(params->frame_height > 0 ? params->frame_height : 0);
   if (total == 0) {
     // Fallback: use first real frame size
     auto range = source_->frame_range();
@@ -74,8 +74,9 @@ void FrameMappedRepresentation::ensure_black_frame() const {
       }
     }
   }
-  black_frame_.assign(total, static_cast<sample_type>(
-                                 source_->get_video_parameters()->blanking_level));
+  black_frame_.assign(total,
+                      static_cast<sample_type>(
+                          source_->get_video_parameters()->blanking_level));
 }
 
 FrameIDRange FrameMappedRepresentation::frame_range() const {
@@ -350,8 +351,7 @@ std::vector<FrameID> FrameMapStage::build_frame_mapping(
 }
 
 size_t FrameMapStage::apply_remove_duplicates(
-    std::vector<FrameID>& mapping,
-    const VideoFrameRepresentation& source) {
+    std::vector<FrameID>& mapping, const VideoFrameRepresentation& source) {
   size_t removed = 0;
   size_t i = 1;
   while (i < mapping.size()) {
@@ -367,8 +367,7 @@ size_t FrameMapStage::apply_remove_duplicates(
     auto prev_desc = source.get_frame_descriptor(prev);
     auto cur_desc = source.get_frame_descriptor(cur);
 
-    if (prev_desc && cur_desc &&
-        prev_desc->colour_frame_index >= 0 &&
+    if (prev_desc && cur_desc && prev_desc->colour_frame_index >= 0 &&
         cur_desc->colour_frame_index >= 0 &&
         prev_desc->colour_frame_index == cur_desc->colour_frame_index) {
       ORC_LOG_DEBUG(
@@ -402,8 +401,7 @@ int FrameMapStage::next_colour_index(int current, VideoSystem sys) {
 size_t FrameMapStage::apply_pad_gaps(
     std::vector<FrameID>& mapping,
     std::vector<FrameMappedRepresentation::PaddingDescriptor>& pads,
-    const VideoFrameRepresentation& source,
-    const std::string& pad_strategy,
+    const VideoFrameRepresentation& source, const std::string& pad_strategy,
     std::string& gap_positions_out) {
   size_t total_inserted = 0;
   std::ostringstream gap_ss;
@@ -480,7 +478,8 @@ size_t FrameMapStage::apply_pad_gaps(
       if (pad_strategy == "nearest") {
         // Use the nearest real source frame — keep as padding for descriptor
         // but mark so get_frame returns the nearest real frame sample data
-        // We still set as padding (UINT64_MAX) so consumers see is_padding_frame
+        // We still set as padding (UINT64_MAX) so consumers see
+        // is_padding_frame
       }
 
       mapping.insert(mapping.begin() + static_cast<std::ptrdiff_t>(insert_pos),
@@ -575,7 +574,9 @@ std::vector<ArtifactPtr> FrameMapStage::execute(
     // No range spec — use identity mapping over source range
     FrameIDRange rng = source->frame_range();
     for (FrameID fid = rng.first; fid <= rng.last; ++fid) {
-      if (source->has_frame(fid)) { mapping.push_back(fid); }
+      if (source->has_frame(fid)) {
+        mapping.push_back(fid);
+      }
     }
   }
 
@@ -627,36 +628,46 @@ std::vector<ParameterDescriptor> FrameMapStage::get_parameter_descriptors(
     VideoSystem /*project_format*/, SourceType /*source_type*/) const {
   return {
       ParameterDescriptor{
-          "ranges",
-          "Frame Ranges",
+          "ranges", "Frame Ranges",
           "Comma-separated FrameID ranges (e.g., '0-10,20-30,11-19'). "
           "Empty = pass-through.",
           ParameterType::STRING,
-          ParameterConstraints{std::nullopt, std::nullopt,
-                               ParameterValue{std::string("")}, {}, false,
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue{std::string("")},
+                               {},
+                               false,
                                std::nullopt}},
       ParameterDescriptor{
-          "remove_duplicates",
-          "Remove Duplicates",
+          "remove_duplicates", "Remove Duplicates",
           "Remove consecutive frames with identical colour_frame_index",
           ParameterType::BOOL,
-          ParameterConstraints{std::nullopt, std::nullopt,
-                               ParameterValue{false}, {}, false, std::nullopt}},
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue{false},
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
-          "pad_gaps",
-          "Pad Gaps",
+          "pad_gaps", "Pad Gaps",
           "Fill colour-frame-index sequence gaps with synthetic padding frames",
           ParameterType::BOOL,
-          ParameterConstraints{std::nullopt, std::nullopt,
-                               ParameterValue{false}, {}, false, std::nullopt}},
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue{false},
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
-          "pad_strategy",
-          "Padding Strategy",
+          "pad_strategy", "Padding Strategy",
           "How to fill gaps: 'nearest' (nearest real frame) or 'black'",
           ParameterType::STRING,
-          ParameterConstraints{std::nullopt, std::nullopt,
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
                                ParameterValue{std::string("nearest")},
-                               {"nearest", "black"}, false, std::nullopt}},
+                               {"nearest", "black"},
+                               false,
+                               std::nullopt}},
   };
 }
 
@@ -676,7 +687,8 @@ bool FrameMapStage::set_parameters(
         if (!range_spec_.empty()) {
           cached_ranges_ = parse_ranges(range_spec_);
           if (cached_ranges_.empty()) {
-            ORC_LOG_ERROR("FrameMapStage: invalid range spec '{}'", range_spec_);
+            ORC_LOG_ERROR("FrameMapStage: invalid range spec '{}'",
+                          range_spec_);
             return false;
           }
         } else {

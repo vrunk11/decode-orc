@@ -9,76 +9,86 @@
 
 #include "field_quality_observer.h"
 
-#include <field_id.h>
+#include <cvbs_signal_constants.h>
+#include <frame_id.h>
 
 #include <algorithm>
 #include <cmath>
 
+#include "../include/field_id.h"
 #include "logging.h"
 #include "observation_context.h"
-#include "video_field_representation.h"
+#include "video_frame_representation.h"
 
 namespace orc {
 
-void FieldQualityObserver::process_field(
-    const VideoFieldRepresentation& representation, FieldID field_id,
+void FieldQualityObserver::process_frame(
+    const VideoFrameRepresentation& representation, FrameID frame_id,
     IObservationContext& context) {
-  // Calculate quality score
-  double quality_score = calculate_quality_score(representation, field_id);
-
-  // Get field descriptor
-  auto descriptor = representation.get_descriptor(field_id);
-  if (!descriptor.has_value()) {
-    context.set(field_id, "disc_quality", "quality_score", 0.0);
-    context.set(field_id, "disc_quality", "dropout_count", 0);
-    context.set(field_id, "disc_quality", "phase_valid", false);
+  auto vp_opt = representation.get_video_parameters();
+  if (!vp_opt.has_value()) {
+    // No video parameters — write zeroed quality for both derived fields
+    for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+      FieldID derived_fid(frame_id * 2 + field_idx);
+      context.set(derived_fid, "disc_quality", "quality_score", 0.0);
+      context.set(derived_fid, "disc_quality", "dropout_count", 0);
+      context.set(derived_fid, "disc_quality", "phase_valid", false);
+    }
     return;
   }
+  const auto& vp = vp_opt.value();
 
-  // Get dropout hints for diagnostics
-  auto dropout_hints = representation.get_dropout_hints(field_id);
+  size_t f1_lines = field1_lines(vp.system);
 
-  // Populate context with quality metrics
-  context.set(field_id, "disc_quality", "quality_score", quality_score);
-  context.set(field_id, "disc_quality", "dropout_count",
-              static_cast<int32_t>(dropout_hints.size()));
-  context.set(field_id, "disc_quality", "phase_valid", true);
+  for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+    FieldID derived_fid(frame_id * 2 + field_idx);
+    size_t field_height = (field_idx == 0)
+                              ? f1_lines
+                              : static_cast<size_t>(vp.frame_height) - f1_lines;
 
-  ORC_LOG_DEBUG("FieldQualityObserver: Field {} quality={:.3f} dropouts={}",
-                field_id.value(), quality_score, dropout_hints.size());
+    double quality_score =
+        calculate_quality_score(representation, frame_id, field_height, vp);
+
+    // Get dropout hints (frame-level) for diagnostics
+    auto dropout_hints = representation.get_dropout_hints(frame_id);
+
+    context.set(derived_fid, "disc_quality", "quality_score", quality_score);
+    context.set(derived_fid, "disc_quality", "dropout_count",
+                static_cast<int32_t>(dropout_hints.size()));
+    context.set(derived_fid, "disc_quality", "phase_valid", true);
+
+    ORC_LOG_DEBUG("FieldQualityObserver: Field {} quality={:.3f} dropouts={}",
+                  derived_fid.value(), quality_score, dropout_hints.size());
+  }
 }
 
 double FieldQualityObserver::calculate_quality_score(
-    const VideoFieldRepresentation& representation, FieldID field_id) const {
-  double score = 1.0;  // Start with perfect score
+    const VideoFrameRepresentation& representation, FrameID frame_id,
+    size_t field_height, const SourceParameters& vp) const {
+  double score = 1.0;
 
-  // Factor 1: Dropout density
-  auto dropout_hints = representation.get_dropout_hints(field_id);
+  // Factor 1: Dropout density (frame-level dropouts divided across both fields)
+  auto dropout_hints = representation.get_dropout_hints(frame_id);
   if (!dropout_hints.empty()) {
-    auto descriptor = representation.get_descriptor(field_id);
-    if (descriptor.has_value()) {
-      // Calculate total dropout samples
+    // Total field samples (approximate using nominal line width)
+    size_t total_samples =
+        static_cast<size_t>(vp.frame_width_nominal) * field_height;
+
+    if (total_samples > 0) {
       size_t total_dropout_samples = 0;
       for (const auto& region : dropout_hints) {
-        total_dropout_samples += (region.end_sample - region.start_sample);
+        total_dropout_samples += region.sample_count;
       }
 
-      // Total field samples
-      size_t total_samples = descriptor->width * descriptor->height;
-
-      // Dropout ratio (0.0 = none, 1.0 = entire field)
-      double dropout_ratio = static_cast<double>(total_dropout_samples) /
+      // Attribute half the frame dropouts to this field
+      double dropout_ratio = static_cast<double>(total_dropout_samples) / 2.0 /
                              static_cast<double>(total_samples);
 
-      // Penalize heavily for dropouts (exponential)
       score *= std::exp(-10.0 * dropout_ratio);
     }
   }
 
-  // Clamp to [0.0, 1.0]
-  score = std::max(0.0, std::min(1.0, score));
-
-  return score;
+  return std::max(0.0, std::min(1.0, score));
 }
 
 }  // namespace orc

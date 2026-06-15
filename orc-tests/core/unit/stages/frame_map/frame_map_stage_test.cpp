@@ -58,7 +58,8 @@ TEST(FrameMapStageTest, Descriptor_RangesMatchRuntimeDefault) {
   const auto* d = find_descriptor(descs, "ranges");
   ASSERT_NE(d, nullptr);
   ASSERT_TRUE(d->constraints.default_value.has_value());
-  ASSERT_TRUE(std::holds_alternative<std::string>(*d->constraints.default_value));
+  ASSERT_TRUE(
+      std::holds_alternative<std::string>(*d->constraints.default_value));
   ASSERT_TRUE(std::holds_alternative<std::string>(params.at("ranges")));
   EXPECT_EQ(std::get<std::string>(*d->constraints.default_value),
             std::get<std::string>(params.at("ranges")));
@@ -122,8 +123,7 @@ TEST(FrameMapStageTest, SetParameters_AcceptsEmptyRanges) {
 TEST(FrameMapStageTest, SetParameters_AcceptsRemoveDuplicatesTrue) {
   orc::FrameMapStage stage;
   EXPECT_TRUE(stage.set_parameters({{"remove_duplicates", true}}));
-  EXPECT_TRUE(
-      std::get<bool>(stage.get_parameters().at("remove_duplicates")));
+  EXPECT_TRUE(std::get<bool>(stage.get_parameters().at("remove_duplicates")));
 }
 
 TEST(FrameMapStageTest, SetParameters_AcceptsPadGapsTrue) {
@@ -134,15 +134,13 @@ TEST(FrameMapStageTest, SetParameters_AcceptsPadGapsTrue) {
 
 TEST(FrameMapStageTest, SetParameters_AcceptsValidPadStrategies) {
   orc::FrameMapStage stage;
-  EXPECT_TRUE(
-      stage.set_parameters({{"pad_strategy", std::string("nearest")}}));
+  EXPECT_TRUE(stage.set_parameters({{"pad_strategy", std::string("nearest")}}));
   EXPECT_TRUE(stage.set_parameters({{"pad_strategy", std::string("black")}}));
 }
 
 TEST(FrameMapStageTest, SetParameters_RejectsInvalidPadStrategy) {
   orc::FrameMapStage stage;
-  EXPECT_FALSE(
-      stage.set_parameters({{"pad_strategy", std::string("bogus")}}));
+  EXPECT_FALSE(stage.set_parameters({{"pad_strategy", std::string("bogus")}}));
 }
 
 // ── execute() error handling ───────────────────────────────────────────────

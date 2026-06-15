@@ -10,6 +10,7 @@
 #include "ld_sink_stage_deps.h"
 
 #include <common_types.h>
+#include <cvbs_signal_constants.h>
 #include <orc/plugin/orc_stage_services.h>
 
 #include <algorithm>
@@ -17,7 +18,6 @@
 #include <cstddef>
 #include <utility>
 
-#include <cvbs_signal_constants.h>
 #include "dropout_util.h"
 #include "file_io_interface.h"
 #include "logging.h"

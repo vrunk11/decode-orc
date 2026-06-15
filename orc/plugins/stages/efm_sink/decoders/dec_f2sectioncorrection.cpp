@@ -307,7 +307,7 @@ void F2SectionCorrection::waitingForSection(F2Section& f2Section) {
             "detected, expected absolute time is {} actual absolute time is {}",
             expectedAbsoluteTime.toString(),
             f2Section.metadata.absoluteSectionTime().toString());
-}
+      }
 
       if (missingSections > 1) {
         ORC_LOG_WARN(
@@ -315,7 +315,7 @@ void F2SectionCorrection::waitingForSection(F2Section& f2Section) {
             "detected, expected absolute time is {} actual absolute time is {}",
             missingSections, expectedAbsoluteTime.toString(),
             f2Section.metadata.absoluteSectionTime().toString());
-}
+      }
 
       for (int i = 0; i < missingSections; ++i) {
         // We have to insert a dummy section into the internal buffer or this
@@ -635,16 +635,16 @@ void F2SectionCorrection::outputSections() {
 
   if (section.metadata.qMode() == SectionMetadata::QMode::QMode1) {
     m_qmode1Sections++;
-}
+  }
   if (section.metadata.qMode() == SectionMetadata::QMode::QMode2) {
     m_qmode2Sections++;
-}
+  }
   if (section.metadata.qMode() == SectionMetadata::QMode::QMode3) {
     m_qmode3Sections++;
-}
+  }
   if (section.metadata.qMode() == SectionMetadata::QMode::QMode4) {
     m_qmode4Sections++;
-}
+  }
 
   // Set the absolute start and end times
   if (absoluteTime <= m_absoluteStartTime) m_absoluteStartTime = absoluteTime;
@@ -668,8 +668,8 @@ void F2SectionCorrection::outputSections() {
     if (trackNumber == 0 || trackNumber == 0xAA) {
       const auto section_type = section.metadata.sectionType().type();
       const char* type_name =
-          (section_type == SectionType::LeadIn)    ? "LeadIn"
-          : (section_type == SectionType::LeadOut) ? "LeadOut"
+          (section_type == SectionType::LeadIn)     ? "LeadIn"
+          : (section_type == SectionType::LeadOut)  ? "LeadOut"
           : (section_type == SectionType::UserData) ? "UserData"
                                                     : "UNKNOWN";
       ORC_LOG_DEBUG(
@@ -685,10 +685,10 @@ void F2SectionCorrection::outputSections() {
       size_t index = std::distance(m_trackNumbers.begin(), it);
       if (sectionTime < m_trackStartTimes[index]) {
         m_trackStartTimes[index] = sectionTime;
-}
+      }
       if (sectionTime >= m_trackEndTimes[index]) {
         m_trackEndTimes[index] = sectionTime;
-}
+      }
     }
   }
 }
@@ -696,7 +696,8 @@ void F2SectionCorrection::outputSections() {
 void F2SectionCorrection::flush() {
   // Flush the internal buffer
 
-  // TODO(sdi): What about any remaining invalid sections in the internal buffer?
+  // TODO(sdi): What about any remaining invalid sections in the internal
+  // buffer?
 
   while (!m_internalBuffer.empty()) {
     outputSections();

@@ -10,123 +10,121 @@
 #include "closed_caption_observer.h"
 
 #include <cvbs_signal_constants.h>
+
+#include "../include/field_id.h"
 #include "logging.h"
 #include "observation_context.h"
 #include "vbi_utilities.h"
-#include "video_field_representation.h"
+#include "video_frame_representation.h"
 
 namespace orc {
 
-void ClosedCaptionObserver::process_field(
-    const VideoFieldRepresentation& representation, FieldID field_id,
+void ClosedCaptionObserver::process_frame(
+    const VideoFrameRepresentation& representation, FrameID frame_id,
     IObservationContext& context) {
-  ORC_LOG_DEBUG("ClosedCaptionObserver::process_field called for field {}",
-                field_id.value());
+  ORC_LOG_DEBUG("ClosedCaptionObserver::process_frame called for frame {}",
+                frame_id);
 
-  auto descriptor = representation.get_descriptor(field_id);
-  if (!descriptor.has_value()) {
-    ORC_LOG_DEBUG("Field {}: No descriptor available", field_id.value());
-    context.set(field_id, "closed_caption", "present", false);
+  auto vp_opt = representation.get_video_parameters();
+  if (!vp_opt.has_value()) {
+    ORC_LOG_DEBUG("Frame {}: No video parameters available", frame_id);
     return;
   }
+  const auto& vp = vp_opt.value();
 
-  // Closed captions are only on the second field (field 2) in NTSC
-  // Check if this is the correct field type
-  if (descriptor->format == VideoFormat::NTSC) {
-    // For NTSC, captions are on line 21 of field 2 (even field_id values: 2,
-    // 4, 6...) field_id % 2 == 1 means odd field_id (field 1 type), so skip it
-    if (field_id.value() % 2 == 1) {
-      // This is field 1 type, skip it
-      ORC_LOG_DEBUG("Field {}: Skipping odd field (field 1 type)",
-                    field_id.value());
-      context.set(field_id, "closed_caption", "present", false);
-      return;
-    }
-    ORC_LOG_DEBUG("Field {}: Processing even field (field 2 type)",
-                  field_id.value());
-  }
+  size_t f1_lines = field1_lines(vp.system);
+  size_t line_width = static_cast<size_t>(vp.frame_width_nominal);
 
-  // Line 21 for NTSC, line 22 for PAL (0-based: 20, 21)
-  VideoFormat format = descriptor->format;
-  size_t line_num = (format == VideoFormat::NTSC) ? 20 : 21;
-
-  if (line_num >= descriptor->height) {
-    ORC_LOG_DEBUG("Field {}: Line {} >= height {}", field_id.value(), line_num,
-                  descriptor->height);
-    context.set(field_id, "closed_caption", "present", false);
-    return;
-  }
-
-  const uint16_t* line_data = representation.get_line(field_id, line_num);
-  if (line_data == nullptr) {
-    ORC_LOG_DEBUG("Field {}: get_line({}) returned nullptr", field_id.value(),
-                  line_num);
-    context.set(field_id, "closed_caption", "present", false);
-    return;
-  }
-
-  // Debug: check if line data has any non-zero values
-  if (field_id.value() < 10) {
-    std::string sample_debug;
-    for (size_t i = 100; i < 130 && i < descriptor->width; i += 5) {
-      sample_debug += std::to_string(line_data[i]) + " ";
-    }
-    ORC_LOG_DEBUG("Field {}: Line {} samples[100-130 step 5]: {}",
-                  field_id.value(), line_num, sample_debug);
-  }
-
-  // Get video parameters from VideoFieldRepresentation interface
-  auto video_params_opt = representation.get_video_parameters();
-  if (!video_params_opt.has_value()) {
-    ORC_LOG_DEBUG("Field {}: Failed to get video parameters", field_id.value());
-    context.set(field_id, "closed_caption", "present", false);
-    return;
-  }
-
-  const SourceParameters& video_params = video_params_opt.value();
-
-  // Calculate zero crossing from actual line data
-  // VBI line amplitude may differ from active video, so use line's own min/max
-  uint16_t min_sample = 65535, max_sample = 0;
-  for (size_t i = 0; i < descriptor->width; ++i) {
-    if (line_data[i] < min_sample) min_sample = line_data[i];
-    if (line_data[i] > max_sample) max_sample = line_data[i];
-  }
-
-  // Use midpoint of actual line samples (like BiphaseObserver does)
-  uint16_t zero_crossing = (min_sample + max_sample) / 2;
-
-  if (field_id.value() < 3) {
-    ORC_LOG_DEBUG("Field {}: Line {} min={}, max={}, zero_crossing={}",
-                  field_id.value(), line_num, min_sample, max_sample,
-                  zero_crossing);
-  }
-
-  // Bit clock is 32 x fH [CTA-608-E p14]
-  double samples_per_bit = static_cast<double>(descriptor->width) / 32.0;
   // Colour burst end derived from video system constant.
   size_t colorburst_end =
-      static_cast<size_t>(colour_burst_range(video_params.system).second);
+      static_cast<size_t>(colour_burst_range(vp.system).second);
 
-  DecodedCaption decoded;
-  bool success = decode_line(line_data, descriptor->width, zero_crossing,
-                             colorburst_end, samples_per_bit, decoded);
+  for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+    FieldID derived_fid(frame_id * 2 + field_idx);
+    size_t line_offset = (field_idx == 0) ? 0 : f1_lines;
+    size_t field_height = (field_idx == 0)
+                              ? f1_lines
+                              : static_cast<size_t>(vp.frame_height) - f1_lines;
 
-  context.set(field_id, "closed_caption", "present", success);
-  if (success) {
-    context.set(field_id, "closed_caption", "data0",
-                static_cast<int32_t>(decoded.data0));
-    context.set(field_id, "closed_caption", "data1",
-                static_cast<int32_t>(decoded.data1));
-    context.set(field_id, "closed_caption", "parity0_valid",
-                decoded.parity_valid0);
-    context.set(field_id, "closed_caption", "parity1_valid",
-                decoded.parity_valid1);
+    // Closed captions are NTSC only; field 2 (field_idx=1) is skipped as
+    // captions appear on VFR field 1 (the top spatial / even-scan field).
+    if (vp.system == VideoSystem::NTSC && field_idx == 1) {
+      ORC_LOG_DEBUG("Field {}: Skipping field 2 (no NTSC captions)",
+                    derived_fid.value());
+      context.set(derived_fid, "closed_caption", "present", false);
+      continue;
+    }
 
-    ORC_LOG_DEBUG(
-        "ClosedCaptionObserver: Field {} CC=[{:#04x}, {:#04x}] parity=({}, {})",
-        field_id.value(), decoded.data0, decoded.data1, decoded.parity_valid0,
-        decoded.parity_valid1);
+    // Line 21 for NTSC, line 22 for PAL (0-based: 20, 21)
+    size_t line_num = (vp.system == VideoSystem::NTSC) ? 20 : 21;
+
+    if (line_num >= field_height) {
+      ORC_LOG_DEBUG("Field {}: Line {} >= field height {}", derived_fid.value(),
+                    line_num, field_height);
+      context.set(derived_fid, "closed_caption", "present", false);
+      continue;
+    }
+
+    const int16_t* line_data =
+        representation.get_line(frame_id, line_offset + line_num);
+    if (line_data == nullptr) {
+      ORC_LOG_DEBUG("Field {}: get_line({}) returned nullptr",
+                    derived_fid.value(), line_offset + line_num);
+      context.set(derived_fid, "closed_caption", "present", false);
+      continue;
+    }
+
+    // Debug: check if line data has any non-zero values
+    if (frame_id < 10) {
+      std::string sample_debug;
+      for (size_t i = 100; i < 130 && i < line_width; i += 5) {
+        sample_debug += std::to_string(line_data[i]) + " ";
+      }
+      ORC_LOG_DEBUG("Field {}: Line {} samples[100-130 step 5]: {}",
+                    derived_fid.value(), line_num, sample_debug);
+    }
+
+    // Calculate zero crossing from actual line data (min/max midpoint)
+    int16_t min_sample = 32767;
+    int16_t max_sample = -32768;
+    for (size_t i = 0; i < line_width; ++i) {
+      if (line_data[i] < min_sample) min_sample = line_data[i];
+      if (line_data[i] > max_sample) max_sample = line_data[i];
+    }
+    int16_t zero_crossing = static_cast<int16_t>(
+        (static_cast<int32_t>(min_sample) + static_cast<int32_t>(max_sample)) /
+        2);
+
+    if (frame_id < 3) {
+      ORC_LOG_DEBUG("Field {}: Line {} min={}, max={}, zero_crossing={}",
+                    derived_fid.value(), line_num, min_sample, max_sample,
+                    zero_crossing);
+    }
+
+    // Bit clock is 32 x fH [CTA-608-E p14]
+    double samples_per_bit = static_cast<double>(line_width) / 32.0;
+
+    DecodedCaption decoded;
+    bool success = decode_line(line_data, line_width, zero_crossing,
+                               colorburst_end, samples_per_bit, decoded);
+
+    context.set(derived_fid, "closed_caption", "present", success);
+    if (success) {
+      context.set(derived_fid, "closed_caption", "data0",
+                  static_cast<int32_t>(decoded.data0));
+      context.set(derived_fid, "closed_caption", "data1",
+                  static_cast<int32_t>(decoded.data1));
+      context.set(derived_fid, "closed_caption", "parity0_valid",
+                  decoded.parity_valid0);
+      context.set(derived_fid, "closed_caption", "parity1_valid",
+                  decoded.parity_valid1);
+
+      ORC_LOG_DEBUG(
+          "ClosedCaptionObserver: Field {} CC=[{:#04x}, {:#04x}] parity=({}, "
+          "{})",
+          derived_fid.value(), decoded.data0, decoded.data1,
+          decoded.parity_valid0, decoded.parity_valid1);
+    }
   }
 }
 
@@ -146,9 +144,9 @@ std::vector<ObservationKey> ClosedCaptionObserver::get_provided_observations()
   };
 }
 
-bool ClosedCaptionObserver::decode_line(const uint16_t* line_data,
+bool ClosedCaptionObserver::decode_line(const int16_t* line_data,
                                         size_t sample_count,
-                                        uint16_t zero_crossing,
+                                        int16_t zero_crossing,
                                         size_t colorburst_end,
                                         double samples_per_bit,
                                         DecodedCaption& decoded) const {
@@ -181,7 +179,6 @@ bool ClosedCaptionObserver::decode_line(const uint16_t* line_data,
   // Find 1 start bit
   double x_before_search = x;
   if (!vbi_utils::find_transition(transition_map, true, x, x_limit)) {
-    // Debug: show transition map around the search position
     ORC_LOG_DEBUG("decode_line: Failed to find 1 start bit at x={}",
                   x_before_search);
     size_t start_pos = std::max(0, static_cast<int>(x_before_search) - 10);
@@ -222,8 +219,6 @@ bool ClosedCaptionObserver::decode_line(const uint16_t* line_data,
   decoded.data1 = byte1;
 
   // Check parity: legacy tool checks isEvenParity(byte) && parityBit != 1
-  // If byte has even parity, the parity bit should be 1 to make odd parity
-  // overall
   decoded.parity_valid0 = !(vbi_utils::is_even_parity(byte0) && parity0 != 1);
   decoded.parity_valid1 = !(vbi_utils::is_even_parity(byte1) && parity1 != 1);
 

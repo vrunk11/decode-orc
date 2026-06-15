@@ -358,7 +358,8 @@ void LineScopeDialog::updatePlotData() {
                !current_c_samples_.empty()) {  // Chroma (C) only
       display_samples = &current_c_samples_;
     } else if (channel_mode == 2 ||
-               channel_mode == 3) {  // Both (Y & C) or Y+C combined (simulated composite)
+               channel_mode ==
+                   3) {  // Both (Y & C) or Y+C combined (simulated composite)
       // Will handle separately below - don't set display_samples
     }
     // If none of the above conditions are met, display_samples stays nullptr
@@ -403,10 +404,17 @@ void LineScopeDialog::updatePlotData() {
     for (size_t i = 0; i < samples.size(); ++i) {
       double mv_value = static_cast<double>(samples[i]);
 
-      // TBC samples are in the 16-bit domain; use fixed TBC reference levels.
-      constexpr double kTbcRange = orc::kTbcWhite - orc::kTbcBlanking;
-      mv_value =
-          (mv_value - orc::kTbcBlanking) * 100.0 / kTbcRange * ire_to_mv;
+      // Samples are in the CVBS_U10_4FSC 10-bit domain.
+      const double level_blanking =
+          current_video_params_.has_value()
+              ? static_cast<double>(current_video_params_->blanking_level)
+              : static_cast<double>(orc::kNtscBlanking);
+      const double level_range =
+          current_video_params_.has_value()
+              ? static_cast<double>(current_video_params_->white_level -
+                                    current_video_params_->blanking_level)
+              : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
+      mv_value = (mv_value - level_blanking) * 100.0 / level_range * ire_to_mv;
 
       // X-axis: convert sample position to microseconds
       double time_us = static_cast<double>(i) * us_per_sample;
@@ -576,11 +584,19 @@ void LineScopeDialog::updatePlotData() {
   // Calculate Y-axis range
   double min_mv, max_mv, min_ire, max_ire;
 
-  // TBC samples are in the 16-bit domain; use fixed TBC reference levels.
-  constexpr double kTbcRange = orc::kTbcWhite - orc::kTbcBlanking;
+  // Samples are in the CVBS_U10_4FSC 10-bit domain.
+  const double level_blanking =
+      current_video_params_.has_value()
+          ? static_cast<double>(current_video_params_->blanking_level)
+          : static_cast<double>(orc::kNtscBlanking);
+  const double level_range =
+      current_video_params_.has_value()
+          ? static_cast<double>(current_video_params_->white_level -
+                                current_video_params_->blanking_level)
+          : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
   {
-    double raw_min_ire = (0.0 - orc::kTbcBlanking) * 100.0 / kTbcRange;
-    double raw_max_ire = (65535.0 - orc::kTbcBlanking) * 100.0 / kTbcRange;
+    double raw_min_ire = (0.0 - level_blanking) * 100.0 / level_range;
+    double raw_max_ire = (1023.0 - level_blanking) * 100.0 / level_range;
     double raw_min_mv = raw_min_ire * ire_to_mv;
     double raw_max_mv = raw_max_ire * ire_to_mv;
 
@@ -702,8 +718,8 @@ void LineScopeDialog::updatePlotData() {
                           1, Qt::DashLine));
     }
 
-    // IRE level markers (horizontal lines) in mV using TBC reference levels.
-    // 0 IRE (blanking) = 0 mV by definition
+    // IRE level markers (horizontal lines) in mV using ld-decode reference
+    // levels. 0 IRE (blanking) = 0 mV by definition
     auto* ire0 = plot_widget_->addMarker();
     ire0->setStyle(PlotMarker::HLine);
     ire0->setPosition(QPointF(0, 0.0));
@@ -825,11 +841,18 @@ void LineScopeDialog::updateSampleMarker(int sample_x) {
                            (static_cast<int32_t>(c_val) - CHROMA_MID_CODE),
                        0, 65535));
 
-        // TBC samples are in the 16-bit domain; use fixed TBC reference levels.
-        constexpr double kTbcRange = orc::kTbcWhite - orc::kTbcBlanking;
-        double ire =
-            (static_cast<double>(combined_value) - orc::kTbcBlanking) * 100.0 /
-            kTbcRange;
+        // Samples are in the CVBS_U10_4FSC 10-bit domain.
+        const double s_blanking =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscBlanking);
+        const double s_range =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->white_level -
+                                      current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
+        double ire = (static_cast<double>(combined_value) - s_blanking) *
+                     100.0 / s_range;
         double mv = ire * ire_to_mv;
         info_text += QString("\nmV: %1").arg(mv, 0, 'f', 1);
         info_text += QString("\nIRE: %1").arg(ire, 0, 'f', 1);
@@ -841,14 +864,20 @@ void LineScopeDialog::updateSampleMarker(int sample_x) {
         uint16_t y_value = current_y_samples_[sample_x];
         uint16_t c_value = current_c_samples_[sample_x];
 
-        // TBC samples are in the 16-bit domain; use fixed TBC reference levels.
-        constexpr double kTbcRange = orc::kTbcWhite - orc::kTbcBlanking;
+        // Samples are in the CVBS_U10_4FSC 10-bit domain.
+        const double s_blanking =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscBlanking);
+        const double s_range =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->white_level -
+                                      current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
         double y_ire =
-            (static_cast<double>(y_value) - orc::kTbcBlanking) * 100.0 /
-            kTbcRange;
+            (static_cast<double>(y_value) - s_blanking) * 100.0 / s_range;
         double c_ire =
-            (static_cast<double>(c_value) - orc::kTbcBlanking) * 100.0 /
-            kTbcRange;
+            (static_cast<double>(c_value) - s_blanking) * 100.0 / s_range;
         double y_mv = y_ire * ire_to_mv;
         double c_mv = c_ire * ire_to_mv;
         info_text += QString("\nY: %1 mV (%2 IRE)")
@@ -859,12 +888,19 @@ void LineScopeDialog::updateSampleMarker(int sample_x) {
                          .arg(c_ire, 0, 'f', 1);
       }
     } else {
-      // Single channel mode — TBC samples use fixed 16-bit reference levels.
+      // Single channel mode — samples are in CVBS_U10_4FSC 10-bit domain.
       {
-        constexpr double kTbcRange = orc::kTbcWhite - orc::kTbcBlanking;
+        const double s_blanking =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscBlanking);
+        const double s_range =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->white_level -
+                                      current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
         double ire =
-            (static_cast<double>(sample_value) - orc::kTbcBlanking) * 100.0 /
-            kTbcRange;
+            (static_cast<double>(sample_value) - s_blanking) * 100.0 / s_range;
         double mv = ire * ire_to_mv;
         info_text += QString("\nmV: %1").arg(mv, 0, 'f', 1);
         info_text += QString("\nIRE: %1").arg(ire, 0, 'f', 1);

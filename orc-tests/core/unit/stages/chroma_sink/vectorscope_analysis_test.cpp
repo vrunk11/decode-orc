@@ -85,8 +85,8 @@ TEST(VectorscopeAnalysisTest, ExtractFromColourFrameCarrier_CanUseFullFrame) {
   carrier.active_x_end = 5;
   carrier.active_y_start = 1;
   carrier.active_y_end = 3;
-  carrier.black_16b_ire = 100.0;
-  carrier.white_16b_ire = 200.0;
+  carrier.cvbs_blanking = 100.0;
+  carrier.cvbs_white = 200.0;
 
   const size_t sample_count =
       static_cast<size_t>(carrier.width) * static_cast<size_t>(carrier.height);

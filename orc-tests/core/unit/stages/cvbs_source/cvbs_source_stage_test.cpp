@@ -14,6 +14,7 @@
 
 #include "../../../../orc/plugins/stages/cvbs_source/cvbs_source_stage.h"
 
+#include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -29,7 +30,6 @@
 #include "../../../../orc/common/include/common_types.h"
 #include "../../../../orc/common/include/error_types.h"
 #include "../../../../orc/common/include/parameter_types.h"
-#include <cvbs_signal_constants.h>
 #include "../../../../orc/core/include/dropout_run.h"
 #include "../../../../orc/core/include/observation_context.h"
 #include "../../../../orc/core/include/video_frame_representation.h"
@@ -46,27 +46,28 @@ namespace {
 // Build a payload where every sample = blanking (normalised output = blanking).
 // Encoded as CVBS_U16_4FSC (blanking × 64).
 std::vector<uint16_t> make_blank_payload_u16(size_t word_count,
-                                              int32_t blanking_10bit) {
-  return std::vector<uint16_t>(
-      word_count, static_cast<uint16_t>(blanking_10bit * 64));
+                                             int32_t blanking_10bit) {
+  return std::vector<uint16_t>(word_count,
+                               static_cast<uint16_t>(blanking_10bit * 64));
 }
 
 // Build a PAL frame payload (CVBS_U10_4FSC) with a colour burst at the
 // reference position (line 9, sample 93) at the given phase angle (degrees).
 // All other samples are at PAL blanking level (256).
 // Burst amplitude: amp ADU.  40 burst samples are written.
-std::vector<uint16_t> make_pal_frame_with_burst_u10(
-    double burst_phase_deg, int32_t amp) {
+std::vector<uint16_t> make_pal_frame_with_burst_u10(double burst_phase_deg,
+                                                    int32_t amp) {
   const size_t frame_words = static_cast<size_t>(kPalFrameSamples);
-  // Initialise at blanking level 256 encoded as int16_t in uint16_t bit-pattern.
+  // Initialise at blanking level 256 encoded as int16_t in uint16_t
+  // bit-pattern.
   const int16_t blanking = static_cast<int16_t>(kPalBlanking);
-  std::vector<uint16_t> words(frame_words,
-                               static_cast<uint16_t>(blanking));
+  std::vector<uint16_t> words(frame_words, static_cast<uint16_t>(blanking));
 
   // Offset of line 9 in the flat frame buffer: lines 0-8 each have 1135
   // samples (none is a kPalExtraSampleLines line within 0..8).
   // kPalExtraSampleLines = {155, 311, 468, 624} — all > 8.
-  const size_t line9_offset = static_cast<size_t>(9 * (kPalMaxSamplesPerLine - 1));
+  const size_t line9_offset =
+      static_cast<size_t>(9 * (kPalMaxSamplesPerLine - 1));
   const size_t burst_abs_offset = line9_offset + 93;
 
   // burst[n] = blanking + amp * cos((burst_abs_offset+n)*90° + burst_phase)
@@ -90,13 +91,12 @@ std::vector<uint16_t> make_pal_frame_with_burst_u10(
 // Build an NTSC frame payload (CVBS_U10_4FSC) with a colour burst at the
 // reference position (line 9, sample 74).
 std::vector<uint16_t> make_ntsc_frame_with_burst_u10(double burst_phase_deg,
-                                                      int32_t amp) {
+                                                     int32_t amp) {
   const size_t frame_words = static_cast<size_t>(kNtscFrameSamples);
   const int16_t blanking = static_cast<int16_t>(kNtscBlanking);
   std::vector<uint16_t> words(frame_words, static_cast<uint16_t>(blanking));
 
-  const size_t line9_offset =
-      static_cast<size_t>(9 * kNtscSamplesPerLine);
+  const size_t line9_offset = static_cast<size_t>(9 * kNtscSamplesPerLine);
   const size_t burst_abs = line9_offset + 74;
 
   const double phi_rad = burst_phase_deg * (M_PI / 180.0);
@@ -171,8 +171,7 @@ class FakeCVBSSourceStageDeps final : public ICVBSSourceStageDeps {
   }
 
   std::optional<CVBSMetadataRecord> load_metadata(
-      const std::string& meta_path,
-      std::string& error_message) const override {
+      const std::string& meta_path, std::string& error_message) const override {
     last_metadata_path = meta_path;
     if (!metadata_available) {
       error_message = metadata_error;
@@ -182,8 +181,7 @@ class FakeCVBSSourceStageDeps final : public ICVBSSourceStageDeps {
   }
 
   std::optional<size_t> get_input_word_count(
-      const std::string& /*path*/,
-      std::string& error_message) const override {
+      const std::string& /*path*/, std::string& error_message) const override {
     if (payload_words.empty()) {
       error_message = "Empty payload";
       return std::nullopt;
@@ -192,8 +190,7 @@ class FakeCVBSSourceStageDeps final : public ICVBSSourceStageDeps {
   }
 
   bool read_input_words_at(const std::string& /*path*/, size_t word_offset,
-                           size_t word_count,
-                           std::vector<uint16_t>& out_words,
+                           size_t word_count, std::vector<uint16_t>& out_words,
                            std::string& error_message) const override {
     if (word_offset + word_count > payload_words.size()) {
       error_message = "Read out of bounds";
@@ -224,8 +221,9 @@ class FakeCVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     const size_t end =
         std::min(start + stereo_pair_count * 2, audio_samples.size());
     if (start >= audio_samples.size()) return {};
-    return std::vector<int16_t>(audio_samples.begin() + static_cast<std::ptrdiff_t>(start),
-                                audio_samples.begin() + static_cast<std::ptrdiff_t>(end));
+    return std::vector<int16_t>(
+        audio_samples.begin() + static_cast<std::ptrdiff_t>(start),
+        audio_samples.begin() + static_cast<std::ptrdiff_t>(end));
   }
 
   std::optional<std::vector<CVBSExtensionFrameRef>> load_efm_frame_table(
@@ -235,13 +233,14 @@ class FakeCVBSSourceStageDeps final : public ICVBSSourceStageDeps {
   }
 
   std::vector<uint8_t> read_efm_bytes_at(const std::string& /*path*/,
-                                          uint64_t byte_offset,
-                                          uint32_t count) const override {
+                                         uint64_t byte_offset,
+                                         uint32_t count) const override {
     const size_t start = static_cast<size_t>(byte_offset);
     const size_t end = std::min(start + count, efm_data.size());
     if (start >= efm_data.size()) return {};
-    return std::vector<uint8_t>(efm_data.begin() + static_cast<std::ptrdiff_t>(start),
-                                efm_data.begin() + static_cast<std::ptrdiff_t>(end));
+    return std::vector<uint8_t>(
+        efm_data.begin() + static_cast<std::ptrdiff_t>(start),
+        efm_data.begin() + static_cast<std::ptrdiff_t>(end));
   }
 
   std::optional<std::vector<CVBSExtensionFrameRef>> load_ac3_frame_table(
@@ -251,13 +250,14 @@ class FakeCVBSSourceStageDeps final : public ICVBSSourceStageDeps {
   }
 
   std::vector<uint8_t> read_ac3_bytes_at(const std::string& /*path*/,
-                                          uint64_t byte_offset,
-                                          uint32_t count) const override {
+                                         uint64_t byte_offset,
+                                         uint32_t count) const override {
     const size_t start = static_cast<size_t>(byte_offset);
     const size_t end = std::min(start + count, ac3_data.size());
     if (start >= ac3_data.size()) return {};
-    return std::vector<uint8_t>(ac3_data.begin() + static_cast<std::ptrdiff_t>(start),
-                                ac3_data.begin() + static_cast<std::ptrdiff_t>(end));
+    return std::vector<uint8_t>(
+        ac3_data.begin() + static_cast<std::ptrdiff_t>(start),
+        ac3_data.begin() + static_cast<std::ptrdiff_t>(end));
   }
 };
 
@@ -266,8 +266,7 @@ class FakeCVBSSourceStageDeps final : public ICVBSSourceStageDeps {
 // ---------------------------------------------------------------------------
 
 VideoFrameRepresentationPtr execute_and_get_vfr(
-    DAGStage& stage,
-    const std::map<std::string, ParameterValue>& params) {
+    DAGStage& stage, const std::map<std::string, ParameterValue>& params) {
   std::vector<ArtifactPtr> inputs;
   ObservationContext obs;
   auto results = stage.execute(inputs, params, obs);
@@ -277,8 +276,8 @@ VideoFrameRepresentationPtr execute_and_get_vfr(
 }
 
 void expect_user_data_error(DAGStage& stage,
-                             const std::map<std::string, ParameterValue>& params,
-                             const std::string& msg_fragment) {
+                            const std::map<std::string, ParameterValue>& params,
+                            const std::string& msg_fragment) {
   std::vector<ArtifactPtr> inputs;
   ObservationContext obs;
   try {
@@ -419,20 +418,16 @@ TEST(CVBSSourceStageValidationTest, AcceptsAllFourSampleEncodings) {
     // For U10 encoding, payload must be int16_t stored as uint16_t.
     // Blanking=256 encoded as uint16_t bit-pattern of int16_t(256) = 256.
     if (std::string(enc) == "CVBS_U10_4FSC") {
-      deps->payload_words.assign(
-          static_cast<size_t>(kPalFrameSamples),
-          static_cast<uint16_t>(kPalBlanking));
+      deps->payload_words.assign(static_cast<size_t>(kPalFrameSamples),
+                                 static_cast<uint16_t>(kPalBlanking));
     } else if (std::string(enc) == "CVBS_S16_FSC") {
       // CVBS_S16_FSC: value=blanking stored as (value-blanking)*32 = 0.
-      deps->payload_words.assign(
-          static_cast<size_t>(kPalFrameSamples), 0u);
+      deps->payload_words.assign(static_cast<size_t>(kPalFrameSamples), 0u);
     } else if (std::string(enc) == "CVBS_TPG21_4FSC") {
       // CVBS_TPG21_4FSC: value=blanking stored as (value-508)*64 = (256-508)*64
-      const int16_t stored =
-          static_cast<int16_t>((kPalBlanking - 508) * 64);
-      deps->payload_words.assign(
-          static_cast<size_t>(kPalFrameSamples),
-          static_cast<uint16_t>(stored));
+      const int16_t stored = static_cast<int16_t>((kPalBlanking - 508) * 64);
+      deps->payload_words.assign(static_cast<size_t>(kPalFrameSamples),
+                                 static_cast<uint16_t>(stored));
     }
     PALCVBSSourceStage stage(deps);
     auto vfr = execute_and_get_vfr(stage, kDefaultParams);
@@ -447,10 +442,8 @@ TEST(CVBSSourceStageValidationTest, AcceptsAllFourSampleEncodings) {
 
 // Helper: decode one frame with a given encoding and return the decoded sample
 // value at a specific word index.
-int16_t decode_one_sample(const std::string& preset,
-                           uint16_t raw_word,
-                           const std::string& encoding,
-                           int32_t frame_samples) {
+int16_t decode_one_sample(const std::string& preset, uint16_t raw_word,
+                          const std::string& encoding, int32_t frame_samples) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>(preset, encoding);
   deps->payload_words.assign(static_cast<size_t>(frame_samples), raw_word);
   deps->metadata_record.sample_encoding_preset = encoding;
@@ -480,7 +473,8 @@ TEST(CVBSSourceEncodingTest, U10_IdentityTransform) {
 }
 
 TEST(CVBSSourceEncodingTest, U10_PreservesHeadroomAboveWhite) {
-  // Raw 1023 (just below peak) encoded as uint16_t bit-pattern of int16_t(1023).
+  // Raw 1023 (just below peak) encoded as uint16_t bit-pattern of
+  // int16_t(1023).
   const int16_t expected = 1023;
   const uint16_t raw = static_cast<uint16_t>(expected);
   EXPECT_EQ(decode_one_sample("PAL", raw, "CVBS_U10_4FSC", kPalFrameSamples),
@@ -497,14 +491,13 @@ TEST(CVBSSourceEncodingTest, U16_DividesBy64) {
 TEST(CVBSSourceEncodingTest, U16_WhiteLevelRoundtrips) {
   const int32_t white_10bit = kPalWhite;
   const uint16_t raw = static_cast<uint16_t>(white_10bit * 64);
-  EXPECT_EQ(
-      decode_one_sample("PAL", raw, "CVBS_U16_4FSC", kPalFrameSamples),
-      static_cast<int16_t>(kPalWhite));
+  EXPECT_EQ(decode_one_sample("PAL", raw, "CVBS_U16_4FSC", kPalFrameSamples),
+            static_cast<int16_t>(kPalWhite));
 }
 
 TEST(CVBSSourceEncodingTest, TPG21_BlankingLevelRoundtrips) {
   // CVBS_TPG21_4FSC: stored = (value - 508) * 64
-  const int32_t value = kPalBlanking;   // 256
+  const int32_t value = kPalBlanking;  // 256
   const int16_t stored = static_cast<int16_t>((value - 508) * 64);
   const uint16_t raw = static_cast<uint16_t>(stored);
   EXPECT_EQ(decode_one_sample("PAL", raw, "CVBS_TPG21_4FSC", kPalFrameSamples),
@@ -688,7 +681,7 @@ TEST(CVBSBurstPhaseTest, PAL_BurstAbsent_ColourFrameIndexUnknown) {
   // All-blanking frame: no burst → colour_frame_index = -1.
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL", "CVBS_U10_4FSC");
   deps->payload_words.assign(static_cast<size_t>(kPalFrameSamples),
-                              static_cast<uint16_t>(kPalBlanking));
+                             static_cast<uint16_t>(kPalBlanking));
   PALCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
   ASSERT_NE(vfr, nullptr);
@@ -699,7 +692,8 @@ TEST(CVBSBurstPhaseTest, PAL_BurstAbsent_ColourFrameIndexUnknown) {
 
 TEST(CVBSBurstPhaseTest, NTSC_BurstAt180Deg_ColourFrameIndex0) {
   // NTSC frame A: burst phase 180° → measured 180° → [90°,270°) → index 0.
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("NTSC", "CVBS_U10_4FSC");
+  auto deps =
+      std::make_shared<FakeCVBSSourceStageDeps>("NTSC", "CVBS_U10_4FSC");
   deps->payload_words = make_ntsc_frame_with_burst_u10(180.0, 100);
   NTSCCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
@@ -711,7 +705,8 @@ TEST(CVBSBurstPhaseTest, NTSC_BurstAt180Deg_ColourFrameIndex0) {
 
 TEST(CVBSBurstPhaseTest, NTSC_BurstAt0Deg_ColourFrameIndex1) {
   // NTSC frame B: burst phase 0° → measured 0° → not in [90°,270°) → index 1.
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("NTSC", "CVBS_U10_4FSC");
+  auto deps =
+      std::make_shared<FakeCVBSSourceStageDeps>("NTSC", "CVBS_U10_4FSC");
   deps->payload_words = make_ntsc_frame_with_burst_u10(0.0, 100);
   NTSCCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
@@ -808,7 +803,7 @@ TEST(CVBSVFRTest, PAL_Line0StartsAtOffset0) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL", "CVBS_U10_4FSC");
   // Store a sentinel value only at position 0.
   deps->payload_words.assign(static_cast<size_t>(kPalFrameSamples),
-                              static_cast<uint16_t>(kPalBlanking));
+                             static_cast<uint16_t>(kPalBlanking));
   deps->payload_words[0] = static_cast<uint16_t>(500);  // sentinel
   PALCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);

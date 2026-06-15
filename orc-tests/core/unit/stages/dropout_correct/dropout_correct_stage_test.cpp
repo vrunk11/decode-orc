@@ -26,10 +26,9 @@ namespace {
 const orc::ParameterDescriptor* find_descriptor(
     const std::vector<orc::ParameterDescriptor>& descriptors,
     const std::string& name) {
-  auto it = std::find_if(descriptors.begin(), descriptors.end(),
-                         [&](const orc::ParameterDescriptor& d) {
-                           return d.name == name;
-                         });
+  auto it = std::find_if(
+      descriptors.begin(), descriptors.end(),
+      [&](const orc::ParameterDescriptor& d) { return d.name == name; });
   return it == descriptors.end() ? nullptr : &(*it);
 }
 
@@ -58,9 +57,11 @@ TEST(DropoutCorrectStageTest, Descriptor_DefaultsMatchRuntimeDefaults) {
   const auto descriptors = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
 
-  const auto* overcorrect = find_descriptor(descriptors, "overcorrect_extension");
+  const auto* overcorrect =
+      find_descriptor(descriptors, "overcorrect_extension");
   const auto* intrafield = find_descriptor(descriptors, "intrafield_only");
-  const auto* max_distance = find_descriptor(descriptors, "max_replacement_distance");
+  const auto* max_distance =
+      find_descriptor(descriptors, "max_replacement_distance");
   const auto* match_phase = find_descriptor(descriptors, "match_chroma_phase");
   const auto* highlight = find_descriptor(descriptors, "highlight_corrections");
 
@@ -139,7 +140,8 @@ TEST(DropoutCorrectStageTest, Execute_ThrowsWhenInputIsWrongType) {
 TEST(DropoutCorrectStageTest, Execute_ReturnsVFrameRWhenInputIsValid) {
   orc::DropoutCorrectStage stage;
   orc::ObservationContext ctx;
-  auto source = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  auto source =
+      std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   ON_CALL(*source, type_name()).WillByDefault(Return("test_vfr"));
   ON_CALL(*source, frame_range())

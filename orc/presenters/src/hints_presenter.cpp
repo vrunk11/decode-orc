@@ -13,8 +13,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "../core/include/dag_field_renderer.h"
-#include "../core/include/video_field_representation.h"
+#include "../core/include/dag_frame_renderer.h"
 #include "hints_view_models.h"
 
 namespace orc::presenters {
@@ -184,10 +183,10 @@ bool HintsPresenter::validateHint(const Hint& hint,
     case HintType::ActiveLine:
       if (hint.active_line.first_line < 0 || hint.active_line.last_line < 0) {
         return fail("Active line range must be non-negative");
-}
+      }
       if (hint.active_line.last_line < hint.active_line.first_line) {
         return fail("Active line range is invalid");
-}
+      }
       return true;
     case HintType::VBI:
       if (hint.vbi.lines.empty()) return fail("VBI lines cannot be empty");
@@ -196,16 +195,16 @@ bool HintsPresenter::validateHint(const Hint& hint,
       if (hint.dropout.line_start < 0 ||
           hint.dropout.line_end < hint.dropout.line_start) {
         return fail("Dropout line range is invalid");
-}
+      }
       if (hint.dropout.pixel_start < 0 ||
           hint.dropout.pixel_end < hint.dropout.pixel_start) {
         return fail("Dropout pixel range is invalid");
-}
+      }
       return true;
     case HintType::Burst:
       if (hint.burst.burst_start < 0 || hint.burst.burst_length <= 0) {
         return fail("Burst parameters are invalid");
-}
+      }
       return true;
     case HintType::Custom:
       return true;
@@ -243,42 +242,31 @@ HintsPresenter::FieldHintsView HintsPresenter::getHintsForField(
   auto dag = std::static_pointer_cast<const orc::DAG>(dag_void);
 
   try {
-    DAGFieldRenderer renderer(dag);
-    auto result = renderer.render_field_at_node(node_id, field_id);
+    orc::FrameID frame_id = static_cast<orc::FrameID>(field_id.value() / 2);
+    bool is_first_field = (field_id.value() % 2 == 0);
+
+    DAGFrameRenderer renderer(dag);
+    auto result = renderer.render_frame_at_node(node_id, frame_id);
     if (!result.is_valid || !result.representation) {
       return out;
     }
 
-    const auto map_source = [](HintSource source) {
-      switch (source) {
-        case HintSource::METADATA:
-          return HintSourceView::METADATA;
-        case HintSource::USER_OVERRIDE:
-          return HintSourceView::USER_OVERRIDE;
-        case HintSource::INHERITED:
-          return HintSourceView::INHERITED;
-        case HintSource::SAMPLE_ANALYSIS:
-          return HintSourceView::SAMPLE_ANALYSIS;
-        case HintSource::CORROBORATED:
-          return HintSourceView::CORROBORATED;
-        default:
-          return HintSourceView::UNKNOWN;
-      }
-    };
-
-    if (auto parity = result.representation->get_field_parity_hint(field_id)) {
+    // Field parity: derived deterministically from FieldID (no VFR hint needed)
+    {
       FieldParityHintView v{};
-      v.is_first_field = parity->is_first_field;
-      v.source = map_source(parity->source);
-      v.confidence_pct = parity->confidence_pct;
+      v.is_first_field = is_first_field;
+      v.source = HintSourceView::METADATA;
+      v.confidence_pct = 100;
       out.parity = v;
     }
 
-    if (auto phase = result.representation->get_field_phase_hint(field_id)) {
+    // Field phase: VFR exposes colour frame index at frame granularity
+    if (auto colour_idx =
+            result.representation->get_frame_phase_hint(frame_id)) {
       FieldPhaseHintView v{};
-      v.field_phase_id = phase->field_phase_id;
-      v.source = map_source(phase->source);
-      v.confidence_pct = phase->confidence_pct;
+      v.field_phase_id = *colour_idx;
+      v.source = HintSourceView::METADATA;
+      v.confidence_pct = 100;
       out.phase = v;
     }
 
@@ -286,8 +274,8 @@ HintsPresenter::FieldHintsView HintsPresenter::getHintsForField(
       ActiveLineHintView v{};
       v.first_active_frame_line = active->first_active_frame_line;
       v.last_active_frame_line = active->last_active_frame_line;
-      v.source = map_source(active->source);
-      v.confidence_pct = active->confidence_pct;
+      v.source = HintSourceView::METADATA;
+      v.confidence_pct = 100;
       if (v.is_valid()) {
         out.active_line = v;
       }

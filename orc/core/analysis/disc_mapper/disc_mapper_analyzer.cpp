@@ -31,7 +31,7 @@ namespace orc {
  */
 struct NormalizedField {
   FieldID field_id;
-  FieldParity parity;
+  bool is_first_field = false;  // true = field 0 of frame, false = field 1
   VideoFormat format;
 
   // VBI-derived picture number (source of truth)
@@ -204,29 +204,17 @@ static bool is_lead_in_out(int32_t vbi17, int32_t vbi18) {
 
 /**
  * @brief Normalize a single field's metadata using VBI bytes from
- * ObservationContext
+ * ObservationContext. Parity and format are derived from the parent frame.
+ * Phase hints are not available from VideoFrameRepresentation; the VFR pipeline
+ * already guarantees correct field pairing so phase validation is skipped.
  */
-static NormalizedField normalize_field(const VideoFieldRepresentation& source,
-                                       const ObservationContext& obs_context,
-                                       FieldID field_id) {
+static NormalizedField normalize_field(const ObservationContext& obs_context,
+                                       FieldID field_id, bool is_first_field,
+                                       VideoFormat format) {
   NormalizedField nf;
   nf.field_id = field_id;
-
-  // Get basic descriptor
-  auto desc = source.get_descriptor(field_id);
-  if (!desc) {
-    nf.is_invalid = true;
-    return nf;
-  }
-
-  nf.parity = desc->parity;
-  nf.format = desc->format;
-
-  // Get phase hint
-  auto phase_hint = source.get_field_phase_hint(field_id);
-  if (phase_hint && phase_hint->field_phase_id > 0) {
-    nf.phase = phase_hint->field_phase_id;
-  }
+  nf.is_first_field = is_first_field;
+  nf.format = format;
 
   // Get VBI bytes from ObservationContext (populated by observers)
   auto vbi16_opt = obs_context.get(field_id, "biphase", "vbi_line_16");
@@ -422,7 +410,10 @@ static std::string generate_frame_map(const std::vector<MappedFrame>& frames,
 
     // Handle consecutive picture number sequences
     const auto& ipn = entries[i].pn;
-    if (!ipn.has_value()) { ++i; continue; }
+    if (!ipn.has_value()) {
+      ++i;
+      continue;
+    }
     int32_t start_pn = *ipn;
     int32_t end_pn = start_pn;
     size_t j = i + 1;
@@ -450,7 +441,9 @@ static std::string generate_frame_map(const std::vector<MappedFrame>& frames,
         for (size_t k = i; k < j; k++) {
           if (k > i) result << ",";
           const auto& kpn = entries[k].pn;
-          if (kpn.has_value()) result << picture_number_to_timecode(*kpn, format);
+          if (kpn.has_value()) {
+            result << picture_number_to_timecode(*kpn, format);
+          }
         }
       }
     } else {
@@ -538,8 +531,8 @@ static std::optional<CandidateFrame> pair_fields(const NormalizedField& f1,
   // Check phase validity
   frame.phase_valid = is_phase_valid(f1.phase, f2.phase, f1.format);
 
-  // Check parity
-  frame.parity_valid = (f1.parity != f2.parity);
+  // Check parity: valid frame pair has one first_field and one second_field
+  frame.parity_valid = (f1.is_first_field != f2.is_first_field);
 
   // Combine quality scores
   frame.quality_score = (f1.quality_score + f2.quality_score) / 2.0;
@@ -557,15 +550,16 @@ static std::optional<CandidateFrame> pair_fields(const NormalizedField& f1,
 // ============================================================================
 
 FieldMappingDecision DiscMapperAnalyzer::analyze(
-    const VideoFieldRepresentation& source,
+    const VideoFrameRepresentation& source,
     const ObservationContext& observation_context, const Options& options,
     AnalysisProgress* progress) {
   FieldMappingDecision decision;
   std::ostringstream rationale;
 
-  // Get field range
-  auto range = source.field_range();
-  size_t total_fields = range.size();
+  // Derive field range from frame range (each frame contributes 2 fields)
+  auto frame_range = source.frame_range();
+  size_t total_frames = frame_range.count();
+  size_t total_fields = total_frames * 2;
 
   decision.stats.total_fields = total_fields;
 
@@ -576,7 +570,8 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
   }
 
   rationale << "=== Disc Mapping Analysis ===\n\n";
-  rationale << "Input: " << total_fields << " fields\n\n";
+  rationale << "Input: " << total_fields << " fields (" << total_frames
+            << " frames)\n\n";
 
   // ========================================================================
   // Stage 1: Per-field VBI normalization
@@ -597,23 +592,33 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
   {
     size_t norm_idx = 0;
     size_t norm_interval = std::max(static_cast<size_t>(1), total_fields / 100);
-    for (FieldID fid = range.start; fid < range.end;
-         fid = FieldID(fid.value() + 1)) {
-      auto nf = normalize_field(source, observation_context, fid);
-
-      if (nf.picture_number) {
-        fields_with_pn++;
-        if (nf.is_cav) {
-          cav_fields++;
-        } else {
-          clv_fields++;
-}
+    for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
+         ++frame_id) {
+      VideoFormat format = VideoFormat::Unknown;
+      auto frame_desc = source.get_frame_descriptor(frame_id);
+      if (frame_desc) {
+        format = video_format_from_system(frame_desc->system);
       }
+      for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+        FieldID fid(frame_id * 2 + field_idx);
+        bool is_first = (field_idx == 0);
+        auto nf = normalize_field(observation_context, fid, is_first, format);
 
-      normalized_fields.push_back(nf);
-      ++norm_idx;
-      if (progress && norm_idx % norm_interval == 0) {
-        progress->setProgress(static_cast<int>(norm_idx * 100 / total_fields));
+        if (nf.picture_number) {
+          fields_with_pn++;
+          if (nf.is_cav) {
+            cav_fields++;
+          } else {
+            clv_fields++;
+          }
+        }
+
+        normalized_fields.push_back(nf);
+        ++norm_idx;
+        if (progress && norm_idx % norm_interval == 0) {
+          progress->setProgress(
+              static_cast<int>(norm_idx * 100 / total_fields));
+        }
       }
     }
     if (progress) progress->setProgress(100);
@@ -622,10 +627,10 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
   // Determine disc type
   decision.is_cav = (cav_fields > clv_fields);
 
-  // Determine video format
-  auto first_desc = source.get_descriptor(range.start);
-  if (first_desc) {
-    decision.is_pal = (first_desc->format == VideoFormat::PAL);
+  // Determine video format from first frame
+  auto first_frame_desc = source.get_frame_descriptor(frame_range.first);
+  if (first_frame_desc) {
+    decision.is_pal = (first_frame_desc->system == VideoSystem::PAL);
   }
 
   rationale << "Stage 1: VBI Normalization\n";
@@ -765,7 +770,7 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
             // Priority: confidence > phase_valid > quality
             if (a.pn_confidence != b.pn_confidence) {
               return a.pn_confidence < b.pn_confidence;
-}
+            }
             if (a.phase_valid != b.phase_valid) return !a.phase_valid;
             return a.quality_score < b.quality_score;
           });

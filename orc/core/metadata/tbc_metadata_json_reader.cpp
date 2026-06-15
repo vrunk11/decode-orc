@@ -98,6 +98,17 @@ bool TBCMetadataJsonReader::open(const std::string& json_path) {
 
   source_params_ = sp;
 
+  // ---- ld-decode 16-bit domain levels ----
+  // white16bIre / black16bIre from the JSON are the actual 16-bit TBC levels
+  // the ld-decode decoder used.  Store them for the tbc_source stage to use
+  // when scaling raw TBC samples into CVBS_U10_4FSC.
+  if (vp.white16bIre > vp.black16bIre && vp.black16bIre >= 0) {
+    TbcDomainLevels levels;
+    levels.blanking_16b = vp.black16bIre;  // JSON "black" = blanking (0 IRE)
+    levels.white_16b = vp.white16bIre;
+    tbc_domain_levels_ = levels;
+  }
+
   // ---- PCM audio parameters ----
   const auto& ap = meta.getPcmAudioParameters();
   if (ap.sampleRate > 0) {
@@ -184,6 +195,7 @@ bool TBCMetadataJsonReader::open(const std::string& json_path) {
 void TBCMetadataJsonReader::close() {
   is_open_ = false;
   source_params_.reset();
+  tbc_domain_levels_.reset();
   audio_params_.reset();
   field_cache_.clear();
   vbi_cache_.clear();
@@ -196,6 +208,10 @@ bool TBCMetadataJsonReader::is_open() const { return is_open_; }
 
 std::optional<SourceParameters> TBCMetadataJsonReader::read_video_parameters() {
   return source_params_;
+}
+
+std::optional<TbcDomainLevels> TBCMetadataJsonReader::read_tbc_domain_levels() {
+  return tbc_domain_levels_;
 }
 
 std::optional<PcmAudioParameters>

@@ -129,7 +129,7 @@ std::unique_ptr<MonoDecoder> ChromaSinkStage::create_yc_mono_decoder(
     const orc::SourceParameters& videoParams) const {
   MonoDecoder::MonoConfiguration config;
   config.yNRLevel = luma_nr_;
-  config.filterChroma = false;  // Y-TBC contains no chroma to filter.
+  config.filterChroma = false;  // Luma-only input contains no chroma to filter.
   config.videoParameters = videoParams;
   return std::make_unique<MonoDecoder>(config);
 }
@@ -2395,16 +2395,16 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
        videoParams.last_active_frame_line <= height)
           ? static_cast<uint32_t>(videoParams.last_active_frame_line)
           : carrier.height;
-  // ld-decode TBC 16-bit domain normative levels (kTbcBlanking / kTbcWhite).
-  carrier.black_16b_ire = kTbcBlanking;
-  carrier.white_16b_ire = kTbcWhite;
+  // CVBS_U10_4FSC normative levels from source parameters.
+  carrier.cvbs_blanking = videoParams.blanking_level;
+  carrier.cvbs_white = videoParams.white_level;
 
   carrier.vectorscope_data = VectorscopeAnalysisTool::extractFromComponentFrame(
       frame, videoParams, frame_a_index * 2, 4);
   if (carrier.vectorscope_data.has_value()) {
     carrier.vectorscope_data->system = videoParams.system;
-    carrier.vectorscope_data->white_16b_ire = kTbcWhite;
-    carrier.vectorscope_data->black_16b_ire = kTbcBlanking;
+    carrier.vectorscope_data->cvbs_white = videoParams.white_level;
+    carrier.vectorscope_data->cvbs_blanking = videoParams.blanking_level;
   }
 
   const size_t samples =

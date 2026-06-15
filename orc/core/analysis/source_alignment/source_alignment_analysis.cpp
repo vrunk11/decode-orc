@@ -19,6 +19,7 @@
 #include "../../include/logging.h"
 #include "../../include/observation_context.h"
 #include "../../include/project.h"
+#include "../../include/video_frame_representation.h"
 #include "../../observers/biphase_observer.h"
 #include "../analysis_registry.h"
 
@@ -163,7 +164,7 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
 
   // Execute the DAG to get all input sources
   DAGExecutor executor;
-  std::vector<std::shared_ptr<VideoFieldRepresentation>> input_sources;
+  std::vector<std::shared_ptr<VideoFrameRepresentation>> input_sources;
 
   try {
     for (size_t i = 0; i < input_node_ids.size(); ++i) {
@@ -181,10 +182,10 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
         return result;
       }
 
-      // Find the VideoFieldRepresentation output
-      std::shared_ptr<VideoFieldRepresentation> source;
+      // Find the VideoFrameRepresentation output
+      std::shared_ptr<VideoFrameRepresentation> source;
       for (const auto& artifact : output_it->second) {
-        source = std::dynamic_pointer_cast<VideoFieldRepresentation>(artifact);
+        source = std::dynamic_pointer_cast<VideoFrameRepresentation>(artifact);
         if (source) {
           break;
         }
@@ -193,19 +194,17 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
       if (!source) {
         result.status = AnalysisResult::Failed;
         result.summary = "Input node " + std::to_string(i + 1) +
-                         " did not produce VideoFieldRepresentation";
+                         " did not produce VideoFrameRepresentation";
         ORC_LOG_ERROR(
             "Node '{}': Input node '{}' did not produce "
-            "VideoFieldRepresentation",
+            "VideoFrameRepresentation",
             ctx.node_id, input_node_id);
         return result;
       }
 
-      // Log artifact ID to verify we're getting different sources
-      ORC_LOG_DEBUG(
-          "Input {}: node_id='{}', artifact_id='{}', field_count={}, ptr={}",
-          i + 1, input_node_id, source->id().to_string(), source->field_count(),
-          static_cast<const void*>(source.get()));
+      ORC_LOG_DEBUG("Input {}: node_id='{}', frame_count={}, ptr={}", i + 1,
+                    input_node_id, source->frame_count(),
+                    static_cast<const void*>(source.get()));
 
       input_sources.push_back(source);
 
@@ -232,8 +231,7 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
       if (all_same_ptr) {
         result.status = AnalysisResult::Failed;
         result.summary = "ERROR: All " + std::to_string(input_sources.size()) +
-                         " inputs are the SAME source (artifact_id: " +
-                         input_sources[0]->id().to_string() + ")";
+                         " inputs are the SAME source object";
 
         AnalysisResult::ResultItem error_item;
         error_item.type = "error";
@@ -241,15 +239,13 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
             "All inputs to the source_align node point to the same source "
             "object. "
             "This indicates a configuration problem:\n\n"
-            "• Each input should come from a DIFFERENT source (different TBC "
+            "• Each input should come from a DIFFERENT source (different "
             "captures)\n"
             "• Check that your upstream nodes (field_map stages) are connected "
             "to different sources\n"
             "• The source_align stage is meant to align multiple captures of "
             "the same disc,\n"
-            "  not the same capture duplicated multiple times\n\n"
-            "All inputs have artifact_id: " +
-            input_sources[0]->id().to_string();
+            "  not the same capture duplicated multiple times";
         result.items.push_back(error_item);
 
         ORC_LOG_ERROR(
@@ -266,6 +262,9 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
     }
 
     // Structure to track VBI frames found in each source
+    // FieldIDRange derived from the VFR's frame_range (start = first*2, end =
+    // (last+1)*2).  Stored as FieldIDRange so downstream summary code that
+    // prints field numbers remains unchanged.
     struct SourceVBIInfo {
       FieldIDRange range;
       std::set<int32_t> vbi_frames;               // VBI frames found so far
@@ -298,30 +297,39 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
       }
 
       auto& info = source_info[src_idx];
-      info.range = source->field_range();
+      // Derive field-level range from the VFR frame range.
+      auto src_frame_range = source->frame_range();
+      info.range = FieldIDRange(FieldID(src_frame_range.first * 2),
+                                FieldID((src_frame_range.last + 1) * 2));
 
       // Determine if source is PAL
       bool is_pal = false;
-      if (auto first_desc = source->get_descriptor(info.range.start)) {
-        is_pal = (first_desc->format == VideoFormat::PAL);
+      if (auto first_desc =
+              source->get_frame_descriptor(src_frame_range.first)) {
+        is_pal = (first_desc->system == VideoSystem::PAL);
       }
 
       ORC_LOG_DEBUG("  Source {}: quick scan (range {}-{})", src_idx + 1,
                     info.range.start.value(), info.range.end.value() - 1);
 
       size_t scanned = 0;
+      std::set<FrameID> processed_frames_q;
       for (FieldID field_id = info.range.start;
            field_id < info.range.end && scanned < MAX_SCAN_FIELDS; ++field_id) {
-        if (!source->has_field(field_id)) {
+        FrameID frid = field_id.value() / 2;
+        if (!source->has_frame(frid)) {
           continue;
         }
 
         scanned++;
 
-        // Process field to populate observations
-        biphase_observer.process_field(*source, field_id, observation_context);
+        // Process frame to populate observations (both fields).
+        if (processed_frames_q.find(frid) == processed_frames_q.end()) {
+          biphase_observer.process_frame(*source, frid, observation_context);
+          processed_frames_q.insert(frid);
+        }
 
-        // Query the observation context for VBI frame number
+        // Query the observation context for VBI frame number for this field.
         int32_t frame_num =
             get_frame_number_from_vbi(observation_context, field_id, is_pal);
         if (frame_num >= 0) {
@@ -419,27 +427,33 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
         }
 
         auto& info = source_info[src_idx];
+        auto src_frame_range2 = source->frame_range();
 
         // Determine if source is PAL
         bool is_pal = false;
-        if (auto first_desc = source->get_descriptor(info.range.start)) {
-          is_pal = (first_desc->format == VideoFormat::PAL);
+        if (auto first_desc =
+                source->get_frame_descriptor(src_frame_range2.first)) {
+          is_pal = (first_desc->system == VideoSystem::PAL);
         }
 
         ORC_LOG_DEBUG("  Source {}: full scan of {} fields", src_idx + 1,
-                      source->field_count());
+                      source->frame_count() * 2);
 
+        std::set<FrameID> processed_frames_f;
         for (FieldID field_id = info.range.start; field_id < info.range.end;
              ++field_id) {
-          if (!source->has_field(field_id)) {
+          FrameID frid = field_id.value() / 2;
+          if (!source->has_frame(frid)) {
             continue;
           }
 
-          // Process field to populate observations
-          biphase_observer.process_field(*source, field_id,
-                                         observation_context);
+          // Process frame to populate observations (both fields).
+          if (processed_frames_f.find(frid) == processed_frames_f.end()) {
+            biphase_observer.process_frame(*source, frid, observation_context);
+            processed_frames_f.insert(frid);
+          }
 
-          // Query the observation context for VBI frame number
+          // Query the observation context for VBI frame number for this field.
           int32_t frame_num =
               get_frame_number_from_vbi(observation_context, field_id, is_pal);
           if (frame_num >= 0) {

@@ -45,8 +45,7 @@ enum class SinkCategory { CORE, ANALYSIS, THIRD_PARTY };
  * This determines how nodes can be connected and how the GUI renders them.
  */
 enum class NodeType {
-  /// Source node - no inputs, produces outputs (e.g., START nodes for TBC
-  /// sources)
+  /// Source node - no inputs, produces outputs (e.g., video source nodes)
   SOURCE,
 
   /// Sink node - consumes inputs, no outputs (e.g., export to file, display

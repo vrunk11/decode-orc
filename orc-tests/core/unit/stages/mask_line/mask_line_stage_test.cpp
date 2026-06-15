@@ -1,7 +1,8 @@
 /*
  * File:        mask_line_stage_test.cpp
  * Module:      orc-core-tests
- * Purpose:     Unit tests for MaskLineStage (VFrameR, frame-flat line addressing)
+ * Purpose:     Unit tests for MaskLineStage (VFrameR, frame-flat line
+ * addressing)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -15,18 +16,18 @@
 
 #include "../../mocks/mock_video_frame_representation.h"
 
-using ::testing::Return;
 using ::testing::_;
+using ::testing::Return;
 
 namespace orc_unit_test {
 namespace {
 
 const orc::ParameterDescriptor* find_descriptor(
-    const std::vector<orc::ParameterDescriptor>& descs, const std::string& name) {
-  auto it = std::find_if(descs.begin(), descs.end(),
-                         [&](const orc::ParameterDescriptor& d) {
-                           return d.name == name;
-                         });
+    const std::vector<orc::ParameterDescriptor>& descs,
+    const std::string& name) {
+  auto it = std::find_if(
+      descs.begin(), descs.end(),
+      [&](const orc::ParameterDescriptor& d) { return d.name == name; });
   return it == descs.end() ? nullptr : &(*it);
 }
 
@@ -100,7 +101,8 @@ TEST(MaskLineStageTest, SetParameters_IgnoresWrongTypes) {
 TEST(MaskLineStageTest, Process_ReturnsSourceWhenNoLinesConfigured) {
   orc::MaskLineStage stage;
   auto mock = std::make_shared<MockVideoFrameRepresentation>();
-  EXPECT_CALL(*mock, get_video_parameters()).WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(*mock, get_video_parameters())
+      .WillRepeatedly(Return(std::nullopt));
 
   const auto result = stage.process(mock);
   EXPECT_EQ(result.get(), mock.get());
@@ -109,7 +111,8 @@ TEST(MaskLineStageTest, Process_ReturnsSourceWhenNoLinesConfigured) {
 TEST(MaskLineStageTest, Process_WrapsSourceWhenMaskingConfigured) {
   orc::MaskLineStage stage;
   auto mock = std::make_shared<MockVideoFrameRepresentation>();
-  EXPECT_CALL(*mock, get_video_parameters()).WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(*mock, get_video_parameters())
+      .WillRepeatedly(Return(std::nullopt));
 
   ASSERT_TRUE(stage.set_parameters(
       {{"lineSpec", std::string("21")}, {"maskIRE", 0.0}}));

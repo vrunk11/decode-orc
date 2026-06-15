@@ -13,8 +13,7 @@
 
 namespace gui_unit_test {
 
-TEST(LineNavigationMapperTest,
-     ComputeTargetValidStepDown_MapsToNextFieldLine) {
+TEST(LineNavigationMapperTest, ComputeTargetValidStepDown_MapsToNextFieldLine) {
   int observed_next_image_y = -1;
   int observed_next_height = -1;
 

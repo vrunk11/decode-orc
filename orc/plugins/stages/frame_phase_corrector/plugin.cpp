@@ -64,8 +64,7 @@ ORC_STAGE_PLUGIN_EXPORT bool orc_register_stage_plugin(
     return false;
   }
 
-  if (!register_stage(context,
-                      orc::plugins::frame_phase_corrector::kStageName,
+  if (!register_stage(context, orc::plugins::frame_phase_corrector::kStageName,
                       &create_stage)) {
     if (error_message) {
       *error_message = "Failed to register stage from plugin metadata";

@@ -92,8 +92,7 @@ TEST(BurstLevelAnalysisSinkStageTest, Trigger_SucceedsWhenInputRangeIsEmpty) {
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   // Empty range: last < first → count() == 0
-  EXPECT_CALL(*vfr, frame_range())
-      .WillOnce(Return(orc::FrameIDRange{1, 0}));
+  EXPECT_CALL(*vfr, frame_range()).WillOnce(Return(orc::FrameIDRange{1, 0}));
 
   const bool result = stage.trigger({vfr}, {}, observation_context);
 

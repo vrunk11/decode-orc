@@ -38,7 +38,8 @@ static size_t write_callback(void* contents, size_t size, size_t nmemb,
   if (!file || !file->is_open()) {
     return 0;
   }
-  file->write(static_cast<char*>(contents), static_cast<std::streamsize>(real_size));
+  file->write(static_cast<char*>(contents),
+              static_cast<std::streamsize>(real_size));
   return file->good() ? real_size : 0;
 }
 

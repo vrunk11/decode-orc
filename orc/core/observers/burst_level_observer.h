@@ -34,8 +34,8 @@ class BurstLevelObserver : public Observer {
 
   std::string observer_version() const override { return "1.0.0"; }
 
-  void process_field(const VideoFieldRepresentation& representation,
-                     FieldID field_id, IObservationContext& context) override;
+  void process_frame(const VideoFrameRepresentation& representation,
+                     FrameID frame_id, IObservationContext& context) override;
 
   std::vector<ObservationKey> get_provided_observations() const override {
     return {

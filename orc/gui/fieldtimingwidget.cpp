@@ -82,14 +82,15 @@ double FieldTimingWidget::convertSampleToMV(uint16_t sample) const {
     ire_to_mv = 7.143;  // NTSC uses 7.143 mV/IRE
   }
 
-  double mv_value = static_cast<double>(sample);
+  if (vp.white_level <= vp.blanking_level) {
+    return static_cast<double>(sample) / 100.0;
+  }
 
-  // TBC samples are in the 16-bit domain; use fixed TBC reference levels.
-  constexpr double kTbcRange = orc::kTbcWhite - orc::kTbcBlanking;
-  double ire = (mv_value - orc::kTbcBlanking) * 100.0 / kTbcRange;
-  mv_value = ire * ire_to_mv;
-
-  return mv_value;
+  const double level_range =
+      static_cast<double>(vp.white_level - vp.blanking_level);
+  const double ire =
+      (static_cast<double>(sample) - vp.blanking_level) * 100.0 / level_range;
+  return ire * ire_to_mv;
 }
 
 double FieldTimingWidget::getMVRange(double& min_mv, double& max_mv) const {
@@ -108,10 +109,16 @@ double FieldTimingWidget::getMVRange(double& min_mv, double& max_mv) const {
     ire_to_mv = 7.143;
   }
 
-  // TBC samples are in the 16-bit domain; use fixed TBC reference levels.
-  constexpr double kTbcRange = orc::kTbcWhite - orc::kTbcBlanking;
-  min_mv = (0.0 - orc::kTbcBlanking) * 100.0 / kTbcRange * ire_to_mv;
-  max_mv = (65535.0 - orc::kTbcBlanking) * 100.0 / kTbcRange * ire_to_mv;
+  if (vp.white_level <= vp.blanking_level) {
+    min_mv = 0;
+    max_mv = 655.35;
+    return max_mv - min_mv;
+  }
+
+  const double level_range =
+      static_cast<double>(vp.white_level - vp.blanking_level);
+  min_mv = (0.0 - vp.blanking_level) * 100.0 / level_range * ire_to_mv;
+  max_mv = (1023.0 - vp.blanking_level) * 100.0 / level_range * ire_to_mv;
 
   return max_mv - min_mv;
 }
@@ -509,7 +516,9 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
       QString label = QString::number(static_cast<int>(mv_value)) + " mV";
       // Draw label to the left of the graph area, well separated from the axis
       QRect label_rect(MARGIN, y - 6, graph_area.left() - MARGIN - 5, 12);
-      painter.drawText(label_rect, static_cast<int>(Qt::AlignRight | Qt::AlignVCenter), label);
+      painter.drawText(label_rect,
+                       static_cast<int>(Qt::AlignRight | Qt::AlignVCenter),
+                       label);
     }
   }
 
@@ -538,8 +547,9 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
       }
     };
 
-    // Draw level lines using TBC 16-bit reference levels.
-    double blanking_mv = convertSampleToMV(orc::kTbcBlanking);
+    // Draw level lines using CVBS_U10_4FSC reference levels from video params.
+    double blanking_mv =
+        convertSampleToMV(static_cast<uint16_t>(vp.blanking_level));
     drawLevelLine(blanking_mv, theme_tokens::neutralLine(palette, 0.35),
                   Qt::DashLine);
 
@@ -547,18 +557,13 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
     if (vp.black_level >= 0 && vp.blanking_level >= 0 &&
         vp.white_level > vp.blanking_level &&
         vp.black_level != vp.blanking_level) {
-      const int32_t tbc_black =
-          orc::kTbcBlanking +
-          static_cast<int32_t>((static_cast<double>(vp.black_level -
-                                                     vp.blanking_level) /
-                                 (vp.white_level - vp.blanking_level)) *
-                                (orc::kTbcWhite - orc::kTbcBlanking));
-      double black_mv = convertSampleToMV(tbc_black);
+      double black_mv =
+          convertSampleToMV(static_cast<uint16_t>(vp.black_level));
       drawLevelLine(black_mv, theme_tokens::neutralLine(palette, 0.5),
                     Qt::DashDotLine);
     }
 
-    double white_mv = convertSampleToMV(orc::kTbcWhite);
+    double white_mv = convertSampleToMV(static_cast<uint16_t>(vp.white_level));
     drawLevelLine(white_mv, theme_tokens::neutralLine(palette, 0.7),
                   Qt::DashLine);
   }

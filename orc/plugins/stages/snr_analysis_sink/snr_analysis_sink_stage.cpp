@@ -137,7 +137,7 @@ SNRAnalysisSinkStage::ParsedConfig SNRAnalysisSinkStage::parse_config(
       cfg.mode = SNRAnalysisMode::BLACK;
     } else {
       cfg.mode = SNRAnalysisMode::BOTH;
-}
+    }
   }
 
   auto max_it = parameters.find("max_frames");

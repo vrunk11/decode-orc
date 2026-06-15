@@ -43,11 +43,9 @@ TEST_P(SourceStageContractTest, Metadata_MatchesSourceContract) {
 
 INSTANTIATE_TEST_SUITE_P(
     SourceStages, SourceStageContractTest,
-    testing::Values(
-        SourceStageContractCase{
-            "TBCSource",
-            []() { return std::make_unique<orc::TBCSourceStage>(); },
-            "tbc_source", orc::VideoFormatCompatibility::ALL}),
+    testing::Values(SourceStageContractCase{
+        "TBCSource", []() { return std::make_unique<orc::TBCSourceStage>(); },
+        "tbc_source", orc::VideoFormatCompatibility::ALL}),
     [](const testing::TestParamInfo<SourceStageContractCase>& info) {
       return info.param.case_name;
     });

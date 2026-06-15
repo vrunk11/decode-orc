@@ -19,11 +19,6 @@
 #include "field_frame_presentation.h"
 #include "logging.h"
 
-// Forward declaration for core type used via opaque pointer
-namespace orc {
-class VideoFieldRepresentation;
-}
-
 // ============================================================================
 // DropoutFieldView Implementation
 // ============================================================================
@@ -76,8 +71,9 @@ void DropoutFieldView::clearEdits() {
 QSize DropoutFieldView::sizeHint() const {
   // Return the actual field size if available, scaled by zoom
   if (field_width_ > 0 && field_height_ > 0) {
-    return QSize(static_cast<int>(static_cast<float>(field_width_) * zoom_level_),
-                 static_cast<int>(static_cast<float>(field_height_) * zoom_level_));
+    return QSize(
+        static_cast<int>(static_cast<float>(field_width_) * zoom_level_),
+        static_cast<int>(static_cast<float>(field_height_) * zoom_level_));
   }
   // Default size if no field loaded
   return QSize(800, 600);
@@ -116,8 +112,10 @@ void DropoutFieldView::wheelEvent(QWheelEvent* event) {
         int old_v_scroll = scroll_area->verticalScrollBar()->value();
 
         // Calculate mouse position in content coordinates (before zoom)
-        float content_x = static_cast<float>(old_h_scroll) + static_cast<float>(viewport_pos.x());
-        float content_y = static_cast<float>(old_v_scroll) + static_cast<float>(viewport_pos.y());
+        float content_x = static_cast<float>(old_h_scroll) +
+                          static_cast<float>(viewport_pos.x());
+        float content_y = static_cast<float>(old_v_scroll) +
+                          static_cast<float>(viewport_pos.y());
 
         // Apply new zoom
         zoom_level_ = new_zoom;
@@ -125,10 +123,10 @@ void DropoutFieldView::wheelEvent(QWheelEvent* event) {
 
         // Calculate new scroll position to keep same point under cursor
         float zoom_ratio = new_zoom / old_zoom;
-        int new_h_scroll =
-            static_cast<int>(content_x * zoom_ratio - static_cast<float>(viewport_pos.x()));
-        int new_v_scroll =
-            static_cast<int>(content_y * zoom_ratio - static_cast<float>(viewport_pos.y()));
+        int new_h_scroll = static_cast<int>(
+            content_x * zoom_ratio - static_cast<float>(viewport_pos.x()));
+        int new_v_scroll = static_cast<int>(
+            content_y * zoom_ratio - static_cast<float>(viewport_pos.y()));
 
         // Set new scroll position
         scroll_area->horizontalScrollBar()->setValue(new_h_scroll);
@@ -251,8 +249,10 @@ void DropoutFieldView::updateDisplay() {
   QPixmap pixmap = QPixmap::fromImage(image);
 
   // Apply zoom level by resizing the widget itself
-  int zoomed_width = static_cast<int>(static_cast<float>(field_width_) * zoom_level_);
-  int zoomed_height = static_cast<int>(static_cast<float>(field_height_) * zoom_level_);
+  int zoomed_width =
+      static_cast<int>(static_cast<float>(field_width_) * zoom_level_);
+  int zoomed_height =
+      static_cast<int>(static_cast<float>(field_height_) * zoom_level_);
 
   // Resize the label to match the zoomed size
   resize(zoomed_width, zoomed_height);
@@ -289,8 +289,10 @@ void DropoutFieldView::mousePressEvent(QMouseEvent* event) {
   }
 
   // Scale to field coordinates
-  float scale_x = static_cast<float>(field_width_) / static_cast<float>(pm_size.width());
-  float scale_y = static_cast<float>(field_height_) / static_cast<float>(pm_size.height());
+  float scale_x =
+      static_cast<float>(field_width_) / static_cast<float>(pm_size.width());
+  float scale_y =
+      static_cast<float>(field_height_) / static_cast<float>(pm_size.height());
   int field_x = static_cast<int>(static_cast<float>(click_x) * scale_x);
   int field_y = static_cast<int>(static_cast<float>(click_y) * scale_y);
 
@@ -343,8 +345,10 @@ void DropoutFieldView::mouseMoveEvent(QMouseEvent* event) {
   mouse_y = std::max(0, std::min(mouse_y, pm_size.height() - 1));
 
   // Scale to field coordinates
-  float scale_x = static_cast<float>(field_width_) / static_cast<float>(pm_size.width());
-  float scale_y = static_cast<float>(field_height_) / static_cast<float>(pm_size.height());
+  float scale_x =
+      static_cast<float>(field_width_) / static_cast<float>(pm_size.width());
+  float scale_y =
+      static_cast<float>(field_height_) / static_cast<float>(pm_size.height());
   int field_x = static_cast<int>(static_cast<float>(mouse_x) * scale_x);
   int field_y = static_cast<int>(static_cast<float>(mouse_y) * scale_y);
 
@@ -779,8 +783,10 @@ void DropoutEditorDialog::loadField(uint64_t field_id) {
     int available_width = scroll_area_->width() - 20;  // Leave some margin
     int available_height = scroll_area_->height() - 20;
 
-    float zoom_x = static_cast<float>(available_width) / static_cast<float>(width);
-    float zoom_y = static_cast<float>(available_height) / static_cast<float>(height);
+    float zoom_x =
+        static_cast<float>(available_width) / static_cast<float>(width);
+    float zoom_y =
+        static_cast<float>(available_height) / static_cast<float>(height);
     float fit_zoom = std::min(zoom_x, zoom_y);
 
     // Clamp to valid zoom range and set

@@ -9,10 +9,11 @@
 
 #include "dropout_correct_stage.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <cmath>
 
-#include <cvbs_signal_constants.h>
 #include "error_types.h"
 #include "logging.h"
 #include "preview_helpers.h"

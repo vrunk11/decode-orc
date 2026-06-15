@@ -103,8 +103,7 @@ TEST(DropoutAnalysisSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
 
   orc::ObservationContext observation_context;
   // Use the artifact-compatible mock so it can be passed as ArtifactPtr.
-  auto vfr =
-      std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   std::vector<orc::FrameDropoutStats> expected_stats;
   orc::FrameDropoutStats stat{};
@@ -139,8 +138,7 @@ TEST(DropoutAnalysisSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   stage.set_deps_override(deps);
 
   orc::ObservationContext observation_context;
-  auto vfr =
-      std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*deps, init(_, _));
   EXPECT_CALL(*deps, compute_and_analyze(NotNull(), _, _))
@@ -164,8 +162,7 @@ TEST(DropoutAnalysisSinkStageTest, Trigger_WritesCSVWhenDepsSucceeds) {
   stage.set_deps_override(deps);
 
   orc::ObservationContext observation_context;
-  auto vfr =
-      std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   std::vector<orc::FrameDropoutStats> expected_stats;
   orc::FrameDropoutStats stat{};

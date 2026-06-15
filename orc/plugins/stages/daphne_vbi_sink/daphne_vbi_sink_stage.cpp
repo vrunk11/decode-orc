@@ -58,9 +58,9 @@ std::vector<PreviewOption> DaphneVBISinkStage::get_preview_options() const {
   return PreviewHelpers::get_standard_preview_options(cached_input_);
 }
 
-PreviewImage DaphneVBISinkStage::render_preview(const std::string& option_id,
-                                                uint64_t index,
-                                                PreviewNavigationHint hint) const {
+PreviewImage DaphneVBISinkStage::render_preview(
+    const std::string& option_id, uint64_t index,
+    PreviewNavigationHint hint) const {
   return PreviewHelpers::render_standard_preview(cached_input_, option_id,
                                                  index, hint);
 }

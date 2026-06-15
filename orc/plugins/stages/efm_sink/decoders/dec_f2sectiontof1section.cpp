@@ -193,7 +193,7 @@ void F2SectionToF1Section::processQueue() {
           m_invalidPaddedF1FramesCount++;
         } else {
           m_invalidNonPaddedF1FramesCount++;
-}
+        }
       }
 
       f1Section.pushFrame(f1Frame);

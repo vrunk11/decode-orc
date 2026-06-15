@@ -22,9 +22,9 @@ int16_t PalMTBCConverter::tbc_to_cvbs(uint16_t tbc_sample, int32_t tbc_blanking,
                                       int32_t tbc_white) {
   // ITU-R BT.1700-1 Annex 1 Part B: PAL_M uses NTSC signal levels.
   // Linear mapping: no output clamping — headroom is preserved.
-  const double n = static_cast<double>(static_cast<int32_t>(tbc_sample) -
-                                       tbc_blanking) /
-                   static_cast<double>(tbc_white - tbc_blanking);
+  const double n =
+      static_cast<double>(static_cast<int32_t>(tbc_sample) - tbc_blanking) /
+      static_cast<double>(tbc_white - tbc_blanking);
   // kNtscWhite and kNtscBlanking apply to PAL_M (identical numeric values).
   const double cvbs =
       n * static_cast<double>(kNtscWhite - kNtscBlanking) + kNtscBlanking;
@@ -43,8 +43,8 @@ std::vector<int16_t> PalMTBCConverter::assemble_frame(
   // TBC field ordering (ld-decode convention, same as NTSC):
   //   TBC field 1 = earlier temporal, 262 real lines → VFR field 2 (bottom)
   //   TBC field 2 = later temporal,  263 real lines → VFR field 1 (top)
-  // VFR layout: [CVBS field 1 (top, 263 lines)][CVBS field 2 (bottom, 262 lines)]
-  // Orthogonal: 909 samples/line.
+  // VFR layout: [CVBS field 1 (top, 263 lines)][CVBS field 2 (bottom, 262
+  // lines)] Orthogonal: 909 samples/line.
   constexpr int32_t kTBCF1Lines = kPalMFrameLines - kPalMField1Lines;  // 262
   constexpr int32_t kTBCF2Lines = kPalMField1Lines;                    // 263
   constexpr int32_t kLineW = kPalMSamplesPerLine;                      // 909

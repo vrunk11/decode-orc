@@ -57,7 +57,7 @@ using FrameFieldsResult = orc::FrameFieldsResult;
  * - Queries available output types at a node
  * - Renders specific outputs (field N, frame N, etc.) to RGB888
  * - Handles field weaving for frames
- * - Handles sample scaling (16-bit TBC -> 8-bit RGB)
+ * - Handles sample scaling (CVBS_U10_4FSC -> 8-bit RGB)
  * - Future: chroma decoding, composite generation
  *
  * The GUI is responsible ONLY for:

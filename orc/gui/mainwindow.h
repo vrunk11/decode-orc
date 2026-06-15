@@ -57,7 +57,6 @@ enum class SNRAnalysisMode;
 }  // namespace orc
 
 namespace orc {
-class VideoFieldRepresentation;
 class DAG;
 class AnalysisTool;
 class VBIDecoder;

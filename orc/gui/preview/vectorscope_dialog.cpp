@@ -24,8 +24,8 @@ class VectorscopeDialogPrivate {
   std::optional<orc::VectorscopeData> last_data;
 
   void drawGraticule(QPainter& painter, VectorscopeDialog* dialog,
-                     orc::VideoSystem system, int32_t white_16b_ire,
-                     int32_t black_16b_ire);
+                     orc::VideoSystem system, int32_t cvbs_white,
+                     int32_t cvbs_blanking);
 };
 
 #include <QCloseEvent>
@@ -473,22 +473,22 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
   bool defocus = defocus_checkbox_->isChecked();
   int field_select = field_select_group_->checkedId();
 
-  // Calculate IRE range for debugging
-  double ire_range = data.white_16b_ire - data.black_16b_ire;
-  double black_percent = (data.black_16b_ire / 65535.0) * 100.0;
-  double white_percent = (data.white_16b_ire / 65535.0) * 100.0;
+  // Calculate IRE range for debug logging (CVBS_U10_4FSC 10-bit domain).
+  double ire_range = data.cvbs_white - data.cvbs_blanking;
+  double black_percent = (data.cvbs_blanking / 1023.0) * 100.0;
+  double white_percent = (data.cvbs_white / 1023.0) * 100.0;
 
   ORC_LOG_DEBUG(
       "VectorscopeDialog: renderVectorscope field={} samples={} graticule={} "
-      "blend={} defocus={} field_select={} system={} white={} black={} "
+      "blend={} defocus={} field_select={} system={} white={} blanking={} "
       "chroma_detected={}",
       data.field_number, data.samples.size(), graticule_mode, blend_mode,
-      defocus, field_select, static_cast<int>(data.system), data.white_16b_ire,
-      data.black_16b_ire, has_chroma);
+      defocus, field_select, static_cast<int>(data.system), data.cvbs_white,
+      data.cvbs_blanking, has_chroma);
   ORC_LOG_DEBUG(
-      "VectorscopeDialog: IRE levels - black={:.2f}% ({}) white={:.2f}% ({}) "
-      "range={:.0f} ({}=NTSC, {}=PAL)",
-      black_percent, data.black_16b_ire, white_percent, data.white_16b_ire,
+      "VectorscopeDialog: CVBS levels - blanking={:.2f}% ({}) white={:.2f}% "
+      "({}) range={:.0f} ({}=NTSC, {}=PAL)",
+      black_percent, data.cvbs_blanking, white_percent, data.cvbs_white,
       ire_range, static_cast<int>(orc::VideoSystem::NTSC),
       static_cast<int>(orc::VideoSystem::PAL));
 
@@ -500,8 +500,8 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
 
   // Draw graticule first
   if (graticule_mode != 0) {
-    d_->drawGraticule(painter, this, data.system, data.white_16b_ire,
-                      data.black_16b_ire);
+    d_->drawGraticule(painter, this, data.system, data.cvbs_white,
+                      data.cvbs_blanking);
   }
 
   // Set blend mode for transparency accumulation
@@ -523,10 +523,10 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
     // Filter samples based on field selection
     if (field_select == 1 && sample.field_id != 0) {
       continue;  // First field only
-}
+    }
     if (field_select == 2 && sample.field_id != 1) {
       continue;  // Second field only
-}
+    }
     // field_select == 0: show all fields
 
     // Determine color based on field selection, blend mode, and sample field_id
@@ -625,8 +625,8 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
 void VectorscopeDialogPrivate::drawGraticule(QPainter& painter,
                                              VectorscopeDialog* dialog,
                                              orc::VideoSystem system,
-                                             int32_t white_16b_ire,
-                                             int32_t black_16b_ire) {
+                                             int32_t cvbs_white,
+                                             int32_t cvbs_blanking) {
   const orc::gui::VectorscopePlotGeometry geometry;
 
   painter.setRenderHint(QPainter::Antialiasing, true);
@@ -659,8 +659,8 @@ void VectorscopeDialogPrivate::drawGraticule(QPainter& painter,
   const bool draw_graticule = (graticule_mode != 0);
   if (draw_graticule) {
     const double percent = (graticule_mode == 2) ? 0.75 : 1.0;
-    const int32_t white = white_16b_ire;
-    const int32_t black = black_16b_ire;
+    const int32_t white = cvbs_white;
+    const int32_t black = cvbs_blanking;
     const double ireRange = static_cast<double>(white - black);
 
     if (white > black) {
@@ -717,8 +717,8 @@ void VectorscopeDialog::clearDisplay() {
     QPainter painter(&blank);
     if (d_->last_data.has_value()) {
       d_->drawGraticule(painter, this, d_->last_data->system,
-                        d_->last_data->white_16b_ire,
-                        d_->last_data->black_16b_ire);
+                        d_->last_data->cvbs_white,
+                        d_->last_data->cvbs_blanking);
     } else {
       const orc::gui::VectorscopePlotGeometry geometry;
       painter.setRenderHint(QPainter::Antialiasing, true);

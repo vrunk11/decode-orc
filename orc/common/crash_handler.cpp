@@ -27,8 +27,8 @@
 
 #ifdef _WIN32
 #define NOMINMAX
-#include <windows.h>
 #include <dbghelp.h>
+#include <windows.h>
 #endif
 
 // Unix/POSIX-specific headers (not available on Windows)
@@ -545,10 +545,10 @@ static std::vector<std::string> collect_log_files() {
  * @return Path to created ZIP file, or fallback text file on ZIP failure
  * @private
  */
-static std::string create_bundle_zip(
-    const std::string& crash_info_content, const std::string& coredump_path,
-    const std::vector<std::string>& log_files,
-    const std::string& coredump_note = "") {
+static std::string create_bundle_zip(const std::string& crash_info_content,
+                                     const std::string& coredump_path,
+                                     const std::vector<std::string>& log_files,
+                                     const std::string& coredump_note = "") {
   if (!ensure_output_directory_exists()) {
     return "";
   }

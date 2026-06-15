@@ -11,6 +11,7 @@
 
 #include "../../../../orc/plugins/stages/tbc_source/tbc_source_stage.h"
 
+#include <cvbs_signal_constants.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -22,7 +23,6 @@
 #include <vector>
 
 #include "../../../../orc/common/include/error_types.h"
-#include <cvbs_signal_constants.h>
 #include "../../../../orc/core/include/observation_context.h"
 #include "../source_common/source_stage_descriptor_test_utils.h"
 
@@ -71,8 +71,9 @@ class MockTBCSourceStageDeps : public orc::ITBCSourceStageDeps {
               (const, override));
 
   MOCK_METHOD(std::optional<std::vector<uint8_t>>, read_efm_for_frame,
-              (const std::string& efm_bin_path, const std::string& efm_meta_path,
-               int32_t field_seq_no_a, int32_t field_seq_no_b),
+              (const std::string& efm_bin_path,
+               const std::string& efm_meta_path, int32_t field_seq_no_a,
+               int32_t field_seq_no_b),
               (const, override));
 
   MOCK_METHOD(bool, has_ac3_files,
@@ -81,8 +82,9 @@ class MockTBCSourceStageDeps : public orc::ITBCSourceStageDeps {
               (const, override));
 
   MOCK_METHOD(std::optional<std::vector<uint8_t>>, read_ac3_for_frame,
-              (const std::string& ac3_bin_path, const std::string& ac3_meta_path,
-               int32_t field_seq_no_a, int32_t field_seq_no_b),
+              (const std::string& ac3_bin_path,
+               const std::string& ac3_meta_path, int32_t field_seq_no_a,
+               int32_t field_seq_no_b),
               (const, override));
 };
 
@@ -95,16 +97,17 @@ static orc::TBCVideoParams make_pal_video_params(int32_t num_fields = 2) {
   orc::TBCVideoParams tvp;
   tvp.system = orc::VideoSystem::PAL;
   tvp.number_of_fields = num_fields;
-  tvp.field_width = orc::kPalMaxSamplesPerLine - 1;  // 1135
+  tvp.field_width = orc::kPalMaxSamplesPerLine - 1;                // 1135
   tvp.field1_height = orc::kPalFrameLines - orc::kPalField1Lines;  // 312
-  tvp.field2_height = orc::kPalField1Lines;                         // 313
+  tvp.field2_height = orc::kPalField1Lines;                        // 313
   tvp.blanking_16b = 16384;
   tvp.white_16b = 54400;
   return tvp;
 }
 
 // Build two minimal PAL TBCFieldMeta entries (one frame).
-static std::vector<orc::TBCFieldMeta> make_pal_field_meta(int32_t num_fields = 2) {
+static std::vector<orc::TBCFieldMeta> make_pal_field_meta(
+    int32_t num_fields = 2) {
   std::vector<orc::TBCFieldMeta> meta(static_cast<size_t>(num_fields));
   for (int i = 0; i < num_fields; ++i) {
     meta[static_cast<size_t>(i)].field_phase_id = (i % 8) + 1;
@@ -186,9 +189,9 @@ TEST(TBCSourceStageTest, NodeTypeInfo_ZeroInputsOneOutput) {
 
 TEST(TBCSourceStageTest, SetParameters_AcceptsValidStringMap) {
   orc::TBCSourceStage stage;
-  EXPECT_TRUE(stage.set_parameters(
-      {{"input_path", std::string("/tmp/test.tbc")},
-       {"pcm_path", std::string("")}}));
+  EXPECT_TRUE(
+      stage.set_parameters({{"input_path", std::string("/tmp/test.tbc")},
+                            {"pcm_path", std::string("")}}));
 }
 
 TEST(TBCSourceStageTest, SetParameters_RejectsNonStringValues) {
@@ -228,8 +231,7 @@ TEST(TBCSourceStageTest, Execute_ReturnsEmptyWhenInputPathIsEmptyString) {
   orc::TBCSourceStage stage(deps);
   orc::ObservationContext ctx;
 
-  auto outputs =
-      stage.execute({}, {{"input_path", std::string("")}}, ctx);
+  auto outputs = stage.execute({}, {{"input_path", std::string("")}}, ctx);
   EXPECT_TRUE(outputs.empty());
 }
 
@@ -244,10 +246,9 @@ TEST(TBCSourceStageTest, Execute_ThrowsUserDataErrorWhenFileNotFound) {
         return false;
       });
 
-  EXPECT_THROW(
-      stage.execute({}, {{"input_path", std::string("/no/such/file.tbc")}},
-                    ctx),
-      orc::UserDataError);
+  EXPECT_THROW(stage.execute(
+                   {}, {{"input_path", std::string("/no/such/file.tbc")}}, ctx),
+               orc::UserDataError);
 }
 
 TEST(TBCSourceStageTest, Execute_ThrowsUserDataErrorWhenMetadataFails) {
@@ -255,8 +256,7 @@ TEST(TBCSourceStageTest, Execute_ThrowsUserDataErrorWhenMetadataFails) {
   orc::TBCSourceStage stage(deps);
   orc::ObservationContext ctx;
 
-  EXPECT_CALL(*deps, validate_input_file(_, _))
-      .WillOnce(Return(true));
+  EXPECT_CALL(*deps, validate_input_file(_, _)).WillOnce(Return(true));
   EXPECT_CALL(*deps, load_video_params(_, _))
       .WillOnce([](const std::string&, std::string& err) {
         err = "DB error";
@@ -355,8 +355,7 @@ TEST(TBCSourceStageTest, OutputIsVFR_FrameCountIsFieldCountDividedByTwo) {
   const auto* vfr =
       dynamic_cast<orc::VideoFrameRepresentation*>(outputs.front().get());
   ASSERT_NE(vfr, nullptr);
-  EXPECT_EQ(vfr->frame_count(),
-            static_cast<size_t>(kNumFields / 2));
+  EXPECT_EQ(vfr->frame_count(), static_cast<size_t>(kNumFields / 2));
 }
 
 TEST(TBCSourceStageTest, OutputVFR_GetFrameLazilyAssemblesFromMockedDeps) {
@@ -387,12 +386,12 @@ TEST(TBCSourceStageTest, OutputVFR_GetFrameLazilyAssemblesFromMockedDeps) {
   // Expect read_field_samples for TBC fields 0 and 1 (frame 0).
   EXPECT_CALL(*deps, read_field_samples("/tmp/test.tbc", 0, _, kF1Samples, _))
       .WillOnce([kF1Samples](const std::string&, int32_t, int32_t, int32_t,
-                              std::string&) {
+                             std::string&) {
         return make_blanking_field(kF1Samples);
       });
   EXPECT_CALL(*deps, read_field_samples("/tmp/test.tbc", 1, _, kF2Samples, _))
       .WillOnce([kF2Samples](const std::string&, int32_t, int32_t, int32_t,
-                              std::string&) {
+                             std::string&) {
         return make_blanking_field(kF2Samples);
       });
 

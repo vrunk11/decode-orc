@@ -31,7 +31,6 @@
 
 #include "dag_executor.h"
 #include "project.h"
-#include "video_field_representation.h"
 
 namespace orc {
 
@@ -52,7 +51,8 @@ class ProjectConversionError : public std::runtime_error {
  *
  * Conversion process:
  * 1. Create DAG nodes by instantiating stages from the stage registry
- * 2. SOURCE nodes use TBCSourceStage which loads TBC files from parameters
+ * 2. SOURCE nodes use the configured source stage which loads source files from
+ * parameters
  * 3. Set up edges and dependencies
  * 4. Validate the resulting DAG
  *
@@ -64,12 +64,12 @@ class ProjectConversionError : public std::runtime_error {
  * ```cpp
  * Project project = load_project("example.orc-project");
  *
- * // Convert to executable DAG (SOURCE nodes load TBC files automatically)
+ * // Convert to executable DAG
  * auto dag = project_to_dag(project);
  *
- * // Now can render fields
- * DAGFieldRenderer renderer(dag);
- * auto result = renderer.render_field_at_node("transform_1", FieldID(42));
+ * // Now can render frames
+ * DAGFrameRenderer renderer(dag);
+ * auto result = renderer.render_frame_at_node("transform_1", FrameID(42));
  * ```
  */
 std::shared_ptr<DAG> project_to_dag(const Project& project);
@@ -79,7 +79,7 @@ std::shared_ptr<DAG> project_to_dag(const Project& project);
  *
  * This function attempts to execute each source node in the DAG to verify
  * that they can produce output. This is useful for validating that source
- * files (e.g., TBC files) exist and can be loaded.
+ * files exist and can be loaded.
  *
  * @param dag The DAG to validate
  * @throws ProjectConversionError if any source node fails validation

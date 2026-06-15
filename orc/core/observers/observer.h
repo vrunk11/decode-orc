@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <field_id.h>
+#include <frame_id.h>
 
 #include <map>
 #include <memory>
@@ -20,7 +20,7 @@
 #include "observation_context.h"
 #include "observation_schema.h"
 #include "stage_parameter.h"
-#include "video_field_representation.h"
+#include "video_frame_representation.h"
 
 namespace orc {
 
@@ -79,18 +79,17 @@ class Observer {
   virtual std::string observer_version() const = 0;
 
   /**
-   * @brief Process a single field and populate observation context
+   * @brief Process a single frame and populate observation context
    *
-   * Observers write their observations into the context using namespaced keys.
-   * They can read previous observations from the context if needed for
-   * stateful detection (e.g., field parity based on previous field).
+   * Observers iterate both fields within the frame and write observations
+   * keyed by derived FieldIDs (frame_id * 2 + field_idx).
    *
-   * @param representation Video field representation to observe
-   * @param field_id Field identifier
+   * @param representation Video frame representation (CVBS_U10_4FSC domain)
+   * @param frame_id Frame identifier
    * @param context Observation context to populate
    */
-  virtual void process_field(const VideoFieldRepresentation& representation,
-                             FieldID field_id,
+  virtual void process_frame(const VideoFrameRepresentation& representation,
+                             FrameID frame_id,
                              IObservationContext& context) = 0;
 
   /**

@@ -23,9 +23,9 @@ int16_t NtscTBCConverter::tbc_to_cvbs(uint16_t tbc_sample, int32_t tbc_blanking,
   // SMPTE 244M-2003: linear mapping from TBC 16-bit domain to CVBS_U10_4FSC.
   // No output clamping — headroom outside [kNtscSyncTip, kNtscPeak] is
   // preserved.
-  const double n = static_cast<double>(static_cast<int32_t>(tbc_sample) -
-                                       tbc_blanking) /
-                   static_cast<double>(tbc_white - tbc_blanking);
+  const double n =
+      static_cast<double>(static_cast<int32_t>(tbc_sample) - tbc_blanking) /
+      static_cast<double>(tbc_white - tbc_blanking);
   const double cvbs =
       n * static_cast<double>(kNtscWhite - kNtscBlanking) + kNtscBlanking;
   return static_cast<int16_t>(std::lround(cvbs));
@@ -43,9 +43,10 @@ std::vector<int16_t> NtscTBCConverter::assemble_frame(
   // TBC field ordering (ld-decode convention):
   //   TBC field 1 = odd/earlier temporal, 262 real lines → VFR field 2 (bottom)
   //   TBC field 2 = even/later temporal,  263 real lines → VFR field 1 (top)
-  // VFR layout: [CVBS field 1 (top, 263 lines)][CVBS field 2 (bottom, 262 lines)]
-  // Matches PAL convention: TBC field 2 → VFR field 1 (top spatial field).
-  // NTSC is orthogonal: all lines have kNtscSamplesPerLine = 910 samples.
+  // VFR layout: [CVBS field 1 (top, 263 lines)][CVBS field 2 (bottom, 262
+  // lines)] Matches PAL convention: TBC field 2 → VFR field 1 (top spatial
+  // field). NTSC is orthogonal: all lines have kNtscSamplesPerLine = 910
+  // samples.
   constexpr int32_t kTBCF1Lines = kNtscFrameLines - kNtscField1Lines;  // 262
   constexpr int32_t kTBCF2Lines = kNtscField1Lines;                    // 263
   constexpr int32_t kLineW = kNtscSamplesPerLine;                      // 910

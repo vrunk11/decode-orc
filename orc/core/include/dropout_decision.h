@@ -23,7 +23,7 @@ using DropoutRegion = orc::DropoutRegion;
 
 /// Represents a user decision to modify dropout detection
 ///
-/// Decisions are deltas applied against TBC hints:
+/// Decisions are deltas applied against source dropout hints:
 /// - ADD: Create a new dropout region
 /// - REMOVE: Mark a false positive dropout as not a dropout
 /// - MODIFY: Adjust the boundaries of a detected dropout
@@ -69,7 +69,7 @@ class DropoutDecisions {
     return result;
   }
 
-  /// Apply decisions to dropout regions from TBC hints
+  /// Apply decisions to source dropout regions
   /// Returns the modified list of dropout regions
   std::vector<DropoutRegion> apply_decisions(
       FieldID field_id, const std::vector<DropoutRegion>& observations) const;

@@ -159,6 +159,20 @@ struct PcmAudioParameters {
 };
 
 /**
+ * @brief Signal levels in the ld-decode 16-bit domain.
+ *
+ * Only meaningful at the tbc_source stage (reading ld-decode files) and
+ * ld_sink stage (writing ld-decode files).  All other pipeline code works
+ * exclusively in the CVBS_U10_4FSC 10-bit domain via SourceParameters.
+ */
+struct TbcDomainLevels {
+  int32_t blanking_16b = 0;  ///< 0 IRE blanking in ld-decode 16-bit domain
+  int32_t white_16b = 0;     ///< 100 IRE white in ld-decode 16-bit domain
+
+  bool is_valid() const { return white_16b > blanking_16b; }
+};
+
+/**
  * @brief Pure-virtual interface for TBC metadata readers
  *
  * Both TBCMetadataSqliteReader (Phase 1-3) and TBCMetadataJsonReader (Phase 4)
@@ -175,6 +189,12 @@ class ITBCMetadataReader {
 
   virtual std::optional<SourceParameters> read_video_parameters() = 0;
   virtual std::optional<PcmAudioParameters> read_pcm_audio_parameters() = 0;
+
+  /// Read the ld-decode 16-bit signal levels stored in the metadata.
+  /// Returns std::nullopt if the metadata does not carry these values.
+  /// Only call this from tbc_source / ld_sink.  All other pipeline code
+  /// must use SourceParameters (CVBS_U10_4FSC 10-bit domain).
+  virtual std::optional<TbcDomainLevels> read_tbc_domain_levels() = 0;
 
   virtual std::optional<FieldMetadata> read_field_metadata(
       FieldID field_id) = 0;
@@ -220,6 +240,10 @@ class TBCMetadataSqliteReader : public ITBCMetadataReader {
 
   // Read video parameters
   std::optional<SourceParameters> read_video_parameters() override;
+
+  // Read ld-decode 16-bit signal levels (blanking_16b, white_16b).
+  // Only for use by tbc_source / ld_sink.
+  std::optional<TbcDomainLevels> read_tbc_domain_levels() override;
 
   // Read PCM audio parameters
   std::optional<PcmAudioParameters> read_pcm_audio_parameters() override;

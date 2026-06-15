@@ -8,7 +8,6 @@
  */
 
 #include <frame_id.h>
-
 #include <gtest/gtest.h>
 
 #include <unordered_map>

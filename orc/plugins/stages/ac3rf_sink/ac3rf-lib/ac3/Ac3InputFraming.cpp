@@ -58,7 +58,7 @@ std::vector<Ac3InputFraming::NumberedFrame> Ac3InputFraming::arrangeInFrames(
           m_frame_number = (m_sync_frame_no[0] << 6) |
                            (m_sync_frame_no[1] << 4) |
                            (m_sync_frame_no[2] << 2) | m_sync_frame_no[3];
-}
+        }
       } else {
         if (m_consecutive_synched > 0) {
           m_log.debug(
@@ -91,10 +91,12 @@ std::vector<Ac3InputFraming::NumberedFrame> Ac3InputFraming::arrangeInFrames(
                      m_symbols_in_frame[j * 4 + 1] << 4 |
                      m_symbols_in_frame[j * 4 + 2] << 2 |
                      m_symbols_in_frame[j * 4 + 3];
-}
+        }
 
-        frames.push_back(NumberedFrame{
-            static_cast<size_t>(m_total_symbols_seen) - static_cast<size_t>(34 * 4) + 1, m_frame_number, frame});
+        frames.push_back(
+            NumberedFrame{static_cast<size_t>(m_total_symbols_seen) -
+                              static_cast<size_t>(34 * 4) + 1,
+                          m_frame_number, frame});
 
         m_previous_frame_number = m_frame_number;
         m_symbol_in_frame_counter = 0;

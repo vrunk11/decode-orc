@@ -10,9 +10,9 @@
 
 #include "monodecoder.h"
 
-#include <cstddef>
-
 #include <cvbs_signal_constants.h>
+
+#include <cstddef>
 
 #include "../video_parameter_safety.h"
 #include "comb.h"
@@ -241,16 +241,17 @@ void MonoDecoder::doYNR(ComponentFrame& componentFrame) {
   if (monoConfig.videoParameters.white_level > 0 &&
       monoConfig.videoParameters.blanking_level >= 0) {
     irescale = static_cast<double>(monoConfig.videoParameters.white_level -
-                                    monoConfig.videoParameters.blanking_level) /
+                                   monoConfig.videoParameters.blanking_level) /
                100.0;
   } else {
     const bool isPal =
         monoConfig.videoParameters.system == orc::VideoSystem::PAL ||
         monoConfig.videoParameters.system == orc::VideoSystem::PAL_M;
     // EBU Tech. 3280-E (PAL) / SMPTE 244M-2003 (NTSC): 10-bit level ranges.
-    irescale = isPal
-                   ? static_cast<double>(orc::kPalWhite - orc::kPalBlanking) / 100.0
-                   : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking) / 100.0;
+    irescale =
+        isPal
+            ? static_cast<double>(orc::kPalWhite - orc::kPalBlanking) / 100.0
+            : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking) / 100.0;
   }
   double nr_y = monoConfig.yNRLevel * irescale;
 

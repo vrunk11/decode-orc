@@ -86,8 +86,7 @@ TEST_F(DaphneVBIWriterUtil, Write_ObservationsWithWhiteFlagAndVbiData) {
   instance_->write_observations(field_id, mockObservationContext_);
 }
 
-TEST_F(DaphneVBIWriterUtil,
-       Write_ObservationsWithNoWhiteflagAndParseErrors) {
+TEST_F(DaphneVBIWriterUtil, Write_ObservationsWithNoWhiteflagAndParseErrors) {
   constexpr FieldID field_id(0);
 
   // Set up expectations for observation context

@@ -478,13 +478,12 @@ void PreviewDialog::setupUI() {
   // Adapt FrameScopeDialog::lineNavigationRequested (size_t frame_line) to
   // PreviewDialog::lineNavigationRequested (int current_line).
   // Connected once here to avoid stacking lambda connections in showLineScope.
-  connect(frame_scope_dialog_, &FrameScopeDialog::lineNavigationRequested,
-          this,
-          [this](int dir, uint64_t frame_id, size_t frame_line, int sx,
-                 int pw) {
-            emit lineNavigationRequested(dir, frame_id,
-                                         static_cast<int>(frame_line), sx, pw);
-          });
+  connect(
+      frame_scope_dialog_, &FrameScopeDialog::lineNavigationRequested, this,
+      [this](int dir, uint64_t frame_id, size_t frame_line, int sx, int pw) {
+        emit lineNavigationRequested(dir, frame_id,
+                                     static_cast<int>(frame_line), sx, pw);
+      });
 
   // Connect line clicked signal
   connect(preview_widget_, &FieldPreviewWidget::lineClicked,
@@ -765,12 +764,12 @@ void PreviewDialog::buildTweakPanel(
           spin->setMinimum(std::get<int32_t>(*desc.constraints.min_value));
         } else {
           spin->setMinimum(std::numeric_limits<int32_t>::min());
-}
+        }
         if (desc.constraints.max_value.has_value()) {
           spin->setMaximum(std::get<int32_t>(*desc.constraints.max_value));
         } else {
           spin->setMaximum(std::numeric_limits<int32_t>::max());
-}
+        }
         spin->setValue(std::get<int32_t>(value));
         widget = spin;
         const std::string pname = desc.name;
@@ -788,13 +787,13 @@ void PreviewDialog::buildTweakPanel(
         if (desc.constraints.min_value.has_value()) {
           spin->setMinimum(static_cast<int>(
               std::get<uint32_t>(*desc.constraints.min_value)));
-}
+        }
         if (desc.constraints.max_value.has_value()) {
           spin->setMaximum(static_cast<int>(
               std::get<uint32_t>(*desc.constraints.max_value)));
         } else {
           spin->setMaximum(std::numeric_limits<int>::max());
-}
+        }
         spin->setValue(static_cast<int>(std::get<uint32_t>(value)));
         widget = spin;
         const std::string pname = desc.name;
@@ -813,12 +812,12 @@ void PreviewDialog::buildTweakPanel(
           spin->setMinimum(std::get<double>(*desc.constraints.min_value));
         } else {
           spin->setMinimum(-std::numeric_limits<double>::max());
-}
+        }
         if (desc.constraints.max_value.has_value()) {
           spin->setMaximum(std::get<double>(*desc.constraints.max_value));
         } else {
           spin->setMaximum(std::numeric_limits<double>::max());
-}
+        }
         spin->setValue(std::get<double>(value));
         widget = spin;
         const std::string pname = desc.name;
@@ -1045,13 +1044,12 @@ void PreviewDialog::showLineScope(
 
     // field_index is used as frame_id; line_number (1-based) → frame_line
     // (0-based)
-    const size_t frame_line =
-        static_cast<size_t>(std::max(0, line_number - 1));
+    const size_t frame_line = static_cast<size_t>(std::max(0, line_number - 1));
 
     frame_scope_dialog_->setFrameLineSamples(
-        node_id, stage_index, field_index, frame_line, sample_x,
-        toI16(samples), video_params, preview_image_width, original_sample_x,
-        original_image_y, toI16(y_samples), toI16(c_samples));
+        node_id, stage_index, field_index, frame_line, sample_x, toI16(samples),
+        video_params, preview_image_width, original_sample_x, original_image_y,
+        toI16(y_samples), toI16(c_samples));
 
     const bool was_visible = frame_scope_dialog_->isVisible();
     if (!was_visible) {

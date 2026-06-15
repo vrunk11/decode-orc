@@ -97,8 +97,8 @@ void DropOuts::clear() {
 // (to cut down on the amount of generated dropout data when processing
 // noisy/bad sources)
 
-// TODO(sdi): Sort the DOs by fieldLine otherwise this won't work correctly unless
-// the caller is aware of the restriction (used in ld-diffdod only at the
+// TODO(sdi): Sort the DOs by fieldLine otherwise this won't work correctly
+// unless the caller is aware of the restriction (used in ld-diffdod only at the
 // moment)
 void DropOuts::concatenate(const bool verbose) {
   int32_t sizeAtStart = static_cast<int32_t>(m_startx.size());
@@ -152,7 +152,7 @@ void DropOuts::read(JsonReader& reader) {
       readArray(reader, m_startx);
     } else {
       reader.discard();
-}
+    }
   }
 
   if (m_endx.size() != m_fieldLine.size() || m_endx.size() != m_startx.size()) {

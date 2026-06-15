@@ -9,6 +9,7 @@
 
 #include "cvbs_source_stage.h"
 
+#include <cvbs_signal_constants.h>
 #include <sqlite3.h>
 
 #include <algorithm>
@@ -23,7 +24,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <cvbs_signal_constants.h>
 #include "error_types.h"
 #include "logging.h"
 #include "preview_helpers.h"
@@ -56,10 +56,9 @@ std::vector<size_t> compute_pal_line_offsets() {
   size_t offset = 0;
   for (int32_t i = 0; i < kPalFrameLines; ++i) {
     offsets[static_cast<size_t>(i)] = offset;
-    const bool is_extra = (i == kPalExtraSampleLines[0] ||
-                           i == kPalExtraSampleLines[1] ||
-                           i == kPalExtraSampleLines[2] ||
-                           i == kPalExtraSampleLines[3]);
+    const bool is_extra =
+        (i == kPalExtraSampleLines[0] || i == kPalExtraSampleLines[1] ||
+         i == kPalExtraSampleLines[2] || i == kPalExtraSampleLines[3]);
     offset += is_extra ? static_cast<size_t>(kPalMaxSamplesPerLine)
                        : static_cast<size_t>(kPalMaxSamplesPerLine - 1);
   }
@@ -119,9 +118,9 @@ inline int16_t normalize_to_cvbs_u10(uint16_t raw, const std::string& encoding,
 //
 // EBU Tech. 3280-E §1.1.1 (PAL); SMPTE 244M-2003 §3.2 (NTSC);
 // ITU-R BT.1700-1 Annex 1 Part B (PAL_M).
-int measure_colour_frame_index(const int16_t* frame_data,
-                               VideoSystem system, int32_t blanking_10bit) {
-  constexpr int kRefLine = 9;   // 0-based frame-flat line index
+int measure_colour_frame_index(const int16_t* frame_data, VideoSystem system,
+                               int32_t blanking_10bit) {
+  constexpr int kRefLine = 9;      // 0-based frame-flat line index
   constexpr int kBurstCount = 40;  // samples to demodulate
 
   // EBU Tech. 3280-E §1.2: PAL colour burst at samples 93..132.
@@ -153,17 +152,27 @@ int measure_colour_frame_index(const int16_t* frame_data,
   const int phase_base = static_cast<int>(abs_offset % 4);
   const int16_t* burst_ptr = frame_data + abs_offset;
 
-  // Quadrature demodulation at 4FSC: cos/sin values cycle {1,0,-1,0}/{0,1,0,-1}.
+  // Quadrature demodulation at 4FSC: cos/sin values cycle
+  // {1,0,-1,0}/{0,1,0,-1}.
   double I = 0.0;
   double Q = 0.0;
   for (int n = 0; n < kBurstCount; ++n) {
     const double ac = static_cast<double>(burst_ptr[n]) - blanking_10bit;
     switch ((phase_base + n) % 4) {
-      case 0: I += ac; break;
-      case 1: Q += ac; break;
-      case 2: I -= ac; break;
-      case 3: Q -= ac; break;
-      default: break;
+      case 0:
+        I += ac;
+        break;
+      case 1:
+        Q += ac;
+        break;
+      case 2:
+        I -= ac;
+        break;
+      case 3:
+        Q -= ac;
+        break;
+      default:
+        break;
     }
   }
 
@@ -237,7 +246,7 @@ SourceParameters build_source_parameters(VideoSystem system,
     case VideoSystem::PAL:
       // EBU Tech. 3280-E §1.1 level constants.
       sp.frame_width_nominal = kPalMaxSamplesPerLine - 1;  // 1135
-      sp.frame_height = kPalFrameLines;                     // 625
+      sp.frame_height = kPalFrameLines;                    // 625
       sp.sync_tip_level = kPalSyncTip;
       sp.blanking_level = kPalBlanking;
       sp.black_level = kPalBlack;
@@ -255,8 +264,8 @@ SourceParameters build_source_parameters(VideoSystem system,
       sp.frame_height = kNtscFrameLines;             // 525
       sp.sync_tip_level = kNtscSyncTip;
       sp.blanking_level = kNtscBlanking;
-      sp.black_level = (ntsc_j_black_level >= 0) ? ntsc_j_black_level
-                                                  : kNtscBlack;
+      sp.black_level =
+          (ntsc_j_black_level >= 0) ? ntsc_j_black_level : kNtscBlack;
       sp.white_level = kNtscWhite;
       sp.peak_level = kNtscPeak;
       sp.active_video_start = kNtscActiveVideoStart;
@@ -307,13 +316,11 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
       std::string sample_encoding, SourceParameters video_params,
       std::optional<int32_t> ntsc_j_black_level,
       // Sidecars
-      std::vector<DropoutRun> dropout_runs,
-      bool has_audio, bool audio_locked_flag,
-      std::string wav_path, uint32_t audio_pairs_per_frame,
-      bool has_efm, std::string efm_data_path,
-      std::vector<CVBSExtensionFrameRef> efm_table,
-      bool has_ac3, std::string ac3_data_path,
-      std::vector<CVBSExtensionFrameRef> ac3_table,
+      std::vector<DropoutRun> dropout_runs, bool has_audio,
+      bool audio_locked_flag, std::string wav_path,
+      uint32_t audio_pairs_per_frame, bool has_efm, std::string efm_data_path,
+      std::vector<CVBSExtensionFrameRef> efm_table, bool has_ac3,
+      std::string ac3_data_path, std::vector<CVBSExtensionFrameRef> ac3_table,
       ArtifactID artifact_id, Provenance provenance)
       : Artifact(std::move(artifact_id), std::move(provenance)),
         system_(system),
@@ -428,7 +435,8 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
     const auto it = frame_cache_.find(id);
     if (it == frame_cache_.end()) return std::nullopt;
     const int idx = it->second.colour_frame_index;
-    return (idx == -1) ? std::optional<int>{std::nullopt} : std::optional<int>{idx};
+    return (idx == -1) ? std::optional<int>{std::nullopt}
+                       : std::optional<int>{idx};
   }
 
   std::optional<ActiveLineHint> get_active_line_hint() const override {
@@ -463,8 +471,7 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
 
   std::vector<int16_t> get_audio_samples(FrameID id) const override {
     if (!has_audio_ || !audio_locked_flag_ || !has_frame(id)) return {};
-    const size_t pair_offset =
-        static_cast<size_t>(id) * audio_pairs_per_frame_;
+    const size_t pair_offset = static_cast<size_t>(id) * audio_pairs_per_frame_;
     return deps_->read_audio_samples_at(wav_path_, pair_offset,
                                         audio_pairs_per_frame_);
   }
@@ -541,12 +548,12 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
     DecodedFrame result;
     result.samples.reserve(frame_samples_);
     for (size_t i = 0; i < frame_samples_; ++i) {
-      result.samples.push_back(
-          normalize_to_cvbs_u10(raw_words[i], sample_encoding_, blanking_level_));
+      result.samples.push_back(normalize_to_cvbs_u10(
+          raw_words[i], sample_encoding_, blanking_level_));
     }
 
-    result.colour_frame_index =
-        measure_colour_frame_index(result.samples.data(), system_, blanking_level_);
+    result.colour_frame_index = measure_colour_frame_index(
+        result.samples.data(), system_, blanking_level_);
     return result;
   }
 
@@ -603,8 +610,7 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     }
     std::ifstream ifs(input_path, std::ios::binary);
     if (!ifs.is_open()) {
-      error_message =
-          "CVBS source file is not readable: '" + input_path + "'";
+      error_message = "CVBS source file is not readable: '" + input_path + "'";
       return false;
     }
     ifs.seekg(0, std::ios::end);
@@ -616,8 +622,7 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
   }
 
   std::optional<CVBSMetadataRecord> load_metadata(
-      const std::string& meta_path,
-      std::string& error_message) const override {
+      const std::string& meta_path, std::string& error_message) const override {
     namespace fs = std::filesystem;
     std::error_code ec;
     if (!fs::exists(meta_path, ec)) {
@@ -626,10 +631,10 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     }
 
     sqlite3* db = nullptr;
-    if (sqlite3_open_v2(meta_path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr)
-        != SQLITE_OK) {
-      error_message = "Failed to open metadata '" + meta_path + "': " +
-                      (db ? sqlite3_errmsg(db) : "unknown error");
+    if (sqlite3_open_v2(meta_path.c_str(), &db, SQLITE_OPEN_READONLY,
+                        nullptr) != SQLITE_OK) {
+      error_message = "Failed to open metadata '" + meta_path +
+                      "': " + (db ? sqlite3_errmsg(db) : "unknown error");
       if (db) sqlite3_close(db);
       return std::nullopt;
     }
@@ -739,8 +744,8 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     sqlite3* db = nullptr;
     if (sqlite3_open_v2(dropout_meta_path.c_str(), &db, SQLITE_OPEN_READONLY,
                         nullptr) != SQLITE_OK) {
-      error_message = "Failed to open dropout sidecar '" +
-                      dropout_meta_path + "'";
+      error_message =
+          "Failed to open dropout sidecar '" + dropout_meta_path + "'";
       if (db) sqlite3_close(db);
       return {};
     }
@@ -751,8 +756,8 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, kSql, -1, &stmt, nullptr) != SQLITE_OK) {
-      error_message = "Failed to query dropout_run from '" +
-                      dropout_meta_path + "'";
+      error_message =
+          "Failed to query dropout_run from '" + dropout_meta_path + "'";
       sqlite3_close(db);
       return {};
     }
@@ -760,14 +765,10 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     std::vector<DropoutRun> runs;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
       DropoutRun run;
-      run.frame_id =
-          static_cast<FrameID>(sqlite3_column_int64(stmt, 0));
-      run.sample_start =
-          static_cast<uint64_t>(sqlite3_column_int64(stmt, 1));
-      run.sample_count =
-          static_cast<uint32_t>(sqlite3_column_int(stmt, 2));
-      run.severity =
-          static_cast<uint8_t>(sqlite3_column_int(stmt, 3));
+      run.frame_id = static_cast<FrameID>(sqlite3_column_int64(stmt, 0));
+      run.sample_start = static_cast<uint64_t>(sqlite3_column_int64(stmt, 1));
+      run.sample_count = static_cast<uint32_t>(sqlite3_column_int(stmt, 2));
+      run.severity = static_cast<uint8_t>(sqlite3_column_int(stmt, 3));
       runs.push_back(run);
     }
 
@@ -793,9 +794,9 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     constexpr size_t kWavHeaderBytes = 44;
     std::ifstream ifs(wav_path, std::ios::binary);
     if (!ifs.is_open()) return {};
-    ifs.seekg(static_cast<std::streamoff>(kWavHeaderBytes +
-                                         stereo_pair_offset * 4),
-              std::ios::beg);
+    ifs.seekg(
+        static_cast<std::streamoff>(kWavHeaderBytes + stereo_pair_offset * 4),
+        std::ios::beg);
     if (!ifs.good()) return {};
     const size_t total_samples = stereo_pair_count * 2;
     std::vector<int16_t> buf(total_samples);
@@ -813,9 +814,9 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
                                       error_message);
   }
 
-  std::vector<uint8_t> read_efm_bytes_at(
-      const std::string& efm_data_path, uint64_t byte_offset,
-      uint32_t count) const override {
+  std::vector<uint8_t> read_efm_bytes_at(const std::string& efm_data_path,
+                                         uint64_t byte_offset,
+                                         uint32_t count) const override {
     return read_binary_at(efm_data_path, byte_offset, count);
   }
 
@@ -826,9 +827,9 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
                                       error_message);
   }
 
-  std::vector<uint8_t> read_ac3_bytes_at(
-      const std::string& ac3_data_path, uint64_t byte_offset,
-      uint32_t count) const override {
+  std::vector<uint8_t> read_ac3_bytes_at(const std::string& ac3_data_path,
+                                         uint64_t byte_offset,
+                                         uint32_t count) const override {
     return read_binary_at(ac3_data_path, byte_offset, count);
   }
 
@@ -843,21 +844,20 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     if (!fs::exists(meta_path, ec)) return std::nullopt;
 
     sqlite3* db = nullptr;
-    if (sqlite3_open_v2(meta_path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr)
-        != SQLITE_OK) {
+    if (sqlite3_open_v2(meta_path.c_str(), &db, SQLITE_OPEN_READONLY,
+                        nullptr) != SQLITE_OK) {
       error_message = "Failed to open '" + meta_path + "'";
       if (db) sqlite3_close(db);
       return std::nullopt;
     }
 
-    const std::string sql =
-        "SELECT t_value_offset, t_value_count FROM " + table_name +
-        " ORDER BY frame_id";
+    const std::string sql = "SELECT t_value_offset, t_value_count FROM " +
+                            table_name + " ORDER BY frame_id";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-      error_message = "Failed to query " + table_name + " from '" +
-                      meta_path + "'";
+      error_message =
+          "Failed to query " + table_name + " from '" + meta_path + "'";
       sqlite3_close(db);
       return std::nullopt;
     }
@@ -933,10 +933,14 @@ constexpr CVBSStageStaticInfo kPALMInfo{
 // Return the video-system name for logging and display.
 const char* system_name(VideoSystem sys) {
   switch (sys) {
-    case VideoSystem::PAL:   return "PAL";
-    case VideoSystem::NTSC:  return "NTSC";
-    case VideoSystem::PAL_M: return "PAL_M";
-    default:                  return "Unknown";
+    case VideoSystem::PAL:
+      return "PAL";
+    case VideoSystem::NTSC:
+      return "NTSC";
+    case VideoSystem::PAL_M:
+      return "PAL_M";
+    default:
+      return "Unknown";
   }
 }
 
@@ -970,8 +974,7 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   }
 
   auto it = parameters.find("input_path");
-  if (it == parameters.end() ||
-      std::get<std::string>(it->second).empty()) {
+  if (it == parameters.end() || std::get<std::string>(it->second).empty()) {
     ORC_LOG_DEBUG("{}: no input_path configured", stage_name_);
     return {};
   }
@@ -999,36 +1002,38 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
 
   // Hard-reject non-STANDARD_TBC_LOCKED signal states.
   if (meta.signal_state_preset != "STANDARD_TBC_LOCKED") {
-    throw UserDataError(
-        "CVBS source '" + input_path +
-        "' has signal_state_preset '" + meta.signal_state_preset +
-        "'. Only STANDARD_TBC_LOCKED files are accepted.");
+    throw UserDataError("CVBS source '" + input_path +
+                        "' has signal_state_preset '" +
+                        meta.signal_state_preset +
+                        "'. Only STANDARD_TBC_LOCKED files are accepted.");
   }
 
   // Validate that the .meta video standard matches this stage's fixed system.
   if (meta.preset != std::string(system_name(system_))) {
-    throw UserDataError(
-        "CVBS metadata preset '" + meta.preset + "' in '" + meta_path +
-        "' does not match this stage's system (" +
-        system_name(system_) + ")");
+    throw UserDataError("CVBS metadata preset '" + meta.preset + "' in '" +
+                        meta_path + "' does not match this stage's system (" +
+                        system_name(system_) + ")");
   }
 
   // Accept all four declared sample encodings.
   const std::string& encoding = meta.sample_encoding_preset;
   if (encoding != "CVBS_U10_4FSC" && encoding != "CVBS_U16_4FSC" &&
       encoding != "CVBS_TPG21_4FSC" && encoding != "CVBS_S16_FSC") {
-    throw UserDataError(
-        "Unsupported sample_encoding_preset '" + encoding + "' in '" +
-        meta_path + "'");
+    throw UserDataError("Unsupported sample_encoding_preset '" + encoding +
+                        "' in '" + meta_path + "'");
   }
 
   // --- Determine frame geometry ---
   const int32_t frame_samples = [&]() -> int32_t {
     switch (system_) {
-      case VideoSystem::PAL:   return kPalFrameSamples;
-      case VideoSystem::NTSC:  return kNtscFrameSamples;
-      case VideoSystem::PAL_M: return kPalMFrameSamples;
-      default: return 0;
+      case VideoSystem::PAL:
+        return kPalFrameSamples;
+      case VideoSystem::NTSC:
+        return kNtscFrameSamples;
+      case VideoSystem::PAL_M:
+        return kPalMFrameSamples;
+      default:
+        return 0;
     }
   }();
 
@@ -1050,18 +1055,18 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   if (meta.number_of_sequential_frames > 0) {
     frame_count = meta.number_of_sequential_frames;
     // Sanity-check that the file is large enough.
-    const size_t expected = static_cast<size_t>(frame_count) *
-                            static_cast<size_t>(frame_samples);
+    const size_t expected =
+        static_cast<size_t>(frame_count) * static_cast<size_t>(frame_samples);
     if (total_words < expected) {
-      throw UserDataError(
-          "CVBS payload '" + input_path + "' has " +
-          std::to_string(total_words) +
-          " words but metadata declares " + std::to_string(frame_count) +
-          " frames (" + std::to_string(expected) + " words required)");
+      throw UserDataError("CVBS payload '" + input_path + "' has " +
+                          std::to_string(total_words) +
+                          " words but metadata declares " +
+                          std::to_string(frame_count) + " frames (" +
+                          std::to_string(expected) + " words required)");
     }
   } else {
-    frame_count = static_cast<int32_t>(total_words /
-                                       static_cast<size_t>(frame_samples));
+    frame_count =
+        static_cast<int32_t>(total_words / static_cast<size_t>(frame_samples));
   }
 
   if (frame_count == 0) {
@@ -1070,17 +1075,15 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
                         system_name(system_) + " frame");
   }
 
-  const size_t trailing =
-      total_words -
-      static_cast<size_t>(frame_count) * static_cast<size_t>(frame_samples);
+  const size_t trailing = total_words - static_cast<size_t>(frame_count) *
+                                            static_cast<size_t>(frame_samples);
   if (trailing > 0) {
     ORC_LOG_WARN("{}: {} trailing samples in '{}' (not a complete frame)",
                  stage_name_, trailing, input_path);
   }
 
   // --- Build SourceParameters from spec constants ---
-  const int32_t ntsc_j =
-      meta.ntsc_j_black_level.value_or(-1);
+  const int32_t ntsc_j = meta.ntsc_j_black_level.value_or(-1);
   const SourceParameters src_params =
       build_source_parameters(system_, frame_count, ntsc_j);
 
@@ -1093,12 +1096,10 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   auto dropout_runs = deps_->load_dropout_sidecar(dropout_path, do_err);
 
   // Audio
-  const std::string wav_path =
-      derive_sidecar_path(input_path, "_audio_00.wav");
+  const std::string wav_path = derive_sidecar_path(input_path, "_audio_00.wav");
   const auto audio_info = deps_->get_audio_info(wav_path);
   const bool has_audio = audio_info.has_value();
-  const bool audio_locked_flag =
-      has_audio && meta.audio_locked.value_or(false);
+  const bool audio_locked_flag = has_audio && meta.audio_locked.value_or(false);
 
   // Audio pairs per frame: PAL 44100/25=1764, NTSC/PAL_M 44100×1001/30000≈1470.
   uint32_t audio_pairs = 0;
@@ -1109,8 +1110,7 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   // EFM
   const std::string efm_meta_path =
       derive_sidecar_path(input_path, ".efm.meta");
-  const std::string efm_data_path =
-      derive_sidecar_path(input_path, ".efm");
+  const std::string efm_data_path = derive_sidecar_path(input_path, ".efm");
   std::string efm_err;
   const auto efm_table_opt =
       deps_->load_efm_frame_table(efm_meta_path, efm_err);
@@ -1121,8 +1121,7 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   // AC3
   const std::string ac3_meta_path =
       derive_sidecar_path(input_path, ".ac3.meta");
-  const std::string ac3_data_path =
-      derive_sidecar_path(input_path, ".ac3");
+  const std::string ac3_data_path = derive_sidecar_path(input_path, ".ac3");
   std::string ac3_err;
   const auto ac3_table_opt =
       deps_->load_ac3_frame_table(ac3_meta_path, ac3_err);
@@ -1133,22 +1132,26 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   // --- Display name update ---
   const std::string signal_type_display =
       (meta.signal_type == "yc") ? "YC" : "Composite";
-  display_name_ = std::string(system_name(system_)) + " CVBS " +
-                  signal_type_display;
+  display_name_ =
+      std::string(system_name(system_)) + " CVBS " + signal_type_display;
 
-  ORC_LOG_INFO("{}: loaded '{}' — {} {} frames, encoding {}, audio {}, "
-               "EFM {}, AC3 {}",
-               stage_name_, input_path, frame_count, system_name(system_),
-               encoding, has_audio ? "yes" : "no",
-               has_efm ? "yes" : "no", has_ac3 ? "yes" : "no");
+  ORC_LOG_INFO(
+      "{}: loaded '{}' — {} {} frames, encoding {}, audio {}, "
+      "EFM {}, AC3 {}",
+      stage_name_, input_path, frame_count, system_name(system_), encoding,
+      has_audio ? "yes" : "no", has_efm ? "yes" : "no", has_ac3 ? "yes" : "no");
 
   // --- Frame geometry parameters ---
   const int32_t frame_height_lines = [&]() -> int32_t {
     switch (system_) {
-      case VideoSystem::PAL:   return kPalFrameLines;
-      case VideoSystem::NTSC:  return kNtscFrameLines;
-      case VideoSystem::PAL_M: return kPalMFrameLines;
-      default: return 525;
+      case VideoSystem::PAL:
+        return kPalFrameLines;
+      case VideoSystem::NTSC:
+        return kNtscFrameLines;
+      case VideoSystem::PAL_M:
+        return kPalMFrameLines;
+      default:
+        return 525;
     }
   }();
 
@@ -1164,14 +1167,11 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
 
   auto representation = std::make_shared<CVBSDecodedFrameRepresentation>(
       system_, frame_count, frame_samples, frame_height_lines,
-      src_params.frame_width_nominal, deps_, input_path, encoding,
-      src_params, meta.ntsc_j_black_level,
-      std::move(dropout_runs),
-      has_audio, audio_locked_flag, wav_path, audio_pairs,
-      has_efm, efm_data_path, std::move(efm_table),
-      has_ac3, ac3_data_path, std::move(ac3_table),
-      ArtifactID(std::string(stage_name_) + ":" + input_path),
-      std::move(prov));
+      src_params.frame_width_nominal, deps_, input_path, encoding, src_params,
+      meta.ntsc_j_black_level, std::move(dropout_runs), has_audio,
+      audio_locked_flag, wav_path, audio_pairs, has_efm, efm_data_path,
+      std::move(efm_table), has_ac3, ac3_data_path, std::move(ac3_table),
+      ArtifactID(std::string(stage_name_) + ":" + input_path), std::move(prov));
 
   cached_representation_ = representation;
   cached_input_path_ = input_path;
@@ -1179,7 +1179,8 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   return {representation};
 }
 
-std::vector<ParameterDescriptor> FixedFormatCVBSSourceStage::get_parameter_descriptors(
+std::vector<ParameterDescriptor>
+FixedFormatCVBSSourceStage::get_parameter_descriptors(
     VideoSystem /*project_format*/, SourceType /*source_type*/) const {
   std::vector<ParameterDescriptor> desc;
 
@@ -1258,19 +1259,17 @@ std::optional<StageReport> FixedFormatCVBSSourceStage::generate_report() const {
             {"Frame Count",
              std::to_string(params->number_of_sequential_frames)});
         report.items.push_back(
-            {"Frame Size",
-             std::to_string(params->frame_width_nominal) + " × " +
-                 std::to_string(params->frame_height)});
-        report.items.push_back({"Blanking Level",
-                                 std::to_string(params->blanking_level)});
-        report.items.push_back({"White Level",
-                                 std::to_string(params->white_level)});
+            {"Frame Size", std::to_string(params->frame_width_nominal) + " × " +
+                               std::to_string(params->frame_height)});
         report.items.push_back(
-            {"Audio", vfr->has_audio()
-                          ? (vfr->audio_locked() ? "Frame-locked" : "Free-running")
-                          : "None"});
+            {"Blanking Level", std::to_string(params->blanking_level)});
         report.items.push_back(
-            {"EFM", vfr->has_efm() ? "Present" : "None"});
+            {"White Level", std::to_string(params->white_level)});
+        report.items.push_back(
+            {"Audio", vfr->has_audio() ? (vfr->audio_locked() ? "Frame-locked"
+                                                              : "Free-running")
+                                       : "None"});
+        report.items.push_back({"EFM", vfr->has_efm() ? "Present" : "None"});
         report.items.push_back(
             {"AC3 RF", vfr->has_ac3_rf() ? "Present" : "None"});
 
@@ -1296,29 +1295,23 @@ std::optional<StageReport> FixedFormatCVBSSourceStage::generate_report() const {
 
 PALCVBSSourceStage::PALCVBSSourceStage(
     std::shared_ptr<ICVBSSourceStageDeps> deps)
-    : FixedFormatCVBSSourceStage(kPALInfo.stage_name,
-                                  kPALInfo.initial_display_name,
-                                  kPALInfo.description,
-                                  kPALInfo.compatible_formats,
-                                  kPALInfo.system,
-                                  std::move(deps)) {}
+    : FixedFormatCVBSSourceStage(
+          kPALInfo.stage_name, kPALInfo.initial_display_name,
+          kPALInfo.description, kPALInfo.compatible_formats, kPALInfo.system,
+          std::move(deps)) {}
 
 NTSCCVBSSourceStage::NTSCCVBSSourceStage(
     std::shared_ptr<ICVBSSourceStageDeps> deps)
-    : FixedFormatCVBSSourceStage(kNTSCInfo.stage_name,
-                                  kNTSCInfo.initial_display_name,
-                                  kNTSCInfo.description,
-                                  kNTSCInfo.compatible_formats,
-                                  kNTSCInfo.system,
-                                  std::move(deps)) {}
+    : FixedFormatCVBSSourceStage(
+          kNTSCInfo.stage_name, kNTSCInfo.initial_display_name,
+          kNTSCInfo.description, kNTSCInfo.compatible_formats, kNTSCInfo.system,
+          std::move(deps)) {}
 
 PALMCVBSSourceStage::PALMCVBSSourceStage(
     std::shared_ptr<ICVBSSourceStageDeps> deps)
-    : FixedFormatCVBSSourceStage(kPALMInfo.stage_name,
-                                  kPALMInfo.initial_display_name,
-                                  kPALMInfo.description,
-                                  kPALMInfo.compatible_formats,
-                                  kPALMInfo.system,
-                                  std::move(deps)) {}
+    : FixedFormatCVBSSourceStage(
+          kPALMInfo.stage_name, kPALMInfo.initial_display_name,
+          kPALMInfo.description, kPALMInfo.compatible_formats, kPALMInfo.system,
+          std::move(deps)) {}
 
 }  // namespace orc

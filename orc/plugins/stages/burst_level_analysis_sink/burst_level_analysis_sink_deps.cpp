@@ -67,8 +67,9 @@ BurstAnalysisComputeResult BurstLevelAnalysisSinkStageDeps::compute_and_analyze(
 
     frames_processed++;
     if (progress_callback_) {
-      progress_callback_(frames_processed, total_frames,
-                         "Processing frame " + std::to_string(frames_processed));
+      progress_callback_(
+          frames_processed, total_frames,
+          "Processing frame " + std::to_string(frames_processed));
     }
   }
 

@@ -46,9 +46,12 @@ struct ColourFrameCarrier {
 
   std::optional<VectorscopeData> vectorscope_data;
 
-  // Signal anchor points used to normalize Y/U/V before matrix conversion.
-  double black_16b_ire{0.0};
-  double white_16b_ire{65535.0};
+  // CVBS_U10_4FSC anchor points used to normalize Y/U/V before matrix
+  // conversion. Set by chroma_sink from SourceParameters (blanking_level,
+  // white_level). Values are in the 10-bit CVBS domain (e.g. PAL: 256/844,
+  // NTSC: 240/800).
+  double cvbs_blanking{0.0};
+  double cvbs_white{1023.0};
 
   bool is_valid() const {
     if (width == 0 || height == 0) {
@@ -62,7 +65,7 @@ struct ColourFrameCarrier {
       return false;
     }
 
-    return white_16b_ire > black_16b_ire;
+    return cvbs_white > cvbs_blanking;
   }
 };
 

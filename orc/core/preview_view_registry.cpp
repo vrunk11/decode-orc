@@ -17,7 +17,6 @@
 #include "analysis/vectorscope/vectorscope_analysis.h"
 #include "colour_preview_provider.h"
 #include "preview_renderer.h"
-#include "video_field_representation.h"
 
 namespace orc {
 namespace {
@@ -198,10 +197,10 @@ class VectorscopePreviewView final : public IPreviewView {
     }
 
     last_vectorscope_->system = carrier_opt->system;
-    last_vectorscope_->white_16b_ire =
-        static_cast<int32_t>(carrier_opt->white_16b_ire);
-    last_vectorscope_->black_16b_ire =
-        static_cast<int32_t>(carrier_opt->black_16b_ire);
+    last_vectorscope_->cvbs_white =
+        static_cast<int32_t>(carrier_opt->cvbs_white);
+    last_vectorscope_->cvbs_blanking =
+        static_cast<int32_t>(carrier_opt->cvbs_blanking);
 
     result.success = true;
     result.payload_kind = PreviewViewPayloadKind::Vectorscope;

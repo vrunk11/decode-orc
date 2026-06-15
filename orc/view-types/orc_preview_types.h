@@ -27,8 +27,8 @@ namespace orc {
  * @brief The six first-class video data types a stage can expose for preview.
  *
  * Signal-domain types (Composite*, YC_*) are carried by
- * VideoFieldRepresentation accessed via
- * DAGFieldRenderer::render_field_at_node().  Colour-domain types (Colour*) are
+ * VideoFrameRepresentation accessed via
+ * DAGFrameRenderer::render_frame_at_node().  Colour-domain types (Colour*) are
  * carried by the structured decoder-output carrier which includes
  * ColorimetricMetadata.
  *

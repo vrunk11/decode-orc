@@ -24,11 +24,11 @@ namespace orc_unit_test {
 namespace {
 
 const orc::ParameterDescriptor* find_descriptor(
-    const std::vector<orc::ParameterDescriptor>& descs, const std::string& name) {
-  auto it = std::find_if(descs.begin(), descs.end(),
-                         [&](const orc::ParameterDescriptor& d) {
-                           return d.name == name;
-                         });
+    const std::vector<orc::ParameterDescriptor>& descs,
+    const std::string& name) {
+  auto it = std::find_if(
+      descs.begin(), descs.end(),
+      [&](const orc::ParameterDescriptor& d) { return d.name == name; });
   return it == descs.end() ? nullptr : &(*it);
 }
 
@@ -57,9 +57,8 @@ TEST(VideoParamsStageTest, Descriptor_DefaultsMatchRuntimeDefaults) {
   const auto descs = stage.get_parameter_descriptors();
   const auto params = stage.get_parameters();
   const std::array<const char*, 6> names = {
-      "activeVideoStart", "activeVideoEnd",
-      "firstActiveFrameLine", "lastActiveFrameLine",
-      "whiteLevel", "blackLevel"};
+      "activeVideoStart",    "activeVideoEnd", "firstActiveFrameLine",
+      "lastActiveFrameLine", "whiteLevel",     "blackLevel"};
 
   for (const auto* name : names) {
     const auto* d = find_descriptor(descs, name);
@@ -88,12 +87,14 @@ TEST(VideoParamsStageTest, SetParameters_RejectsUnknownParameter) {
 
 TEST(VideoParamsStageTest, SetParameters_RejectsWrongType) {
   orc::VideoParamsStage stage;
-  EXPECT_FALSE(stage.set_parameters({{"activeVideoStart", std::string("120")}}));
+  EXPECT_FALSE(
+      stage.set_parameters({{"activeVideoStart", std::string("120")}}));
 }
 
 TEST(VideoParamsStageTest, Process_AppliesConfiguredOverrides) {
   orc::VideoParamsStage stage;
-  auto source = std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
+  auto source =
+      std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
   orc::SourceParameters src;
   src.system = orc::VideoSystem::NTSC;
   src.frame_width_nominal = 910;
@@ -112,13 +113,14 @@ TEST(VideoParamsStageTest, Process_AppliesConfiguredOverrides) {
   ASSERT_TRUE(ov.has_value());
   EXPECT_EQ(ov->active_video_start, 120);
   EXPECT_EQ(ov->black_level, 250);
-  EXPECT_EQ(ov->white_level, 800);        // inherited
-  EXPECT_TRUE(ov->has_nonstandard_values); // level override sets this flag
+  EXPECT_EQ(ov->white_level, 800);          // inherited
+  EXPECT_TRUE(ov->has_nonstandard_values);  // level override sets this flag
 }
 
 TEST(VideoParamsStageTest, Process_PreservesPalVideoSystem) {
   orc::VideoParamsStage stage;
-  auto source = std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
+  auto source =
+      std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
   orc::SourceParameters src;
   src.system = orc::VideoSystem::PAL;
   src.frame_width_nominal = 1135;
@@ -138,9 +140,11 @@ TEST(VideoParamsStageTest, Process_PreservesPalVideoSystem) {
   EXPECT_EQ(ov->last_active_frame_line, 619);  // inherited
 }
 
-TEST(VideoParamsStageTest, Process_SetsActiveCroppingFlag_WhenGeometryOverridden) {
+TEST(VideoParamsStageTest,
+     Process_SetsActiveCroppingFlag_WhenGeometryOverridden) {
   orc::VideoParamsStage stage;
-  auto source = std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
+  auto source =
+      std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
   orc::SourceParameters src;
   src.system = orc::VideoSystem::PAL;
   src.frame_width_nominal = 1135;

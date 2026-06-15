@@ -25,7 +25,7 @@ namespace orc {
  *
  * This analyzer creates range specifications compatible with FieldMapStage,
  * allowing corruption to be applied within the DAG chain rather than
- * requiring separate corrupted TBC files.
+ * requiring separate corrupted source captures.
  */
 class FieldCorruptionAnalyzer {
  public:

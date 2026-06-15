@@ -46,10 +46,8 @@ ORC_STAGE_PLUGIN_EXPORT bool orc_register_stage_plugin(
       node_type_info.type != orc::plugins::cvbs_sink::kStageNodeType ||
       node_type_info.min_inputs != orc::plugins::cvbs_sink::kStageMinInputs ||
       node_type_info.max_inputs != orc::plugins::cvbs_sink::kStageMaxInputs ||
-      node_type_info.min_outputs !=
-          orc::plugins::cvbs_sink::kStageMinOutputs ||
-      node_type_info.max_outputs !=
-          orc::plugins::cvbs_sink::kStageMaxOutputs ||
+      node_type_info.min_outputs != orc::plugins::cvbs_sink::kStageMinOutputs ||
+      node_type_info.max_outputs != orc::plugins::cvbs_sink::kStageMaxOutputs ||
       node_type_info.compatible_formats !=
           orc::plugins::cvbs_sink::kStageCompatibleFormats ||
       node_type_info.sink_category !=

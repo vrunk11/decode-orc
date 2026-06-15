@@ -199,32 +199,30 @@ bool FFmpegVideoSinkStage::trigger(
         "FFmpegVideoSink: Closed caption embedding enabled, extracting CC "
         "observations");
 
-    // Extract VideoFieldRepresentation from input
+    // Extract VideoFrameRepresentation from input
     if (!inputs.empty()) {
-      auto vfr = std::dynamic_pointer_cast<VideoFieldRepresentation>(inputs[0]);
+      auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
       if (vfr) {
         // Create and run ClosedCaptionObserver to populate observations
         auto cc_observer = std::make_shared<ClosedCaptionObserver>();
 
-        // Get field range from VFR
-        auto field_range = vfr->field_range();
-        const size_t total_cc_fields = static_cast<size_t>(
-            field_range.end.value() - field_range.start.value() + 1);
+        auto frame_range = vfr->frame_range();
+        const size_t total_cc_frames = frame_range.count();
+        const size_t total_cc_fields = total_cc_frames * 2;
 
         if (progress_callback_) {
           progress_callback_(0, total_cc_fields,
                              "Collecting closed caption data...");
         }
 
-        // Run observer on all fields to extract CC data
+        // Run observer on all frames (each frame covers both fields).
         size_t cc_fields_processed = 0;
-        for (FieldID::value_type field_num = field_range.start.value();
-             field_num <= field_range.end.value(); ++field_num) {
-          FieldID field_id(field_num);
-          if (vfr->has_field(field_id)) {
-            cc_observer->process_field(*vfr, field_id, observation_context);
+        for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
+             ++frame_id) {
+          if (vfr->has_frame(frame_id)) {
+            cc_observer->process_frame(*vfr, frame_id, observation_context);
           }
-          ++cc_fields_processed;
+          cc_fields_processed += 2;
           if (progress_callback_) {
             progress_callback_(cc_fields_processed, total_cc_fields,
                                "Collecting closed caption data...");
@@ -237,8 +235,8 @@ bool FFmpegVideoSinkStage::trigger(
         }
 
         ORC_LOG_DEBUG(
-            "FFmpegVideoSink: CC observations extracted for fields {}-{}",
-            field_range.start.value(), field_range.end.value());
+            "FFmpegVideoSink: CC observations extracted for {} frames",
+            total_cc_frames);
       }
     }
   }
@@ -263,26 +261,24 @@ bool FFmpegVideoSinkStage::trigger(
         "observations");
 
     if (!inputs.empty()) {
-      auto vfr =
-          std::dynamic_pointer_cast<VideoFieldRepresentation>(inputs[0]);
+      auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
       if (vfr) {
         BiphaseObserver biphase_observer;
-        auto field_range = vfr->field_range();
-        const size_t total_fields = static_cast<size_t>(
-            field_range.end.value() - field_range.start.value() + 1);
+        auto frame_range = vfr->frame_range();
+        const size_t total_frames = frame_range.count();
+        const size_t total_fields = total_frames * 2;
 
         if (progress_callback_) {
           progress_callback_(0, total_fields, "Collecting VBI chapter data...");
         }
 
         size_t fields_processed = 0;
-        for (FieldID::value_type field_num = field_range.start.value();
-             field_num <= field_range.end.value(); ++field_num) {
-          FieldID field_id(field_num);
-          if (vfr->has_field(field_id)) {
-            biphase_observer.process_field(*vfr, field_id, observation_context);
+        for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
+             ++frame_id) {
+          if (vfr->has_frame(frame_id)) {
+            biphase_observer.process_frame(*vfr, frame_id, observation_context);
           }
-          ++fields_processed;
+          fields_processed += 2;
           if (progress_callback_) {
             progress_callback_(fields_processed, total_fields,
                                "Collecting VBI chapter data...");
@@ -295,8 +291,8 @@ bool FFmpegVideoSinkStage::trigger(
         }
 
         ORC_LOG_DEBUG(
-            "FFmpegVideoSink: VBI observations extracted for fields {}-{}",
-            field_range.start.value(), field_range.end.value());
+            "FFmpegVideoSink: VBI observations extracted for {} frames",
+            total_frames);
       }
     }
   }

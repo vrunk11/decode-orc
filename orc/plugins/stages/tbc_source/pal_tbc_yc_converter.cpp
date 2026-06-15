@@ -13,18 +13,18 @@
 
 namespace orc {
 
-bool PalTBCYCConverter::check_yc_phase_alignment(int luma_colour_frame_index,
-                                                  int chroma_colour_frame_index) {
+bool PalTBCYCConverter::check_yc_phase_alignment(
+    int luma_colour_frame_index, int chroma_colour_frame_index) {
   // Both channels must agree on the colour frame position at frame 0.
   // If both are -1 (unmeasurable), we treat them as aligned since there is
   // no information to indicate a mismatch.
   return luma_colour_frame_index == chroma_colour_frame_index;
 }
 
-std::string PalTBCYCConverter::yc_alignment_error(int luma_colour_frame_index,
-                                                   int chroma_colour_frame_index) {
+std::string PalTBCYCConverter::yc_alignment_error(
+    int luma_colour_frame_index, int chroma_colour_frame_index) {
   if (check_yc_phase_alignment(luma_colour_frame_index,
-                                chroma_colour_frame_index)) {
+                               chroma_colour_frame_index)) {
     return {};
   }
   return "PAL TBC YC phase mismatch at frame 0: luma colour_frame_index=" +

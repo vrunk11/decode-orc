@@ -292,10 +292,14 @@ void HintsDialog::updateVideoParameters(
   // Sample rate derived from the video system standard.
   const auto sys = [&]() -> orc::VideoSystem {
     switch (params->system) {
-      case orc::presenters::VideoSystem::PAL:   return orc::VideoSystem::PAL;
-      case orc::presenters::VideoSystem::NTSC:  return orc::VideoSystem::NTSC;
-      case orc::presenters::VideoSystem::PAL_M: return orc::VideoSystem::PAL_M;
-      default: return orc::VideoSystem::Unknown;
+      case orc::presenters::VideoSystem::PAL:
+        return orc::VideoSystem::PAL;
+      case orc::presenters::VideoSystem::NTSC:
+        return orc::VideoSystem::NTSC;
+      case orc::presenters::VideoSystem::PAL_M:
+        return orc::VideoSystem::PAL_M;
+      default:
+        return orc::VideoSystem::Unknown;
     }
   }();
   const double sr = orc::sample_rate_from_system(sys);

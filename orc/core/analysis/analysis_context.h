@@ -35,7 +35,7 @@ class Project;
  */
 struct AnalysisContext {
   AnalysisSourceType source_type = AnalysisSourceType::LaserDisc;
-  std::string source_file;  // Path to TBC or video file (legacy - prefer using
+  std::string source_file;  // Path to source file (legacy - prefer using
                             // dag/project)
   NodeID node_id;           // ID of node being analyzed
   std::map<std::string, ParameterValue>

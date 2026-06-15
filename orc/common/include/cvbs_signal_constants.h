@@ -92,8 +92,9 @@ constexpr int32_t kNtscFrameSamples = 477'750;
 constexpr int32_t kNtscFrameLines = 525;
 
 // SMPTE 244M-2003 §3.2: Lines in NTSC VFR field 1 (top spatial field).
-// The top field is sourced from ld-decode TBC field 2 (263 real lines).
-// ld-decode TBC field 1 (earlier temporal, 262 real lines) becomes VFR field 2.
+// ld-decode stores fields in temporal order; VFR reorders so the top spatial
+// field (263 lines, even-scan) is field 1 and the earlier temporal field
+// (262 lines, odd-scan) becomes VFR field 2.
 constexpr int32_t kNtscField1Lines = 263;
 
 // SMPTE 244M-2003: Normative CVBS_U10_4FSC signal levels (10-bit domain).
@@ -125,26 +126,29 @@ constexpr int32_t kPalMFrameSamples = 477'225;
 constexpr int32_t kPalMFrameLines = 525;
 
 // ITU-R BT.1700-1 Annex 1 Part B: Lines in PAL_M VFR field 1 (top spatial
-// field). Same swap convention as NTSC: TBC field 2 (263 lines) → VFR field 1
-// (top).
+// field). Same swap convention as NTSC: the 263-line even-scan field becomes
+// VFR field 1 (top).
 constexpr int32_t kPalMField1Lines = 263;
 
 // PAL_M signal levels are identical to NTSC (same line count and blanking).
 // Use kNtscSyncTip, kNtscBlanking, kNtscBlack, kNtscWhite, kNtscPeak.
 
 // ---------------------------------------------------------------------------
-// ld-decode TBC 16-bit domain normative levels
+// ld-decode 16-bit domain normative levels
 // ---------------------------------------------------------------------------
 // The ld-decode .tbc format stores samples as uint16_t with the following
-// standard mapping.  kTbcBlanking / kTbcWhite are the round-trip reference
-// values used when converting CVBS_U10_4FSC ↔ TBC 16-bit.
+// standard mapping.  kTbcBlanking / kTbcWhite are ONLY for use in the
+// tbc_source and ld_sink stages when converting CVBS_U10_4FSC ↔ ld-decode
+// 16-bit.  All other pipeline code must use the system-specific CVBS_U10_4FSC
+// constants above (kPalBlanking/kPalWhite, kNtscBlanking/kNtscWhite) or the
+// 10-bit values from SourceParameters (blanking_level, white_level).
 constexpr int32_t kTbcBlanking = 16384;  // 0 IRE blanking (0x4000 = 25 %)
 constexpr int32_t kTbcWhite = 54400;     // 100 IRE white  (≈ 83 % of 65535)
 
 // ---------------------------------------------------------------------------
 // Colour burst sample range constants
 // ---------------------------------------------------------------------------
-// Sample offsets within a TBC line that locate the colour burst window.
+// Sample offsets within a source line that locate the colour burst window.
 // These are nominal values fixed by the video standard; per-disc values may
 // deviate by a few samples for damaged or non-standard tapes, but spec-defined
 // ranges are sufficient for dropout-correction masking and observer windowing.
@@ -198,6 +202,19 @@ inline double fsc_from_system(VideoSystem sys) {
       return kPalMFsc;
     default:
       return kNtscFsc;
+  }
+}
+
+// Return the number of lines in field 1 (the larger/first field in the flat
+// frame buffer) for the given video system.
+inline size_t field1_lines(VideoSystem sys) {
+  switch (sys) {
+    case VideoSystem::PAL:
+      return static_cast<size_t>(kPalField1Lines);
+    case VideoSystem::PAL_M:
+      return static_cast<size_t>(kPalMField1Lines);
+    default:
+      return static_cast<size_t>(kNtscField1Lines);
   }
 }
 

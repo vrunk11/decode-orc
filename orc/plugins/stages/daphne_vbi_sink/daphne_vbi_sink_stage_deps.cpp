@@ -60,8 +60,7 @@ bool DaphneVBISinkStageDeps::write_vbi(
 
         using IFileWriter<uint8_t>::open;
         bool open(const std::string& filepath,
-                  std::ios::openmode mode
-                  [[maybe_unused]]) override {
+                  std::ios::openmode mode [[maybe_unused]]) override {
           path_ = filepath;
           return impl_ && impl_->open(filepath);
         }
@@ -119,8 +118,9 @@ bool DaphneVBISinkStageDeps::write_vbi(
       frames_processed++;
       if (frames_processed % 10 == 0 && progress_callback_) {
         progress_callback_(frames_processed, total_frames,
-                           "Exporting frame " + std::to_string(frames_processed) +
-                               "/" + std::to_string(total_frames));
+                           "Exporting frame " +
+                               std::to_string(frames_processed) + "/" +
+                               std::to_string(total_frames));
       }
     }
 

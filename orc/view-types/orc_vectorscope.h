@@ -42,10 +42,10 @@ struct VectorscopeData {
   uint32_t height;                ///< Field height in lines
   uint64_t field_number;          ///< Field number for identification
 
-  // Video parameters for graticule/targets
+  // CVBS_U10_4FSC anchor points for graticule/targets (10-bit domain).
   VideoSystem system = VideoSystem::Unknown;  ///< Video system (NTSC/PAL)
-  int32_t white_16b_ire = 0;                  ///< White level (16-bit IRE)
-  int32_t black_16b_ire = 0;                  ///< Black level (16-bit IRE)
+  int32_t cvbs_white = 0;     ///< White level (100 IRE) in CVBS_U10_4FSC
+  int32_t cvbs_blanking = 0;  ///< Blanking level (0 IRE) in CVBS_U10_4FSC
 
   VectorscopeData() : width(0), height(0), field_number(0) {}
 };

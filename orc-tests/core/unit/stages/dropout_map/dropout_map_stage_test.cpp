@@ -94,9 +94,8 @@ TEST(DropoutMapStageTest, Execute_ThrowsWhenInputIsWrongType) {
   };
   orc::DropoutMapStage stage;
   orc::ObservationContext ctx;
-  EXPECT_THROW(
-      stage.execute({std::make_shared<FakeArt>()}, {}, ctx),
-      orc::DAGExecutionError);
+  EXPECT_THROW(stage.execute({std::make_shared<FakeArt>()}, {}, ctx),
+               orc::DAGExecutionError);
 }
 
 TEST(DropoutMapStageTest, ParseEncodeRoundTrip_EmptyMap) {
@@ -129,15 +128,15 @@ TEST(DropoutMapStageTest, ParseEncodeRoundTrip_SingleEntry) {
 }
 
 TEST(DropoutMapStageTest, GetDropoutHints_ReturnsSourceHints_WhenNoMapping) {
-  auto source = std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
+  auto source =
+      std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
   const orc::FrameID fid{5};
   std::vector<orc::DropoutRun> source_hints{
       orc::DropoutRun{fid, 1000u, 50u, 128}};
 
   ON_CALL(*source, get_video_parameters())
       .WillByDefault(Return(make_ntsc_params()));
-  ON_CALL(*source, get_dropout_hints(fid))
-      .WillByDefault(Return(source_hints));
+  ON_CALL(*source, get_dropout_hints(fid)).WillByDefault(Return(source_hints));
 
   std::map<uint64_t, orc::FrameDropoutMapEntry> empty_map;
   const orc::DropoutMappedFrameRepresentation rep(source, empty_map);
@@ -149,7 +148,8 @@ TEST(DropoutMapStageTest, GetDropoutHints_ReturnsSourceHints_WhenNoMapping) {
 }
 
 TEST(DropoutMapStageTest, GetDropoutHints_AddsDropoutRun) {
-  auto source = std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
+  auto source =
+      std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
   const orc::FrameID fid{0};
 
   ON_CALL(*source, get_video_parameters())
@@ -174,7 +174,8 @@ TEST(DropoutMapStageTest, GetDropoutHints_AddsDropoutRun) {
 }
 
 TEST(DropoutMapStageTest, GetDropoutHints_RemovesOverlappingSourceRun) {
-  auto source = std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
+  auto source =
+      std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
   const orc::FrameID fid{2};
 
   // Source has a dropout on frame 2, at frame-flat offset 9200 (line 10,
@@ -196,7 +197,8 @@ TEST(DropoutMapStageTest, GetDropoutHints_RemovesOverlappingSourceRun) {
 }
 
 TEST(DropoutMapStageTest, GetDropoutHints_NoChangeOnOtherFrame) {
-  auto source = std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
+  auto source =
+      std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
   const orc::FrameID fid_mapped{1};
   const orc::FrameID fid_other{7};
 

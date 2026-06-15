@@ -16,7 +16,7 @@
 #include "../../core/include/dag_executor.h"
 #include "../../core/include/logging.h"
 #include "../../core/include/project.h"
-#include "../../core/include/video_field_representation.h"
+#include "../../core/include/video_frame_representation.h"
 #include "../../core/stages/stage.h"
 
 namespace orc::presenters {
@@ -32,7 +32,7 @@ std::string FieldCorruptionPresenter::toolName() const {
   return "Field Corruption Generator";
 }
 
-uint64_t FieldCorruptionPresenter::getInputFieldCount(NodeID node_id) {
+uint64_t FieldCorruptionPresenter::getInputFrameCount(NodeID node_id) {
   // Get the DAG
   auto dag = getOrBuildDAG();
   if (!dag) {
@@ -56,21 +56,22 @@ uint64_t FieldCorruptionPresenter::getInputFieldCount(NodeID node_id) {
   // Execute the input node
   auto artifacts = executeToNode(input_node_id);
 
-  // Find VideoFieldRepresentation artifact
+  // Find VideoFrameRepresentation artifact
   for (const auto& artifact : artifacts) {
-    // artifacts are opaque void* handles, need to cast
-    auto source =
-        std::static_pointer_cast<const orc::VideoFieldRepresentation>(artifact);
-    if (source) {
-      uint64_t field_count = source->field_count();
-      ORC_LOG_DEBUG("Field Corruption Presenter: Got field count {} from input",
-                    field_count);
-      return field_count;
+    // Cast void* back to Artifact base, then dynamic_cast to VFR
+    auto artifact_base = std::static_pointer_cast<orc::Artifact>(artifact);
+    auto vfr = std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
+        artifact_base);
+    if (vfr) {
+      uint64_t frame_count = vfr->frame_count();
+      ORC_LOG_DEBUG("Field Corruption Presenter: Got frame count {} from input",
+                    frame_count);
+      return frame_count;
     }
   }
 
   ORC_LOG_WARN(
-      "Field Corruption Presenter: No VideoFieldRepresentation artifact found");
+      "Field Corruption Presenter: No VideoFrameRepresentation artifact found");
   return 0;
 }
 
@@ -140,24 +141,25 @@ orc::AnalysisResult FieldCorruptionPresenter::runAnalysis(
   }
 
   if (!node_it->stage ||
-      node_it->stage->get_node_type_info().stage_name != "field_map") {
+      node_it->stage->get_node_type_info().stage_name != "frame_map") {
     result.summary =
-        "Field Corruption Generator only applies to field_map stages";
+        "Field Corruption Generator only applies to frame_map stages";
     ORC_LOG_ERROR("{}", result.summary);
     return result;
   }
 
   if (progress_callback) {
-    progress_callback(10, "Determining input field count...");
+    progress_callback(10, "Determining input frame count...");
   }
 
-  // Get input field count
-  uint64_t field_count = getInputFieldCount(node_id);
-  if (field_count == 0) {
+  // Get input frame count
+  uint64_t frame_count = getInputFrameCount(node_id);
+  if (frame_count == 0) {
     result.summary =
-        "Cannot determine input field count.\n\n"
-        "Field Corruption Generator requires a field-based input.\n"
-        "Ensure this field_map stage has an input connection.";
+        "Cannot determine input frame count.\n\n"
+        "Field Corruption Generator requires a VideoFrameRepresentation "
+        "input.\n"
+        "Ensure this frame_map stage has an input connection.";
     ORC_LOG_ERROR("{}", result.summary);
     return result;
   }

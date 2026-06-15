@@ -50,7 +50,6 @@
 namespace orc {
 class DAG;
 class Project;
-class VideoFieldRepresentation;
 class ObservationContext;
 }  // namespace orc
 
@@ -131,17 +130,14 @@ sourceParametersToVideoParamsStageValues(const orc::SourceParameters& params) {
   // SMPTE 244M-2003 Table 1 (NTSC/PAL_M).
   const int32_t cb_start = (params.system == orc::VideoSystem::PAL) ? 98 : 72;
   const int32_t cb_end = (params.system == orc::VideoSystem::PAL) ? 138 : 108;
-  // ld-decode TBC 16-bit domain normative levels.
-  constexpr int32_t kTbcBlanking = 16384;  // 0 IRE blanking (0x4000 = 25 %)
-  constexpr int32_t kTbcWhite = 54400;     // 100 IRE white  (≈ 83 % of 65535)
   return {{"colourBurstStart", cb_start},
           {"colourBurstEnd", cb_end},
           {"activeVideoStart", params.active_video_start},
           {"activeVideoEnd", params.active_video_end},
           {"firstActiveFieldLine", params.first_active_frame_line / 2},
           {"lastActiveFieldLine", params.last_active_frame_line / 2},
-          {"white16bIRE", kTbcWhite},
-          {"black16bIRE", kTbcBlanking}};
+          {"whiteLevel", params.white_level},
+          {"blackLevel", params.blanking_level}};
 }
 
 orc::ParameterValue resolveEffectiveParameterValue(
@@ -3580,7 +3576,7 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
       return;
     }
 
-    // Execute DAG to get the VideoFieldRepresentation for the input node
+    // Execute DAG to get the VideoFrameRepresentation for the input node
     // Find the input edge to this node
     const auto edges = project_.presenter()->getEdges();
     orc::NodeID input_node_id;
@@ -3613,14 +3609,9 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     orc::presenters::RenderPresenter render_presenter(core_project);
     render_presenter.setDAG(project_.getDAG());
 
-    std::shared_ptr<const orc::VideoFieldRepresentation> source_repr;
+    std::shared_ptr<const void> source_repr;
     try {
-      auto output_void = render_presenter.executeToNode(input_node_id);
-      if (output_void) {
-        source_repr =
-            std::static_pointer_cast<const orc::VideoFieldRepresentation>(
-                output_void);
-      }
+      source_repr = render_presenter.executeToNode(input_node_id);
     } catch (const std::exception& e) {
       QMessageBox::warning(this, "Error",
                            QString("Failed to execute DAG: %1").arg(e.what()));
@@ -3630,7 +3621,7 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     if (!source_repr) {
       QMessageBox::warning(
           this, "Error",
-          "Could not get video field data from input. "
+          "Could not get video frame data from input. "
           "Ensure the dropout_map stage has a valid video source connected.");
       return;
     }
@@ -4250,10 +4241,14 @@ void MainWindow::onFieldTimingDataReady(
     // Derive the fallback field height from the video system.
     const auto vp_sys = [&]() -> orc::VideoSystem {
       switch (video_params->system) {
-        case orc::presenters::VideoSystem::PAL:   return orc::VideoSystem::PAL;
-        case orc::presenters::VideoSystem::NTSC:  return orc::VideoSystem::NTSC;
-        case orc::presenters::VideoSystem::PAL_M: return orc::VideoSystem::PAL_M;
-        default: return orc::VideoSystem::Unknown;
+        case orc::presenters::VideoSystem::PAL:
+          return orc::VideoSystem::PAL;
+        case orc::presenters::VideoSystem::NTSC:
+          return orc::VideoSystem::NTSC;
+        case orc::presenters::VideoSystem::PAL_M:
+          return orc::VideoSystem::PAL_M;
+        default:
+          return orc::VideoSystem::Unknown;
       }
     }();
     const int fallback_fh =
@@ -4352,7 +4347,7 @@ void MainWindow::updateQualityMetricsDialog() {
     field2_id = orc::FieldID(0);
   }
 
-  // Get quality metrics using presenter (no direct DAGFieldRenderer access)
+  // Get quality metrics using presenter (no direct DAGFrameRenderer access)
   try {
     // Create temporary RenderPresenter for metrics extraction
     auto* core_project = project_.presenter()->getCoreProjectHandle();
@@ -4621,7 +4616,7 @@ void MainWindow::updateNtscObserverDialog() {
     field2_id = orc::FieldID(0);
   }
 
-  // Get NTSC observations using presenter (no direct DAGFieldRenderer access)
+  // Get NTSC observations using presenter (no direct DAGFrameRenderer access)
   try {
     // Create temporary RenderPresenter for observation extraction
     auto* core_project = project_.presenter()->getCoreProjectHandle();

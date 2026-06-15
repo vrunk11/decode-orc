@@ -126,8 +126,8 @@ TEST(AudioSinkStageTest, Trigger_FailsWhenOutputPathIsNotString) {
   auto vfr = std::make_shared<NiceMock<MockVFRArtifactWithAudio>>();
   EXPECT_CALL(*vfr, has_audio()).WillOnce(Return(true));
 
-  const bool result =
-      stage.trigger({vfr}, {{"output_path", static_cast<int32_t>(1)}}, observation_context);
+  const bool result = stage.trigger(
+      {vfr}, {{"output_path", static_cast<int32_t>(1)}}, observation_context);
 
   EXPECT_FALSE(result);
   EXPECT_EQ(stage.get_trigger_status(),

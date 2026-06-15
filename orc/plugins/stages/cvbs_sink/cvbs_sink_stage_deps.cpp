@@ -18,7 +18,7 @@
 namespace orc {
 
 void CVBSSinkStageDeps::init(TriggerProgressCallback progress_callback,
-                              std::atomic<bool>* cancel_requested) {
+                             std::atomic<bool>* cancel_requested) {
   progress_callback_ = std::move(progress_callback);
   cancel_requested_ = cancel_requested;
 }
@@ -72,9 +72,10 @@ CVBSSinkWriteResult CVBSSinkStageDeps::write_cvbs(
       continue;
     }
 
-    out.write(reinterpret_cast<const char*>(frame_data),
-              static_cast<std::streamsize>(sample_count *
-                                           sizeof(VideoFrameRepresentation::sample_type)));
+    out.write(
+        reinterpret_cast<const char*>(frame_data),
+        static_cast<std::streamsize>(
+            sample_count * sizeof(VideoFrameRepresentation::sample_type)));
 
     if (!out) {
       return {false, frames_written,

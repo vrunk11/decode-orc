@@ -33,7 +33,8 @@ static int32_t pal_line_samples(int32_t flat_line) {
 // |flat_line| (0-based).  O(4) because only 4 lines are non-orthogonal.
 static uint64_t pal_cumulative_offset(int32_t flat_line) {
   // Base: all lines up to flat_line have 1135 samples.
-  uint64_t offset = static_cast<uint64_t>(flat_line) * (kPalMaxSamplesPerLine - 1);
+  uint64_t offset =
+      static_cast<uint64_t>(flat_line) * (kPalMaxSamplesPerLine - 1);
   // Add one extra sample for each non-orthogonal line before flat_line.
   for (int32_t extra : kPalExtraSampleLines) {
     if (extra < flat_line) ++offset;
@@ -63,7 +64,8 @@ FieldLineSample frame_sample_to_field_line(VideoSystem sys,
       cumulative += static_cast<uint64_t>(line_len);
       flat_line = l + 1;
     }
-    int32_t sample_in_line = static_cast<int32_t>(frame_sample_offset - cumulative);
+    int32_t sample_in_line =
+        static_cast<int32_t>(frame_sample_offset - cumulative);
 
     // Map flat line to (field, line-within-field).
     int32_t field, line_in_field;

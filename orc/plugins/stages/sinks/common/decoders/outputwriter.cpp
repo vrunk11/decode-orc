@@ -293,8 +293,9 @@ void OutputWriter::convertLine(int32_t lineNumber,
 
   const int32_t outputLine = topPadLines + lineNumber;
 
-  const double yOffset = orc::kTbcBlanking;
-  double yRange = orc::kTbcWhite - orc::kTbcBlanking;
+  const double yOffset = static_cast<double>(videoParameters.blanking_level);
+  double yRange = static_cast<double>(videoParameters.white_level -
+                                      videoParameters.blanking_level);
   const double uvRange = yRange;
 
   switch (config.pixelFormat) {

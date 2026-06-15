@@ -21,7 +21,6 @@
 #include "../core/include/logging.h"
 #include "../core/include/project.h"
 #include "../core/include/stage_registry.h"
-#include "../core/include/video_field_representation.h"
 
 namespace orc::presenters {
 

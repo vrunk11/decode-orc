@@ -75,15 +75,14 @@ TEST(ProjectFormatTest, V2_Project_ReturnsCorrectVersion) {
 // ---------------------------------------------------------------------------
 
 TEST(ProjectFormatTest, V1_ProjectLoad_ThrowsRuntimeError) {
-  EXPECT_THROW(orc::project_io::load_project_from_yaml(
-                   kV1Project, "/tmp/v1-test.orcprj"),
+  EXPECT_THROW(orc::project_io::load_project_from_yaml(kV1Project,
+                                                       "/tmp/v1-test.orcprj"),
                std::runtime_error);
 }
 
 TEST(ProjectFormatTest, V1_ProjectLoad_ErrorMessage_ContainsVersion) {
   try {
-    orc::project_io::load_project_from_yaml(kV1Project,
-                                             "/tmp/v1-test.orcprj");
+    orc::project_io::load_project_from_yaml(kV1Project, "/tmp/v1-test.orcprj");
     FAIL() << "Expected std::runtime_error";
   } catch (const std::runtime_error& e) {
     const std::string msg(e.what());
@@ -94,10 +93,10 @@ TEST(ProjectFormatTest, V1_ProjectLoad_ErrorMessage_ContainsVersion) {
   }
 }
 
-TEST(ProjectFormatTest, V1_ProjectLoad_ErrorMessage_ContainsActionableGuidance) {
+TEST(ProjectFormatTest,
+     V1_ProjectLoad_ErrorMessage_ContainsActionableGuidance) {
   try {
-    orc::project_io::load_project_from_yaml(kV1Project,
-                                             "/tmp/v1-test.orcprj");
+    orc::project_io::load_project_from_yaml(kV1Project, "/tmp/v1-test.orcprj");
     FAIL() << "Expected std::runtime_error";
   } catch (const std::runtime_error& e) {
     const std::string msg(e.what());
@@ -182,9 +181,9 @@ dag:
   edges: []
 )yaml";
 
-  EXPECT_THROW(
-      orc::project_io::load_project_from_yaml(yaml, "/tmp/mismatch-ntsc.orcprj"),
-      std::runtime_error);
+  EXPECT_THROW(orc::project_io::load_project_from_yaml(
+                   yaml, "/tmp/mismatch-ntsc.orcprj"),
+               std::runtime_error);
 }
 
 // The error message must identify the offending stage name.

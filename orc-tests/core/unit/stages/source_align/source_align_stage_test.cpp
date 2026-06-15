@@ -27,10 +27,9 @@ namespace {
 const orc::ParameterDescriptor* find_descriptor(
     const std::vector<orc::ParameterDescriptor>& descriptors,
     const std::string& name) {
-  auto it = std::find_if(descriptors.begin(), descriptors.end(),
-                         [&](const orc::ParameterDescriptor& d) {
-                           return d.name == name;
-                         });
+  auto it = std::find_if(
+      descriptors.begin(), descriptors.end(),
+      [&](const orc::ParameterDescriptor& d) { return d.name == name; });
   return it == descriptors.end() ? nullptr : &(*it);
 }
 
@@ -98,9 +97,8 @@ TEST(SourceAlignStageTest, Execute_ThrowsWhenInputIsWrongType) {
   };
   orc::SourceAlignStage stage;
   orc::ObservationContext ctx;
-  EXPECT_THROW(
-      stage.execute({std::make_shared<FakeArt>()}, {}, ctx),
-      orc::DAGExecutionError);
+  EXPECT_THROW(stage.execute({std::make_shared<FakeArt>()}, {}, ctx),
+               orc::DAGExecutionError);
 }
 
 TEST(SourceAlignStageTest, Execute_ThrowsWhenManualAlignmentMapIsInvalid) {
@@ -112,8 +110,7 @@ TEST(SourceAlignStageTest, Execute_ThrowsWhenManualAlignmentMapIsInvalid) {
   ON_CALL(*source, type_name()).WillByDefault(Return("test_vfr_artifact"));
 
   EXPECT_THROW(
-      stage.execute({source},
-                    {{"alignmentMap", std::string("invalid")}}, ctx),
+      stage.execute({source}, {{"alignmentMap", std::string("invalid")}}, ctx),
       orc::DAGExecutionError);
 }
 
@@ -146,8 +143,7 @@ TEST(SourceAlignStageTest, Execute_AppliesManualOffset) {
   ON_CALL(*source, frame_count()).WillByDefault(Return(10u));
 
   // Manually specify offset=2 for input 1
-  ASSERT_TRUE(
-      stage.set_parameters({{"alignmentMap", std::string("1+2")}}));
+  ASSERT_TRUE(stage.set_parameters({{"alignmentMap", std::string("1+2")}}));
 
   const auto outputs = stage.execute({source}, {}, ctx);
 
@@ -156,7 +152,8 @@ TEST(SourceAlignStageTest, Execute_AppliesManualOffset) {
   EXPECT_NE(outputs[0].get(), source.get());
 
   // The wrapped VFrameR should have 8 frames (10 - 2).
-  auto vfr = std::dynamic_pointer_cast<orc::VideoFrameRepresentation>(outputs[0]);
+  auto vfr =
+      std::dynamic_pointer_cast<orc::VideoFrameRepresentation>(outputs[0]);
   ASSERT_NE(vfr, nullptr);
   EXPECT_EQ(vfr->frame_count(), 8u);
 }

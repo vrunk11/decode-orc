@@ -57,8 +57,7 @@ class LDSinkStageDepsTest : public ::testing::Test {
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-TEST_F(LDSinkStageDepsTest,
-       WriteTbc_AddsExtensionAndSucceedsWithEmptyRange) {
+TEST_F(LDSinkStageDepsTest, WriteTbc_AddsExtensionAndSucceedsWithEmptyRange) {
   // Empty range: last < first → count() == 0 → loop doesn't execute
   EXPECT_CALL(mockRepresentation_, frame_range())
       .Times(1)
@@ -125,8 +124,7 @@ TEST_F(LDSinkStageDepsTest, WriteTbc_ReturnsFalseWhenTbcFileOpenFails) {
   EXPECT_FALSE(result);
 }
 
-TEST_F(LDSinkStageDepsTest,
-       WriteTbc_ReturnsFalseWhenMetadataDbOpenFails) {
+TEST_F(LDSinkStageDepsTest, WriteTbc_ReturnsFalseWhenMetadataDbOpenFails) {
   EXPECT_CALL(mockRepresentation_, frame_range())
       .Times(1)
       .WillOnce(Return(orc::FrameIDRange{1, 0}));

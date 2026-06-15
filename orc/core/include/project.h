@@ -39,7 +39,6 @@
 namespace orc {
 
 // Forward declarations
-class VideoFieldRepresentation;
 class Project;
 
 // Forward declare structs and project_io namespace functions
@@ -134,12 +133,12 @@ void set_source_format(Project& project, SourceType source_format);
 
 /**
  * Node in a project DAG
- * All nodes are uniform - SOURCE nodes just use TBCSourceStage with tbc_path
+ * All nodes are uniform - SOURCE nodes use a source stage with input_path
  * parameter
  */
 struct ProjectDAGNode {
   NodeID node_id;
-  std::string stage_name;    // e.g., "TBCSource", "DropoutCorrect", etc.
+  std::string stage_name;    // e.g., "tbc_source", "dropout_correct", etc.
   NodeType node_type;        // Node type (SOURCE, SINK, TRANSFORM, etc.)
   std::string display_name;  // Display name for GUI (e.g., "Source: video.tbc",
                              // "Noise Filter")
@@ -148,7 +147,7 @@ struct ProjectDAGNode {
   double x_position;  // Position for GUI layout
   double y_position;
   std::map<std::string, ParameterValue>
-      parameters;  // Stage parameters (e.g., tbc_path/db_path for sources)
+      parameters;  // Stage parameters (e.g., input_path/db_path for sources)
 };
 
 /**
@@ -182,12 +181,12 @@ struct ProjectPluginRequirement {
  * - Project metadata (name, description, version)
  * - DAG structure (nodes, edges, parameters)
  * - Optional required_plugins metadata for third-party plugin-backed stages
- * - SOURCE nodes use TBCSourceStage with tbc_path in parameters
+ * - SOURCE nodes use the configured source stage with input_path in parameters
  *
  * The project file format is shared between orc-gui and orc-cli.
  * Both tools can load and save projects in the same format.
  *
- * The Project class owns and caches the source TBC representation,
+ * The Project class owns and caches the source representation,
  * ensuring a single source of truth for all consumers.
  *
  * ARCHITECTURE NOTE - STRICT ENCAPSULATION:
@@ -239,8 +238,8 @@ class Project {
 
   /**
    * Get the source type (Composite or YC) from the project's source nodes
-   * @return SourceType::Composite for composite sources (.tbc),
-   *         SourceType::YC for YC sources (.tbcy/.tbcc),
+   * @return SourceType::Composite for composite sources (e.g. .tbc),
+   *         SourceType::YC for YC sources (e.g. .tbcy/.tbcc),
    *         SourceType::Unknown if no sources or cannot determine
    */
   SourceType get_source_type() const;
@@ -493,7 +492,7 @@ std::future<std::pair<bool, std::string>> trigger_node_async(
  * Find source file for a node by tracing back through the DAG
  * @param project Project to search
  * @param node_id ID of node to find source for
- * @return Path to source TBC file, or empty string if not found
+ * @return Path to source file, or empty string if not found
  */
 std::string find_source_file_for_node(const Project& project, NodeID node_id);
 }  // namespace project_io

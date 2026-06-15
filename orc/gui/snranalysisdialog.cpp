@@ -188,7 +188,7 @@ void SNRAnalysisDialog::finishUpdate(int32_t currentFrameNumber) {
       xTickStep = 5.0 * magnitude;
     } else {
       xTickStep = 10.0 * magnitude;
-}
+    }
   }
   plot_->setAxisTickStep(Qt::Horizontal, xTickStep, 0.0);
 

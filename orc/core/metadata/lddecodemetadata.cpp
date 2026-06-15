@@ -207,7 +207,7 @@ void LdDecodeMetaData::VideoParameters::read(JsonReader& reader) {
       reader.read(tapeFormat);
     } else {
       reader.discard();
-}
+    }
   }
 
   reader.endObject();
@@ -220,10 +220,10 @@ void LdDecodeMetaData::VideoParameters::read(JsonReader& reader) {
         system = LdVideoSystem::PAL_M;
       } else {
         system = LdVideoSystem::PAL;
-}
+      }
     } else {
       system = LdVideoSystem::NTSC;
-}
+    }
   } else if (!parseVideoSystemName(systemString, system)) {
     reader.throwError("unknown value for videoParameters.system");
   }
@@ -278,7 +278,7 @@ void LdDecodeMetaData::VitsMetrics::read(JsonReader& reader) {
       reader.read(wSNR);
     } else {
       reader.discard();
-}
+    }
   }
 
   reader.endObject();
@@ -420,7 +420,7 @@ void LdDecodeMetaData::ClosedCaption::read(JsonReader& reader) {
       reader.read(data1);
     } else {
       reader.discard();
-}
+    }
   }
 
   reader.endObject();
@@ -461,7 +461,7 @@ void LdDecodeMetaData::PcmAudioParameters::read(JsonReader& reader) {
       reader.read(sampleRate);
     } else {
       reader.discard();
-}
+    }
   }
 
   reader.endObject();
@@ -528,7 +528,7 @@ void LdDecodeMetaData::Field::read(JsonReader& reader) {
       vitsMetrics.read(reader);
     } else {
       reader.discard();
-}
+    }
   }
 
   reader.endObject();
@@ -634,7 +634,7 @@ bool LdDecodeMetaData::read(std::string fileName) {
         videoParameters.read(reader);
       } else {
         reader.discard();
-}
+      }
     }
 
     reader.endObject();
@@ -1173,7 +1173,7 @@ int32_t LdDecodeMetaData::getFieldNumber(int32_t frameNumber, int32_t field) {
     return firstFieldNumber;
   } else {
     return secondFieldNumber;
-}
+  }
 }
 
 // Method to get the first field number based on the frame number
@@ -1210,7 +1210,7 @@ int32_t LdDecodeMetaData::convertClvTimecodeToFrameNumber(
       frameNumber += clvTimeCode.hours * 3600 * 25;
     } else {
       frameNumber += clvTimeCode.hours * 3600 * 30;
-}
+    }
   }
 
   if (clvTimeCode.minutes != -1) {
@@ -1218,7 +1218,7 @@ int32_t LdDecodeMetaData::convertClvTimecodeToFrameNumber(
       frameNumber += clvTimeCode.minutes * 60 * 25;
     } else {
       frameNumber += clvTimeCode.minutes * 60 * 30;
-}
+    }
   }
 
   if (clvTimeCode.seconds != -1) {
@@ -1226,7 +1226,7 @@ int32_t LdDecodeMetaData::convertClvTimecodeToFrameNumber(
       frameNumber += clvTimeCode.seconds * 25;
     } else {
       frameNumber += clvTimeCode.seconds * 30;
-}
+    }
   }
 
   if (clvTimeCode.pictureNumber != -1) {
@@ -1310,7 +1310,7 @@ int32_t LdDecodeMetaData::getFieldPcmAudioStart(int32_t sequentialFieldNumber) {
   if (static_cast<int32_t>(pcmAudioFieldStartSampleMap.size()) <
       sequentialFieldNumber) {
     return -1;
-}
+  }
   return pcmAudioFieldStartSampleMap[static_cast<size_t>(sequentialFieldNumber -
                                                          1)];
 }
@@ -1321,6 +1321,6 @@ int32_t LdDecodeMetaData::getFieldPcmAudioLength(
   if (static_cast<int32_t>(pcmAudioFieldLengthMap.size()) <
       sequentialFieldNumber) {
     return -1;
-}
+  }
   return pcmAudioFieldLengthMap[static_cast<size_t>(sequentialFieldNumber - 1)];
 }

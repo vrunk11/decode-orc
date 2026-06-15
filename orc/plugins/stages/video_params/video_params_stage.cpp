@@ -48,8 +48,8 @@ std::vector<ArtifactPtr> VideoParamsStage::execute(
   std::vector<ArtifactPtr> outputs;
   outputs.push_back(
       std::const_pointer_cast<VideoParamsOverrideFrameRepresentation>(
-          std::dynamic_pointer_cast<const VideoParamsOverrideFrameRepresentation>(
-              output)));
+          std::dynamic_pointer_cast<
+              const VideoParamsOverrideFrameRepresentation>(output)));
   return outputs;
 }
 
@@ -111,7 +111,9 @@ std::vector<ParameterDescriptor> VideoParamsStage::get_parameter_descriptors(
           ParameterConstraints{ParameterValue{static_cast<int32_t>(-1)},
                                ParameterValue{static_cast<int32_t>(10000)},
                                ParameterValue{static_cast<int32_t>(-1)},
-                               {}, false, std::nullopt}},
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
           "activeVideoEnd", "Active Video End",
           "Override active video end sample (0-based within line). "
@@ -120,7 +122,9 @@ std::vector<ParameterDescriptor> VideoParamsStage::get_parameter_descriptors(
           ParameterConstraints{ParameterValue{static_cast<int32_t>(-1)},
                                ParameterValue{static_cast<int32_t>(10000)},
                                ParameterValue{static_cast<int32_t>(-1)},
-                               {}, false, std::nullopt}},
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
           "firstActiveFrameLine", "First Active Frame Line",
           "Override first active frame line (0-based, frame-flat). "
@@ -129,7 +133,9 @@ std::vector<ParameterDescriptor> VideoParamsStage::get_parameter_descriptors(
           ParameterConstraints{ParameterValue{static_cast<int32_t>(-1)},
                                ParameterValue{static_cast<int32_t>(1200)},
                                ParameterValue{static_cast<int32_t>(-1)},
-                               {}, false, std::nullopt}},
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
           "lastActiveFrameLine", "Last Active Frame Line",
           "Override last active frame line (0-based, frame-flat). "
@@ -138,7 +144,9 @@ std::vector<ParameterDescriptor> VideoParamsStage::get_parameter_descriptors(
           ParameterConstraints{ParameterValue{static_cast<int32_t>(-1)},
                                ParameterValue{static_cast<int32_t>(1200)},
                                ParameterValue{static_cast<int32_t>(-1)},
-                               {}, false, std::nullopt}},
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
           "whiteLevel", "White Level (10-bit)",
           "Override white level in CVBS_U10_4FSC domain (0-1023). "
@@ -147,7 +155,9 @@ std::vector<ParameterDescriptor> VideoParamsStage::get_parameter_descriptors(
           ParameterConstraints{ParameterValue{static_cast<int32_t>(-1)},
                                ParameterValue{static_cast<int32_t>(1023)},
                                ParameterValue{static_cast<int32_t>(-1)},
-                               {}, false, std::nullopt}},
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
           "blackLevel", "Black Level (10-bit)",
           "Override black level in CVBS_U10_4FSC domain (0-1023). "
@@ -156,7 +166,9 @@ std::vector<ParameterDescriptor> VideoParamsStage::get_parameter_descriptors(
           ParameterConstraints{ParameterValue{static_cast<int32_t>(-1)},
                                ParameterValue{static_cast<int32_t>(1023)},
                                ParameterValue{static_cast<int32_t>(-1)},
-                               {}, false, std::nullopt}},
+                               {},
+                               false,
+                               std::nullopt}},
   };
 }
 
@@ -199,9 +211,9 @@ std::vector<PreviewOption> VideoParamsStage::get_preview_options() const {
   return PreviewHelpers::get_standard_preview_options(cached_output_);
 }
 
-PreviewImage VideoParamsStage::render_preview(const std::string& option_id,
-                                              uint64_t index,
-                                              PreviewNavigationHint hint) const {
+PreviewImage VideoParamsStage::render_preview(
+    const std::string& option_id, uint64_t index,
+    PreviewNavigationHint hint) const {
   return PreviewHelpers::render_standard_preview(cached_output_, option_id,
                                                  index, hint);
 }

@@ -40,49 +40,50 @@ constexpr int32_t kNtscWhite = 800;
 
 TEST(CvbsSampleToMvTest, Blanking_IsZeroMillivolts) {
   // blanking_level always maps to 0 mV by definition (ITU-R BT.1700-1)
-  EXPECT_DOUBLE_EQ(
-      cvbs_sample_to_mv(static_cast<int16_t>(kPalBlanking), kPalBlanking, kPalWhite, 700.0),
-      0.0);
-  EXPECT_DOUBLE_EQ(
-      cvbs_sample_to_mv(static_cast<int16_t>(kNtscBlanking), kNtscBlanking, kNtscWhite, 714.3),
-      0.0);
+  EXPECT_DOUBLE_EQ(cvbs_sample_to_mv(static_cast<int16_t>(kPalBlanking),
+                                     kPalBlanking, kPalWhite, 700.0),
+                   0.0);
+  EXPECT_DOUBLE_EQ(cvbs_sample_to_mv(static_cast<int16_t>(kNtscBlanking),
+                                     kNtscBlanking, kNtscWhite, 714.3),
+                   0.0);
 }
 
 TEST(CvbsSampleToMvTest, White_IsActiveVoltageMillivolts) {
   // white_level maps to active_mv exactly
-  EXPECT_DOUBLE_EQ(
-      cvbs_sample_to_mv(static_cast<int16_t>(kPalWhite), kPalBlanking, kPalWhite, 700.0),
-      700.0);
-  EXPECT_NEAR(
-      cvbs_sample_to_mv(static_cast<int16_t>(kNtscWhite), kNtscBlanking, kNtscWhite, 714.3),
-      714.3, 1e-9);
+  EXPECT_DOUBLE_EQ(cvbs_sample_to_mv(static_cast<int16_t>(kPalWhite),
+                                     kPalBlanking, kPalWhite, 700.0),
+                   700.0);
+  EXPECT_NEAR(cvbs_sample_to_mv(static_cast<int16_t>(kNtscWhite), kNtscBlanking,
+                                kNtscWhite, 714.3),
+              714.3, 1e-9);
 }
 
 TEST(CvbsSampleToMvTest, SyncTip_IsNegativeMillivolts_PAL) {
   // sync_tip is below blanking → negative mV
-  const double mv = cvbs_sample_to_mv(
-      static_cast<int16_t>(kPalSyncTip), kPalBlanking, kPalWhite, 700.0);
+  const double mv = cvbs_sample_to_mv(static_cast<int16_t>(kPalSyncTip),
+                                      kPalBlanking, kPalWhite, 700.0);
   EXPECT_LT(mv, 0.0);
   // PAL sync tip: (4-256)/(844-256)*700 = -252/588*700 ≈ -300 mV
   EXPECT_NEAR(mv, -252.0 / 588.0 * 700.0, 1e-6);
 }
 
 TEST(CvbsSampleToMvTest, Peak_IsAboveWhite_PAL) {
-  const double mv = cvbs_sample_to_mv(
-      static_cast<int16_t>(kPalPeak), kPalBlanking, kPalWhite, 700.0);
+  const double mv = cvbs_sample_to_mv(static_cast<int16_t>(kPalPeak),
+                                      kPalBlanking, kPalWhite, 700.0);
   EXPECT_GT(mv, 700.0);
 }
 
 TEST(CvbsSampleToMvTest, Black_IsSmallPositive_PAL) {
   // black > blanking → small positive mV
-  const double mv = cvbs_sample_to_mv(
-      static_cast<int16_t>(kPalBlack), kPalBlanking, kPalWhite, 700.0);
+  const double mv = cvbs_sample_to_mv(static_cast<int16_t>(kPalBlack),
+                                      kPalBlanking, kPalWhite, 700.0);
   EXPECT_GT(mv, 0.0);
   EXPECT_LT(mv, 700.0);
 }
 
 TEST(CvbsSampleToMvTest, InvalidRange_ReturnsZero) {
-  // white_level <= blanking_level → degenerate; must not crash or divide by zero
+  // white_level <= blanking_level → degenerate; must not crash or divide by
+  // zero
   EXPECT_DOUBLE_EQ(cvbs_sample_to_mv(100, 300, 300, 700.0), 0.0);
   EXPECT_DOUBLE_EQ(cvbs_sample_to_mv(100, 500, 300, 700.0), 0.0);
 }
@@ -103,7 +104,8 @@ TEST(ActiveVideoMvTest, PAL_M_Returns714point3mV) {
 }
 
 TEST(ActiveVideoMvTest, Unknown_ReturnsPALDefault) {
-  EXPECT_DOUBLE_EQ(active_video_mv(orc::presenters::VideoSystem::Unknown), 700.0);
+  EXPECT_DOUBLE_EQ(active_video_mv(orc::presenters::VideoSystem::Unknown),
+                   700.0);
 }
 
 // ---- make_line_label() for all four LineNumberingMode values ---------------
@@ -111,32 +113,38 @@ TEST(ActiveVideoMvTest, Unknown_ReturnsPALDefault) {
 
 TEST(MakeLineLabelTest, FrameFlat0Based_ReturnsZeroBasedIndex) {
   using orc::LineNumberingMode;
-  auto lbl = orc::make_line_label(0, orc::VideoSystem::PAL, LineNumberingMode::kFrameFlat0Based);
+  auto lbl = orc::make_line_label(0, orc::VideoSystem::PAL,
+                                  LineNumberingMode::kFrameFlat0Based);
   EXPECT_EQ(lbl.display, "0");
 
-  lbl = orc::make_line_label(624, orc::VideoSystem::PAL, LineNumberingMode::kFrameFlat0Based);
+  lbl = orc::make_line_label(624, orc::VideoSystem::PAL,
+                             LineNumberingMode::kFrameFlat0Based);
   EXPECT_EQ(lbl.display, "624");
 }
 
 TEST(MakeLineLabelTest, FrameSequential1Based_ReturnsOneBased) {
   using orc::LineNumberingMode;
-  auto lbl = orc::make_line_label(0, orc::VideoSystem::PAL, LineNumberingMode::kFrameSequential1Based);
+  auto lbl = orc::make_line_label(0, orc::VideoSystem::PAL,
+                                  LineNumberingMode::kFrameSequential1Based);
   EXPECT_EQ(lbl.display, "1");
 
-  lbl = orc::make_line_label(624, orc::VideoSystem::PAL, LineNumberingMode::kFrameSequential1Based);
+  lbl = orc::make_line_label(624, orc::VideoSystem::PAL,
+                             LineNumberingMode::kFrameSequential1Based);
   EXPECT_EQ(lbl.display, "625");
 }
 
 TEST(MakeLineLabelTest, FieldRelative_PAL_Field1) {
   using orc::LineNumberingMode;
   // Frame-flat line 0 → field 1, line 1
-  auto lbl = orc::make_line_label(0, orc::VideoSystem::PAL, LineNumberingMode::kFieldRelative);
+  auto lbl = orc::make_line_label(0, orc::VideoSystem::PAL,
+                                  LineNumberingMode::kFieldRelative);
   EXPECT_EQ(lbl.field, 1);
   EXPECT_EQ(lbl.line_in_field, 1);
   EXPECT_EQ(lbl.display, "F1L1");
 
   // Frame-flat line 312 → field 1, line 313 (last field-1 line in PAL)
-  lbl = orc::make_line_label(312, orc::VideoSystem::PAL, LineNumberingMode::kFieldRelative);
+  lbl = orc::make_line_label(312, orc::VideoSystem::PAL,
+                             LineNumberingMode::kFieldRelative);
   EXPECT_EQ(lbl.field, 1);
   EXPECT_EQ(lbl.line_in_field, 313);
 }
@@ -144,7 +152,8 @@ TEST(MakeLineLabelTest, FieldRelative_PAL_Field1) {
 TEST(MakeLineLabelTest, FieldRelative_PAL_Field2) {
   using orc::LineNumberingMode;
   // Frame-flat line 313 → field 2, line 1 (first field-2 line in PAL)
-  auto lbl = orc::make_line_label(313, orc::VideoSystem::PAL, LineNumberingMode::kFieldRelative);
+  auto lbl = orc::make_line_label(313, orc::VideoSystem::PAL,
+                                  LineNumberingMode::kFieldRelative);
   EXPECT_EQ(lbl.field, 2);
   EXPECT_EQ(lbl.line_in_field, 1);
 }
@@ -152,7 +161,8 @@ TEST(MakeLineLabelTest, FieldRelative_PAL_Field2) {
 TEST(MakeLineLabelTest, BroadcastInterlaced_PAL_Field1Line0) {
   using orc::LineNumberingMode;
   // Frame-flat line 0 (field 1) → broadcast line 1 (odd, ITU-R BT.470-6)
-  auto lbl = orc::make_line_label(0, orc::VideoSystem::PAL, LineNumberingMode::kBroadcastInterlaced);
+  auto lbl = orc::make_line_label(0, orc::VideoSystem::PAL,
+                                  LineNumberingMode::kBroadcastInterlaced);
   EXPECT_EQ(lbl.broadcast_line, 1);
   EXPECT_EQ(lbl.display, "1");
 }
@@ -160,21 +170,24 @@ TEST(MakeLineLabelTest, BroadcastInterlaced_PAL_Field1Line0) {
 TEST(MakeLineLabelTest, BroadcastInterlaced_PAL_Field2Line0) {
   using orc::LineNumberingMode;
   // Frame-flat line 313 (first field-2 line) → broadcast line 2 (even)
-  auto lbl = orc::make_line_label(313, orc::VideoSystem::PAL, LineNumberingMode::kBroadcastInterlaced);
+  auto lbl = orc::make_line_label(313, orc::VideoSystem::PAL,
+                                  LineNumberingMode::kBroadcastInterlaced);
   EXPECT_EQ(lbl.broadcast_line, 2);
 }
 
 TEST(MakeLineLabelTest, BroadcastInterlaced_NTSC_Field1Line0) {
   using orc::LineNumberingMode;
   // NTSC frame-flat line 0 (field 1) → broadcast line 2 (SMPTE 170M-2004 §11.3)
-  auto lbl = orc::make_line_label(0, orc::VideoSystem::NTSC, LineNumberingMode::kBroadcastInterlaced);
+  auto lbl = orc::make_line_label(0, orc::VideoSystem::NTSC,
+                                  LineNumberingMode::kBroadcastInterlaced);
   EXPECT_EQ(lbl.broadcast_line, 2);
 }
 
 TEST(MakeLineLabelTest, BroadcastInterlaced_NTSC_Field2Line0) {
   using orc::LineNumberingMode;
   // NTSC frame-flat line 262 (first field-2 line) → broadcast line 1
-  auto lbl = orc::make_line_label(262, orc::VideoSystem::NTSC, LineNumberingMode::kBroadcastInterlaced);
+  auto lbl = orc::make_line_label(262, orc::VideoSystem::NTSC,
+                                  LineNumberingMode::kBroadcastInterlaced);
   EXPECT_EQ(lbl.broadcast_line, 1);
 }
 
@@ -190,7 +203,8 @@ TEST(MakeLineLabelTest, BroadcastInterlaced_NTSC_Field2Line0) {
 namespace {
 
 QApplication& ensureApplication() {
-  if (auto* existing = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+  if (auto* existing =
+          qobject_cast<QApplication*>(QCoreApplication::instance())) {
     return *existing;
   }
   static int argc = 3;
@@ -218,7 +232,8 @@ TEST(FrameScopeDialogSmokeTest, Dialog_HasLineNumberingModeCombo) {
   (void)ensureApplication();
   FrameScopeDialog dialog;
   // The numbering mode combo must have exactly 4 entries
-  const auto* combo = dialog.findChild<QComboBox*>("", Qt::FindChildrenRecursively);
+  const auto* combo =
+      dialog.findChild<QComboBox*>("", Qt::FindChildrenRecursively);
   // At least one QComboBox exists
   EXPECT_NE(combo, nullptr);
 }

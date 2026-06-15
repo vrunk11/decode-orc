@@ -568,7 +568,7 @@ class RenderPresenter {
    * @param node_id Node to execute to
    * @return Shared pointer to field representation (as void* for encapsulation)
    *
-   * @note Returns core VideoFieldRepresentation. Analysis tools should
+   * @note Returns core VideoFrameRepresentation. Analysis tools should
    * eventually migrate to presenter-based data access.
    */
   std::shared_ptr<const void> executeToNode(NodeID node_id);

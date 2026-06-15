@@ -194,8 +194,9 @@ std::vector<TBCReader::sample_type> TBCReader::read_field_lines(
     throw std::out_of_range("Line range exceeds field data");
   }
 
-  return std::vector<sample_type>(field_data.begin() + static_cast<std::ptrdiff_t>(start_sample),
-                                  field_data.begin() + static_cast<std::ptrdiff_t>(end_sample));
+  return std::vector<sample_type>(
+      field_data.begin() + static_cast<std::ptrdiff_t>(start_sample),
+      field_data.begin() + static_cast<std::ptrdiff_t>(end_sample));
 }
 
 std::vector<TBCReader::sample_type> TBCReader::read_line(FieldID field_id,

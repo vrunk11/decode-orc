@@ -15,4 +15,3 @@
 #include <dag_executor.h>
 #include <observation_context.h>
 #include <triggerable_stage.h>
-#include <video_field_representation.h>

@@ -18,13 +18,12 @@ namespace orc {
 
 // Forward declarations
 class ObservationContext;
-class VideoFieldRepresentation;
-class FieldID;
+class VideoFrameRepresentation;
 
 /**
  * @brief Observer that extracts biphase-encoded VBI data
  *
- * This observer reads VBI data from the video field representation
+ * This observer reads VBI data from the video frame representation
  * and populates the observation context with raw biphase data.
  * The data can then be decoded by VBIDecoder or other analysis tools.
  */
@@ -36,8 +35,8 @@ class BiphaseObserver : public Observer {
   std::string observer_name() const override { return "BiphaseObserver"; }
   std::string observer_version() const override { return "1.0.0"; }
 
-  void process_field(const VideoFieldRepresentation& representation,
-                     FieldID field_id, IObservationContext& context) override;
+  void process_frame(const VideoFrameRepresentation& representation,
+                     FrameID frame_id, IObservationContext& context) override;
 
   std::vector<ObservationKey> get_provided_observations() const override {
     return {

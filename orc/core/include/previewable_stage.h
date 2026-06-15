@@ -82,7 +82,7 @@ class PreviewableStage {
    *
    * @return Vector of preview options (empty if preview not available)
    *
-   * Example for a TBC source:
+   * Example for a source stage:
    * - Field: 400 fields, 1135x313, YUV
    * - Frame: 200 frames, 1135x626, YUV
    * - Frame (Reversed): 200 frames, 1135x626, YUV

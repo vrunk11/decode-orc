@@ -9,11 +9,11 @@
 
 #include "audio_resampler.h"
 
+#include <soxr.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-
-#include <soxr.h>
 
 #include "logging.h"
 
@@ -24,8 +24,7 @@ namespace orc {
 // ---------------------------------------------------------------------------
 
 std::vector<int16_t> NtscPalMAudioResampler::resample(
-    const std::vector<int16_t>& input_stereo, double in_rate,
-    double out_rate) {
+    const std::vector<int16_t>& input_stereo, double in_rate, double out_rate) {
   if (input_stereo.empty()) return {};
 
   constexpr unsigned kChannels = 2;
@@ -46,9 +45,8 @@ std::vector<int16_t> NtscPalMAudioResampler::resample(
   const soxr_quality_spec_t quality = soxr_quality_spec(SOXR_HQ, 0);
 
   soxr_error_t err = nullptr;
-  soxr_t soxr =
-      soxr_create(in_rate, out_rate, kChannels, &err, &io_spec, &quality,
-                  nullptr);
+  soxr_t soxr = soxr_create(in_rate, out_rate, kChannels, &err, &io_spec,
+                            &quality, nullptr);
   if (!soxr || err) {
     ORC_LOG_ERROR("NtscPalMAudioResampler: soxr_create failed: {}",
                   err ? err : "null handle");
@@ -72,8 +70,8 @@ std::vector<int16_t> NtscPalMAudioResampler::resample(
   // Flush residual samples (nullptr input signals end-of-stream to SoXR).
   const size_t headroom = (output.size() / kChannels) - odone;
   size_t odone2 = 0;
-  soxr_process(soxr, nullptr, 0, nullptr,
-               output.data() + odone * kChannels, headroom, &odone2);
+  soxr_process(soxr, nullptr, 0, nullptr, output.data() + odone * kChannels,
+               headroom, &odone2);
   odone += odone2;
 
   soxr_delete(soxr);
@@ -110,10 +108,8 @@ std::vector<std::vector<int16_t>> NtscPalMAudioResampler::resample_and_segment(
     frames[i].resize(kPairsPerFrame * 2, 0);
 
     if (src_start < resampled.size()) {
-      const size_t available =
-          std::min(src_end, resampled.size()) - src_start;
-      std::memcpy(frames[i].data(),
-                  resampled.data() + src_start,
+      const size_t available = std::min(src_end, resampled.size()) - src_start;
+      std::memcpy(frames[i].data(), resampled.data() + src_start,
                   available * sizeof(int16_t));
       // Remaining bytes are already zero from resize().
     }

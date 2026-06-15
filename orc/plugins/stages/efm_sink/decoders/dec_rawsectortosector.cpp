@@ -148,7 +148,7 @@ void RawSectorToSector::processQueue() {
         mode = 2;
       } else {
         mode = -1;
-}
+      }
 
       if (mode != 1) {
         ORC_LOG_DEBUG(
@@ -261,7 +261,7 @@ void RawSectorToSector::processQueue() {
           mode = 2;
         } else {
           mode = -1;
-}
+        }
 
         if (mode == 0) {
           m_mode0Sectors++;
@@ -288,7 +288,7 @@ void RawSectorToSector::processQueue() {
         m_mode0Sectors++;
       } else if (mode == 2) {
         m_mode2Sectors++;
-}
+      }
       rawSectorValid = true;
 
       ORC_LOG_WARN(
@@ -317,7 +317,7 @@ void RawSectorToSector::processQueue() {
         mode = 2;
       } else {
         mode = -1;
-}
+      }
 
       // Create an output sector
       Sector sector;

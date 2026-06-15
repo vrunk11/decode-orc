@@ -54,11 +54,7 @@ void InspectionDialog::buildUI(
     oss << "========\n\n";
     for (const auto& [name, value] : report.metrics) {
       oss << name << ": ";
-      std::visit(
-          [&oss](auto&& val) {
-            oss << val;
-          },
-          value);
+      std::visit([&oss](auto&& val) { oss << val; }, value);
       oss << "\n";
     }
   }

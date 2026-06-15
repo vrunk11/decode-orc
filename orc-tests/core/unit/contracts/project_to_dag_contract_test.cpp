@@ -81,7 +81,8 @@ TEST(ProjectToDagContractTest, Converts_RepresentativePublicPipeline) {
   }
 
   auto project = orc::project_io::create_empty_project(
-      "contract-test-project", orc::VideoSystem::Unknown, orc::SourceType::Unknown);
+      "contract-test-project", orc::VideoSystem::Unknown,
+      orc::SourceType::Unknown);
   const auto source_id =
       orc::project_io::add_node(project, chain->source, 0.0, 0.0);
   const auto middle_id =
@@ -142,7 +143,8 @@ TEST(ProjectToDagContractTest,
 
 TEST(ProjectToDagContractTest, UnknownStageInProject_FailsCleanly) {
   auto project = orc::project_io::create_empty_project(
-      "invalid-stage-project", orc::VideoSystem::Unknown, orc::SourceType::Unknown);
+      "invalid-stage-project", orc::VideoSystem::Unknown,
+      orc::SourceType::Unknown);
 
   std::vector<orc::ProjectDAGNode> nodes = {{orc::NodeID(1),
                                              "unregistered_stage",

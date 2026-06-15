@@ -10,13 +10,13 @@
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
+#include <cvbs_signal_constants.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <vector>
 
-#include <cvbs_signal_constants.h>
 #include "../../../../orc/plugins/stages/sinks/common/decoders/componentframe.h"
 #include "../../../../orc/plugins/stages/sinks/common/decoders/palcolour.h"
 #include "../../../../orc/plugins/stages/sinks/common/decoders/paldecoder.h"

@@ -21,9 +21,9 @@ namespace orc::presenters {
  *
  * Handles:
  * - Preparing DAG context for the tool
- * - Executing input node to get field count
+ * - Executing input node to get frame count
  * - Formatting results for display
- * - Applying generated pattern to field_map stage
+ * - Applying generated pattern to frame_map stage
  *
  * This presenter encapsulates the business logic for running field corruption
  * analysis, keeping the core tool focused on the algorithm and the GUI focused
@@ -41,13 +41,13 @@ class FieldCorruptionPresenter : public AnalysisToolPresenter {
    * @brief Run field corruption analysis
    *
    * This method:
-   * 1. Validates the node is a field_map stage
+   * 1. Validates the node is a frame_map stage
    * 2. Builds the DAG from the project
-   * 3. Executes the input node to get field count
+   * 3. Executes the input node to get frame count
    * 4. Calls the core field corruption tool with prepared context
    * 5. Formats results for display
    *
-   * @param node_id The field_map node to analyze
+   * @param node_id The frame_map node to analyze
    * @param parameters User-selected parameters (pattern type, regenerate_seed,
    * etc.)
    * @param progress_callback Optional progress updates (percentage, status
@@ -65,15 +65,15 @@ class FieldCorruptionPresenter : public AnalysisToolPresenter {
 
  private:
   /**
-   * @brief Get field count from the input node
-   * @param node_id The field_map node
-   * @return Field count, or 0 if unable to determine
+   * @brief Get frame count from the input node
+   * @param node_id The frame_map node
+   * @return Frame count, or 0 if unable to determine
    */
-  uint64_t getInputFieldCount(NodeID node_id);
+  uint64_t getInputFrameCount(NodeID node_id);
 
   /**
    * @brief Extract existing seed from node parameters
-   * @param node_id The field_map node
+   * @param node_id The frame_map node
    * @return Existing seed value, or 0 if not set
    */
   int32_t getExistingSeed(NodeID node_id);

@@ -19,8 +19,8 @@ FrameCanvas::FrameCanvas(ComponentFrame& _componentFrame,
       vData(_componentFrame.v(0)),
       width(_componentFrame.getWidth()),
       height(_componentFrame.getHeight()),
-      ireRange(orc::kTbcWhite - orc::kTbcBlanking),
-      blackIre(orc::kTbcBlanking),
+      ireRange(_videoParameters.white_level - _videoParameters.blanking_level),
+      blackIre(static_cast<double>(_videoParameters.blanking_level)),
       videoParameters(_videoParameters) {}
 
 int32_t FrameCanvas::top() { return videoParameters.first_active_frame_line; }

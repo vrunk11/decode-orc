@@ -9,13 +9,13 @@
 
 #include "cc_sink_stage_deps.h"
 
+#include <common_types.h>
+
 #include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
-
-#include <common_types.h>
 
 namespace orc {
 void CCSinkStageDeps::init(TriggerProgressCallback progress_callback,
@@ -87,7 +87,8 @@ CCExportResult CCSinkStageDeps::export_cc(
 
 std::string CCSinkStageDeps::generate_timestamp(int32_t field_index,
                                                 VideoFormat format) const {
-  double frame_index = static_cast<double>((field_index - 1) / 2);  // NOLINT(bugprone-integer-division)
+  double frame_index = static_cast<double>(
+      (field_index - 1) / 2);  // NOLINT(bugprone-integer-division)
 
   const double frames_per_second = (format == VideoFormat::PAL) ? 25.0 : 29.97;
   const double frames_per_minute = frames_per_second * 60.0;
@@ -147,11 +148,11 @@ bool CCSinkStageDeps::is_printable_char(uint8_t byte) const {
   return byte >= 0x20 && byte <= 0x7E;
 }
 
-bool CCSinkStageDeps::export_scc(
-    const VideoFrameRepresentation* representation,
-    const std::string& output_path, VideoFormat format,
-    const IObservationContext& observation_context,
-    int32_t& cc_frames_exported) {
+bool CCSinkStageDeps::export_scc(const VideoFrameRepresentation* representation,
+                                 const std::string& output_path,
+                                 VideoFormat format,
+                                 const IObservationContext& observation_context,
+                                 int32_t& cc_frames_exported) {
   (void)representation;
   (void)format;
   (void)observation_context;
@@ -164,7 +165,8 @@ bool CCSinkStageDeps::export_scc(
     file << "Scenarist_SCC V1.0\n\n";
     file.close();
     cc_frames_exported = 0;
-    logger_.info("CCSinkDeps: Exported SCC file (no CC observer data in VFrameR)");
+    logger_.info(
+        "CCSinkDeps: Exported SCC file (no CC observer data in VFrameR)");
     return true;
   } catch (const std::exception& e) {
     logger_.error("CCSinkDeps: Error exporting SCC: {}", e.what());
@@ -188,7 +190,9 @@ bool CCSinkStageDeps::export_plain_text(
     }
     file.close();
     cc_frames_exported = 0;
-    logger_.info("CCSinkDeps: Exported plain text file (no CC observer data in VFrameR)");
+    logger_.info(
+        "CCSinkDeps: Exported plain text file (no CC observer data in "
+        "VFrameR)");
     return true;
   } catch (const std::exception& e) {
     logger_.error("CCSinkDeps: Error exporting plain text: {}", e.what());

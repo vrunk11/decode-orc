@@ -390,7 +390,7 @@ void FrameTimingDialog::setFrameData(
   // The second-field arguments are left empty; the widget treats this as a
   // single contiguous buffer equal to the full frame height.
   timing_widget_->setFieldData(u16_samples, {}, u16_y, u16_c, {}, {},
-                                video_params, marker_sample);
+                               video_params, marker_sample);
 
   const bool is_yc = !y_samples.empty() || !c_samples.empty();
   signal_label_->setVisible(is_yc);
@@ -438,9 +438,8 @@ int FrameTimingDialog::sliderPositionToLines(int slider_position) const {
                  0.0, 1.0);
   const double ratio =
       static_cast<double>(total) / static_cast<double>(kMinLinesVisible);
-  const int lines =
-      static_cast<int>(std::round(static_cast<double>(kMinLinesVisible) *
-                                   std::pow(ratio, t)));
+  const int lines = static_cast<int>(
+      std::round(static_cast<double>(kMinLinesVisible) * std::pow(ratio, t)));
   return std::clamp(lines, kMinLinesVisible, total);
 }
 
@@ -456,16 +455,16 @@ int FrameTimingDialog::linesToSliderPosition(int lines_to_show) const {
                      std::log(ratio),
                  0.0, 1.0);
   return std::clamp(
-      static_cast<int>(std::round(normalized * (kZoomSliderMax - kZoomSliderMin) +
-                                   kZoomSliderMin)),
+      static_cast<int>(std::round(
+          normalized * (kZoomSliderMax - kZoomSliderMin) + kZoomSliderMin)),
       kZoomSliderMin, kZoomSliderMax);
 }
 
 void FrameTimingDialog::applyZoomFromLines(int lines_to_show) {
   const int total = currentTotalLines();
   if (total <= 0 || lines_to_show <= 0) return;
-  timing_widget_->setZoomFactor(
-      static_cast<double>(total) / static_cast<double>(lines_to_show));
+  timing_widget_->setZoomFactor(static_cast<double>(total) /
+                                static_cast<double>(lines_to_show));
 }
 
 void FrameTimingDialog::beginDraftRendering() {

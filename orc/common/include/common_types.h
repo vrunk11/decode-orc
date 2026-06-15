@@ -64,8 +64,8 @@ inline VideoFormat video_format_from_system(VideoSystem system) {
   }
 }
 
-// EBU Tech. 3280-E / SMPTE 244M-2003: padded TBC field height (both fields
-// equal length as stored in ld-decode .tbc files).
+// EBU Tech. 3280-E / SMPTE 244M-2003: padded field height for frame-flat
+// storage (both fields equal length, matching ld-decode .tbc file convention).
 inline size_t calculate_padded_field_height(VideoSystem system) {
   switch (system) {
     case VideoSystem::NTSC:

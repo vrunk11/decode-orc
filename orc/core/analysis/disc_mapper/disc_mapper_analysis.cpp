@@ -1,7 +1,8 @@
 /*
  * File:        disc_mapper_analysis.cpp
  * Module:      analysis
- * Purpose:     Disc mapper analysis tool: detects skipped, repeated, and missing fields
+ * Purpose:     Disc mapper analysis tool: detects skipped, repeated, and
+ * missing fields
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -16,7 +17,7 @@
 
 #include "../../include/dag_executor.h"
 #include "../../include/project.h"
-#include "../../include/video_field_representation.h"
+#include "../../include/video_frame_representation.h"
 #include "../../observers/biphase_observer.h"
 #include "../analysis_registry.h"
 #include "disc_mapper_analyzer.h"
@@ -63,7 +64,7 @@ AnalysisResult DiscMapperAnalysisTool::analyze(const AnalysisContext& ctx,
     progress->setProgress(0);
   }
 
-  // Get the VideoFieldRepresentation from the DAG execution
+  // Get the VideoFrameRepresentation from the DAG execution
   // The field_map node should have exactly one input
   if (!ctx.dag || !ctx.project) {
     result.status = AnalysisResult::Failed;
@@ -100,7 +101,7 @@ AnalysisResult DiscMapperAnalysisTool::analyze(const AnalysisContext& ctx,
       "Node '{}': Field mapping analysis - getting input from node '{}'",
       ctx.node_id, input_node_id);
 
-  // Execute DAG to get the VideoFieldRepresentation from the input node
+  // Execute DAG to get the VideoFrameRepresentation from the input node
   DAGExecutor executor;
   try {
     auto all_outputs = executor.execute_to_node(*ctx.dag, input_node_id);
@@ -115,11 +116,10 @@ AnalysisResult DiscMapperAnalysisTool::analyze(const AnalysisContext& ctx,
       return result;
     }
 
-    // Find the VideoFieldRepresentation output
-    std::shared_ptr<VideoFieldRepresentation> source;
+    // Find the VideoFrameRepresentation output
+    std::shared_ptr<VideoFrameRepresentation> source;
     for (const auto& artifact : output_it->second) {
-      // Try to cast to VideoFieldRepresentation
-      source = std::dynamic_pointer_cast<VideoFieldRepresentation>(artifact);
+      source = std::dynamic_pointer_cast<VideoFrameRepresentation>(artifact);
       if (source) {
         break;
       }
@@ -127,43 +127,43 @@ AnalysisResult DiscMapperAnalysisTool::analyze(const AnalysisContext& ctx,
 
     if (!source) {
       result.status = AnalysisResult::Failed;
-      result.summary = "Input node did not produce VideoFieldRepresentation";
+      result.summary = "Input node did not produce VideoFrameRepresentation";
       ORC_LOG_ERROR(
-          "Node '{}': Input node '{}' did not produce VideoFieldRepresentation",
+          "Node '{}': Input node '{}' did not produce VideoFrameRepresentation",
           ctx.node_id, input_node_id);
       return result;
     }
 
-    ORC_LOG_DEBUG("Got VideoFieldRepresentation with {} fields",
-                  source->field_range().size());
+    ORC_LOG_DEBUG("Got VideoFrameRepresentation with {} frames ({} fields)",
+                  source->frame_count(), source->frame_count() * 2);
 
     if (progress) {
       progress->setStatus("Extracting VBI data from fields...");
       progress->setProgress(0);
     }
 
-    // Run BiphaseObserver on all fields to extract VBI data into
-    // ObservationContext This populates the "biphase" namespace with
-    // vbi_line_16, vbi_line_17, vbi_line_18
+    // Run BiphaseObserver on all frames to extract VBI data into
+    // ObservationContext. Populates the "biphase" namespace with
+    // vbi_line_16, vbi_line_17, vbi_line_18 keyed by derived FieldIDs.
     BiphaseObserver biphase_observer;
     auto& obs_context = executor.get_observation_context();
-    auto field_range = source->field_range();
+    auto frame_range = source->frame_range();
 
-    ORC_LOG_DEBUG("Running BiphaseObserver on {} fields", field_range.size());
+    ORC_LOG_DEBUG("Running BiphaseObserver on {} frames", frame_range.count());
 
     {
-      size_t total_biphase = field_range.size();
+      size_t total_frames = frame_range.count();
       size_t biphase_idx = 0;
-      size_t update_interval = std::max(static_cast<size_t>(1), total_biphase / 100);
-      for (FieldID fid = field_range.start; fid < field_range.end;
-           fid = FieldID(fid.value() + 1)) {
-        biphase_observer.process_field(*source, fid, obs_context);
+      size_t update_interval =
+          std::max(static_cast<size_t>(1), total_frames / 100);
+      for (FrameID fid = frame_range.first; fid <= frame_range.last; ++fid) {
+        biphase_observer.process_frame(*source, fid, obs_context);
         ++biphase_idx;
         if (progress && biphase_idx % update_interval == 0) {
-          int pct = static_cast<int>(biphase_idx * 100 / total_biphase);
+          int pct = static_cast<int>(biphase_idx * 100 / total_frames);
           progress->setProgress(pct);
-          progress->setSubStatus("Field " + std::to_string(biphase_idx) +
-                                 " / " + std::to_string(total_biphase));
+          progress->setSubStatus("Frame " + std::to_string(biphase_idx) +
+                                 " / " + std::to_string(total_frames));
           if (progress->isCancelled()) {
             result.status = AnalysisResult::Cancelled;
             return result;
@@ -298,10 +298,8 @@ AnalysisResult DiscMapperAnalysisTool::analyze(const AnalysisContext& ctx,
     // Statistics
     result.statistics["discType"] = decision.is_cav ? "CAV" : "CLV";
     result.statistics["videoFormat"] = decision.is_pal ? "PAL" : "NTSC";
-    result.statistics["totalFields"] =
-        static_cast<int64_t>(stats.total_fields);
-    result.statistics["outputFields"] =
-        static_cast<int64_t>(final_frames * 2);
+    result.statistics["totalFields"] = static_cast<int64_t>(stats.total_fields);
+    result.statistics["outputFields"] = static_cast<int64_t>(final_frames * 2);
     result.statistics["outputFrames"] = static_cast<int64_t>(final_frames);
     result.statistics["removedLeadInOut"] =
         static_cast<int64_t>(stats.removed_lead_in_out);
@@ -403,8 +401,8 @@ bool DiscMapperAnalysisTool::applyToGraph(AnalysisResult& result,
 int DiscMapperAnalysisTool::estimateDurationSeconds(
     const AnalysisContext& ctx) const {
   (void)ctx;
-  // Disc mapper needs to load entire TBC and run observers
-  // Estimate: ~5-10 seconds for typical TBC file
+  // Disc mapper needs to load entire source and run observers
+  // Estimate: ~5-10 seconds for a typical source file
   return 5;
 }
 

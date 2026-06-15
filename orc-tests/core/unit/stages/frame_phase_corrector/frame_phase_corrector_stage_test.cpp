@@ -16,8 +16,8 @@
 #include "../../../../orc/core/include/observation_context.h"
 #include "../../mocks/mock_video_frame_representation.h"
 
-using ::testing::Return;
 using ::testing::_;
+using ::testing::Return;
 
 namespace orc_unit_test {
 
@@ -79,8 +79,7 @@ TEST(FramePhaseCorrectorStageTest,
   ASSERT_NE(d, nullptr);
   ASSERT_TRUE(d->constraints.default_value.has_value());
   ASSERT_TRUE(std::holds_alternative<bool>(*d->constraints.default_value));
-  ASSERT_TRUE(
-      std::holds_alternative<bool>(params.at("verify_phase_sequence")));
+  ASSERT_TRUE(std::holds_alternative<bool>(params.at("verify_phase_sequence")));
   EXPECT_EQ(std::get<bool>(*d->constraints.default_value),
             std::get<bool>(params.at("verify_phase_sequence")));
 }
@@ -90,12 +89,10 @@ TEST(FramePhaseCorrectorStageTest,
 TEST(FramePhaseCorrectorStageTest, SetParameters_CorrectFieldSwap_ToFalse) {
   orc::FramePhaseCorrectorStage stage;
   EXPECT_TRUE(stage.set_parameters({{"correct_field_swap", false}}));
-  EXPECT_FALSE(
-      std::get<bool>(stage.get_parameters().at("correct_field_swap")));
+  EXPECT_FALSE(std::get<bool>(stage.get_parameters().at("correct_field_swap")));
 }
 
-TEST(FramePhaseCorrectorStageTest,
-     SetParameters_VerifyPhaseSequence_ToFalse) {
+TEST(FramePhaseCorrectorStageTest, SetParameters_VerifyPhaseSequence_ToFalse) {
   orc::FramePhaseCorrectorStage stage;
   EXPECT_TRUE(stage.set_parameters({{"verify_phase_sequence", false}}));
   EXPECT_FALSE(
@@ -104,8 +101,8 @@ TEST(FramePhaseCorrectorStageTest,
 
 TEST(FramePhaseCorrectorStageTest, SetParameters_RejectsWrongType) {
   orc::FramePhaseCorrectorStage stage;
-  EXPECT_FALSE(stage.set_parameters(
-      {{"correct_field_swap", std::string("yes")}}));
+  EXPECT_FALSE(
+      stage.set_parameters({{"correct_field_swap", std::string("yes")}}));
 }
 
 // ── execute() error handling ───────────────────────────────────────────────
@@ -151,8 +148,7 @@ TEST(PhaseCorectedRepresentationTest,
   EXPECT_EQ(rep.get_frame(orc::FrameID{0}), kBuf);
 }
 
-TEST(PhaseCorectedRepresentationTest,
-     GetFrame_ReturnsNullptrWhenSwapActive) {
+TEST(PhaseCorectedRepresentationTest, GetFrame_ReturnsNullptrWhenSwapActive) {
   auto mock = std::make_shared<MockVideoFrameRepresentation>();
 
   orc::SourceParameters sp{};

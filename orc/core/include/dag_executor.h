@@ -160,7 +160,7 @@ class DAGExecutor {
 
   /// LRU cache for artifact results
   /// Limit cache size to prevent unbounded memory growth during batch
-  /// processing Each cached entry can be ~1-2MB (VideoFieldRepresentation), so
+  /// processing Each cached entry can be ~1-2MB (VideoFrameRepresentation), so
   /// 500 entries ≈ 500-1000MB max
   static constexpr size_t MAX_CACHED_ARTIFACTS = 500;
   LRUCache<ArtifactID, std::vector<ArtifactPtr>> artifact_cache_;

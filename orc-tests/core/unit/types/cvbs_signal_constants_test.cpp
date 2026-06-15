@@ -8,7 +8,6 @@
  */
 
 #include <cvbs_signal_constants.h>
-
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -39,17 +38,16 @@ TEST(CVBSSignalConstants, PalExtraSampleLinesMathAddsUp) {
   // 4 extra-sample lines: 621 × 1135 + 4 × 1136 = 709,379 = kPalFrameSamples
   int32_t extra_lines = 4;
   int32_t normal_lines = kPalFrameLines - extra_lines;
-  int32_t computed =
-      normal_lines * (kPalMaxSamplesPerLine - 1) + extra_lines * kPalMaxSamplesPerLine;
+  int32_t computed = normal_lines * (kPalMaxSamplesPerLine - 1) +
+                     extra_lines * kPalMaxSamplesPerLine;
   EXPECT_EQ(computed, kPalFrameSamples);
 }
 
 TEST(CVBSSignalConstants, PalExtraSampleLinesAreWithinFrameBounds) {
   for (int32_t line : kPalExtraSampleLines) {
     EXPECT_GE(line, 0) << "Extra sample line " << line << " is negative";
-    EXPECT_LT(line, kPalFrameLines)
-        << "Extra sample line " << line
-        << " >= kPalFrameLines=" << kPalFrameLines;
+    EXPECT_LT(line, kPalFrameLines) << "Extra sample line " << line
+                                    << " >= kPalFrameLines=" << kPalFrameLines;
   }
 }
 
@@ -74,7 +72,8 @@ TEST(CVBSSignalConstants, PalLevelOrdering) {
 // ---------------------------------------------------------------------------
 
 TEST(CVBSSignalConstants, NtscFrameSamplesMatchesSpec) {
-  // SMPTE 244M-2003 §4.1: kNtscFrameSamples == kNtscFrameLines * kNtscSamplesPerLine
+  // SMPTE 244M-2003 §4.1: kNtscFrameSamples == kNtscFrameLines *
+  // kNtscSamplesPerLine
   EXPECT_EQ(kNtscFrameSamples, kNtscFrameLines * kNtscSamplesPerLine);
 }
 

@@ -77,8 +77,9 @@ F3FrameToF2Section::State F3FrameToF2Section::expectingInitialSync() {
     if (m_internalBuffer[i].f3FrameType() == F3Frame::Sync0) {
       m_presyncDiscardedF3Frames += i;
       // Discard all frames before the sync0 frame
-      m_internalBuffer = std::vector<F3Frame>(m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(i),
-                                              m_internalBuffer.end());
+      m_internalBuffer = std::vector<F3Frame>(
+          m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(i),
+          m_internalBuffer.end());
       foundSync0 = true;
       break;
     }
@@ -324,7 +325,7 @@ void F3FrameToF2Section::outputSection(bool showAddress) {
         "F3FrameToF2Section::outputSection - Outputting F2 section with "
         "address {}",
         sectionMetadata.absoluteSectionTime().toString());
-}
+  }
 }
 
 void F3FrameToF2Section::showStatistics() const {

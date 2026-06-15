@@ -46,10 +46,8 @@ ORC_STAGE_PLUGIN_EXPORT bool orc_register_stage_plugin(
       node_type_info.type != orc::plugins::frame_map::kStageNodeType ||
       node_type_info.min_inputs != orc::plugins::frame_map::kStageMinInputs ||
       node_type_info.max_inputs != orc::plugins::frame_map::kStageMaxInputs ||
-      node_type_info.min_outputs !=
-          orc::plugins::frame_map::kStageMinOutputs ||
-      node_type_info.max_outputs !=
-          orc::plugins::frame_map::kStageMaxOutputs ||
+      node_type_info.min_outputs != orc::plugins::frame_map::kStageMinOutputs ||
+      node_type_info.max_outputs != orc::plugins::frame_map::kStageMaxOutputs ||
       node_type_info.compatible_formats !=
           orc::plugins::frame_map::kStageCompatibleFormats ||
       node_type_info.sink_category !=

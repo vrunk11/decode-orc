@@ -102,7 +102,7 @@ std::shared_ptr<DAG> project_to_dag(const Project& project) {
   const std::string& project_root = project.get_project_root();
 
   // Convert each ProjectDAGNode to a DAGNode
-  // All nodes are uniform now - SOURCE nodes just use TBCSourceStage
+  // All nodes are uniform now - SOURCE nodes use the configured source stage
   std::vector<DAGNode> dag_nodes;
 
   for (const auto& proj_node : project.get_nodes()) {
@@ -245,7 +245,7 @@ void validate_source_nodes(const std::shared_ptr<DAG>& dag) {
       ORC_LOG_DEBUG("Validating source node: {}", node.node_id);
       try {
         // Execute the stage with empty inputs to validate
-        // This will trigger TBC loading and validation
+        // This will trigger source loading and validation
         ObservationContext observation_context;
         auto outputs =
             node.stage->execute({}, node.parameters, observation_context);

@@ -21,7 +21,7 @@ namespace orc {
  * Generates field mapping corruption patterns for testing disc mapper
  * and field correction algorithms. This tool creates range specifications
  * that simulate laserdisc player issues (skips, repeats, gaps) which can
- * be applied to FieldMapStage.
+ * be applied to FrameMapStage.
  */
 class FieldCorruptionAnalysisTool : public AnalysisTool {
  public:

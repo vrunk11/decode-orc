@@ -143,8 +143,8 @@ void AudioCorrection::processQueue() {
                 subSection, sampleOffset, precedingLeftSample,
                 followingLeftSample,
                 (precedingLeftSample + followingLeftSample) / 2);
-            correctedLeftSamples.push_back(
-                static_cast<int16_t>((precedingLeftSample + followingLeftSample) / 2));
+            correctedLeftSamples.push_back(static_cast<int16_t>(
+                (precedingLeftSample + followingLeftSample) / 2));
             correctedLeftErrorSamples.push_back(0);
             correctedLeftPaddedSamples.push_back(1);
             ++m_concealedSamplesCount;
@@ -215,8 +215,8 @@ void AudioCorrection::processQueue() {
                 subSection, sampleOffset, precedingRightSample,
                 followingRightSample,
                 (precedingRightSample + followingRightSample) / 2);
-            correctedRightSamples.push_back(
-                static_cast<int16_t>((precedingRightSample + followingRightSample) / 2));
+            correctedRightSamples.push_back(static_cast<int16_t>(
+                (precedingRightSample + followingRightSample) / 2));
             correctedRightErrorSamples.push_back(0);
             correctedRightPaddedSamples.push_back(1);
             ++m_concealedSamplesCount;

@@ -14,9 +14,11 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "../core/include/artifact.h"
+#include "../core/include/dropout_util.h"
 #include "../core/include/logging.h"
 #include "../core/include/project.h"
-#include "../core/include/video_field_representation.h"
+#include "../core/include/video_frame_representation.h"
 #include "i_project_presenter.h"
 
 namespace orc::presenters {
@@ -293,92 +295,84 @@ bool DropoutPresenter::importCorrections(NodeID node_id,
 std::vector<uint8_t> DropoutPresenter::getFieldData(
     const std::shared_ptr<void>& field_repr_handle, FieldID field_id,
     int& width, int& height) {
-  auto field_repr =
-      std::static_pointer_cast<const orc::VideoFieldRepresentation>(
-          field_repr_handle);
   width = 0;
   height = 0;
 
-  if (!field_repr) {
+  auto artifact_base =
+      std::static_pointer_cast<const orc::Artifact>(field_repr_handle);
+  auto vfr = std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
+      artifact_base);
+  if (!vfr) {
     ORC_LOG_ERROR(
-        "DropoutPresenter::getFieldData: field_repr cast returned null");
+        "DropoutPresenter::getFieldData: no VideoFrameRepresentation found");
     return {};
   }
 
   try {
-    if (!field_repr->has_field(field_id)) {
+    // FieldID→FrameID: frame = field / 2; field index within frame: 1 or 2
+    orc::FrameID frame_id = static_cast<orc::FrameID>(field_id.value() / 2);
+    int32_t field_1based = static_cast<int32_t>(field_id.value() % 2) + 1;
+
+    if (!vfr->has_frame(frame_id)) {
       ORC_LOG_WARN(
-          "DropoutPresenter::getFieldData: field {} doesn't exist in "
-          "representation",
-          field_id.value());
+          "DropoutPresenter::getFieldData: frame {} not in representation",
+          frame_id);
       return {};
     }
 
-    auto descriptor = field_repr->get_descriptor(field_id);
-    if (!descriptor) {
+    auto desc = vfr->get_frame_descriptor(frame_id);
+    if (!desc) {
       ORC_LOG_ERROR(
-          "DropoutPresenter::getFieldData: get_descriptor returned null for "
-          "field {}",
-          field_id.value());
+          "DropoutPresenter::getFieldData: no descriptor for frame {}",
+          frame_id);
       return {};
     }
 
-    width = static_cast<int>(descriptor->width);
-    height = static_cast<int>(descriptor->height);
+    size_t frame_height = desc->height;
+    size_t samples_per_line = desc->samples_per_line_nominal;
+    size_t field_1_height = frame_height / 2;
+    size_t field_2_height = frame_height - field_1_height;
+    size_t field_height_lines =
+        (field_1based == 1) ? field_1_height : field_2_height;
+    size_t first_line = (field_1based == 1) ? 0 : field_1_height;
+
+    width = static_cast<int>(samples_per_line);
+    height = static_cast<int>(field_height_lines);
+
     ORC_LOG_DEBUG(
-        "DropoutPresenter::getFieldData: field {} has dimensions {}x{}",
-        field_id.value(), width, height);
+        "DropoutPresenter::getFieldData: field {} (frame {}, field {}) "
+        "dims {}x{}",
+        field_id.value(), frame_id, field_1based, width, height);
 
-    // Get full field data - handle both composite and YC representations
-    std::vector<uint16_t> field_data;
+    // Extract field lines and convert int16_t CVBS_U10_4FSC to 8-bit grayscale
+    std::vector<uint8_t> grayscale;
+    grayscale.reserve(field_height_lines * samples_per_line);
 
-    if (field_repr->has_separate_channels()) {
-      // YC source - combine Y+C for visualization
-      auto y_data = field_repr->get_field_luma(field_id);
-      auto c_data = field_repr->get_field_chroma(field_id);
+    bool use_luma = vfr->has_separate_channels();
 
-      if (y_data.size() != c_data.size()) {
-        ORC_LOG_ERROR(
-            "DropoutPresenter::getFieldData: Y and C channel sizes mismatch "
-            "for field {}",
-            field_id.value());
-        return {};
+    for (size_t line = first_line; line < first_line + field_height_lines;
+         ++line) {
+      const orc::VideoFrameRepresentation::sample_type* line_data =
+          use_luma ? vfr->get_line_luma(frame_id, line)
+                   : vfr->get_line(frame_id, line);
+      if (!line_data) {
+        // Fill with black for missing lines
+        for (size_t s = 0; s < samples_per_line; ++s) {
+          grayscale.push_back(0);
+        }
+        continue;
       }
-
-      // Combine Y and C for display (simple averaging or just use Y)
-      // For dropout map editing, we use Y channel as main reference
-      field_data = std::move(y_data);
-      ORC_LOG_DEBUG(
-          "DropoutPresenter::getFieldData: Combined YC data for field {} ({} "
-          "samples)",
-          field_id.value(), field_data.size());
-    } else {
-      // Composite source
-      field_data = field_repr->get_field(field_id);
-      ORC_LOG_DEBUG(
-          "DropoutPresenter::getFieldData: Composite data for field {} ({} "
-          "samples)",
-          field_id.value(), field_data.size());
-    }
-
-    if (field_data.empty()) {
-      ORC_LOG_ERROR(
-          "DropoutPresenter::getFieldData: got {} bytes of field data for "
-          "field {}",
-          field_data.size(), field_id.value());
-      return {};
-    }
-
-    // Convert to 8-bit grayscale (scale 16-bit to 8-bit)
-    std::vector<uint8_t> grayscale(field_data.size());
-    for (size_t i = 0; i < field_data.size(); ++i) {
-      grayscale[i] = static_cast<uint8_t>(field_data[i] >> 8);
+      for (size_t s = 0; s < samples_per_line; ++s) {
+        int16_t sample = line_data[s];
+        // CVBS_U10_4FSC: 10-bit range 0-1023 → clamp and shift to 8-bit
+        int32_t clamped = (sample < 0) ? 0 : (sample > 1023 ? 1023 : sample);
+        grayscale.push_back(static_cast<uint8_t>(clamped >> 2));
+      }
     }
 
     ORC_LOG_DEBUG(
-        "DropoutPresenter::getFieldData: converted {} samples to 8-bit "
-        "grayscale for field {}",
-        field_data.size(), field_id.value());
+        "DropoutPresenter::getFieldData: {} samples extracted for field {}",
+        grayscale.size(), field_id.value());
     return grayscale;
   } catch (const std::exception& e) {
     ORC_LOG_ERROR("Error getting field data: {}", e.what());
@@ -388,25 +382,62 @@ std::vector<uint8_t> DropoutPresenter::getFieldData(
 
 std::vector<DropoutRegion> DropoutPresenter::getSourceDropouts(
     const std::shared_ptr<void>& field_repr_handle, FieldID field_id) {
-  auto field_repr =
-      std::static_pointer_cast<const orc::VideoFieldRepresentation>(
-          field_repr_handle);
-  if (!field_repr) {
+  auto artifact_base =
+      std::static_pointer_cast<const orc::Artifact>(field_repr_handle);
+  auto vfr = std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
+      artifact_base);
+  if (!vfr) {
     return {};
   }
 
   try {
-    if (!field_repr->has_field(field_id)) {
+    orc::FrameID frame_id = static_cast<orc::FrameID>(field_id.value() / 2);
+    int32_t field_1based = static_cast<int32_t>(field_id.value() % 2) + 1;
+
+    if (!vfr->has_frame(frame_id)) {
       return {};
     }
 
-    // Get dropout hints from TBC
-    std::vector<orc::DropoutRegion> core_dropouts =
-        field_repr->get_dropout_hints(field_id);
+    auto desc = vfr->get_frame_descriptor(frame_id);
+    if (!desc) {
+      return {};
+    }
 
-    // DropoutRegion is aliased to public_api::DropoutRegion, so just return
-    // directly
-    return core_dropouts;
+    auto vp = vfr->get_video_parameters();
+    if (!vp) {
+      return {};
+    }
+
+    // Get frame-flat dropout hints and convert to field-relative DropoutRegions
+    auto runs = vfr->get_dropout_hints(frame_id);
+    std::vector<DropoutRegion> regions;
+    regions.reserve(runs.size());
+
+    for (const auto& run : runs) {
+      auto fls = orc::dropout_util::frame_sample_to_field_line(
+          vp->system, run.sample_start);
+      if (fls.field != field_1based) {
+        continue;
+      }
+
+      // Convert run end (clamp to same line for simplicity)
+      uint32_t end_sample =
+          fls.sample + static_cast<uint32_t>(run.sample_count);
+      uint32_t samples_per_line =
+          static_cast<uint32_t>(desc->samples_per_line_nominal);
+      if (end_sample > samples_per_line) {
+        end_sample = samples_per_line;
+      }
+
+      DropoutRegion region;
+      region.line = static_cast<uint32_t>(fls.line);
+      region.start_sample = static_cast<uint32_t>(fls.sample);
+      region.end_sample = end_sample;
+      region.basis = DropoutRegion::DetectionBasis::HINT_DERIVED;
+      regions.push_back(region);
+    }
+
+    return regions;
   } catch (const std::exception& e) {
     ORC_LOG_ERROR("Error getting source dropouts: {}", e.what());
     return {};
@@ -471,13 +502,14 @@ bool DropoutPresenter::setDropoutMap(
 
 size_t DropoutPresenter::getFieldCount(
     const std::shared_ptr<void>& field_repr_handle) {
-  auto field_repr =
-      std::static_pointer_cast<const orc::VideoFieldRepresentation>(
-          field_repr_handle);
-  if (!field_repr) {
+  auto artifact_base =
+      std::static_pointer_cast<const orc::Artifact>(field_repr_handle);
+  auto vfr = std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
+      artifact_base);
+  if (!vfr) {
     return 0;
   }
-  return field_repr->field_count();
+  return vfr->frame_count() * 2;
 }
 
 }  // namespace orc::presenters

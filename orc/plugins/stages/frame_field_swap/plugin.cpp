@@ -38,7 +38,8 @@ ORC_STAGE_PLUGIN_EXPORT bool orc_register_stage_plugin(
 
   const auto info = create_stage()->get_node_type_info();
   if (info.display_name != orc::plugins::frame_field_swap::kStageDisplayName ||
-      info.menu_category != orc::plugins::frame_field_swap::kStageMenuCategory ||
+      info.menu_category !=
+          orc::plugins::frame_field_swap::kStageMenuCategory ||
       info.type != orc::plugins::frame_field_swap::kStageNodeType ||
       info.min_inputs != orc::plugins::frame_field_swap::kStageMinInputs ||
       info.max_inputs != orc::plugins::frame_field_swap::kStageMaxInputs ||
@@ -46,9 +47,11 @@ ORC_STAGE_PLUGIN_EXPORT bool orc_register_stage_plugin(
       info.max_outputs != orc::plugins::frame_field_swap::kStageMaxOutputs ||
       info.compatible_formats !=
           orc::plugins::frame_field_swap::kStageCompatibleFormats ||
-      info.sink_category != orc::plugins::frame_field_swap::kStageSinkCategory) {
+      info.sink_category !=
+          orc::plugins::frame_field_swap::kStageSinkCategory) {
     if (error_message) {
-      *error_message = "Stage metadata mismatch between plugin.h and NodeTypeInfo";
+      *error_message =
+          "Stage metadata mismatch between plugin.h and NodeTypeInfo";
     }
     return false;
   }

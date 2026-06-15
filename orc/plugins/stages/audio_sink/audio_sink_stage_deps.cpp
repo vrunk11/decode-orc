@@ -129,8 +129,9 @@ AudioSinkWriteResult AudioSinkStageDeps::write_audio_wav(
     ++current_frame;
     if (progress_callback_ && current_frame % 10 == 0) {
       progress_callback_(current_frame, total_frames,
-                         "Writing audio frame " + std::to_string(current_frame) +
-                             "/" + std::to_string(total_frames));
+                         "Writing audio frame " +
+                             std::to_string(current_frame) + "/" +
+                             std::to_string(total_frames));
     }
   }
 

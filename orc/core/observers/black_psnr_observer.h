@@ -34,8 +34,8 @@ class BlackPSNRObserver : public Observer {
 
   std::string observer_version() const override { return "1.0.0"; }
 
-  void process_field(const VideoFieldRepresentation& representation,
-                     FieldID field_id, IObservationContext& context) override;
+  void process_frame(const VideoFrameRepresentation& representation,
+                     FrameID frame_id, IObservationContext& context) override;
 
   std::vector<ObservationKey> get_provided_observations() const override {
     return {
@@ -45,10 +45,11 @@ class BlackPSNRObserver : public Observer {
   }
 
  private:
-  // Extract samples from a specific region of a line (in microseconds)
+  // Extract samples from a specific region of a line and convert to IRE
   std::vector<double> get_line_slice_ire(
-      const VideoFieldRepresentation& representation, FieldID field_id,
-      size_t field_line, double start_us, double length_us) const;
+      const VideoFrameRepresentation& representation, FrameID frame_id,
+      size_t line_offset, size_t field_line, double start_us, double length_us,
+      size_t field_height, const SourceParameters& vp) const;
 
   // Calculate PSNR from IRE samples
   double calculate_psnr(const std::vector<double>& data) const;

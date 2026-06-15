@@ -9,141 +9,140 @@
 
 #include "burst_level_observer.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <cmath>
 #include <numeric>
 
-#include <cvbs_signal_constants.h>
 #include "../include/field_id.h"
 #include "../include/logging.h"
 #include "../include/observation_context.h"
-#include "../include/video_field_representation.h"
+#include "../include/video_frame_representation.h"
 
 namespace orc {
 
-void BurstLevelObserver::process_field(
-    const VideoFieldRepresentation& representation, FieldID field_id,
+void BurstLevelObserver::process_frame(
+    const VideoFrameRepresentation& representation, FrameID frame_id,
     IObservationContext& context) {
-  // Get video parameters to find color burst location
-  auto video_params_opt = representation.get_video_parameters();
-  if (!video_params_opt.has_value()) {
-    ORC_LOG_TRACE("BurstLevelObserver: No video parameters for field {}",
-                  field_id.value());
+  auto vp_opt = representation.get_video_parameters();
+  if (!vp_opt.has_value()) {
+    ORC_LOG_TRACE("BurstLevelObserver: No video parameters for frame {}",
+                  frame_id);
     return;
   }
+  const auto& vp = vp_opt.value();
 
-  const auto& video_params = video_params_opt.value();
+  // Colour burst range derived from video system constant.
+  const auto [sys_burst_start, sys_burst_end] = colour_burst_range(vp.system);
+  size_t burst_start_idx = static_cast<size_t>(sys_burst_start);
+  size_t burst_end_idx = static_cast<size_t>(sys_burst_end);
 
-  // Colour burst range derived from video system constant (always valid).
-  const auto [sys_burst_start, sys_burst_end] =
-      colour_burst_range(video_params.system);
+  size_t f1_lines = field1_lines(vp.system);
+  size_t line_width = static_cast<size_t>(vp.frame_width_nominal);
 
-  // Get field descriptor
-  auto descriptor_opt = representation.get_descriptor(field_id);
-  if (!descriptor_opt.has_value()) {
-    ORC_LOG_TRACE("BurstLevelObserver: No descriptor for field {}",
-                  field_id.value());
-    return;
-  }
+  // CVBS_U10_4FSC: IRE conversion uses SourceParameters levels.
+  double ire_per_unit =
+      100.0 / static_cast<double>(vp.white_level - vp.blanking_level);
 
-  const auto& descriptor = descriptor_opt.value();
+  for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+    FieldID derived_fid(frame_id * 2 + field_idx);
+    size_t line_offset = (field_idx == 0) ? 0 : f1_lines;
+    size_t field_height = (field_idx == 0)
+                              ? f1_lines
+                              : static_cast<size_t>(vp.frame_height) - f1_lines;
 
-  // Collect all burst samples from sampled lines
-  std::vector<double> burst_levels_raw;
+    // Collect all burst samples from sampled lines
+    std::vector<double> burst_levels_raw;
 
-  // Sample from line 11 to end of active area
-  size_t start_line = 11;
-  size_t end_line =
-      std::min(descriptor.height - 10,
-               static_cast<size_t>(video_params.last_active_frame_line / 2));
+    // Sample from line 11 to end of active area
+    size_t start_line = 11;
+    size_t last_active_field_line =
+        static_cast<size_t>(vp.last_active_frame_line / 2);
+    size_t end_line = std::min(field_height - 10, last_active_field_line > 0
+                                                      ? last_active_field_line
+                                                      : field_height - 10);
 
-  // Sample just 3 lines (top, middle, bottom) for performance
-  std::vector<size_t> sample_lines = {
-      start_line,                                // Top of active area
-      start_line + (end_line - start_line) / 2,  // Middle
-      end_line - 1                               // Bottom
-  };
-
-  for (size_t line : sample_lines) {
-    const uint16_t* line_data = representation.get_line(field_id, line);
-    if (!line_data) {
+    if (end_line <= start_line) {
       continue;
     }
 
-    // Extract burst region samples using system-derived constants.
-    size_t burst_start = static_cast<size_t>(sys_burst_start);
-    size_t burst_end = static_cast<size_t>(sys_burst_end);
+    // Sample just 3 lines (top, middle, bottom) for performance
+    std::vector<size_t> sample_lines = {
+        start_line, start_line + (end_line - start_line) / 2, end_line - 1};
 
-    // Make sure we don't exceed line width
-    if (burst_end >= descriptor.width) {
-      burst_end = descriptor.width - 1;
+    for (size_t field_line : sample_lines) {
+      const int16_t* line_data =
+          representation.get_line(frame_id, line_offset + field_line);
+      if (!line_data) {
+        continue;
+      }
+
+      size_t burst_end = burst_end_idx;
+      if (burst_end >= line_width) {
+        burst_end = line_width - 1;
+      }
+      if (burst_end <= burst_start_idx) {
+        continue;
+      }
+
+      // Collect raw samples from this line's burst region
+      std::vector<double> line_burst_samples;
+      for (size_t sample_idx = burst_start_idx; sample_idx <= burst_end;
+           ++sample_idx) {
+        line_burst_samples.push_back(
+            static_cast<double>(line_data[sample_idx]));
+      }
+
+      if (line_burst_samples.size() < 4) {
+        continue;
+      }
+
+      // Calculate mean of burst samples
+      double mean = std::accumulate(line_burst_samples.begin(),
+                                    line_burst_samples.end(), 0.0) /
+                    static_cast<double>(line_burst_samples.size());
+
+      // Subtract mean (remove DC component)
+      std::vector<double> centered;
+      for (double sample : line_burst_samples) {
+        centered.push_back(sample - mean);
+      }
+
+      // Calculate RMS
+      double sum_squares = 0.0;
+      for (double val : centered) {
+        sum_squares += val * val;
+      }
+      double rms =
+          std::sqrt(sum_squares / static_cast<double>(centered.size()));
+
+      // Convert RMS to peak amplitude: peak = RMS * sqrt(2)
+      double peak_amplitude = rms * std::sqrt(2.0);
+
+      // Skip outliers (> 30 IRE equivalent)
+      if (peak_amplitude * ire_per_unit > 30.0) {
+        continue;
+      }
+
+      burst_levels_raw.push_back(peak_amplitude);
     }
 
-    if (burst_end <= burst_start) {
+    if (burst_levels_raw.empty()) {
+      ORC_LOG_TRACE("BurstLevelObserver: No valid burst samples for field {}",
+                    derived_fid.value());
       continue;
     }
 
-    // Collect raw samples from this line's burst region
-    std::vector<double> line_burst_samples;
-    for (size_t sample_idx = burst_start; sample_idx <= burst_end;
-         ++sample_idx) {
-      line_burst_samples.push_back(static_cast<double>(line_data[sample_idx]));
-    }
+    double median_raw = calculate_median(burst_levels_raw);
+    double median_burst_ire = median_raw * ire_per_unit;
 
-    if (line_burst_samples.size() < 4) {
-      continue;  // Need enough samples
-    }
+    context.set(derived_fid, "burst_level", "median_burst_ire",
+                median_burst_ire);
 
-    // Calculate mean of burst samples
-    double mean = std::accumulate(line_burst_samples.begin(),
-                                  line_burst_samples.end(), 0.0) /
-                  static_cast<double>(line_burst_samples.size());
-
-    // Subtract mean (remove DC component)
-    std::vector<double> centered;
-    for (double sample : line_burst_samples) {
-      centered.push_back(sample - mean);
-    }
-
-    // Calculate RMS
-    double sum_squares = 0.0;
-    for (double val : centered) {
-      sum_squares += val * val;
-    }
-    double rms = std::sqrt(sum_squares / static_cast<double>(centered.size()));
-
-    // Convert RMS to peak amplitude: peak = RMS * sqrt(2)
-    double peak_amplitude = rms * std::sqrt(2.0);
-
-    // Skip if burst level is unreasonably high (> 30 IRE equivalent in raw
-    // units)
-    double ire_per_unit = 100.0 / static_cast<double>(kTbcWhite - kTbcBlanking);
-    if (peak_amplitude * ire_per_unit > 30.0) {
-      continue;  // Skip outliers
-    }
-
-    burst_levels_raw.push_back(peak_amplitude);
+    ORC_LOG_DEBUG("BurstLevelObserver: Field {} median_burst_ire={:.2f}",
+                  derived_fid.value(), median_burst_ire);
   }
-
-  // Calculate median of all collected burst levels (in raw units)
-  if (burst_levels_raw.empty()) {
-    ORC_LOG_TRACE("BurstLevelObserver: No valid burst samples for field {}",
-                  field_id.value());
-    return;
-  }
-
-  double median_raw = calculate_median(burst_levels_raw);
-
-  // Convert to IRE
-  constexpr double ire_per_unit =
-      100.0 / static_cast<double>(kTbcWhite - kTbcBlanking);
-  double median_burst_ire = median_raw * ire_per_unit;
-
-  // Store in observation context
-  context.set(field_id, "burst_level", "median_burst_ire", median_burst_ire);
-
-  ORC_LOG_DEBUG("BurstLevelObserver: Field {} median_burst_ire={:.2f}",
-                field_id.value(), median_burst_ire);
 }
 
 double BurstLevelObserver::calculate_median(std::vector<double> values) const {
@@ -151,15 +150,12 @@ double BurstLevelObserver::calculate_median(std::vector<double> values) const {
     return 0.0;
   }
 
-  // Sort the values
   std::sort(values.begin(), values.end());
 
   size_t n = values.size();
   if (n % 2 == 0) {
-    // Even number of elements: average the two middle values
     return (values[n / 2 - 1] + values[n / 2]) / 2.0;
   } else {
-    // Odd number of elements: return the middle value
     return values[n / 2];
   }
 }

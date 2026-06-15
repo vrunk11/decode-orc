@@ -654,10 +654,11 @@ bool StageParameterDialog::validate_values() {
         msgBox.setWindowTitle("Legacy Metadata Format");
         msgBox.setIcon(QMessageBox::Warning);
         msgBox.setText(
-            QString("The TBC source '%1' has legacy JSON metadata. This is just "
-                    "a warning - the source will load regardless.\n\n"
-                    "For best long-term results, consider re-decoding with a "
-                    "current version of ld-decode/vhs-decode.")
+            QString(
+                "The TBC source '%1' has legacy JSON metadata. This is just "
+                "a warning - the source will load regardless.\n\n"
+                "For best long-term results, consider re-decoding with a "
+                "current version of ld-decode/vhs-decode.")
                 .arg(filename));
         QPushButton* continueBtn =
             msgBox.addButton("Continue", QMessageBox::AcceptRole);
@@ -675,7 +676,8 @@ bool StageParameterDialog::validate_values() {
   };
 
   // tbc_source derives db_path from input_path at runtime (input_path + ".db").
-  // CVBS source stages also use input_path but do not require a .tbc.db sidecar.
+  // CVBS source stages also use input_path but do not require a .tbc.db
+  // sidecar.
   const bool requires_derived_db_metadata = (stage_name_ == "tbc_source");
 
   if (requires_derived_db_metadata) {
@@ -739,8 +741,8 @@ bool StageParameterDialog::validate_values() {
   const auto active_video_end = get_int_param("activeVideoEnd");
   const auto first_active_field_line = get_int_param("firstActiveFieldLine");
   const auto last_active_field_line = get_int_param("lastActiveFieldLine");
-  const auto black_ire = get_int_param("black16bIRE");
-  const auto white_ire = get_int_param("white16bIRE");
+  const auto black_ire = get_int_param("blackLevel");
+  const auto white_ire = get_int_param("whiteLevel");
 
   if (!require_less_than_if_set(colour_burst_start, colour_burst_end)) {
     validation_errors

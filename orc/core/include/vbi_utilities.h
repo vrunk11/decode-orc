@@ -35,9 +35,9 @@ namespace vbi_utils {
  * @param zero_crossing Threshold value for determining transitions
  * @return Vector where 1 = above zero-crossing, 0 = below
  */
-std::vector<uint8_t> get_transition_map(const uint16_t* line_data,
+std::vector<uint8_t> get_transition_map(const int16_t* line_data,
                                         size_t sample_count,
-                                        uint16_t zero_crossing);
+                                        int16_t zero_crossing);
 
 /**
  * @brief Find the next transition in a transition map

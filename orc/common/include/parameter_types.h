@@ -73,7 +73,7 @@ struct ParameterDescriptor {
   ParameterType type;       // Parameter value type
   ParameterConstraints constraints;  // Value constraints and defaults
   std::string file_extension_hint =
-      "";  // File extension hint for FILE_PATH types (e.g., ".tbc", ".pcm",
+      "";  // File extension hint for FILE_PATH types (e.g., ".cvbs", ".pcm",
            // ".rgb", ".mp4")
 };
 

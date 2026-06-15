@@ -43,8 +43,8 @@ struct TBCVideoParams {
   // TBC)
   int32_t field1_height = 0;
   int32_t field2_height = 0;
-  int32_t blanking_16b = 0;  // TBC-domain blanking level (blanking_16b_ire)
-  int32_t white_16b = 0;     // TBC-domain white level (white_16b_ire)
+  int32_t blanking_16b = 0;  // ld-decode 16-bit domain blanking (0 IRE)
+  int32_t white_16b = 0;     // ld-decode 16-bit domain white (100 IRE)
   std::string decoder;
   std::string tape_format;
   std::string git_branch;

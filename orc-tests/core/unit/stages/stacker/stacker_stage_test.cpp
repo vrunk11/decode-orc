@@ -15,8 +15,8 @@
 
 #include "../../mocks/mock_video_frame_representation.h"
 
-using ::testing::Return;
 using ::testing::_;
+using ::testing::Return;
 
 namespace orc_unit_test {
 

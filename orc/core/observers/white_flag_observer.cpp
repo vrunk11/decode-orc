@@ -10,58 +10,76 @@
 #include "white_flag_observer.h"
 
 #include <cvbs_signal_constants.h>
+
+#include "../include/field_id.h"
 #include "logging.h"
+#include "video_frame_representation.h"
 
 namespace orc {
 
-void WhiteFlagObserver::process_field(
-    const VideoFieldRepresentation& representation, FieldID field_id,
+void WhiteFlagObserver::process_frame(
+    const VideoFrameRepresentation& representation, FrameID frame_id,
     IObservationContext& context) {
-  auto descriptor = representation.get_descriptor(field_id);
-  if (!descriptor.has_value()) {
+  auto vp_opt = representation.get_video_parameters();
+  if (!vp_opt.has_value()) {
+    ORC_LOG_TRACE("WhiteFlagObserver: No video parameters for frame {}",
+                  frame_id);
+    return;
+  }
+  const auto& vp = vp_opt.value();
+
+  // White flag is NTSC-only
+  if (vp.system != VideoSystem::NTSC) {
     return;
   }
 
-  // Only applicable to NTSC
-  if (descriptor->format != VideoFormat::NTSC) {
-    return;
-  }
+  // CVBS_U10_4FSC zero-crossing: midpoint between blanking and white.
+  int16_t zero_crossing =
+      static_cast<int16_t>((vp.white_level + vp.blanking_level) / 2);
 
-  // Line 11 (0-based index 10)
-  constexpr size_t line_num = 10;
-  if (line_num >= descriptor->height) {
-    return;
-  }
+  size_t line_width = static_cast<size_t>(vp.frame_width_nominal);
+  size_t f1_lines = field1_lines(vp.system);
 
-  const uint16_t* line_data = representation.get_line(field_id, line_num);
-  if (!line_data) {
-    return;
-  }
+  for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+    FieldID derived_fid(frame_id * 2 + field_idx);
+    size_t line_offset = (field_idx == 0) ? 0 : f1_lines;
+    size_t field_height = (field_idx == 0)
+                              ? f1_lines
+                              : static_cast<size_t>(vp.frame_height) - f1_lines;
 
-  // IRE zero-crossing: midpoint of ld-decode TBC 16-bit normative range.
-  constexpr uint16_t zero_crossing =
-      static_cast<uint16_t>((kTbcWhite - kTbcBlanking) / 2 + kTbcBlanking);
-
-  size_t active_start = descriptor->width / 8;
-  size_t active_end = descriptor->width * 7 / 8;
-  if (active_end <= active_start) {
-    return;
-  }
-
-  size_t white_count = 0;
-  size_t total_count = active_end - active_start;
-  for (size_t i = active_start; i < active_end; ++i) {
-    if (line_data[i] > zero_crossing) {
-      white_count++;
+    // Line 11 (0-based index 10)
+    constexpr size_t line_num = 10;
+    if (line_num >= field_height) {
+      continue;
     }
+
+    const int16_t* line_data =
+        representation.get_line(frame_id, line_offset + line_num);
+    if (!line_data) {
+      continue;
+    }
+
+    size_t active_start = line_width / 8;
+    size_t active_end = line_width * 7 / 8;
+    if (active_end <= active_start) {
+      continue;
+    }
+
+    size_t white_count = 0;
+    size_t total_count = active_end - active_start;
+    for (size_t i = active_start; i < active_end; ++i) {
+      if (line_data[i] > zero_crossing) {
+        white_count++;
+      }
+    }
+
+    bool present = (white_count > total_count / 2);
+    context.set(derived_fid, "white_flag", "present", present);
+
+    ORC_LOG_DEBUG(
+        "WhiteFlagObserver: Field {} white_flag={} (white {}/{} samples)",
+        derived_fid.value(), present, white_count, total_count);
   }
-
-  bool present = (white_count > total_count / 2);
-  context.set(field_id, "white_flag", "present", present);
-
-  ORC_LOG_DEBUG(
-      "WhiteFlagObserver: Field {} white_flag={} (white {}/{} samples)",
-      field_id.value(), present, white_count, total_count);
 }
 
 }  // namespace orc

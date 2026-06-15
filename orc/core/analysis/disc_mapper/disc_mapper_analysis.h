@@ -18,7 +18,7 @@ namespace orc {
 /**
  * @brief Disc mapper analysis tool
  *
- * Analyzes TBC files to detect skipped, repeated, and missing fields
+ * Analyzes source captures to detect skipped, repeated, and missing fields
  * that indicate laserdisc player tracking problems.
  */
 class DiscMapperAnalysisTool : public AnalysisTool {

@@ -9,12 +9,13 @@
 
 #include "vectorscope_analysis.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 
 #include "../../../plugins/stages/sinks/common/decoders/componentframe.h"
-#include <cvbs_signal_constants.h>
 #include "../../include/video_frame_representation.h"
 #include "../analysis_registry.h"
 #include "logging.h"
@@ -285,9 +286,9 @@ VectorscopeData VectorscopeAnalysisTool::extractFromColourFrameCarrier(
   VectorscopeData data;
   data.field_number = field_number;
   data.system = carrier.system;
-  // ld-decode TBC 16-bit domain normative levels (kTbcBlanking / kTbcWhite).
-  data.white_16b_ire = kTbcWhite;
-  data.black_16b_ire = kTbcBlanking;
+  // CVBS_U10_4FSC normative levels from carrier (set by chroma_sink).
+  data.cvbs_white = static_cast<int32_t>(carrier.cvbs_white);
+  data.cvbs_blanking = static_cast<int32_t>(carrier.cvbs_blanking);
 
   if (!carrier.is_valid() || subsample == 0) {
     return data;
@@ -364,10 +365,9 @@ VectorscopeData VectorscopeAnalysisTool::extractFromCompositeRepresentation(
   const SourceParameters& vp = *params_opt;
 
   data.system = vp.system;
-  // Report 10-bit levels mapped to the legacy 16-bit fields for display
-  // (VectorscopeData consumers will migrate to 10-bit in a later phase).
-  data.white_16b_ire = vp.white_level;
-  data.black_16b_ire = vp.black_level;
+  // CVBS_U10_4FSC normative levels from source parameters.
+  data.cvbs_white = vp.white_level;
+  data.cvbs_blanking = vp.blanking_level;
 
   if (vp.frame_width_nominal <= 0 || vp.frame_height <= 0 ||
       vp.blanking_level < 0 || vp.white_level <= vp.blanking_level) {

@@ -28,7 +28,7 @@ namespace orc {
  */
 struct GUIDAGNode {
   NodeID node_id;            ///< Unique identifier for this node
-  std::string stage_name;    ///< Name of the stage type (e.g., "TBCSource")
+  std::string stage_name;    ///< Name of the stage type (e.g., "tbc_source")
   NodeType node_type;        ///< Node type (SOURCE, SINK, TRANSFORM, etc.)
   std::string display_name;  ///< Display name for GUI
   std::string user_label;    ///< User-editable label

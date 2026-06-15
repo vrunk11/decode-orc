@@ -69,23 +69,35 @@ DropoutAnalysisSinkStage::get_parameter_descriptors(
   descriptors.push_back(ParameterDescriptor{
       "write_csv", "Write CSV",
       "Enable writing results to CSV at trigger time.", ParameterType::BOOL,
-      ParameterConstraints{std::nullopt, std::nullopt, ParameterValue(false),
-                           {}, false, std::nullopt}});
+      ParameterConstraints{std::nullopt,
+                           std::nullopt,
+                           ParameterValue(false),
+                           {},
+                           false,
+                           std::nullopt}});
 
-  descriptors.push_back(ParameterDescriptor{
-      "mode", "Analysis Mode",
-      "Choose full-field or visible-area dropout analysis.",
-      ParameterType::STRING,
-      ParameterConstraints{std::nullopt, std::nullopt, std::string("full"),
-                           {"full", "visible"}, true, std::nullopt}});
+  descriptors.push_back(
+      ParameterDescriptor{"mode", "Analysis Mode",
+                          "Choose full-field or visible-area dropout analysis.",
+                          ParameterType::STRING,
+                          ParameterConstraints{std::nullopt,
+                                               std::nullopt,
+                                               std::string("full"),
+                                               {"full", "visible"},
+                                               true,
+                                               std::nullopt}});
 
   descriptors.push_back(ParameterDescriptor{
       "max_frames", "Max Frames",
       "Deprecated: data is automatically binned to ~1000 points based on total "
       "frames (0 = auto).",
       ParameterType::UINT32,
-      ParameterConstraints{ParameterValue(0U), std::nullopt, ParameterValue(0U),
-                           {}, false, std::nullopt}});
+      ParameterConstraints{ParameterValue(0U),
+                           std::nullopt,
+                           ParameterValue(0U),
+                           {},
+                           false,
+                           std::nullopt}});
 
   return descriptors;
 }
@@ -150,8 +162,7 @@ bool DropoutAnalysisSinkStage::trigger(
       throw std::runtime_error("No input connected");
     }
 
-    auto vfr =
-        std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
+    auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
     if (!vfr) {
       throw std::runtime_error("Input is not a VideoFrameRepresentation");
     }
@@ -171,9 +182,8 @@ bool DropoutAnalysisSinkStage::trigger(
     compute_options.mode = cfg.mode;
     compute_options.max_frames = cfg.max_frames;
 
-    const DropoutAnalysisComputeResult result =
-        deps->compute_and_analyze(vfr.get(), observation_context,
-                                  compute_options);
+    const DropoutAnalysisComputeResult result = deps->compute_and_analyze(
+        vfr.get(), observation_context, compute_options);
 
     if (!result.success) {
       has_results_ = false;

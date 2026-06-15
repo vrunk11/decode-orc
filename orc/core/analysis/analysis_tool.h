@@ -29,7 +29,7 @@ namespace orc {
 /**
  * @brief Abstract base class for all analysis tools
  *
- * Analysis tools inspect TBC data and report issues, metrics, or other
+ * Analysis tools inspect source data and report issues, metrics, or other
  * diagnostic information without modifying the source data.
  */
 class AnalysisTool {

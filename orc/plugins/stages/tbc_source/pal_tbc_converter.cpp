@@ -23,9 +23,9 @@ int16_t PalTBCConverter::tbc_to_cvbs(uint16_t tbc_sample, int32_t tbc_blanking,
                                      int32_t tbc_white) {
   // EBU Tech. 3280-E: linear mapping from TBC 16-bit domain to CVBS_U10_4FSC.
   // No output clamping — headroom outside [kPalSyncTip, kPalPeak] is preserved.
-  const double n = static_cast<double>(static_cast<int32_t>(tbc_sample) -
-                                       tbc_blanking) /
-                   static_cast<double>(tbc_white - tbc_blanking);
+  const double n =
+      static_cast<double>(static_cast<int32_t>(tbc_sample) - tbc_blanking) /
+      static_cast<double>(tbc_white - tbc_blanking);
   const double cvbs =
       n * static_cast<double>(kPalWhite - kPalBlanking) + kPalBlanking;
   return static_cast<int16_t>(std::lround(cvbs));
@@ -38,10 +38,9 @@ int16_t PalTBCConverter::tbc_to_cvbs(uint16_t tbc_sample, int32_t tbc_blanking,
 int16_t PalTBCConverter::interpolate_extra_sample(int16_t last_on_line,
                                                   int16_t first_on_next_line) {
   // EBU Tech. 3280-E §1.3.1: midpoint interpolation avoids signed overflow.
-  return static_cast<int16_t>(
-      (static_cast<int32_t>(last_on_line) +
-       static_cast<int32_t>(first_on_next_line)) /
-      2);
+  return static_cast<int16_t>((static_cast<int32_t>(last_on_line) +
+                               static_cast<int32_t>(first_on_next_line)) /
+                              2);
 }
 
 // ---------------------------------------------------------------------------
@@ -81,8 +80,9 @@ std::vector<int16_t> PalTBCConverter::assemble_frame(
     cvbs2[i] = tbc_to_cvbs(tbc_field2[i], tbc_blanking, tbc_white);
   }
 
-  // Build flat frame buffer: [CVBS field 1 (313 lines)] [CVBS field 2 (312 lines)]
-  // with 4 extra interpolated samples at kPalExtraSampleLines positions.
+  // Build flat frame buffer: [CVBS field 1 (313 lines)] [CVBS field 2 (312
+  // lines)] with 4 extra interpolated samples at kPalExtraSampleLines
+  // positions.
   std::vector<int16_t> frame;
   frame.reserve(static_cast<size_t>(kPalFrameSamples));
 
@@ -101,9 +101,10 @@ std::vector<int16_t> PalTBCConverter::assemble_frame(
         static_cast<size_t>(line) * static_cast<size_t>(kLineWidth);
 
     // Write standard 1135 samples.
-    frame.insert(frame.end(), cvbs2.begin() + static_cast<ptrdiff_t>(src_start),
-                 cvbs2.begin() +
-                     static_cast<ptrdiff_t>(src_start + static_cast<size_t>(kLineWidth)));
+    frame.insert(
+        frame.end(), cvbs2.begin() + static_cast<ptrdiff_t>(src_start),
+        cvbs2.begin() + static_cast<ptrdiff_t>(
+                            src_start + static_cast<size_t>(kLineWidth)));
 
     if (is_extra_line(flat_line)) {
       // Interpolate between last sample of this line and first of the next.
@@ -111,10 +112,10 @@ std::vector<int16_t> PalTBCConverter::assemble_frame(
           cvbs2[src_start + static_cast<size_t>(kLineWidth) - 1];
       // For the last line of CVBS field 1 (line 312), the "next" line is the
       // first line of CVBS field 2 (sourced from TBC field 1 line 0).
-      const int16_t first_next =
-          (line + 1 < kField2Lines)
-              ? cvbs2[static_cast<size_t>(line + 1) * static_cast<size_t>(kLineWidth)]
-              : cvbs1[0];
+      const int16_t first_next = (line + 1 < kField2Lines)
+                                     ? cvbs2[static_cast<size_t>(line + 1) *
+                                             static_cast<size_t>(kLineWidth)]
+                                     : cvbs1[0];
       frame.push_back(interpolate_extra_sample(last_this, first_next));
     }
   }
@@ -126,9 +127,10 @@ std::vector<int16_t> PalTBCConverter::assemble_frame(
     const size_t src_start =
         static_cast<size_t>(line) * static_cast<size_t>(kLineWidth);
 
-    frame.insert(frame.end(), cvbs1.begin() + static_cast<ptrdiff_t>(src_start),
-                 cvbs1.begin() +
-                     static_cast<ptrdiff_t>(src_start + static_cast<size_t>(kLineWidth)));
+    frame.insert(
+        frame.end(), cvbs1.begin() + static_cast<ptrdiff_t>(src_start),
+        cvbs1.begin() + static_cast<ptrdiff_t>(
+                            src_start + static_cast<size_t>(kLineWidth)));
 
     if (is_extra_line(flat_line)) {
       const int16_t last_this =
@@ -137,10 +139,10 @@ std::vector<int16_t> PalTBCConverter::assemble_frame(
       // there is no following line in this frame; interpolate with a copy of
       // the last sample (the interpolated sample is the average of the last
       // sample with itself, i.e., the same value).
-      const int16_t first_next =
-          (line + 1 < kField1Lines)
-              ? cvbs1[static_cast<size_t>(line + 1) * static_cast<size_t>(kLineWidth)]
-              : last_this;
+      const int16_t first_next = (line + 1 < kField1Lines)
+                                     ? cvbs1[static_cast<size_t>(line + 1) *
+                                             static_cast<size_t>(kLineWidth)]
+                                     : last_this;
       frame.push_back(interpolate_extra_sample(last_this, first_next));
     }
   }

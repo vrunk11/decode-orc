@@ -9,6 +9,7 @@
 
 #include "preview_renderer.h"
 
+#include <cvbs_signal_constants.h>
 #include <png.h>
 
 #include <algorithm>
@@ -21,7 +22,6 @@
 
 #include "colour_preview_conversion.h"
 #include "colour_preview_provider.h"
-#include <cvbs_signal_constants.h>
 #include "dag_executor.h"
 #include "logging.h"
 #include "plugin_safe_call.h"
@@ -79,7 +79,8 @@ static PreviewImage create_placeholder_image(PreviewOutputType type,
     placeholder.height = 313;  // Single field height
   }
 
-  placeholder.rgb_data.resize(static_cast<size_t>(placeholder.width) * placeholder.height * 3);
+  placeholder.rgb_data.resize(static_cast<size_t>(placeholder.width) *
+                              placeholder.height * 3);
 
   // Fill with black background
   for (size_t i = 0; i < placeholder.rgb_data.size(); ++i) {
@@ -387,7 +388,8 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_available_outputs(
   }
 
   // Try to render frame 0 to see if node has outputs
-  auto result = frame_renderer_->render_frame_at_node(node_id, static_cast<FrameID>(0));
+  auto result =
+      frame_renderer_->render_frame_at_node(node_id, static_cast<FrameID>(0));
 
   if (!result.is_valid || !result.representation) {
     // Node exists but can't render - provide placeholder outputs marked as
@@ -502,43 +504,43 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_available_outputs(
   outputs.push_back(PreviewOutputInfo{
       PreviewOutputType::Frame_Field1, "Field 1", frame_count, true,
       dar_correction, "",
-      true,  // Dropouts available
-      false, // No separate channels
-      0      // first_field_offset (not applicable for field view)
+      true,   // Dropouts available
+      false,  // No separate channels
+      0       // first_field_offset (not applicable for field view)
   });
 
   // Frame_Field2 output — display field 2 of each frame as a flat image
   outputs.push_back(PreviewOutputInfo{
       PreviewOutputType::Frame_Field2, "Field 2", frame_count, true,
       dar_correction, "",
-      true,  // Dropouts available
-      false, // No separate channels
-      0      // first_field_offset
+      true,   // Dropouts available
+      false,  // No separate channels
+      0       // first_field_offset
   });
 
   if (frame_count >= 1) {
     outputs.push_back(PreviewOutputInfo{
         PreviewOutputType::Frame_Field1_First, "Frame", frame_count, true,
         dar_correction, "",
-        true,  // Dropouts available for frame outputs
-        false, // No separate channels
-        0      // first_field_offset (VFR always has field1 first)
+        true,   // Dropouts available for frame outputs
+        false,  // No separate channels
+        0       // first_field_offset (VFR always has field1 first)
     });
 
     outputs.push_back(PreviewOutputInfo{
         PreviewOutputType::Frame_Reversed, "Frame (Reversed)", frame_count,
         true, dar_correction, "",
-        true,  // Dropouts available for reversed frame outputs
-        false, // No separate channels
-        0      // first_field_offset
+        true,   // Dropouts available for reversed frame outputs
+        false,  // No separate channels
+        0       // first_field_offset
     });
 
     outputs.push_back(PreviewOutputInfo{
         PreviewOutputType::Split, "Split", frame_count, true, dar_correction,
         "",
-        true,  // Dropouts available for split outputs
-        false, // No separate channels
-        0      // first_field_offset
+        true,   // Dropouts available for split outputs
+        false,  // No separate channels
+        0       // first_field_offset
     });
   }
 
@@ -699,8 +701,7 @@ PreviewRenderResult PreviewRenderer::render_output(const NodeID& node_id,
       }
 
       if (type == PreviewOutputType::Split) {
-        result.image =
-            render_vfr_split(*frame_result.representation, frame_id);
+        result.image = render_vfr_split(*frame_result.representation, frame_id);
       } else {
         bool field1_first = (type == PreviewOutputType::Frame_Field1_First);
         result.image = render_vfr_interlaced(*frame_result.representation,
@@ -764,8 +765,8 @@ DropoutRegion dropout_run_to_region(const DropoutRun& run, size_t line_width,
   uint64_t col = (line_width > 0) ? (run.sample_start % line_width) : 0;
   region.line = static_cast<uint32_t>(line) + frame_line_offset;
   region.start_sample = static_cast<uint32_t>(col);
-  region.end_sample = static_cast<uint32_t>(
-      std::min(col + run.sample_count, line_width));
+  region.end_sample =
+      static_cast<uint32_t>(std::min(col + run.sample_count, line_width));
   region.basis = DropoutRegion::DetectionBasis::SAMPLE_DERIVED;
   return region;
 }
@@ -816,8 +817,7 @@ PreviewImage PreviewRenderer::render_vfr_field(
   // Convert frame-flat dropout runs to DropoutRegion coordinates within the
   // rendered field.
   for (const auto& run : vfr.get_dropout_hints(frame_id)) {
-    uint64_t flat_line =
-        (line_width > 0) ? (run.sample_start / line_width) : 0;
+    uint64_t flat_line = (line_width > 0) ? (run.sample_start / line_width) : 0;
     if (flat_line < line_start || flat_line >= line_end) continue;
     DropoutRegion region = dropout_run_to_region(
         run, line_width, static_cast<uint32_t>(0 - line_start));
@@ -882,27 +882,25 @@ PreviewImage PreviewRenderer::render_vfr_interlaced(
 
   // Convert dropout runs to interlaced image line numbers.
   for (const auto& run : vfr.get_dropout_hints(frame_id)) {
-    uint64_t flat_line =
-        (line_width > 0) ? (run.sample_start / line_width) : 0;
+    uint64_t flat_line = (line_width > 0) ? (run.sample_start / line_width) : 0;
     if (flat_line >= desc->height) continue;
 
     DropoutRegion region;
-    region.start_sample =
-        static_cast<uint32_t>((line_width > 0) ? (run.sample_start % line_width)
-                                                : 0);
-    region.end_sample = static_cast<uint32_t>(
-        std::min(region.start_sample + run.sample_count,
-                 static_cast<uint32_t>(line_width)));
+    region.start_sample = static_cast<uint32_t>(
+        (line_width > 0) ? (run.sample_start % line_width) : 0);
+    region.end_sample =
+        static_cast<uint32_t>(std::min(region.start_sample + run.sample_count,
+                                       static_cast<uint32_t>(line_width)));
     region.basis = DropoutRegion::DetectionBasis::SAMPLE_DERIVED;
 
     if (flat_line < f1_lines) {
       size_t field_y = static_cast<size_t>(flat_line);
-      region.line = static_cast<uint32_t>(field1_first ? field_y * 2
-                                                       : field_y * 2 + 1);
+      region.line =
+          static_cast<uint32_t>(field1_first ? field_y * 2 : field_y * 2 + 1);
     } else {
       size_t field_y = static_cast<size_t>(flat_line) - f1_lines;
-      region.line = static_cast<uint32_t>(field1_first ? field_y * 2 + 1
-                                                       : field_y * 2);
+      region.line =
+          static_cast<uint32_t>(field1_first ? field_y * 2 + 1 : field_y * 2);
     }
     if (region.line < image.height) {
       image.dropout_regions.push_back(region);
@@ -949,8 +947,7 @@ PreviewImage PreviewRenderer::render_vfr_split(
 
   // Dropout runs are already in flat frame-line order matching the image.
   for (const auto& run : vfr.get_dropout_hints(frame_id)) {
-    DropoutRegion region =
-        dropout_run_to_region(run, line_width, 0);
+    DropoutRegion region = dropout_run_to_region(run, line_width, 0);
     if (region.line < image.height) {
       image.dropout_regions.push_back(region);
     }
@@ -1057,7 +1054,8 @@ bool PreviewRenderer::save_png(const PreviewImage& image,
 
   // Write image data row by row
   for (uint32_t y = 0; y < image.height; ++y) {
-    png_bytep row = const_cast<png_bytep>(&image.rgb_data[static_cast<size_t>(y) * image.width * 3]);
+    png_bytep row = const_cast<png_bytep>(
+        &image.rgb_data[static_cast<size_t>(y) * image.width * 3]);
     png_write_row(png, row);
   }
 
@@ -1075,8 +1073,8 @@ void PreviewRenderer::set_show_dropouts(bool show) { show_dropouts_ = show; }
 
 bool PreviewRenderer::get_show_dropouts() const { return show_dropouts_; }
 
-VideoFrameRepresentationPtr
-PreviewRenderer::get_representation_at_node(const NodeID& node_id) const {
+VideoFrameRepresentationPtr PreviewRenderer::get_representation_at_node(
+    const NodeID& node_id) const {
   if (!dag_ || !frame_renderer_) {
     return nullptr;
   }
@@ -1106,7 +1104,8 @@ PreviewRenderer::get_representation_at_node(const NodeID& node_id) const {
 
     ensure_node_executed(current);
 
-    auto result = frame_renderer_->render_frame_at_node(current, static_cast<FrameID>(0));
+    auto result =
+        frame_renderer_->render_frame_at_node(current, static_cast<FrameID>(0));
     if (result.is_valid && result.representation) {
       if (current != node_id) {
         ORC_LOG_DEBUG(
@@ -1167,7 +1166,8 @@ void PreviewRenderer::render_dropouts(PreviewImage& image) const {
 uint64_t PreviewRenderer::get_equivalent_index(
     PreviewOutputType /*from_type*/, uint64_t from_index,
     PreviewOutputType /*to_type*/) const {
-  // Frame and field indices are now both per-frame counts; no conversion needed.
+  // Frame and field indices are now both per-frame counts; no conversion
+  // needed.
   return from_index;
 }
 
@@ -1353,8 +1353,8 @@ FrameLineNavigationResult PreviewRenderer::navigate_frame_line(
   ORC_LOG_DEBUG(
       "navigate_frame_line: frame={} current_is_field1={} current_is_top={} "
       "f1_lines={} f2_lines={} current_line={}",
-      frame_id, current_is_field1, current_is_top_field, f1_lines,
-      f2_lines, current_line);
+      frame_id, current_is_field1, current_is_top_field, f1_lines, f2_lines,
+      current_line);
 
   if (direction > 0) {
     // Moving down
@@ -1403,8 +1403,7 @@ FrameLineNavigationResult PreviewRenderer::navigate_frame_line(
       // Special case: if we're at the extra line (field1 line f1_lines-1 in
       // a PAL frame where f1_lines > f2_lines), the previous line is f2_lines-1
       // in this same bottom field.
-      if (f1_lines > f2_lines &&
-          !current_is_field1 &&
+      if (f1_lines > f2_lines && !current_is_field1 &&
           static_cast<size_t>(current_line) >= f2_lines) {
         new_field = current_field;
         new_line = static_cast<int>(f2_lines) - 1;
@@ -1532,8 +1531,7 @@ ImageToFieldMappingResult PreviewRenderer::map_image_to_field(
     result.field_line = tentative_field_line;
 
     // Validate the final mapping against VFR-derived field heights
-    size_t target_height =
-        (result.field_index % 2 == 0) ? f1_lines : f2_lines;
+    size_t target_height = (result.field_index % 2 == 0) ? f1_lines : f2_lines;
     if (result.field_line < 0 ||
         static_cast<size_t>(result.field_line) >= target_height) {
       return result;  // Line out of bounds for this field
@@ -1602,8 +1600,9 @@ FieldToImageMappingResult PreviewRenderer::map_field_to_image(
     // Flat field1 view: field_line is the image_y directly
     result.is_valid = true;
     result.image_y = field_line;
-    ORC_LOG_DEBUG("map_field_to_image: mapped to image_y={} (Frame_Field1 mode)",
-                  result.image_y);
+    ORC_LOG_DEBUG(
+        "map_field_to_image: mapped to image_y={} (Frame_Field1 mode)",
+        result.image_y);
     return result;
   }
 
@@ -1611,8 +1610,9 @@ FieldToImageMappingResult PreviewRenderer::map_field_to_image(
     // Flat field2 view: field_line is the image_y directly
     result.is_valid = true;
     result.image_y = field_line;
-    ORC_LOG_DEBUG("map_field_to_image: mapped to image_y={} (Frame_Field2 mode)",
-                  result.image_y);
+    ORC_LOG_DEBUG(
+        "map_field_to_image: mapped to image_y={} (Frame_Field2 mode)",
+        result.image_y);
     return result;
   }
 
@@ -1628,11 +1628,9 @@ FieldToImageMappingResult PreviewRenderer::map_field_to_image(
     uint64_t frame_field2_index = output_index * 2 + 1;
 
     if (field_index == frame_field1_index) {
-      result.image_y =
-          field1_on_even ? (field_line * 2) : (field_line * 2 + 1);
+      result.image_y = field1_on_even ? (field_line * 2) : (field_line * 2 + 1);
     } else if (field_index == frame_field2_index) {
-      result.image_y =
-          field1_on_even ? (field_line * 2 + 1) : (field_line * 2);
+      result.image_y = field1_on_even ? (field_line * 2 + 1) : (field_line * 2);
     } else {
       return result;
     }
@@ -1668,7 +1666,8 @@ FrameFieldsResult PreviewRenderer::get_frame_fields(
   result.first_field = 0;
   result.second_field = 0;
 
-  // In VFR domain, field1 of frame N is at sequential index N*2, field2 at N*2+1.
+  // In VFR domain, field1 of frame N is at sequential index N*2, field2 at
+  // N*2+1.
   result.first_field = frame_index * 2;
   result.second_field = frame_index * 2 + 1;
   result.is_valid = true;
@@ -1809,11 +1808,11 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_capability_preview_outputs(
   }
 
   // In VFR domain field1 is always first; first_field_offset is always 0.
-  outputs.push_back(PreviewOutputInfo{
-      PreviewOutputType::Frame_Field1_First, "Frame",
-      capability.navigation_extent.item_count, true,
-      capability.geometry.dar_correction_factor, "phase2_colour_carrier", false,
-      false, 0});
+  outputs.push_back(
+      PreviewOutputInfo{PreviewOutputType::Frame_Field1_First, "Frame",
+                        capability.navigation_extent.item_count, true,
+                        capability.geometry.dar_correction_factor,
+                        "phase2_colour_carrier", false, false, 0});
 
   return outputs;
 }
@@ -1932,8 +1931,8 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_stage_preview_outputs(
     // For legacy stages not yet on VFR, fall back to false.
     bool has_separate_channels = false;
     if (frame_renderer_) {
-      auto vfr_probe =
-          frame_renderer_->render_frame_at_node(stage_node_id, static_cast<FrameID>(0));
+      auto vfr_probe = frame_renderer_->render_frame_at_node(
+          stage_node_id, static_cast<FrameID>(0));
       if (vfr_probe.is_valid && vfr_probe.representation) {
         has_separate_channels =
             vfr_probe.representation->has_separate_channels();

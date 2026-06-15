@@ -77,7 +77,7 @@ TEST(SourceFieldTest, GetLumaAndChromaLine_UsesLinePtrsWhenPopulated) {
   field.chroma_data = chroma;
   field.samples_per_line = 4;
   field.line_count = 2;
-  field.luma_line_ptrs = {luma + 0, luma + 5};    // Non-uniform offsets
+  field.luma_line_ptrs = {luma + 0, luma + 5};  // Non-uniform offsets
   field.chroma_line_ptrs = {chroma + 0, chroma + 5};
 
   EXPECT_EQ(field.getLumaLine(0), luma + 0);

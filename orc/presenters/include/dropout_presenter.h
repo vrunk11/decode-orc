@@ -21,7 +21,6 @@
 // Forward declare core Project type
 namespace orc {
 class Project;
-class VideoFieldRepresentation;
 }  // namespace orc
 
 // Forward declare presenters

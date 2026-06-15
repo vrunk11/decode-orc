@@ -132,7 +132,8 @@ void OrcGraphicsView::wheelEvent(QWheelEvent* event) {
 
   // Reduced sensitivity: use 1.1 (10% per scroll) instead of default 1.2 (20%)
   double const step = 1.1;
-  double const d = delta.y() / std::abs(delta.y());  // NOLINT(bugprone-integer-division)
+  double const d =
+      delta.y() / std::abs(delta.y());  // NOLINT(bugprone-integer-division)
   double const factor = std::pow(step, d);
 
   // Get current scale and apply limits

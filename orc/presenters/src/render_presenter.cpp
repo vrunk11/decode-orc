@@ -9,13 +9,13 @@
 
 #include "render_presenter.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <atomic>
 #include <cstdio>
 #include <fstream>
 #include <stdexcept>
 
-#include "analysis_sink_results.h"
-#include <cvbs_signal_constants.h>
 #include "../core/include/dag_executor.h"
 #include "../core/include/dag_frame_renderer.h"
 #include "../core/include/logging.h"
@@ -29,6 +29,7 @@
 #include "../core/include/vbi_decoder.h"
 #include "../core/stages/stage.h"
 #include "../core/stages/triggerable_stage.h"
+#include "analysis_sink_results.h"
 #include "metrics_presenter.h"
 #include "vbi_presenter.h"
 
@@ -285,9 +286,9 @@ std::optional<VBIFieldInfoView> RenderPresenter::getVBIData(NodeID node_id,
   }
 
   try {
-    // Render the field to populate observations
-    auto field_opt = impl_->obs_cache_->get_field(node_id, field_id);
-    if (!field_opt) {
+    // Render the frame to populate observations
+    bool obs_ok = impl_->obs_cache_->get_field(node_id, field_id);
+    if (!obs_ok) {
       return std::nullopt;
     }
 
@@ -335,14 +336,14 @@ bool RenderPresenter::requestDropoutData(
   if (!sink) {
     if (callback) {
       callback(request_id, false, "Node is not a DropoutAnalysisSinkStage");
-}
+    }
     return false;
   }
 
   if (!sink->has_results()) {
     if (callback) {
       callback(request_id, false, "No data available - trigger the sink first");
-}
+    }
     return false;
   }
 
@@ -377,14 +378,14 @@ bool RenderPresenter::requestSNRData(
   if (!sink) {
     if (callback) {
       callback(request_id, false, "Node is not a SNRAnalysisSinkStage");
-}
+    }
     return false;
   }
 
   if (!sink->has_results()) {
     if (callback) {
       callback(request_id, false, "No data available - trigger the sink first");
-}
+    }
     return false;
   }
 
@@ -418,14 +419,14 @@ bool RenderPresenter::requestBurstLevelData(
   if (!sink) {
     if (callback) {
       callback(request_id, false, "Node is not a BurstLevelAnalysisSinkStage");
-}
+    }
     return false;
   }
 
   if (!sink->has_results()) {
     if (callback) {
       callback(request_id, false, "No data available - trigger the sink first");
-}
+    }
     return false;
   }
 
@@ -645,13 +646,11 @@ std::vector<uint16_t> RenderPresenter::getLineSamples(
         (field_within_frame == 0) ? f1_lines : (descriptor->height - f1_lines);
     size_t field_line_offset = (field_within_frame == 0) ? 0 : f1_lines;
 
-    if (line_number < 0 ||
-        static_cast<size_t>(line_number) >= field_height) {
+    if (line_number < 0 || static_cast<size_t>(line_number) >= field_height) {
       return {};
     }
 
-    size_t frame_line =
-        field_line_offset + static_cast<size_t>(line_number);
+    size_t frame_line = field_line_offset + static_cast<size_t>(line_number);
     const orc::VideoFrameRepresentation::sample_type* line_data =
         repr->get_line(frame_id, frame_line);
     if (!line_data) {
@@ -706,8 +705,7 @@ RenderPresenter::LineSampleData RenderPresenter::getLineSamplesWithYC(
         (field_within_frame == 0) ? f1_lines : (descriptor->height - f1_lines);
     size_t field_line_offset = (field_within_frame == 0) ? 0 : f1_lines;
 
-    if (line_number < 0 ||
-        static_cast<size_t>(line_number) >= field_height) {
+    if (line_number < 0 || static_cast<size_t>(line_number) >= field_height) {
       return result;
     }
 
@@ -769,36 +767,35 @@ RenderPresenter::LineSampleData RenderPresenter::getFieldSamplesForTiming(
 
     result.has_separate_channels = repr->has_separate_channels();
 
-    auto collect_lines = [&](orc::FrameID frame_id, size_t line_offset,
-                             size_t line_count, size_t spl,
-                             std::vector<uint16_t>& composite,
-                             std::vector<uint16_t>& y_out,
-                             std::vector<uint16_t>& c_out) {
-      for (size_t l = 0; l < line_count; ++l) {
-        size_t fl = line_offset + l;
-        if (result.has_separate_channels) {
-          const auto* y = repr->get_line_luma(frame_id, fl);
-          const auto* c = repr->get_line_chroma(frame_id, fl);
-          if (y) {
-            for (size_t s = 0; s < spl; ++s) {
-              y_out.push_back(static_cast<uint16_t>(y[s]));
+    auto collect_lines =
+        [&](orc::FrameID frame_id, size_t line_offset, size_t line_count,
+            size_t spl, std::vector<uint16_t>& composite,
+            std::vector<uint16_t>& y_out, std::vector<uint16_t>& c_out) {
+          for (size_t l = 0; l < line_count; ++l) {
+            size_t fl = line_offset + l;
+            if (result.has_separate_channels) {
+              const auto* y = repr->get_line_luma(frame_id, fl);
+              const auto* c = repr->get_line_chroma(frame_id, fl);
+              if (y) {
+                for (size_t s = 0; s < spl; ++s) {
+                  y_out.push_back(static_cast<uint16_t>(y[s]));
+                }
+              }
+              if (c) {
+                for (size_t s = 0; s < spl; ++s) {
+                  c_out.push_back(static_cast<uint16_t>(c[s]));
+                }
+              }
+            } else {
+              const auto* d = repr->get_line(frame_id, fl);
+              if (d) {
+                for (size_t s = 0; s < spl; ++s) {
+                  composite.push_back(static_cast<uint16_t>(d[s]));
+                }
+              }
             }
           }
-          if (c) {
-            for (size_t s = 0; s < spl; ++s) {
-              c_out.push_back(static_cast<uint16_t>(c[s]));
-            }
-          }
-        } else {
-          const auto* d = repr->get_line(frame_id, fl);
-          if (d) {
-            for (size_t s = 0; s < spl; ++s) {
-              composite.push_back(static_cast<uint16_t>(d[s]));
-            }
-          }
-        }
-      }
-    };
+        };
 
     const bool is_single_field =
         (output_type == orc::PreviewOutputType::Frame_Field1 ||
@@ -861,8 +858,7 @@ RenderPresenter::LineSampleData RenderPresenter::getFieldSamplesForTiming(
                     result.composite_samples, result.y_samples,
                     result.c_samples);
       std::vector<uint16_t> comp2, y2, c2;
-      collect_lines(frame_id, field2_offset, field2_height, spl, comp2, y2,
-                    c2);
+      collect_lines(frame_id, field2_offset, field2_height, spl, comp2, y2, c2);
 
       result.composite_samples.insert(result.composite_samples.end(),
                                       comp2.begin(), comp2.end());
@@ -909,8 +905,8 @@ ObservationData RenderPresenter::getObservations(NodeID node_id,
   }
 
   try {
-    auto field_opt = impl_->obs_cache_->get_field(node_id, field_id);
-    if (!field_opt) {
+    bool obs_ok = impl_->obs_cache_->get_field(node_id, field_id);
+    if (!obs_ok) {
       return result;
     }
 
@@ -1202,7 +1198,7 @@ std::shared_ptr<const void> RenderPresenter::executeToNode(NodeID node_id) {
 
     auto it = node_outputs.find(node_id);
     if (it != node_outputs.end() && !it->second.empty()) {
-      // Return the first output (typically VideoFieldRepresentation)
+      // Return the first output (typically VideoFrameRepresentation)
       return std::static_pointer_cast<const void>(it->second[0]);
     }
   } catch (const std::exception&) {

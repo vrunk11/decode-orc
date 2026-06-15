@@ -14,9 +14,9 @@
 namespace orc {
 namespace vbi_utils {
 
-std::vector<uint8_t> get_transition_map(const uint16_t* line_data,
+std::vector<uint8_t> get_transition_map(const int16_t* line_data,
                                         size_t sample_count,
-                                        uint16_t zero_crossing) {
+                                        int16_t zero_crossing) {
   // Read the data with debounce to remove transition noise (matches legacy
   // tool)
   std::vector<uint8_t> result;

@@ -463,11 +463,10 @@ bool FFmpegOutputBackend::setupEncoder(const std::string& codec_id,
       params.last_active_frame_line - params.first_active_frame_line;
 
   // Store video system, IRE levels, and full parameters for color space
-  // configuration.  TBC 16-bit domain levels are always the ld-decode normative
-  // constants (kTbcBlanking / kTbcWhite).
+  // configuration.  CVBS_U10_4FSC normative levels from source parameters.
   video_system_ = params.system;
-  black_ire_ = kTbcBlanking;
-  white_ire_ = kTbcWhite;
+  black_ire_ = static_cast<double>(params.blanking_level);
+  white_ire_ = static_cast<double>(params.white_level);
   video_params_ =
       params;  // Store full params for offset handling in convertAndEncode
 
@@ -893,7 +892,7 @@ bool FFmpegOutputBackend::setupEncoder(const std::string& codec_id,
   }
 
   // Configure color space conversion
-  // ComponentFrame uses IRE scale with black_16b_ire/white_16b_ire range
+  // ComponentFrame uses IRE scale with cvbs_blanking/cvbs_white range
   // OutputWriter converts this to limited range Y'CbCr (16-235/240 for 8-bit,
   // scaled to 16-bit) So our source is already in "video" range, not full range
   // SWS_CS_ITU601 and SWS_CS_SMPTE170M are both defined as 5 in FFmpeg;

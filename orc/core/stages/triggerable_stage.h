@@ -47,7 +47,7 @@ class TriggerableStage {
    * For sinks, this means reading all fields from input and writing to output
    * file.
    *
-   * @param inputs Input artifacts (typically one VideoFieldRepresentation)
+   * @param inputs Input artifacts (typically one VideoFrameRepresentation)
    * @param parameters Stage parameters
    * @param observation_context The observation context interface
    * @return True if trigger succeeded, false otherwise

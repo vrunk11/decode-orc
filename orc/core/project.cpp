@@ -342,7 +342,7 @@ SourceType Project::get_source_type() const {
           node.stage_name.find("yc") != std::string::npos) {
         return SourceType::YC;
       }
-      // Composite TBC source
+      // Composite source
       else if (node.stage_name.find("Source") != std::string::npos) {
         return SourceType::Composite;
       }
@@ -603,10 +603,8 @@ Project load_project_from_yaml(const std::string& yaml_text,
     }
 
     if (project.video_format_ != VideoSystem::Unknown) {
-      bool is_ntsc_stage =
-          (node.stage_name.find("NTSC") != std::string::npos);
-      bool is_pal_stage =
-          (node.stage_name.find("PAL") != std::string::npos);
+      bool is_ntsc_stage = (node.stage_name.find("NTSC") != std::string::npos);
+      bool is_pal_stage = (node.stage_name.find("PAL") != std::string::npos);
       if (is_ntsc_stage && project.video_format_ != VideoSystem::NTSC) {
         throw std::runtime_error(
             "Project video_format mismatch: project declares '" +
@@ -614,9 +612,8 @@ Project load_project_from_yaml(const std::string& yaml_text,
             "' but source stage '" + node.stage_name + "' (node " +
             node.node_id.to_string() + ") is NTSC.");
       }
-      if (is_pal_stage &&
-          !(project.video_format_ == VideoSystem::PAL ||
-            project.video_format_ == VideoSystem::PAL_M)) {
+      if (is_pal_stage && !(project.video_format_ == VideoSystem::PAL ||
+                            project.video_format_ == VideoSystem::PAL_M)) {
         throw std::runtime_error(
             "Project video_format mismatch: project declares '" +
             video_system_to_string(project.video_format_) +
@@ -1029,7 +1026,7 @@ bool can_remove_node(const Project& project, NodeID node_id,
       if (reason) {
         *reason =
             "Cannot delete node with connections - disconnect all edges first";
-}
+      }
       return false;
     }
   }
@@ -1065,9 +1062,9 @@ void set_node_parameters(
       if (!input_path.empty()) {
         // Check that a metadata file exists (either .tbc.db or legacy
         // .tbc.json). Full decoder/system validation is deferred to the source
-        // stage on first execution, which calls create_tbc_representation() →
-        // open_tbc_metadata() and reports any mismatch with a clear error at
-        // that point. input_path is the .tbc file; metadata lives alongside as
+        // stage on first execution, which calls open_tbc_metadata() and reports
+        // any mismatch with a clear error at that point.
+        // input_path is the source file; metadata lives alongside as
         // .tbc.db or .tbc.json
         std::string db_path = input_path + ".db";
         std::string json_path = input_path + ".json";
@@ -1075,7 +1072,7 @@ void set_node_parameters(
                                std::filesystem::exists(json_path);
         if (!metadata_exists) {
           throw std::runtime_error(
-              "Failed to validate TBC file: metadata file not found "
+              "Failed to validate source file: metadata file not found "
               "(expected " +
               db_path + " or " + json_path + ")");
         }
@@ -1316,7 +1313,7 @@ bool trigger_node(Project& project, NodeID node_id, std::string& status_out,
 
   // CRITICAL: Keep executor alive during trigger to prevent dangling pointers
   // Artifacts from execute_to_node may contain representations (like
-  // CorrectedVideoFieldRepresentation) that hold raw pointers to stages owned
+  // VideoFrameRepresentationWrapper) that hold raw pointers to stages owned
   // by the executor/DAG. These stages must outlive the trigger operation.
   auto executor = std::make_shared<DAGExecutor>();
 

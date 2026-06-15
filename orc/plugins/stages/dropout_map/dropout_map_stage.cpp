@@ -9,11 +9,12 @@
 
 #include "dropout_map_stage.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <cctype>
 #include <sstream>
 
-#include <cvbs_signal_constants.h>
 #include "error_types.h"
 #include "logging.h"
 #include "preview_helpers.h"
@@ -84,7 +85,8 @@ std::vector<DropoutRun> DropoutMappedFrameRepresentation::get_dropout_hints(
 
   const FrameDropoutMapEntry& entry = it->second;
 
-  // Determine VideoSystem and nominal samples per line for coordinate conversion.
+  // Determine VideoSystem and nominal samples per line for coordinate
+  // conversion.
   VideoSystem sys = VideoSystem::PAL;
   int32_t nominal_spl = kPalMaxSamplesPerLine - 1;  // 1135 for PAL
   if (source_) {
@@ -107,16 +109,15 @@ std::vector<DropoutRun> DropoutMappedFrameRepresentation::get_dropout_hints(
     const uint64_t rem_end =
         frame_flat_offset(sys, nominal_spl, rem.line, rem.end_sample);
 
-    result.erase(
-        std::remove_if(result.begin(), result.end(),
-                       [&](const DropoutRun& run) {
-                         if (run.frame_id != id) return false;
-                         const uint64_t run_end =
-                             run.sample_start + run.sample_count - 1;
-                         return !(run_end < rem_start ||
-                                  run.sample_start > rem_end);
-                       }),
-        result.end());
+    result.erase(std::remove_if(result.begin(), result.end(),
+                                [&](const DropoutRun& run) {
+                                  if (run.frame_id != id) return false;
+                                  const uint64_t run_end =
+                                      run.sample_start + run.sample_count - 1;
+                                  return !(run_end < rem_start ||
+                                           run.sample_start > rem_end);
+                                }),
+                 result.end());
   }
 
   // Apply additions.
@@ -144,8 +145,7 @@ std::vector<ArtifactPtr> DropoutMapStage::execute(
     ObservationContext& observation_context) {
   (void)observation_context;
   if (inputs.size() != 1) {
-    throw DAGExecutionError(
-        "DropoutMapStage requires exactly one input");
+    throw DAGExecutionError("DropoutMapStage requires exactly one input");
   }
 
   auto source =
@@ -159,17 +159,17 @@ std::vector<ArtifactPtr> DropoutMapStage::execute(
 
   std::map<uint64_t, FrameDropoutMapEntry> dropout_map =
       parse_dropout_map(dropout_map_str_);
-  ORC_LOG_DEBUG("DropoutMapStage: {} frame mappings loaded", dropout_map.size());
+  ORC_LOG_DEBUG("DropoutMapStage: {} frame mappings loaded",
+                dropout_map.size());
 
-  auto mapped = std::make_shared<DropoutMappedFrameRepresentation>(
-      source, dropout_map);
+  auto mapped =
+      std::make_shared<DropoutMappedFrameRepresentation>(source, dropout_map);
   cached_output_ = mapped;
 
   std::vector<ArtifactPtr> out;
-  out.push_back(
-      std::const_pointer_cast<DropoutMappedFrameRepresentation>(
-          std::dynamic_pointer_cast<const DropoutMappedFrameRepresentation>(
-              mapped)));
+  out.push_back(std::const_pointer_cast<DropoutMappedFrameRepresentation>(
+      std::dynamic_pointer_cast<const DropoutMappedFrameRepresentation>(
+          mapped)));
   return out;
 }
 
@@ -239,7 +239,10 @@ std::map<uint64_t, FrameDropoutMapEntry> DropoutMapStage::parse_dropout_map(
   };
   auto expect = [&](char c) -> bool {
     skip_ws();
-    if (pos < map_str.size() && map_str[pos] == c) { pos++; return true; }
+    if (pos < map_str.size() && map_str[pos] == c) {
+      pos++;
+      return true;
+    }
     return false;
   };
   auto parse_uint = [&]() -> uint32_t {
@@ -260,7 +263,9 @@ std::map<uint64_t, FrameDropoutMapEntry> DropoutMapStage::parse_dropout_map(
       while (pos < map_str.size() && std::isalpha(map_str[pos])) {
         key += map_str[pos++];
       }
-      if (!expect(':')) { break; }
+      if (!expect(':')) {
+        break;
+      }
       if (key == "line") {
         e.line = parse_uint();
       } else if (key == "start") {
@@ -279,7 +284,9 @@ std::map<uint64_t, FrameDropoutMapEntry> DropoutMapStage::parse_dropout_map(
     if (!expect('[')) return list;
     while (pos < map_str.size() && map_str[pos] != ']') {
       skip_ws();
-      if (map_str[pos] == '{') { list.push_back(parse_entry_spec()); }
+      if (map_str[pos] == '{') {
+        list.push_back(parse_entry_spec());
+      }
       expect(',');
       skip_ws();
     }
@@ -303,7 +310,9 @@ std::map<uint64_t, FrameDropoutMapEntry> DropoutMapStage::parse_dropout_map(
       while (pos < map_str.size() && std::isalpha(map_str[pos])) {
         key += map_str[pos++];
       }
-      if (!expect(':')) { break; }
+      if (!expect(':')) {
+        break;
+      }
       if (key == "field") {
         entry.frame_id = static_cast<uint64_t>(parse_uint());
       } else if (key == "add") {

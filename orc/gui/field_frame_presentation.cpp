@@ -76,7 +76,8 @@ int getInterlacedFrameLine(uint64_t field_id, int field_line_index,
   // Frame line 4 = Field 1, line 1
   // ...
   // Formula: frame_line = field_line_index * 2 + (field_id % 2) + 1
-  int frame_line = static_cast<int>(field_line_index * 2) + static_cast<int>(field_id % 2) + 1;
+  int frame_line = static_cast<int>(field_line_index * 2) +
+                   static_cast<int>(field_id % 2) + 1;
 
   // Cap at total frame height (PAL: 625, NTSC: 525)
   int total_lines = is_pal ? 625 : 525;

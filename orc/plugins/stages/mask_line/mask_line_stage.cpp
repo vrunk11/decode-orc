@@ -9,10 +9,11 @@
 
 #include "mask_line_stage.h"
 
+#include <cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <sstream>
 
-#include <cvbs_signal_constants.h>
 #include "error_types.h"
 #include "logging.h"
 #include "preview_helpers.h"
@@ -78,8 +79,7 @@ int16_t MaskedFrameRepresentation::ire_to_sample(double ire) const {
     const int32_t b = kPalBlanking;
     const int32_t w = kPalWhite;
     return static_cast<int16_t>(
-        std::clamp(static_cast<int32_t>(b + (ire / 100.0) * (w - b)),
-                   0, 1023));
+        std::clamp(static_cast<int32_t>(b + (ire / 100.0) * (w - b)), 0, 1023));
   }
   const int32_t b = params->blanking_level;
   const int32_t w = params->white_level;
@@ -93,12 +93,12 @@ size_t MaskedFrameRepresentation::line_width(FrameID id, size_t line) const {
   if (!params.has_value()) return 0;
   const int32_t nominal = params->frame_width_nominal;
   if (params->system == VideoSystem::PAL) {
-    // EBU Tech. 3280-E §1.3.1: four non-orthogonal lines carry one extra sample.
-    const bool extra =
-        (line == static_cast<size_t>(kPalExtraSampleLines[0]) ||
-         line == static_cast<size_t>(kPalExtraSampleLines[1]) ||
-         line == static_cast<size_t>(kPalExtraSampleLines[2]) ||
-         line == static_cast<size_t>(kPalExtraSampleLines[3]));
+    // EBU Tech. 3280-E §1.3.1: four non-orthogonal lines carry one extra
+    // sample.
+    const bool extra = (line == static_cast<size_t>(kPalExtraSampleLines[0]) ||
+                        line == static_cast<size_t>(kPalExtraSampleLines[1]) ||
+                        line == static_cast<size_t>(kPalExtraSampleLines[2]) ||
+                        line == static_cast<size_t>(kPalExtraSampleLines[3]));
     return static_cast<size_t>(extra ? nominal + 1 : nominal);
   }
   (void)id;
@@ -172,9 +172,13 @@ std::vector<ArtifactPtr> MaskLineStage::execute(
     const std::map<std::string, ParameterValue>& parameters,
     ObservationContext& observation_context) {
   (void)observation_context;
-  if (inputs.empty()) throw DAGExecutionError("MaskLineStage requires one input");
+  if (inputs.empty()) {
+    throw DAGExecutionError("MaskLineStage requires one input");
+  }
   auto input = inputs[0];
-  if (!input) throw DAGExecutionError("MaskLineStage received null input");
+  if (!input) {
+    throw DAGExecutionError("MaskLineStage received null input");
+  }
 
   auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(input);
   if (!vfr) {
@@ -209,17 +213,24 @@ std::vector<ParameterDescriptor> MaskLineStage::get_parameter_descriptors(
       ParameterDescriptor{
           "lineSpec", "Line Specification",
           "Frame-flat 0-based line numbers to mask. Format: LINE or START-END, "
-          "comma-separated. Examples: '21' (NTSC CC line), '100-115', '21,334'.",
+          "comma-separated. Examples: '21' (NTSC CC line), '100-115', "
+          "'21,334'.",
           ParameterType::STRING,
-          ParameterConstraints{
-              std::nullopt, std::nullopt,
-              ParameterValue{std::string("")}, {}, false, std::nullopt}},
-      ParameterDescriptor{
-          "maskIRE", "Mask IRE Level",
-          "IRE level for masked pixels (0=black, 100=white).",
-          ParameterType::DOUBLE,
-          ParameterConstraints{ParameterValue{0.0}, ParameterValue{100.0},
-                               ParameterValue{0.0}, {}, false, std::nullopt}}};
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue{std::string("")},
+                               {},
+                               false,
+                               std::nullopt}},
+      ParameterDescriptor{"maskIRE", "Mask IRE Level",
+                          "IRE level for masked pixels (0=black, 100=white).",
+                          ParameterType::DOUBLE,
+                          ParameterConstraints{ParameterValue{0.0},
+                                               ParameterValue{100.0},
+                                               ParameterValue{0.0},
+                                               {},
+                                               false,
+                                               std::nullopt}}};
 }
 
 std::map<std::string, ParameterValue> MaskLineStage::get_parameters() const {

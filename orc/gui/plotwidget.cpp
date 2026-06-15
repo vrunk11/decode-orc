@@ -961,8 +961,10 @@ void PlotLegend::paint(QPainter* painter,
       // Draw line sample
       painter->setPen(series->pen());
       painter->drawLine(
-          QPointF(m_boundingRect.left() + 5, y + fm.height() / 2),  // NOLINT(bugprone-integer-division)
-          QPointF(m_boundingRect.left() + 25, y + fm.height() / 2));  // NOLINT(bugprone-integer-division)
+          QPointF(m_boundingRect.left() + 5,
+                  y + fm.height() / 2),  // NOLINT(bugprone-integer-division)
+          QPointF(m_boundingRect.left() + 25,
+                  y + fm.height() / 2));  // NOLINT(bugprone-integer-division)
 
       // Draw text
       painter->setPen(QPen(palette.color(QPalette::WindowText)));
@@ -1150,8 +1152,9 @@ void PlotAxisLabels::paint(QPainter* painter,
         }
       }
       QRect textRect = fm.boundingRect(label);
-      QPointF textPos(m_plotRect.left() - 10 - textRect.width(),
-                      sceneY + textRect.height() / 4);  // NOLINT(bugprone-integer-division)
+      QPointF textPos(
+          m_plotRect.left() - 10 - textRect.width(),
+          sceneY + textRect.height() / 4);  // NOLINT(bugprone-integer-division)
       painter->drawText(textPos, label);
     }
   } else {
@@ -1179,8 +1182,9 @@ void PlotAxisLabels::paint(QPainter* painter,
         }
       }
       QRect textRect = fm.boundingRect(label);
-      QPointF textPos(m_plotRect.left() - 10 - textRect.width(),
-                      sceneY + textRect.height() / 4);  // NOLINT(bugprone-integer-division)
+      QPointF textPos(
+          m_plotRect.left() - 10 - textRect.width(),
+          sceneY + textRect.height() / 4);  // NOLINT(bugprone-integer-division)
       painter->drawText(textPos, label);
     }
   }
@@ -1188,8 +1192,10 @@ void PlotAxisLabels::paint(QPainter* painter,
   // Draw X-axis title
   if (!m_xTitle.isEmpty()) {
     QRect titleRect = fm.boundingRect(m_xTitle);
-    QPointF titlePos(m_plotRect.center().x() - titleRect.width() / 2,  // NOLINT(bugprone-integer-division)
-                     m_plotRect.bottom() + 40);
+    QPointF titlePos(
+        m_plotRect.center().x() -
+            titleRect.width() / 2,  // NOLINT(bugprone-integer-division)
+        m_plotRect.bottom() + 40);
     painter->drawText(titlePos, m_xTitle);
   }
 
@@ -1199,7 +1205,8 @@ void PlotAxisLabels::paint(QPainter* painter,
     painter->translate(20, m_plotRect.center().y());
     painter->rotate(-90);
     QRect titleRect = fm.boundingRect(m_yTitle);
-    painter->drawText(-titleRect.width() / 2, titleRect.height() / 2, m_yTitle);  // NOLINT(bugprone-integer-division)
+    painter->drawText(-titleRect.width() / 2, titleRect.height() / 2,
+                      m_yTitle);  // NOLINT(bugprone-integer-division)
     painter->restore();
   }
 
@@ -1228,7 +1235,7 @@ void PlotAxisLabels::paint(QPainter* painter,
         QString label = QString::number(qRound(dataY));
         QRect textRect = fm.boundingRect(label);
         QPointF textPos(m_plotRect.right() + 10,
-                        sceneY + textRect.height() / 4);  // NOLINT(bugprone-integer-division)
+                        sceneY + static_cast<double>(textRect.height()) / 4.0);
         painter->drawText(textPos, label);
       }
     } else {
@@ -1249,7 +1256,7 @@ void PlotAxisLabels::paint(QPainter* painter,
         QString label = QString::number(qRound(dataY));
         QRect textRect = fm.boundingRect(label);
         QPointF textPos(m_plotRect.right() + 10,
-                        sceneY + textRect.height() / 4);  // NOLINT(bugprone-integer-division)
+                        sceneY + static_cast<double>(textRect.height()) / 4.0);
         painter->drawText(textPos, label);
       }
     }

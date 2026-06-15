@@ -14,8 +14,8 @@
 #include "../../../../orc/core/include/observation_context.h"
 #include "../../mocks/mock_video_frame_representation.h"
 
-using ::testing::Return;
 using ::testing::_;
+using ::testing::Return;
 
 namespace orc_unit_test {
 
@@ -85,7 +85,8 @@ TEST(FrameFieldSwapStageTest, Execute_ThrowsWhenInputIsNotVFrameR) {
   orc::ObservationContext ctx;
   // A plain Artifact that is NOT a VideoFrameRepresentation.
   struct DummyArtifact : public orc::Artifact {
-    DummyArtifact() : orc::Artifact(orc::ArtifactID("dummy"), orc::Provenance{}) {}
+    DummyArtifact()
+        : orc::Artifact(orc::ArtifactID("dummy"), orc::Provenance{}) {}
     std::string type_name() const override { return "dummy"; }
   };
   orc::ArtifactPtr bad_input = std::make_shared<DummyArtifact>();
@@ -110,15 +111,13 @@ TEST(FrameFieldSwapRepresentationTest, GetLine_RemapsFieldBlocks_PAL) {
   desc.height = 625;
   desc.samples_total = 625 * 1135;
 
-  EXPECT_CALL(*mock, get_video_parameters())
-      .WillRepeatedly(Return(params));
+  EXPECT_CALL(*mock, get_video_parameters()).WillRepeatedly(Return(params));
   EXPECT_CALL(*mock, get_frame_descriptor(orc::FrameID{0}))
       .WillRepeatedly(Return(desc));
 
   static const orc::VideoFrameRepresentation::sample_type kLine313[1135] = {};
   // Output line 0 should request source line 313 (field2 first line).
-  EXPECT_CALL(*mock, get_line(orc::FrameID{0}, 313))
-      .WillOnce(Return(kLine313));
+  EXPECT_CALL(*mock, get_line(orc::FrameID{0}, 313)).WillOnce(Return(kLine313));
 
   orc::FrameFieldSwapRepresentation rep(mock);
   const auto* ptr = rep.get_line(orc::FrameID{0}, 0);
@@ -155,14 +154,16 @@ TEST(FrameFieldSwapRepresentationTest, GetLine_SecondBlock_MapsToField1) {
 
 TEST(FrameFieldSwapRepresentationTest, GetFrame_ReturnsNullptr) {
   auto mock = std::make_shared<MockVideoFrameRepresentation>();
-  EXPECT_CALL(*mock, get_video_parameters()).WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(*mock, get_video_parameters())
+      .WillRepeatedly(Return(std::nullopt));
   orc::FrameFieldSwapRepresentation rep(mock);
   EXPECT_EQ(rep.get_frame(orc::FrameID{0}), nullptr);
 }
 
 TEST(FrameFieldSwapRepresentationTest, TypeName_IsCorrect) {
   auto mock = std::make_shared<MockVideoFrameRepresentation>();
-  EXPECT_CALL(*mock, get_video_parameters()).WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(*mock, get_video_parameters())
+      .WillRepeatedly(Return(std::nullopt));
   orc::FrameFieldSwapRepresentation rep(mock);
   EXPECT_EQ(rep.type_name(), "frame_field_swap_representation");
 }

@@ -18,14 +18,13 @@
 
 #include "../../../../orc/plugins/stages/tbc_source/pal_tbc_converter.h"
 
+#include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
 #include <vector>
-
-#include <cvbs_signal_constants.h>
 
 namespace orc_unit_test {
 
@@ -36,19 +35,20 @@ namespace orc_unit_test {
 // Build a synthetic PAL TBC field filled with a constant uint16_t value.
 static std::vector<uint16_t> make_field(int32_t lines, int32_t width,
                                         uint16_t fill) {
-  return std::vector<uint16_t>(static_cast<size_t>(lines) *
-                                   static_cast<size_t>(width),
-                               fill);
+  return std::vector<uint16_t>(
+      static_cast<size_t>(lines) * static_cast<size_t>(width), fill);
 }
 
-// Reference TBC levels used throughout these tests (ld-decode defaults for PAL).
+// Reference TBC levels used throughout these tests (ld-decode defaults for
+// PAL).
 constexpr int32_t kRefBlanking = 16384;
-constexpr int32_t kRefWhite    = 54400;
+constexpr int32_t kRefWhite = 54400;
 
 // Expected CVBS field line counts.
-constexpr int32_t kCVBSField1Lines = orc::kPalField1Lines;          // 313
-constexpr int32_t kCVBSField2Lines = orc::kPalFrameLines - orc::kPalField1Lines;  // 312
-constexpr int32_t kLineWidth       = orc::kPalMaxSamplesPerLine - 1;               // 1135
+constexpr int32_t kCVBSField1Lines = orc::kPalField1Lines;  // 313
+constexpr int32_t kCVBSField2Lines =
+    orc::kPalFrameLines - orc::kPalField1Lines;                 // 312
+constexpr int32_t kLineWidth = orc::kPalMaxSamplesPerLine - 1;  // 1135
 
 // ============================================================================
 // tbc_to_cvbs — level mapping
@@ -68,7 +68,8 @@ TEST(PalTBCConverterTest, LevelMapping_WhiteInputYieldsCVBSWhite) {
 }
 
 TEST(PalTBCConverterTest, LevelMapping_LinearInterpolationMidpoint) {
-  // Midpoint of [kRefBlanking, kRefWhite] → midpoint of [kPalBlanking, kPalWhite].
+  // Midpoint of [kRefBlanking, kRefWhite] → midpoint of [kPalBlanking,
+  // kPalWhite].
   const int32_t tbc_mid = (kRefBlanking + kRefWhite) / 2;
   const int16_t result = orc::PalTBCConverter::tbc_to_cvbs(
       static_cast<uint16_t>(tbc_mid), kRefBlanking, kRefWhite);
@@ -77,7 +78,8 @@ TEST(PalTBCConverterTest, LevelMapping_LinearInterpolationMidpoint) {
   EXPECT_NEAR(result, expected, 1);
 }
 
-TEST(PalTBCConverterTest, LevelMapping_BelowBlankingProducesValueBelowCVBSBlanking) {
+TEST(PalTBCConverterTest,
+     LevelMapping_BelowBlankingProducesValueBelowCVBSBlanking) {
   // Samples below TBC blanking (e.g. sync tip) map below CVBS blanking.
   const int16_t result = orc::PalTBCConverter::tbc_to_cvbs(
       static_cast<uint16_t>(kRefBlanking - 1000), kRefBlanking, kRefWhite);
@@ -88,15 +90,16 @@ TEST(PalTBCConverterTest, LevelMapping_BelowBlankingProducesValueBelowCVBSBlanki
 // assemble_frame — sample count and structure
 // ============================================================================
 
-TEST(PalTBCConverterTest, AssembleFrame_OutputSampleCountEqualskPalFrameSamples) {
+TEST(PalTBCConverterTest,
+     AssembleFrame_OutputSampleCountEqualskPalFrameSamples) {
   // Build minimal synthetic TBC fields at blanking level.
   auto f1 = make_field(kCVBSField2Lines, kLineWidth,
                        static_cast<uint16_t>(kRefBlanking));  // 312 × 1135
   auto f2 = make_field(kCVBSField1Lines, kLineWidth,
                        static_cast<uint16_t>(kRefBlanking));  // 313 × 1135
 
-  const auto frame = orc::PalTBCConverter::assemble_frame(
-      f1, f2, kRefBlanking, kRefWhite);
+  const auto frame =
+      orc::PalTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
   EXPECT_EQ(static_cast<int32_t>(frame.size()), orc::kPalFrameSamples);
 }
@@ -107,9 +110,9 @@ TEST(PalTBCConverterTest, AssembleFrame_ThrowsOnWrongField1Size) {
                            static_cast<uint16_t>(kRefBlanking));  // 313, wrong
   auto f2 = make_field(kCVBSField1Lines, kLineWidth,
                        static_cast<uint16_t>(kRefBlanking));
-  EXPECT_THROW(orc::PalTBCConverter::assemble_frame(bad_f1, f2, kRefBlanking,
-                                                     kRefWhite),
-               std::invalid_argument);
+  EXPECT_THROW(
+      orc::PalTBCConverter::assemble_frame(bad_f1, f2, kRefBlanking, kRefWhite),
+      std::invalid_argument);
 }
 
 TEST(PalTBCConverterTest, AssembleFrame_ThrowsOnWrongField2Size) {
@@ -117,9 +120,9 @@ TEST(PalTBCConverterTest, AssembleFrame_ThrowsOnWrongField2Size) {
                        static_cast<uint16_t>(kRefBlanking));
   auto bad_f2 = make_field(kCVBSField2Lines, kLineWidth,
                            static_cast<uint16_t>(kRefBlanking));  // 312, wrong
-  EXPECT_THROW(orc::PalTBCConverter::assemble_frame(f1, bad_f2, kRefBlanking,
-                                                     kRefWhite),
-               std::invalid_argument);
+  EXPECT_THROW(
+      orc::PalTBCConverter::assemble_frame(f1, bad_f2, kRefBlanking, kRefWhite),
+      std::invalid_argument);
 }
 
 TEST(PalTBCConverterTest, AssembleFrame_CVBSField1IsFirst313Lines) {
@@ -132,8 +135,8 @@ TEST(PalTBCConverterTest, AssembleFrame_CVBSField1IsFirst313Lines) {
   auto f1 = make_field(kCVBSField2Lines, kLineWidth, tbc_blank);  // TBC field 1
   auto f2 = make_field(kCVBSField1Lines, kLineWidth, tbc_white);  // TBC field 2
 
-  const auto frame = orc::PalTBCConverter::assemble_frame(
-      f1, f2, kRefBlanking, kRefWhite);
+  const auto frame =
+      orc::PalTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
   // First sample of the frame must be kPalWhite (sourced from TBC field 2).
   EXPECT_EQ(frame[0], static_cast<int16_t>(orc::kPalWhite));
@@ -151,7 +154,8 @@ TEST(PalTBCConverterTest, AssembleFrame_CVBSField1IsFirst313Lines) {
   EXPECT_EQ(frame[cvbs_field2_start], static_cast<int16_t>(orc::kPalBlanking));
 }
 
-TEST(PalTBCConverterTest, AssembleFrame_ExtraSamplesInsertedAtAllFourPositions) {
+TEST(PalTBCConverterTest,
+     AssembleFrame_ExtraSamplesInsertedAtAllFourPositions) {
   // Count the extra samples by checking frame size against the "no-extra"
   // baseline: 625 × 1135 = 709,375; with 4 extras → 709,379 = kPalFrameSamples.
   // The test verifies indirectly: frame.size() == kPalFrameSamples.
@@ -175,8 +179,8 @@ TEST(PalTBCConverterTest, AssembleFrame_ExtraSamplesInsertedAtAllFourPositions) 
     f2[static_cast<size_t>(155 * kLineWidth32 + i)] = kDistinctive;
   }
 
-  const auto frame = orc::PalTBCConverter::assemble_frame(
-      f1, f2, kRefBlanking, kRefWhite);
+  const auto frame =
+      orc::PalTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
   EXPECT_EQ(static_cast<int32_t>(frame.size()), orc::kPalFrameSamples);
 
@@ -188,9 +192,10 @@ TEST(PalTBCConverterTest, AssembleFrame_ExtraSamplesInsertedAtAllFourPositions) 
   // The extra sample is an interpolation between the last sample of line 155
   // and the first sample of line 156 (which is at TBC blanking level → cvbs
   // blanking 256). The last sample of line 155 is from kDistinctive.
-  // Converted: (kDistinctive - kRefBlanking) / (kRefWhite - kRefBlanking) * (844-256) + 256
-  // kDistinctive=40000: (40000-16384)/(54400-16384) * 588 + 256 = 23616/38016 * 588 + 256 ≈ 621+256 = no,
-  // let me just verify that the extra sample exists (the frame is long enough).
+  // Converted: (kDistinctive - kRefBlanking) / (kRefWhite - kRefBlanking) *
+  // (844-256) + 256 kDistinctive=40000: (40000-16384)/(54400-16384) * 588 + 256
+  // = 23616/38016 * 588 + 256 ≈ 621+256 = no, let me just verify that the extra
+  // sample exists (the frame is long enough).
   EXPECT_LT(extra_offset, frame.size());
 }
 
@@ -199,16 +204,14 @@ TEST(PalTBCConverterTest, AssembleFrame_ExtraSamplesInsertedAtAllFourPositions) 
 // ============================================================================
 
 TEST(PalTBCConverterTest, ColourFrameIndex_PhaseAbsent_ReturnsMinusOne) {
-  EXPECT_EQ(orc::PalTBCConverter::map_field_phase_to_colour_frame_index(
-                std::nullopt),
-            -1);
+  EXPECT_EQ(
+      orc::PalTBCConverter::map_field_phase_to_colour_frame_index(std::nullopt),
+      -1);
 }
 
 TEST(PalTBCConverterTest, ColourFrameIndex_PhaseOutOfRange_ReturnsMinusOne) {
-  EXPECT_EQ(orc::PalTBCConverter::map_field_phase_to_colour_frame_index(0),
-            -1);
-  EXPECT_EQ(orc::PalTBCConverter::map_field_phase_to_colour_frame_index(9),
-            -1);
+  EXPECT_EQ(orc::PalTBCConverter::map_field_phase_to_colour_frame_index(0), -1);
+  EXPECT_EQ(orc::PalTBCConverter::map_field_phase_to_colour_frame_index(9), -1);
   EXPECT_EQ(orc::PalTBCConverter::map_field_phase_to_colour_frame_index(-1),
             -1);
 }

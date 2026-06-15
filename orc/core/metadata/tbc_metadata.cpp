@@ -354,6 +354,54 @@ TBCMetadataSqliteReader::read_video_parameters() {
   return std::nullopt;
 }
 
+std::optional<TbcDomainLevels>
+TBCMetadataSqliteReader::read_tbc_domain_levels() {
+  if (!is_open_) {
+    return std::nullopt;
+  }
+
+  // Try the modern schema that has blanking_16b_ire.
+  const char* sql_with_blanking =
+      "SELECT blanking_16b_ire, white_16b_ire FROM capture WHERE capture_id = "
+      "?";
+  sqlite3_stmt* stmt = nullptr;
+  int rc = sqlite3_prepare_v2(impl_->db, sql_with_blanking, -1, &stmt, nullptr);
+
+  if (rc != SQLITE_OK) {
+    // Fallback to older schema without blanking column.
+    const char* sql_without_blanking =
+        "SELECT black_16b_ire, white_16b_ire FROM capture WHERE capture_id = ?";
+    rc =
+        sqlite3_prepare_v2(impl_->db, sql_without_blanking, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+      return std::nullopt;
+    }
+  }
+
+  sqlite3_bind_int(stmt, 1, impl_->capture_id);
+
+  TbcDomainLevels levels;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    levels.blanking_16b = sqlite3_column_int(stmt, 0);
+    levels.white_16b = sqlite3_column_int(stmt, 1);
+  } else {
+    sqlite3_finalize(stmt);
+    return std::nullopt;
+  }
+
+  sqlite3_finalize(stmt);
+
+  if (!levels.is_valid()) {
+    ORC_LOG_WARN(
+        "read_tbc_domain_levels: invalid levels in metadata "
+        "(blanking={}, white={}); caller will use defaults",
+        levels.blanking_16b, levels.white_16b);
+    return std::nullopt;
+  }
+
+  return levels;
+}
+
 std::optional<PcmAudioParameters>
 TBCMetadataSqliteReader::read_pcm_audio_parameters() {
   if (!is_open_) {

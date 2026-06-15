@@ -115,10 +115,11 @@ TEST_P(PublicStageContractTest, Parameter_DefaultsMatchRuntimeState) {
 
   for (const auto& [name, value] : parameters) {
     const auto& param_name = name;
-    auto it = std::find_if(descriptors.begin(), descriptors.end(),
-                           [&param_name](const orc::ParameterDescriptor& descriptor) {
-                             return descriptor.name == param_name;
-                           });
+    auto it =
+        std::find_if(descriptors.begin(), descriptors.end(),
+                     [&param_name](const orc::ParameterDescriptor& descriptor) {
+                       return descriptor.name == param_name;
+                     });
     EXPECT_NE(it, descriptors.end())
         << spec().inventory_id
         << " exposes runtime parameter without descriptor: '" << name << "'";

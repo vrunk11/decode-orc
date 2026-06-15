@@ -222,8 +222,7 @@ std::vector<FrameID> SourceAlignStage::find_alignment_offsets(
       present[loc.source_index] = true;
     }
 
-    if (std::all_of(present.begin(), present.end(),
-                    [](bool p) { return p; })) {
+    if (std::all_of(present.begin(), present.end(), [](bool p) { return p; })) {
       for (const auto& loc : locations) {
         offsets[loc.source_index] = loc.frame_id;
       }
@@ -260,8 +259,7 @@ std::vector<ArtifactPtr> SourceAlignStage::execute(
 
   std::vector<std::shared_ptr<const VideoFrameRepresentation>> sources;
   for (const auto& input : inputs) {
-    auto src =
-        std::dynamic_pointer_cast<const VideoFrameRepresentation>(input);
+    auto src = std::dynamic_pointer_cast<const VideoFrameRepresentation>(input);
     if (!src) {
       throw DAGExecutionError(
           "SourceAlignStage input must be VideoFrameRepresentation");
@@ -286,9 +284,8 @@ std::vector<ArtifactPtr> SourceAlignStage::execute(
     offsets.assign(sources.size(), std::numeric_limits<FrameID>::max());
     for (const auto& [input_id, offset_val] : entries) {
       if (input_id < 1 || input_id > sources.size()) {
-        throw DAGExecutionError(
-            "Alignment map references invalid input ID: " +
-            std::to_string(input_id));
+        throw DAGExecutionError("Alignment map references invalid input ID: " +
+                                std::to_string(input_id));
       }
       offsets[input_id - 1] = static_cast<FrameID>(offset_val);
     }
@@ -340,13 +337,15 @@ std::vector<ParameterDescriptor> SourceAlignStage::get_parameter_descriptors(
       "Manual alignment ('1+2, 2+2, 3+1'). Format: input_id+frame_offset "
       "per input. Empty = auto-detect from VBI.",
       ParameterType::STRING,
-      ParameterConstraints{std::nullopt, std::nullopt,
-                           ParameterValue{std::string("")}, {}, false,
+      ParameterConstraints{std::nullopt,
+                           std::nullopt,
+                           ParameterValue{std::string("")},
+                           {},
+                           false,
                            std::nullopt}}};
 }
 
-std::map<std::string, ParameterValue> SourceAlignStage::get_parameters()
-    const {
+std::map<std::string, ParameterValue> SourceAlignStage::get_parameters() const {
   return {{"alignmentMap", ParameterValue{alignment_map_}}};
 }
 
@@ -398,8 +397,7 @@ std::optional<StageReport> SourceAlignStage::generate_report() const {
       report.items.push_back({lbl + " Total Frames", std::to_string(total)});
       report.items.push_back(
           {lbl + " Alignment Offset", std::to_string(offset)});
-      report.items.push_back(
-          {lbl + " Dropped Frames", std::to_string(offset)});
+      report.items.push_back({lbl + " Dropped Frames", std::to_string(offset)});
       report.items.push_back(
           {lbl + " Output Frames",
            std::to_string(total > offset ? total - offset : 0)});
@@ -418,10 +416,8 @@ std::optional<StageReport> SourceAlignStage::generate_report() const {
       total_dropped += off;
     }
   }
-  report.metrics["source_count"] =
-      static_cast<int64_t>(input_sources_.size());
-  report.metrics["total_dropped_frames"] =
-      static_cast<int64_t>(total_dropped);
+  report.metrics["source_count"] = static_cast<int64_t>(input_sources_.size());
+  report.metrics["total_dropped_frames"] = static_cast<int64_t>(total_dropped);
   report.metrics["excluded_sources"] = static_cast<int64_t>(excluded);
   report.metrics["included_sources"] =
       static_cast<int64_t>(input_sources_.size() - excluded);
@@ -456,10 +452,9 @@ PreviewImage render_vfr_grayscale(const VideoFrameRepresentation& vfr,
     for (size_t s = 0; s < W; ++s) {
       const int32_t raw = ptr ? static_cast<int32_t>(ptr[s]) : b;
       const uint8_t grey =
-          scale
-              ? static_cast<uint8_t>(
-                    std::clamp((raw - b) * 255 / range, 0, 255))
-              : static_cast<uint8_t>(std::clamp(raw * 255 / 1023, 0, 255));
+          scale ? static_cast<uint8_t>(
+                      std::clamp((raw - b) * 255 / range, 0, 255))
+                : static_cast<uint8_t>(std::clamp(raw * 255 / 1023, 0, 255));
       img.rgb_data.push_back(grey);
       img.rgb_data.push_back(grey);
       img.rgb_data.push_back(grey);

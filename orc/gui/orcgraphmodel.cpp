@@ -142,7 +142,7 @@ bool OrcGraphModel::connectionExists(ConnectionId const connectionId) const {
 NodeId OrcGraphModel::addNode(QString const nodeType) {
   // Use presenter's add_node function which generates unique IDs properly
   std::string stage_name =
-      nodeType.isEmpty() ? "TBCSource" : nodeType.toStdString();
+      nodeType.isEmpty() ? "tbc_source" : nodeType.toStdString();
 
   try {
     NodeID node_id = presenter_.addNode(stage_name, 0.0, 0.0);
@@ -319,7 +319,7 @@ QVariant OrcGraphModel::portData(NodeId nodeId, PortType portType,
         return QVariant();
 
       case PortRole::DataType:
-        return QString("VideoField");
+        return QString("VideoFrame");
 
       case PortRole::ConnectionPolicyRole: {
         // Return Many if the port can handle multiple connections

@@ -33,10 +33,18 @@ PhaseCorectedRepresentation::PhaseCorectedRepresentation(
   auto params = source_ ? source_->get_video_parameters() : std::nullopt;
   if (params) {
     switch (params->system) {
-      case VideoSystem::PAL:   field1_lines_ = kPalField1Lines;  break;
-      case VideoSystem::NTSC:  field1_lines_ = kNtscField1Lines; break;
-      case VideoSystem::PAL_M: field1_lines_ = kPalMField1Lines; break;
-      default:                 field1_lines_ = 0;                break;
+      case VideoSystem::PAL:
+        field1_lines_ = kPalField1Lines;
+        break;
+      case VideoSystem::NTSC:
+        field1_lines_ = kNtscField1Lines;
+        break;
+      case VideoSystem::PAL_M:
+        field1_lines_ = kPalMField1Lines;
+        break;
+      default:
+        field1_lines_ = 0;
+        break;
     }
   }
 }
@@ -128,12 +136,10 @@ PhaseCorectedRepresentation::get_frame_copy(FrameID id) const {
     size_t src_line = remap_line(out_line, desc->height);
     const sample_type* ptr = source_->get_line(id, src_line);
     if (!ptr) {
-      size_t width =
-          line_sample_width(desc->system, src_line, nominal_spl);
+      size_t width = line_sample_width(desc->system, src_line, nominal_spl);
       result.insert(result.end(), width, 0);
     } else {
-      size_t width =
-          line_sample_width(desc->system, src_line, nominal_spl);
+      size_t width = line_sample_width(desc->system, src_line, nominal_spl);
       result.insert(result.end(), ptr, ptr + width);
     }
   }
@@ -193,9 +199,7 @@ int FramePhaseCorrectorStage::next_colour_index(int current, VideoSystem sys) {
 }
 
 double FramePhaseCorrectorStage::measure_field_burst_phase(
-    const VideoFrameRepresentation& src,
-    FrameID id,
-    bool second_field,
+    const VideoFrameRepresentation& src, FrameID id, bool second_field,
     VideoSystem sys) {
   // Measure burst phase by sampling a few lines from the colour burst region.
   // The burst occupies roughly samples 5–36 of each active line (PAL/NTSC).
@@ -248,9 +252,7 @@ double FramePhaseCorrectorStage::measure_field_burst_phase(
 }
 
 bool FramePhaseCorrectorStage::detect_field_swap(
-    const VideoFrameRepresentation& src,
-    FrameID id,
-    VideoSystem sys) {
+    const VideoFrameRepresentation& src, FrameID id, VideoSystem sys) {
   // Compare burst phase of field-1-block vs field-2-block.
   // For PAL: field 1 should have a specific V-axis sign; field 2 the opposite.
   // A simple heuristic: if field 2 block's phase leads field 1's phase by more
@@ -334,8 +336,7 @@ std::vector<ArtifactPtr> FramePhaseCorrectorStage::execute(
         ORC_LOG_DEBUG(
             "FramePhaseCorrectorStage: field swap detected at frame {}; "
             "corrected colour_frame_index {} → {}",
-            fid.value(), desc->colour_frame_index,
-            corr.corrected_colour_index);
+            fid.value(), desc->colour_frame_index, corr.corrected_colour_index);
       }
     }
 
@@ -400,27 +401,32 @@ FramePhaseCorrectorStage::get_parameter_descriptors(
     VideoSystem /*project_format*/, SourceType /*source_type*/) const {
   return {
       ParameterDescriptor{
-          "correct_field_swap",
-          "Correct Field Swap",
+          "correct_field_swap", "Correct Field Swap",
           "Detect and correct frames where the two field blocks are stored in "
           "the wrong temporal order",
           ParameterType::BOOL,
-          ParameterConstraints{std::nullopt, std::nullopt,
-                               ParameterValue{true}, {}, false, std::nullopt}},
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue{true},
+                               {},
+                               false,
+                               std::nullopt}},
       ParameterDescriptor{
-          "verify_phase_sequence",
-          "Verify Phase Sequence",
+          "verify_phase_sequence", "Verify Phase Sequence",
           "Walk the colour-frame-index sequence and mark break-point frames "
           "with colour_frame_index = -1",
           ParameterType::BOOL,
-          ParameterConstraints{std::nullopt, std::nullopt,
-                               ParameterValue{true}, {}, false,
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue{true},
+                               {},
+                               false,
                                std::nullopt}},
   };
 }
 
-std::map<std::string, ParameterValue>
-FramePhaseCorrectorStage::get_parameters() const {
+std::map<std::string, ParameterValue> FramePhaseCorrectorStage::get_parameters()
+    const {
   return {{"correct_field_swap", ParameterValue{correct_field_swap_}},
           {"verify_phase_sequence", ParameterValue{verify_phase_sequence_}}};
 }

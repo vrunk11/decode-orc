@@ -21,8 +21,8 @@ class ClosedCaptionObserver : public Observer {
   std::string observer_name() const override { return "ClosedCaptionObserver"; }
   std::string observer_version() const override { return "1.0.0"; }
 
-  void process_field(const VideoFieldRepresentation& representation,
-                     FieldID field_id, IObservationContext& context) override;
+  void process_frame(const VideoFrameRepresentation& representation,
+                     FrameID frame_id, IObservationContext& context) override;
 
   std::vector<ObservationKey> get_provided_observations() const override;
 
@@ -34,8 +34,8 @@ class ClosedCaptionObserver : public Observer {
     bool parity_valid1 = false;
   };
 
-  bool decode_line(const uint16_t* line_data, size_t sample_count,
-                   uint16_t zero_crossing, size_t colorburst_end,
+  bool decode_line(const int16_t* line_data, size_t sample_count,
+                   int16_t zero_crossing, size_t colorburst_end,
                    double samples_per_bit, DecodedCaption& decoded) const;
 };
 

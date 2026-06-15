@@ -20,9 +20,9 @@ namespace orc {
  * consistency and allow generic hint handling.
  */
 enum class HintSource {
-  METADATA,         ///< From metadata database (e.g., ld-decode's TBC metadata)
-  USER_OVERRIDE,    ///< User manually specified
-  INHERITED,        ///< Inherited from source field in processing chain
+  METADATA,       ///< From metadata database (e.g., ld-decode source metadata)
+  USER_OVERRIDE,  ///< User manually specified
+  INHERITED,      ///< Inherited from source field in processing chain
   SAMPLE_ANALYSIS,  ///< Derived from orc-core's own signal analysis
   CORROBORATED      ///< Multiple sources agree (metadata + analysis)
 };
