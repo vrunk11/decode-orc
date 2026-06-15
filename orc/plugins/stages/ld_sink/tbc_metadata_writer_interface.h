@@ -11,10 +11,9 @@
 
 #include <field_id.h>
 #include <observation_context_interface.h>
+#include <tbc_metadata_types.h>
 
 #include <string>
-
-#include "tbc_metadata.h"
 
 namespace orc {
 

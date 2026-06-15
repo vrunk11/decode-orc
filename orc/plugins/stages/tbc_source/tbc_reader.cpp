@@ -1,7 +1,7 @@
 /*
  * File:        tbc_reader.cpp
- * Module:      orc-core
- * Purpose:     Tbc Reader
+ * Module:      orc-stage-plugin-tbc-source
+ * Purpose:     TBC binary file reader
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns

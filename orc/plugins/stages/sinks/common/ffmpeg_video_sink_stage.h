@@ -10,7 +10,8 @@
 #ifndef ORC_CORE_FFMPEG_VIDEO_SINK_STAGE_H
 #define ORC_CORE_FFMPEG_VIDEO_SINK_STAGE_H
 
-#include "../../../sdk/include/orc/plugin/orc_stage_tooling.h"
+#include <orc/plugin/orc_stage_tooling.h>
+
 #include "chroma_sink_stage.h"
 
 namespace orc {

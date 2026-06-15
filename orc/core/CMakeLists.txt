@@ -21,8 +21,6 @@ add_library(orc-core SHARED
     # Abstract factories
     factories.cpp
 
-    # TBC file I/O
-    tbc_reader.cpp
     
     # VBI utilities
     vbi_utilities.cpp
@@ -123,16 +121,8 @@ target_include_directories(orc-core PUBLIC
 # Note: All include directories above are PRIVATE by default
 # =============================================================================
 
-# Metadata I/O library (SQLite reader/writer; sub-library of orc-core)
-add_subdirectory(metadata)
-
 # Link against common types
 target_link_libraries(orc-core PUBLIC orc-common)
-
-# Link against metadata library (SQLite reader/writer)
-# PUBLIC so that orc-presenters (which already uses TBCMetadataReader) continues
-# to see tbc_metadata.h.
-target_link_libraries(orc-core PUBLIC orc-metadata)
 
 # Link fmt (used by EFM decoder pipeline sources compiled directly into orc-core)
 target_link_libraries(orc-core PUBLIC fmt::fmt)

@@ -1,14 +1,15 @@
 /*
  * File:        tbc_metadata_json_reader.cpp
- * Module:      orc-metadata
- * Purpose:     JSON-backed TBC metadata reader (Phase 4)
+ * Module:      orc-stage-plugin-tbc-source
+ * Purpose:     JSON-backed TBC metadata reader
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
+#include "tbc_metadata_json_reader.h"
+
 #include <cvbs_signal_constants.h>
-#include <tbc_metadata_json_reader.h>
 
 #include "lddecodemetadata.h"
 #include "logging.h"
@@ -308,7 +309,9 @@ int32_t TBCMetadataJsonReader::get_field_record_count() const {
 bool TBCMetadataJsonReader::validate_metadata(
     std::string* error_message) const {
   if (!is_open_) {
-    if (error_message) *error_message = "Metadata is not open";
+    if (error_message) {
+      *error_message = "Metadata is not open";
+    }
     ORC_LOG_ERROR("validate_metadata: {}",
                   error_message ? *error_message : "not open");
     return false;
@@ -337,7 +340,7 @@ bool TBCMetadataJsonReader::validate_metadata(
     return false;
   }
 
-  // Legacy JSON stores per-field records; compare against 2× frames.
+  // Legacy JSON stores per-field records; compare against 2x frames.
   int32_t field_count = get_field_record_count();
   const int32_t expected_field_count = params.number_of_sequential_frames * 2;
   if (field_count != expected_field_count) {
@@ -362,7 +365,9 @@ bool TBCMetadataJsonReader::validate_metadata(
   }
 
   if (params.system == VideoSystem::Unknown) {
-    if (error_message) *error_message = "Unknown or unsupported video system";
+    if (error_message) {
+      *error_message = "Unknown or unsupported video system";
+    }
     return false;
   }
 

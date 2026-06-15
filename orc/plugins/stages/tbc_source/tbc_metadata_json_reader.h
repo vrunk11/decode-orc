@@ -1,11 +1,10 @@
 /*
  * File:        tbc_metadata_json_reader.h
- * Module:      orc-metadata
- * Purpose:     JSON-backed TBC metadata reader (Phase 4)
+ * Module:      orc-stage-plugin-tbc-source
+ * Purpose:     JSON-backed TBC metadata reader
  *
  * Reads legacy .tbc.json metadata produced by older ld-decode / vhs-decode
  * versions directly into C++ data structures via LdDecodeMetaData.
- * No SQLite intermediate database is required.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -13,21 +12,20 @@
 
 #pragma once
 
-#include <tbc_metadata.h>
-
 #include <map>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "tbc_metadata_reader.h"
+
 namespace orc {
 
 /**
- * @brief ITBCMetadataReader implementation backed by a legacy JSON file.
+ * @brief ITBCMetadataReader backed by a legacy .tbc.json file.
  *
  * On open() the JSON is parsed directly by LdDecodeMetaData into C++ data
- * structures stored in in-memory maps.  All reads are served from those maps;
- * no SQLite is involved.
+ * structures stored in in-memory maps.  All reads are served from those maps.
  */
 class TBCMetadataJsonReader : public ITBCMetadataReader {
  public:

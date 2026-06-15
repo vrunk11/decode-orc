@@ -47,6 +47,26 @@ enum class SourceType {
 // Video format coarse bucket (PAL vs NTSC)
 // ============================================================================
 
+inline std::string video_system_to_string(VideoSystem system) {
+  switch (system) {
+    case VideoSystem::PAL:
+      return "PAL";
+    case VideoSystem::NTSC:
+      return "NTSC";
+    case VideoSystem::PAL_M:
+      return "PAL-M";
+    default:
+      return "Unknown";
+  }
+}
+
+inline VideoSystem video_system_from_string(const std::string& name) {
+  if (name == "PAL") return VideoSystem::PAL;
+  if (name == "NTSC") return VideoSystem::NTSC;
+  if (name == "PAL_M") return VideoSystem::PAL_M;
+  return VideoSystem::Unknown;
+}
+
 /// Coarse two-bucket video format. Prefer VideoSystem for new code.
 enum class VideoFormat { NTSC, PAL, Unknown };
 

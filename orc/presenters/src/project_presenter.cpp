@@ -9,8 +9,9 @@
 
 #include "project_presenter.h"
 
-#include <open_tbc_metadata.h>  // for open_tbc_metadata (handles .tbc.db and legacy .tbc.json)
+#include <common_types.h>
 #include <orc_source_parameters.h>
+#include <sqlite3.h>
 
 #include <algorithm>
 #include <cctype>
@@ -119,21 +120,38 @@ static PluginDiagnosticSeverity fromPluginDiagnosticSeverity(
 
 std::optional<orc::SourceParameters> ProjectPresenter::readVideoParameters(
     const std::string& metadata_path) {
-  try {
-    auto reader = orc::open_tbc_metadata(metadata_path);
-    if (!reader) {
-      ORC_LOG_WARN("Failed to open metadata file: {}", metadata_path);
-      return std::nullopt;
-    }
-
-    auto params = reader->read_video_parameters();
-    reader->close();
-    return params;
-  } catch (const std::exception& e) {
-    ORC_LOG_ERROR("Exception reading metadata from {}: {}", metadata_path,
-                  e.what());
+  sqlite3* db = nullptr;
+  int rc = sqlite3_open_v2(metadata_path.c_str(), &db, SQLITE_OPEN_READONLY,
+                           nullptr);
+  if (rc != SQLITE_OK) {
+    ORC_LOG_WARN("Failed to open metadata file: {}", metadata_path);
+    if (db) sqlite3_close(db);
     return std::nullopt;
   }
+
+  sqlite3_stmt* stmt = nullptr;
+  rc = sqlite3_prepare_v2(db, "SELECT system FROM capture WHERE capture_id = 1",
+                          -1, &stmt, nullptr);
+  if (rc != SQLITE_OK) {
+    ORC_LOG_WARN("Failed to query video system from: {}", metadata_path);
+    sqlite3_close(db);
+    return std::nullopt;
+  }
+
+  std::optional<orc::SourceParameters> result;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    const char* sys_text =
+        reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+    if (sys_text) {
+      orc::SourceParameters sp;
+      sp.system = orc::video_system_from_string(sys_text);
+      result = sp;
+    }
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return result;
 }
 
 // === ProjectPresenter Implementation ===

@@ -8,3 +8,9 @@ orc_add_stage_plugin(
     PLUGIN_VERSION "${ORC_VERSION}"
     SOURCES ${STAGE_PLUGIN_SOURCES}
 )
+
+# tbc_metadata_types.h lives in tbc_source — both stages share the same
+# ld-decode field data structures.
+target_include_directories(orc-stage-plugin-ld-sink PRIVATE
+    ${CMAKE_SOURCE_DIR}/orc/plugins/stages/tbc_source
+)

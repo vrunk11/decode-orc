@@ -1,17 +1,19 @@
 /*
- * File:        tbc_metadata.cpp
- * Module:      orc-metadata
- * Purpose:     Tbc Metadata
+ * File:        tbc_metadata_reader.cpp
+ * Module:      orc-stage-plugin-tbc-source
+ * Purpose:     TBC SQLite metadata reader implementation
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
+#include "tbc_metadata_reader.h"
+
 #include <cvbs_signal_constants.h>
 #include <sqlite3.h>
-#include <tbc_metadata.h>
 
 #include <cstring>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <stdexcept>
@@ -26,49 +28,14 @@
 namespace orc {
 
 // ============================================================================
-// Video System helpers
-// ============================================================================
-
-std::string video_system_to_string(VideoSystem system) {
-  switch (system) {
-    case VideoSystem::PAL:
-      return "PAL";
-    case VideoSystem::NTSC:
-      return "NTSC";
-    case VideoSystem::PAL_M:
-      return "PAL-M";
-    default:
-      return "Unknown";
-  }
-}
-
-// Parse video system name from string.
-// For SQLite reads: the database should contain "PAL_M" (underscore) for PAL-M
-// systems. For project files: both "PAL_M" and "PAL-M" are accepted for
-// flexibility. For fallback JSON: both "PAL_M" and "PAL-M" are accepted via
-// parseVideoSystemName(). Parse video system name from SQLite metadata. SQLite
-// metadata should use only the canonical name "PAL_M" (underscore). For
-// fallback JSON that may use "PAL-M" or "PAL_M", use parseVideoSystemName()
-// instead.
-VideoSystem video_system_from_string(const std::string& name) {
-  if (name == "PAL") return VideoSystem::PAL;
-  if (name == "NTSC") return VideoSystem::NTSC;
-  if (name == "PAL_M") {
-    return VideoSystem::PAL_M;  // SQLite: only underscore form
-  }
-  return VideoSystem::Unknown;
-}
-
-// ============================================================================
 // TBCMetadataSqliteReader::Impl (Private implementation using SQLite)
 // ============================================================================
 
 class TBCMetadataSqliteReader::Impl {
  public:
   sqlite3* db = nullptr;
-  int capture_id = 1;  // Default capture ID
+  int capture_id = 1;
 
-  // Thread-safe cache for field metadata and dropouts
   mutable std::mutex cache_mutex_;
   std::map<FieldID, FieldMetadata> metadata_cache_;
   std::map<FieldID, std::vector<DropoutInfo>> dropout_cache_;
@@ -85,10 +52,7 @@ class TBCMetadataSqliteReader::Impl {
                      std::function<bool(sqlite3_stmt*)> callback) {
     sqlite3_stmt* stmt = nullptr;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
-
-    if (rc != SQLITE_OK) {
-      return false;
-    }
+    if (rc != SQLITE_OK) return false;
 
     bool success = true;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
@@ -103,66 +67,48 @@ class TBCMetadataSqliteReader::Impl {
   }
 
   int get_int(sqlite3_stmt* stmt, int col, int default_val = -1) {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
-      return default_val;
-    }
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return default_val;
     return sqlite3_column_int(stmt, col);
   }
 
   std::optional<int> get_optional_int(sqlite3_stmt* stmt, int col) {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
-      return std::nullopt;
-    }
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return std::nullopt;
     return sqlite3_column_int(stmt, col);
   }
 
   int64_t get_int64(sqlite3_stmt* stmt, int col, int64_t default_val = -1) {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
-      return default_val;
-    }
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return default_val;
     return sqlite3_column_int64(stmt, col);
   }
 
   std::optional<int64_t> get_optional_int64(sqlite3_stmt* stmt, int col) {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
-      return std::nullopt;
-    }
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return std::nullopt;
     return sqlite3_column_int64(stmt, col);
   }
 
   double get_double(sqlite3_stmt* stmt, int col, double default_val = -1.0) {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
-      return default_val;
-    }
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return default_val;
     return sqlite3_column_double(stmt, col);
   }
 
   std::optional<double> get_optional_double(sqlite3_stmt* stmt, int col) {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
-      return std::nullopt;
-    }
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return std::nullopt;
     return sqlite3_column_double(stmt, col);
   }
 
   bool get_bool(sqlite3_stmt* stmt, int col, bool default_val = false) {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
-      return default_val;
-    }
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return default_val;
     return sqlite3_column_int(stmt, col) != 0;
   }
 
   std::optional<bool> get_optional_bool(sqlite3_stmt* stmt, int col) {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
-      return std::nullopt;
-    }
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return std::nullopt;
     return sqlite3_column_int(stmt, col) != 0;
   }
 
   std::string get_string(sqlite3_stmt* stmt, int col,
                          const std::string& default_val = "") {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
-      return default_val;
-    }
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return default_val;
     const char* text =
         reinterpret_cast<const char*>(sqlite3_column_text(stmt, col));
     return text ? std::string(text) : default_val;
@@ -228,7 +174,6 @@ TBCMetadataSqliteReader::read_video_parameters() {
       "git_branch, git_commit "
       "FROM capture WHERE capture_id = ?";
 
-  // Fallback for older metadata that lacks blanking_16b_ire
   const char* sql_without_blanking =
       "SELECT system, video_sample_rate, active_video_start, active_video_end, "
       "field_width, field_height, number_of_sequential_fields, "
@@ -242,28 +187,23 @@ TBCMetadataSqliteReader::read_video_parameters() {
   bool has_blanking_column = true;
 
   if (rc != SQLITE_OK) {
-    // Check if this is due to missing blanking_16b_ire column
     const char* err_msg = sqlite3_errmsg(impl_->db);
     if (std::string(err_msg).find("blanking_16b_ire") != std::string::npos) {
       ORC_LOG_WARN(
-          "read_video_parameters: blanking_16b_ire column not found in "
-          "database, using fallback query");
+          "read_video_parameters: blanking_16b_ire column not found, using "
+          "fallback query");
       has_blanking_column = false;
-
-      // Try fallback query without blanking_16b_ire
       rc = sqlite3_prepare_v2(impl_->db, sql_without_blanking, -1, &stmt,
                               nullptr);
       if (rc != SQLITE_OK) {
         ORC_LOG_ERROR(
-            "read_video_parameters: Failed to prepare fallback SQL statement: "
-            "{}",
+            "read_video_parameters: Failed to prepare fallback SQL: {}",
             sqlite3_errmsg(impl_->db));
         return std::nullopt;
       }
     } else {
-      ORC_LOG_ERROR(
-          "read_video_parameters: Failed to prepare SQL statement: {}",
-          err_msg);
+      ORC_LOG_ERROR("read_video_parameters: Failed to prepare SQL: {}",
+                    err_msg);
       return std::nullopt;
     }
   }
@@ -273,64 +213,48 @@ TBCMetadataSqliteReader::read_video_parameters() {
   int step_rc = sqlite3_step(stmt);
   if (step_rc == SQLITE_ROW) {
     params.system = video_system_from_string(impl_->get_string(stmt, 0));
-    // DB columns 1–11 (video_sample_rate, field_width, field_height, etc.) are
-    // read for back-compatibility validation but are NOT propagated to the
-    // struct; canonical values are derived from params.system below.
-    // active_video_start/end in database are HORIZONTAL sample positions
-    // (x-axis)
     params.active_video_start = impl_->get_int(stmt, 2);
     params.active_video_end = impl_->get_int(stmt, 3);
-    // Read number_of_sequential_fields from DB for validation; derive frames.
     const int32_t db_sequential_fields = impl_->get_int(stmt, 6);
     params.number_of_sequential_frames =
         (db_sequential_fields > 0) ? db_sequential_fields / 2 : -1;
     params.is_mapped = impl_->get_bool(stmt, 9);
-    // is_subcarrier_locked (col 10) skipped — deprecated field; value is a
-    // DB-only round-trip artefact and has no meaning in the pipeline.
     params.is_widescreen = impl_->get_bool(stmt, 11);
 
     int col_offset = 12;
     if (has_blanking_column) {
-      // Skip blanking/black/white — derive from system constants instead.
-      col_offset += 3;  // skip blanking_16b_ire, black_16b_ire, white_16b_ire
+      col_offset += 3;
       params.decoder = impl_->get_string(stmt, col_offset);
       params.git_branch = impl_->get_string(stmt, col_offset + 1);
       params.git_commit = impl_->get_string(stmt, col_offset + 2);
     } else {
-      // Fallback: no blanking column; skip black/white.
-      col_offset += 2;  // skip black_16b_ire, white_16b_ire
+      col_offset += 2;
       params.decoder = impl_->get_string(stmt, col_offset);
       params.git_branch = impl_->get_string(stmt, col_offset + 1);
       params.git_commit = impl_->get_string(stmt, col_offset + 2);
     }
 
-    // Populate canonical CVBS_U10_4FSC fields derived from the video system.
-    // These replace the deprecated per-disc fields.
     // EBU Tech. 3280-E §1.1 (PAL) / SMPTE 244M-2003 §4.1 (NTSC) /
     // ITU-R BT.1700-1 Annex 1 Part B (PAL_M).
     switch (params.system) {
       case VideoSystem::PAL:
-        params.frame_width_nominal = kPalMaxSamplesPerLine - 1;  // 1135
-        params.frame_height = kPalFrameLines;                    // 625
+        params.frame_width_nominal = kPalMaxSamplesPerLine - 1;
+        params.frame_height = kPalFrameLines;
         break;
       case VideoSystem::PAL_M:
-        params.frame_width_nominal = kPalMSamplesPerLine;  // 909
-        params.frame_height = kPalMFrameLines;             // 525
+        params.frame_width_nominal = kPalMSamplesPerLine;
+        params.frame_height = kPalMFrameLines;
         break;
-      default:                                             // NTSC
-        params.frame_width_nominal = kNtscSamplesPerLine;  // 910
-        params.frame_height = kNtscFrameLines;             // 525
+      default:
+        params.frame_width_nominal = kNtscSamplesPerLine;
+        params.frame_height = kNtscFrameLines;
         break;
     }
 
-    // Active line boundaries from legacy-tools/library/tbc/lddecodemetadata.cpp
-    // For PAL: field lines calculated as frame/2.
-    // For NTSC/PAL_M: hardcoded to match ld-chroma-decoder.
     if (params.system == VideoSystem::PAL) {
       params.first_active_frame_line = 44;
       params.last_active_frame_line = 620;
     } else {
-      // NTSC and PAL-M share the same line boundaries.
       params.first_active_frame_line = 40;
       params.last_active_frame_line = 525;
     }
@@ -356,11 +280,8 @@ TBCMetadataSqliteReader::read_video_parameters() {
 
 std::optional<TbcDomainLevels>
 TBCMetadataSqliteReader::read_tbc_domain_levels() {
-  if (!is_open_) {
-    return std::nullopt;
-  }
+  if (!is_open_) return std::nullopt;
 
-  // Try the modern schema that has blanking_16b_ire.
   const char* sql_with_blanking =
       "SELECT blanking_16b_ire, white_16b_ire FROM capture WHERE capture_id = "
       "?";
@@ -368,14 +289,11 @@ TBCMetadataSqliteReader::read_tbc_domain_levels() {
   int rc = sqlite3_prepare_v2(impl_->db, sql_with_blanking, -1, &stmt, nullptr);
 
   if (rc != SQLITE_OK) {
-    // Fallback to older schema without blanking column.
     const char* sql_without_blanking =
         "SELECT black_16b_ire, white_16b_ire FROM capture WHERE capture_id = ?";
     rc =
         sqlite3_prepare_v2(impl_->db, sql_without_blanking, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-      return std::nullopt;
-    }
+    if (rc != SQLITE_OK) return std::nullopt;
   }
 
   sqlite3_bind_int(stmt, 1, impl_->capture_id);
@@ -393,8 +311,8 @@ TBCMetadataSqliteReader::read_tbc_domain_levels() {
 
   if (!levels.is_valid()) {
     ORC_LOG_WARN(
-        "read_tbc_domain_levels: invalid levels in metadata "
-        "(blanking={}, white={}); caller will use defaults",
+        "read_tbc_domain_levels: invalid levels (blanking={}, white={}); "
+        "caller will use defaults",
         levels.blanking_16b, levels.white_16b);
     return std::nullopt;
   }
@@ -404,22 +322,16 @@ TBCMetadataSqliteReader::read_tbc_domain_levels() {
 
 std::optional<PcmAudioParameters>
 TBCMetadataSqliteReader::read_pcm_audio_parameters() {
-  if (!is_open_) {
-    return std::nullopt;
-  }
+  if (!is_open_) return std::nullopt;
 
   PcmAudioParameters params;
-
   const char* sql =
       "SELECT sample_rate, bits, is_signed, is_little_endian "
       "FROM pcm_audio_parameters WHERE capture_id = ?";
 
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
-
-  if (rc != SQLITE_OK) {
-    return std::nullopt;
-  }
+  if (rc != SQLITE_OK) return std::nullopt;
 
   sqlite3_bind_int(stmt, 1, impl_->capture_id);
 
@@ -428,7 +340,6 @@ TBCMetadataSqliteReader::read_pcm_audio_parameters() {
     params.bits = impl_->get_int(stmt, 1);
     params.is_signed = impl_->get_bool(stmt, 2);
     params.is_little_endian = impl_->get_bool(stmt, 3);
-
     sqlite3_finalize(stmt);
     return params;
   }
@@ -438,12 +349,9 @@ TBCMetadataSqliteReader::read_pcm_audio_parameters() {
 }
 
 void TBCMetadataSqliteReader::preload_cache() {
-  if (!is_open_) {
-    return;
-  }
+  if (!is_open_) return;
 
   std::lock_guard<std::mutex> lock(impl_->cache_mutex_);
-
   if (!impl_->cache_loaded_) {
     ORC_LOG_DEBUG("Preloading metadata cache from database");
     impl_->metadata_cache_ = read_all_field_metadata();
@@ -456,25 +364,17 @@ void TBCMetadataSqliteReader::preload_cache() {
 
 std::optional<FieldMetadata> TBCMetadataSqliteReader::read_field_metadata(
     FieldID field_id) {
-  if (!is_open_ || !field_id.is_valid()) {
-    return std::nullopt;
-  }
+  if (!is_open_ || !field_id.is_valid()) return std::nullopt;
 
-  // Check cache first
   {
     std::lock_guard<std::mutex> lock(impl_->cache_mutex_);
-
-    // Load all metadata and dropouts on first access (if not already preloaded)
     if (!impl_->cache_loaded_) {
       impl_->metadata_cache_ = read_all_field_metadata();
-      read_all_dropouts();  // Also load all dropouts
+      read_all_dropouts();
       impl_->cache_loaded_ = true;
     }
-
     auto it = impl_->metadata_cache_.find(field_id);
-    if (it != impl_->metadata_cache_.end()) {
-      return it->second;
-    }
+    if (it != impl_->metadata_cache_.end()) return it->second;
   }
 
   return std::nullopt;
@@ -483,13 +383,8 @@ std::optional<FieldMetadata> TBCMetadataSqliteReader::read_field_metadata(
 std::map<FieldID, FieldMetadata>
 TBCMetadataSqliteReader::read_all_field_metadata() {
   std::map<FieldID, FieldMetadata> result;
+  if (!is_open_) return result;
 
-  if (!is_open_) {
-    return result;
-  }
-
-  // Try the full query including ac3_symbols (present in ld-decode >= ac3rf
-  // support). Fall back to the legacy query without it for older .tbc.db files.
   const char* sql =
       "SELECT field_id, is_first_field, sync_conf, median_burst_ire, "
       "field_phase_id, "
@@ -508,9 +403,7 @@ TBCMetadataSqliteReader::read_all_field_metadata() {
 
   if (!has_ac3_symbols) {
     rc = sqlite3_prepare_v2(impl_->db, sql_legacy, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-      return result;
-    }
+    if (rc != SQLITE_OK) return result;
   }
 
   sqlite3_bind_int(stmt, 1, impl_->capture_id);
@@ -531,27 +424,20 @@ TBCMetadataSqliteReader::read_all_field_metadata() {
     if (has_ac3_symbols) {
       metadata.ac3rf_symbols = impl_->get_optional_int(stmt, 11);
     }
-
     result[FieldID(metadata.seq_no)] = metadata;
   }
 
   sqlite3_finalize(stmt);
-
   return result;
 }
 
 std::optional<VbiData> TBCMetadataSqliteReader::read_vbi(FieldID field_id) {
-  if (!is_open_ || !field_id.is_valid()) {
-    return std::nullopt;
-  }
+  if (!is_open_ || !field_id.is_valid()) return std::nullopt;
 
   sqlite3_stmt* stmt = nullptr;
   const char* sql = "SELECT * FROM vbi WHERE capture_id = ? AND field_id = ?";
   int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
-  if (rc != SQLITE_OK) {
-    // Table may not exist in older databases
-    return std::nullopt;
-  }
+  if (rc != SQLITE_OK) return std::nullopt;
 
   sqlite3_bind_int(stmt, 1, impl_->capture_id);
   sqlite3_bind_int64(stmt, 2, static_cast<sqlite3_int64>(field_id.value()));
@@ -562,22 +448,18 @@ std::optional<VbiData> TBCMetadataSqliteReader::read_vbi(FieldID field_id) {
 
   rc = sqlite3_step(stmt);
   if (rc == SQLITE_ROW) {
-    // Build a mapping from column name to index for flexible schema support
     int col_count = sqlite3_column_count(stmt);
     auto get_col = [&](const char* const names[]) -> std::optional<int> {
       for (int c = 0; c < col_count; ++c) {
         const char* cname = sqlite3_column_name(stmt, c);
         if (!cname) continue;
         for (int i = 0; names[i] != nullptr; ++i) {
-          if (strcasecmp(cname, names[i]) == 0) {
-            return c;
-          }
+          if (strcasecmp(cname, names[i]) == 0) return c;
         }
       }
       return std::nullopt;
     };
 
-    // Possible column name variants per line
     const char* line16_cols[] = {"l16",   "line16", "line_16",
                                  "vbi16", "vbi_16", nullptr};
     const char* line17_cols[] = {"l17",   "line17", "line_17",
@@ -602,31 +484,21 @@ std::optional<VbiData> TBCMetadataSqliteReader::read_vbi(FieldID field_id) {
       vbi.vbi_data[2] = sqlite3_column_int(stmt, *c18);
       found_any = true;
     }
-
     vbi.in_use = found_any;
   }
 
   sqlite3_finalize(stmt);
-  if (vbi.in_use) {
-    return vbi;
-  }
-  return std::nullopt;
+  return vbi.in_use ? std::optional<VbiData>{vbi} : std::nullopt;
 }
 
 std::optional<VitcData> TBCMetadataSqliteReader::read_vitc(FieldID field_id) {
-  if (!is_open_ || !field_id.is_valid()) {
-    return std::nullopt;
-  }
-
-  // VITC reading implementation would go here
+  if (!is_open_ || !field_id.is_valid()) return std::nullopt;
   return std::nullopt;
 }
 
 std::optional<ClosedCaptionData> TBCMetadataSqliteReader::read_closed_caption(
     FieldID field_id) {
-  if (!is_open_ || !field_id.is_valid()) {
-    return std::nullopt;
-  }
+  if (!is_open_ || !field_id.is_valid()) return std::nullopt;
 
   sqlite3_stmt* stmt = nullptr;
   const char* sql =
@@ -634,9 +506,7 @@ std::optional<ClosedCaptionData> TBCMetadataSqliteReader::read_closed_caption(
       "field_id = ?";
 
   int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
-  if (rc != SQLITE_OK) {
-    return std::nullopt;
-  }
+  if (rc != SQLITE_OK) return std::nullopt;
 
   sqlite3_bind_int(stmt, 1, impl_->capture_id);
   sqlite3_bind_int64(stmt, 2, static_cast<sqlite3_int64>(field_id.value()));
@@ -652,37 +522,21 @@ std::optional<ClosedCaptionData> TBCMetadataSqliteReader::read_closed_caption(
   }
 
   sqlite3_finalize(stmt);
-
-  if (cc.in_use) {
-    return cc;
-  }
-
-  return std::nullopt;
+  return cc.in_use ? std::optional<ClosedCaptionData>{cc} : std::nullopt;
 }
 
 std::vector<DropoutInfo> TBCMetadataSqliteReader::read_dropouts(
     FieldID field_id) const {
-  if (!is_open_ || !field_id.is_valid()) {
-    return {};
-  }
+  if (!is_open_ || !field_id.is_valid()) return {};
 
-  // Check cache first (cache is loaded in read_field_metadata)
-  {
-    std::lock_guard<std::mutex> lock(impl_->cache_mutex_);
-    auto it = impl_->dropout_cache_.find(field_id);
-    if (it != impl_->dropout_cache_.end()) {
-      return it->second;
-    }
-  }
-
-  // If not in cache, field has no dropouts
+  std::lock_guard<std::mutex> lock(impl_->cache_mutex_);
+  auto it = impl_->dropout_cache_.find(field_id);
+  if (it != impl_->dropout_cache_.end()) return it->second;
   return {};
 }
 
 void TBCMetadataSqliteReader::read_all_dropouts() {
-  if (!is_open_) {
-    return;
-  }
+  if (!is_open_) return;
 
   impl_->dropout_cache_.clear();
 
@@ -692,10 +546,7 @@ void TBCMetadataSqliteReader::read_all_dropouts() {
 
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
-
-  if (rc != SQLITE_OK) {
-    return;
-  }
+  if (rc != SQLITE_OK) return;
 
   sqlite3_bind_int(stmt, 1, impl_->capture_id);
 
@@ -706,8 +557,7 @@ void TBCMetadataSqliteReader::read_all_dropouts() {
     DropoutInfo dropout;
     dropout.start_sample = static_cast<uint32_t>(impl_->get_int(stmt, 1));
     dropout.end_sample = static_cast<uint32_t>(impl_->get_int(stmt, 2));
-    // TBC database uses 1-based line numbers, convert to 0-based for internal
-    // use
+    // TBC database uses 1-based line numbers; convert to 0-based.
     dropout.line = static_cast<uint32_t>(impl_->get_int(stmt, 3)) - 1;
 
     impl_->dropout_cache_[field_id].push_back(dropout);
@@ -719,28 +569,19 @@ void TBCMetadataSqliteReader::read_all_dropouts() {
 std::optional<DropoutData> TBCMetadataSqliteReader::read_dropout(
     FieldID field_id) const {
   auto dropouts = read_dropouts(field_id);
-  if (dropouts.empty()) {
-    return std::nullopt;
-  }
-
+  if (dropouts.empty()) return std::nullopt;
   DropoutData data;
   data.dropouts = dropouts;
   return data;
 }
 
 int32_t TBCMetadataSqliteReader::get_field_record_count() const {
-  if (!is_open_) {
-    return -1;
-  }
+  if (!is_open_) return -1;
 
   const char* sql = "SELECT COUNT(*) FROM field_record WHERE capture_id = ?";
-
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
-
-  if (rc != SQLITE_OK) {
-    return -1;
-  }
+  if (rc != SQLITE_OK) return -1;
 
   sqlite3_bind_int(stmt, 1, impl_->capture_id);
 
@@ -764,9 +605,8 @@ bool TBCMetadataSqliteReader::validate_metadata(
     return false;
   }
 
-  // Read video parameters
   auto params_opt =
-      const_cast<TBCMetadataReader*>(this)->read_video_parameters();
+      const_cast<TBCMetadataSqliteReader*>(this)->read_video_parameters();
   if (!params_opt) {
     if (error_message) {
       *error_message = "Failed to read video parameters from metadata";
@@ -778,8 +618,6 @@ bool TBCMetadataSqliteReader::validate_metadata(
 
   const auto& params = *params_opt;
 
-  // Check that number_of_sequential_frames is set (derived from DB field count
-  // / 2).
   if (params.number_of_sequential_frames <= 0) {
     if (error_message) {
       *error_message =
@@ -790,7 +628,6 @@ bool TBCMetadataSqliteReader::validate_metadata(
     return false;
   }
 
-  // Get actual field record count from database
   int32_t field_record_count = get_field_record_count();
   if (field_record_count < 0) {
     if (error_message) {
@@ -800,12 +637,6 @@ bool TBCMetadataSqliteReader::validate_metadata(
     return false;
   }
 
-  // Check consistency between capture table and field_record table.
-  // The DB stores number_of_sequential_fields; compare against 2× frames.
-  // Warning: Some TBC files have mismatches where field_record has more entries
-  // than the capture table indicates.  This is a known issue with certain
-  // ld-decode versions.  We use the field_record count to match ld-discmap
-  // behaviour.
   const int32_t expected_field_count = params.number_of_sequential_frames * 2;
   if (field_record_count != expected_field_count) {
     if (error_message) {
@@ -813,14 +644,13 @@ bool TBCMetadataSqliteReader::validate_metadata(
           "Metadata inconsistency: capture table specifies " +
           std::to_string(expected_field_count) +
           " fields, but field_record table contains " +
-          std::to_string(field_record_count) + " records. " +
-          "This TBC file has inconsistent metadata, likely from a buggy " +
-          "ld-decode version or interrupted capture.";
+          std::to_string(field_record_count) +
+          " records. This TBC file has inconsistent metadata, likely from a "
+          "buggy ld-decode version or interrupted capture.";
     }
     return false;
   }
 
-  // Validate frame width (canonical CVBS_U10_4FSC field).
   if (params.frame_width_nominal <= 0) {
     if (error_message) {
       *error_message = "Invalid frame_width_nominal: " +
@@ -829,7 +659,6 @@ bool TBCMetadataSqliteReader::validate_metadata(
     return false;
   }
 
-  // Validate video system
   if (params.system == VideoSystem::Unknown) {
     if (error_message) {
       *error_message = "Unknown or unsupported video system";

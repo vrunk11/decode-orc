@@ -11,12 +11,12 @@
 
 #include <field_id.h>
 #include <observation_context_interface.h>
+#include <tbc_metadata_types.h>
 
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "tbc_metadata.h"
 #include "tbc_metadata_writer_interface.h"
 
 namespace orc {

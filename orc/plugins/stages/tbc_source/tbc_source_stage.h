@@ -15,7 +15,6 @@
 #include <frame_id.h>
 #include <orc_source_parameters.h>
 #include <stage_parameter.h>
-#include <tbc_metadata.h>
 #include <video_frame_representation.h>
 
 #include <cstdint>
@@ -28,6 +27,7 @@
 
 #include "../../../sdk/include/orc/plugin/orc_stage_preview.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
+#include "tbc_metadata_types.h"
 
 namespace orc {
 

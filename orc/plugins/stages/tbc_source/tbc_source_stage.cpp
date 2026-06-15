@@ -10,8 +10,6 @@
 #include "tbc_source_stage.h"
 
 #include <cvbs_signal_constants.h>
-#include <tbc_metadata.h>
-#include <tbc_reader.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -32,6 +30,9 @@
 #include "pal_tbc_converter.h"
 #include "pal_tbc_yc_converter.h"
 #include "preview_helpers.h"
+#include "tbc_metadata_reader.h"
+#include "tbc_metadata_types.h"
+#include "tbc_reader.h"
 
 namespace orc {
 

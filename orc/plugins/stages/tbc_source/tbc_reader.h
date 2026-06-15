@@ -1,7 +1,7 @@
 /*
  * File:        tbc_reader.h
- * Module:      orc-core
- * Purpose:     Tbc Reader
+ * Module:      orc-stage-plugin-tbc-source
+ * Purpose:     TBC binary file reader
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
@@ -10,11 +10,11 @@
 #pragma once
 
 #include <field_id.h>
+#include <lru_cache.h>
 
 #include <memory>
 #include <string>
-
-#include "lru_cache.h"
+#include <vector>
 
 namespace orc {
 
@@ -31,37 +31,29 @@ class TBCReader {
   TBCReader();
   ~TBCReader();
 
-  // Open a TBC file
   bool open(const std::string& filename, size_t field_length,
             size_t line_length = 0);
   void close();
 
-  // Query file properties
   bool is_open() const { return is_open_; }
   size_t get_field_count() const { return field_count_; }
   size_t get_field_length() const { return field_length_; }
   size_t get_line_length() const { return line_length_; }
 
-  // Read a complete field
   std::vector<sample_type> read_field(FieldID field_id);
-
-  // Read specific lines from a field
   std::vector<sample_type> read_field_lines(FieldID field_id, size_t start_line,
                                             size_t end_line);
-
-  // Read a single line from a field
   std::vector<sample_type> read_line(FieldID field_id, size_t line_number);
 
  private:
-  int fd_;                // POSIX file descriptor (thread-safe with pread)
-  std::string filename_;  // Store filename for error messages
+  int fd_;
+  std::string filename_;
   bool is_open_;
-  size_t field_count_;        // Total fields in file (-1 if unknown)
-  size_t field_length_;       // Samples per field
-  size_t field_byte_length_;  // Bytes per field (field_length * 2)
-  size_t line_length_;        // Samples per line (0 if not set)
+  size_t field_count_;
+  size_t field_length_;
+  size_t field_byte_length_;
+  size_t line_length_;
 
-  // LRU cache for recently accessed fields (max 100 entries, thread-safe)
   mutable LRUCache<FieldID, std::shared_ptr<std::vector<sample_type>>>
       field_cache_;
 };

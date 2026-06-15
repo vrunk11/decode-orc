@@ -18,6 +18,7 @@ function(orc_add_core_unit_tests target labels)
         target_include_directories(${target} PRIVATE
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/daphne_vbi_sink
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/ld_sink
+                ${CMAKE_SOURCE_DIR}/orc/plugins/stages/tbc_source
                 ${CMAKE_SOURCE_DIR}/orc/sdk/include
         )
     target_link_libraries(

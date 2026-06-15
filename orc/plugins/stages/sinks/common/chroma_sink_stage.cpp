@@ -10,21 +10,19 @@
 #include "chroma_sink_stage.h"
 
 #include <cvbs_signal_constants.h>
+#include <vectorscope/vectorscope_analysis.h>
 
 #include "colour_preview_conversion.h"
-#include "frame_line_util.h"
-#include "logging.h"
-#include "preview_helpers.h"
-#include "preview_renderer.h"
-
-// Decoder includes (relative to this file)
-#include "../../analysis/vectorscope/vectorscope_analysis.h"
 #include "decoders/comb.h"
 #include "decoders/componentframe.h"
 #include "decoders/monodecoder.h"
 #include "decoders/outputwriter.h"
 #include "decoders/palcolour.h"
 #include "decoders/sourcefield.h"
+#include "frame_line_util.h"
+#include "logging.h"
+#include "preview_helpers.h"
+#include "preview_renderer.h"
 #include "video_parameter_safety.h"
 
 // Output backend includes
