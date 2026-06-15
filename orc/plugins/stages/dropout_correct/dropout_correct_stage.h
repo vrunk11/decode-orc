@@ -91,7 +91,7 @@ class CorrectedVideoFrameRepresentation
 // ============================================================================
 class DropoutCorrectStage : public DAGStage,
                             public ParameterizedStage,
-                            public PreviewableStage {
+                            public IStagePreviewCapability {
  public:
   explicit DropoutCorrectStage(
       const DropoutCorrectionConfig& config = DropoutCorrectionConfig{})
@@ -122,11 +122,8 @@ class DropoutCorrectStage : public DAGStage,
   size_t required_input_count() const override { return 1; }
   size_t output_count() const override { return 1; }
 
-  // PreviewableStage
-  bool supports_preview() const override { return true; }
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
 
   // ParameterizedStage
   std::vector<ParameterDescriptor> get_parameter_descriptors(

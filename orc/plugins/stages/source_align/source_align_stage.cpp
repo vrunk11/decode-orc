@@ -15,6 +15,7 @@
 
 #include "artifact.h"
 #include "logging.h"
+#include "preview_helpers.h"
 
 namespace orc {
 
@@ -464,6 +465,15 @@ PreviewImage render_vfr_grayscale(const VideoFrameRepresentation& vfr,
 }
 
 }  // namespace
+
+StagePreviewCapability SourceAlignStage::get_preview_capability() const {
+  for (const auto& out : cached_outputs_) {
+    if (out && out->frame_count() > 0) {
+      return PreviewHelpers::make_signal_preview_capability(out);
+    }
+  }
+  return {};
+}
 
 std::vector<PreviewOption> SourceAlignStage::get_preview_options() const {
   std::vector<PreviewOption> options;

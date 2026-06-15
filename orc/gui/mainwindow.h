@@ -362,7 +362,7 @@ class MainWindow : public QMainWindow {
   // Preview state (UI only - all data comes from core)
   orc::PreviewOutputType current_output_type_;
   std::string
-      current_option_id_;  ///< Current option ID for PreviewableStage rendering
+      current_option_id_;  ///< Current option ID for custom preview rendering
   orc::AspectRatioMode
       current_aspect_ratio_mode_;  ///< Current aspect ratio mode
   std::vector<orc::PreviewOutputInfo>

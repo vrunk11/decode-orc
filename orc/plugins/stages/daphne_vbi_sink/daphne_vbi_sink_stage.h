@@ -45,7 +45,7 @@ class IDaphneVBISinkStageDeps;
 class DaphneVBISinkStage : public DAGStage,
                            public ParameterizedStage,
                            public TriggerableStage,
-                           public PreviewableStage {
+                           public IStagePreviewCapability {
  public:
   explicit DaphneVBISinkStage(IStageServices* stage_services);
 
@@ -91,11 +91,8 @@ class DaphneVBISinkStage : public DAGStage,
 
   void cancel_trigger() override { cancel_requested_.store(true); }
 
-  // PreviewableStage interface
-  bool supports_preview() const override { return cached_input_ != nullptr; }
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
 
  private:
   std::string output_path_;

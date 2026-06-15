@@ -1171,22 +1171,10 @@ bool TBCSourceStage::set_parameters(
 // Preview
 // ---------------------------------------------------------------------------
 
-bool TBCSourceStage::supports_preview() const {
-  return cached_representation_ != nullptr;
-}
-
-std::vector<PreviewOption> TBCSourceStage::get_preview_options() const {
+StagePreviewCapability TBCSourceStage::get_preview_capability() const {
   auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(
       cached_representation_);
-  return PreviewHelpers::get_standard_preview_options(vfr);
-}
-
-PreviewImage TBCSourceStage::render_preview(const std::string& option_id,
-                                            uint64_t index,
-                                            PreviewNavigationHint hint) const {
-  auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(
-      cached_representation_);
-  return PreviewHelpers::render_standard_preview(vfr, option_id, index, hint);
+  return PreviewHelpers::make_signal_preview_capability(vfr);
 }
 
 std::optional<StageReport> TBCSourceStage::generate_report() const {

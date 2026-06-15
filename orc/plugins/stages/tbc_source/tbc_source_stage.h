@@ -157,7 +157,7 @@ class ITBCSourceStageDeps {
 // operates in YC mode; otherwise composite.
 class TBCSourceStage : public DAGStage,
                        public ParameterizedStage,
-                       public PreviewableStage {
+                       public IStagePreviewCapability {
  public:
   explicit TBCSourceStage(std::shared_ptr<ITBCSourceStageDeps> deps = nullptr);
   ~TBCSourceStage() override = default;
@@ -201,11 +201,8 @@ class TBCSourceStage : public DAGStage,
   bool set_parameters(
       const std::map<std::string, ParameterValue>& params) override;
 
-  // PreviewableStage interface
-  bool supports_preview() const override;
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
 
   std::optional<StageReport> generate_report() const override;
 

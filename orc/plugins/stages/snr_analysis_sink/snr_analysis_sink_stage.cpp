@@ -225,16 +225,8 @@ bool SNRAnalysisSinkStage::trigger(
   }
 }
 
-std::vector<PreviewOption> SNRAnalysisSinkStage::get_preview_options() const {
-  return PreviewHelpers::get_standard_preview_options(cached_input_);
-}
-
-PreviewImage SNRAnalysisSinkStage::render_preview(
-    const std::string& option_id, uint64_t index,
-    PreviewNavigationHint hint) const {
-  (void)hint;
-  return PreviewHelpers::render_standard_preview(cached_input_, option_id,
-                                                 index);
+StagePreviewCapability SNRAnalysisSinkStage::get_preview_capability() const {
+  return PreviewHelpers::make_signal_preview_capability(cached_input_);
 }
 
 }  // namespace orc

@@ -836,15 +836,8 @@ bool DropoutCorrectStage::set_parameters(
 // Preview
 // ============================================================================
 
-std::vector<PreviewOption> DropoutCorrectStage::get_preview_options() const {
-  return PreviewHelpers::get_standard_preview_options(cached_output_);
-}
-
-PreviewImage DropoutCorrectStage::render_preview(
-    const std::string& option_id, uint64_t index,
-    PreviewNavigationHint hint) const {
-  return PreviewHelpers::render_standard_preview(cached_output_, option_id,
-                                                 index, hint);
+StagePreviewCapability DropoutCorrectStage::get_preview_capability() const {
+  return PreviewHelpers::make_signal_preview_capability(cached_output_);
 }
 
 }  // namespace orc

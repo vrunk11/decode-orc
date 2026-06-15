@@ -43,7 +43,7 @@ class BurstLevelAnalysisSinkStage : public DAGStage,
                                     public ParameterizedStage,
                                     public TriggerableStage,
                                     public StageToolProvider,
-                                    public PreviewableStage,
+                                    public IStagePreviewCapability,
                                     public IBurstLevelAnalysisResults {
  public:
   BurstLevelAnalysisSinkStage();
@@ -87,11 +87,8 @@ class BurstLevelAnalysisSinkStage : public DAGStage,
   bool is_trigger_in_progress() const override { return is_processing_.load(); }
   void cancel_trigger() override { cancel_requested_.store(true); }
 
-  // PreviewableStage interface
-  bool supports_preview() const override { return true; }
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
 
   // IBurstLevelAnalysisResults interface
   const std::vector<FrameBurstLevelStats>& frame_stats() const override {

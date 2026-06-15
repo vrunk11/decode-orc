@@ -152,7 +152,7 @@ class FrameMappedRepresentation : public VideoFrameRepresentationWrapper,
 //   frame_map.gap_positions   — string listing output positions of gap starts
 class FrameMapStage : public DAGStage,
                       public ParameterizedStage,
-                      public PreviewableStage {
+                      public IStagePreviewCapability {
  public:
   FrameMapStage() = default;
 
@@ -181,11 +181,8 @@ class FrameMapStage : public DAGStage,
   size_t required_input_count() const override { return 1; }
   size_t output_count() const override { return 1; }
 
-  // PreviewableStage
-  bool supports_preview() const override { return true; }
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
 
   // ParameterizedStage
   std::vector<ParameterDescriptor> get_parameter_descriptors(

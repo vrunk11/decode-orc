@@ -15,6 +15,7 @@
 
 #include "../../../sdk/include/orc/plugin/orc_stage_preview.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
+#include "stage_custom_preview_renderer.h"
 #include "stage_parameter.h"
 #include "video_frame_representation.h"
 
@@ -30,7 +31,8 @@ namespace orc {
  */
 class SourceAlignStage : public DAGStage,
                          public ParameterizedStage,
-                         public PreviewableStage {
+                         public IStagePreviewCapability,
+                         public IStageCustomPreviewRenderer {
  public:
   SourceAlignStage() = default;
 
@@ -58,8 +60,10 @@ class SourceAlignStage : public DAGStage,
   size_t required_input_count() const override { return 1; }
   size_t output_count() const override { return UINT32_MAX; }
 
-  // PreviewableStage
-  bool supports_preview() const override { return true; }
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
+
+  // IStageCustomPreviewRenderer
   std::vector<PreviewOption> get_preview_options() const override;
   PreviewImage render_preview(const std::string& option_id, uint64_t index,
                               PreviewNavigationHint hint) const override;

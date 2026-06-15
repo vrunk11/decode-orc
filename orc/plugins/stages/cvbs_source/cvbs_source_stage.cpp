@@ -1057,23 +1057,11 @@ bool FixedFormatCVBSSourceStage::set_parameters(
   return true;
 }
 
-bool FixedFormatCVBSSourceStage::supports_preview() const {
-  return cached_representation_ != nullptr;
-}
-
-std::vector<PreviewOption> FixedFormatCVBSSourceStage::get_preview_options()
+StagePreviewCapability FixedFormatCVBSSourceStage::get_preview_capability()
     const {
-  auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(
-      cached_representation_);
-  return PreviewHelpers::get_standard_preview_options(vfr);
-}
-
-PreviewImage FixedFormatCVBSSourceStage::render_preview(
-    const std::string& option_id, uint64_t index,
-    PreviewNavigationHint hint) const {
-  auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(
-      cached_representation_);
-  return PreviewHelpers::render_standard_preview(vfr, option_id, index, hint);
+  return PreviewHelpers::make_signal_preview_capability(
+      std::dynamic_pointer_cast<const VideoFrameRepresentation>(
+          cached_representation_));
 }
 
 std::optional<StageReport> FixedFormatCVBSSourceStage::generate_report() const {

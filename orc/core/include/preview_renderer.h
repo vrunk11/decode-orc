@@ -26,7 +26,8 @@
 
 #include "../analysis/vectorscope/vectorscope_data.h"
 #include "dag_frame_renderer.h"
-#include "previewable_stage.h"  // For PreviewNavigationHint enum
+#include "preview_stage_types.h"
+#include "stage_custom_preview_renderer.h"
 #include "stage_preview_capability.h"
 #include "video_frame_representation.h"
 
@@ -333,7 +334,8 @@ class PreviewRenderer {
    * @param type The output type (field, frame, etc.)
    * @param index The output index (0-based)
    * @param filename Path to PNG file to create
-   * @param option_id Optional ID for PreviewableStage outputs (default: "")
+   * @param option_id Optional ID for custom preview renderer outputs (default:
+   * "")
    * @return true if successful, false on error
    *
    * Example:
@@ -407,32 +409,13 @@ class PreviewRenderer {
       PreviewNavigationHint hint = PreviewNavigationHint::Random);
 
   /**
-   * @brief Get available outputs for a previewable stage (source/transform)
+   * @brief Convert a vector of PreviewOptions to PreviewOutputInfo entries.
    *
-   * @param stage_node_id The stage node ID
-   * @param stage_node The DAG node for the stage
-   * @param previewable The PreviewableStage interface
-   * @return Vector of available output types
+   * Shared by the VFR path and the IStageCustomPreviewRenderer path.
    */
-  std::vector<PreviewOutputInfo> get_stage_preview_outputs(
+  std::vector<PreviewOutputInfo> build_outputs_from_options(
       const NodeID& stage_node_id, const DAGNode& stage_node,
-      const class PreviewableStage& previewable);
-
-  /**
-   * @brief Render preview output from a previewable stage
-   *
-   * @param stage_node_id The stage node ID
-   * @param stage_node The DAG node for the stage
-   * @param previewable The PreviewableStage interface
-   * @param type The output type to render
-   * @param index The output index
-   * @return Rendered preview result
-   */
-  PreviewRenderResult render_stage_preview(
-      const NodeID& stage_node_id, const DAGNode& stage_node,
-      const class PreviewableStage& previewable, PreviewOutputType type,
-      uint64_t index, const std::string& requested_option_id = "",
-      PreviewNavigationHint hint = PreviewNavigationHint::Random);
+      const std::vector<PreviewOption>& options);
 };
 
 }  // namespace orc

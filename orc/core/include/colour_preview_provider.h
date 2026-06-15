@@ -13,7 +13,7 @@
 #include <optional>
 
 #include "orc_preview_carriers.h"
-#include "previewable_stage.h"
+#include "preview_stage_types.h"
 
 namespace orc {
 

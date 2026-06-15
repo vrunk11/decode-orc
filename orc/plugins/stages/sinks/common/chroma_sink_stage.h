@@ -78,7 +78,6 @@ namespace orc {
 class ChromaSinkStage : public DAGStage,
                         public ParameterizedStage,
                         public TriggerableStage,
-                        public PreviewableStage,
                         public IStagePreviewCapability,
                         public IColourPreviewProvider {
  public:
@@ -122,12 +121,6 @@ class ChromaSinkStage : public DAGStage,
   }
 
   void cancel_trigger() override { cancel_requested_.store(true); }
-
-  // PreviewableStage interface
-  bool supports_preview() const override { return true; }
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
 
   // IStagePreviewCapability interface
   StagePreviewCapability get_preview_capability() const override;

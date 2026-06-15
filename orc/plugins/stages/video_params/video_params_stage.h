@@ -76,7 +76,7 @@ class VideoParamsOverrideFrameRepresentation
 // ============================================================================
 class VideoParamsStage : public DAGStage,
                          public ParameterizedStage,
-                         public PreviewableStage {
+                         public IStagePreviewCapability {
  public:
   VideoParamsStage() = default;
 
@@ -115,11 +115,8 @@ class VideoParamsStage : public DAGStage,
   bool set_parameters(
       const std::map<std::string, ParameterValue>& params) override;
 
-  // PreviewableStage
-  bool supports_preview() const override { return true; }
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
 
  private:
   std::optional<SourceParameters> build_video_parameters(

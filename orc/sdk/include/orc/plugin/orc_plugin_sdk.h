@@ -77,9 +77,9 @@
 #include <orc/plugin/orc_stage_preview.h>
 
 // SDK Stage API includes key stage infrastructure: ParameterizedStage,
-// TriggerableStage, and access to PreviewableStage via includes for
-// preview-enabled stages. Consolidated stage services API: canonical host
-// services for sink/file output and related stage runtime helpers.
+// TriggerableStage, and preview interfaces. Consolidated stage services API:
+// canonical host services for sink/file output and related stage runtime
+// helpers.
 #include <orc/plugin/orc_stage_services.h>
 
 // Canonical stage helper/tooling descriptors used by GUI/CLI integrations.

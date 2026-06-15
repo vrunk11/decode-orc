@@ -1,7 +1,7 @@
 /*
  * File:        preview_helpers.cpp
  * Module:      orc-core
- * Purpose:     Helper functions for implementing PreviewableStage
+ * Purpose:     Helper functions for stage preview rendering
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
@@ -21,6 +21,48 @@
 
 namespace orc {
 namespace PreviewHelpers {
+
+StagePreviewCapability make_signal_preview_capability(
+    const std::shared_ptr<const VideoFrameRepresentation>& vfr) {
+  if (!vfr || vfr->frame_count() == 0) return {};
+  auto params = vfr->get_video_parameters();
+  if (!params || !params->is_valid()) return {};
+
+  VideoDataType data_type = VideoDataType::CompositePAL;
+  if (params->system == VideoSystem::NTSC ||
+      params->system == VideoSystem::PAL_M) {
+    data_type = VideoDataType::CompositeNTSC;
+  }
+
+  uint32_t active_width =
+      (params->active_video_end > params->active_video_start)
+          ? static_cast<uint32_t>(params->active_video_end -
+                                  params->active_video_start)
+          : static_cast<uint32_t>(params->frame_width_nominal);
+  uint32_t active_height =
+      (params->last_active_frame_line > params->first_active_frame_line)
+          ? static_cast<uint32_t>(params->last_active_frame_line -
+                                  params->first_active_frame_line)
+          : static_cast<uint32_t>(params->frame_height);
+
+  double dar_correction = 1.0;
+  if (active_width > 0 && active_height > 0) {
+    double active_ratio =
+        static_cast<double>(active_width) / static_cast<double>(active_height);
+    dar_correction = (4.0 / 3.0) / active_ratio;
+  }
+
+  StagePreviewCapability cap;
+  cap.supported_data_types = {data_type};
+  cap.navigation_extent.item_count = vfr->frame_count();
+  cap.navigation_extent.item_label = "frame";
+  cap.navigation_extent.granularity = 1;
+  cap.geometry.active_width = active_width;
+  cap.geometry.active_height = active_height;
+  cap.geometry.display_aspect_ratio = 4.0 / 3.0;
+  cap.geometry.dar_correction_factor = dar_correction;
+  return cap;
+}
 
 // Scale a 10-bit CVBS_U10_4FSC int16_t sample to an 8-bit grayscale value.
 // Clamped mode maps [black_level, white_level] → [0, 255].

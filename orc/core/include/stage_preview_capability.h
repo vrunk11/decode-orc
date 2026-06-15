@@ -4,15 +4,12 @@
  * Purpose:     Capability contracts for stages that expose structured preview
  * data.
  *
- *              Phase 1 of the preview-refactor plan.  Stages opt in to the new
- *              structured preview path by implementing IStagePreviewCapability
- *              alongside their existing stage interfaces.
+ *              Stages opt in to the structured preview path by implementing
+ *              IStagePreviewCapability alongside their existing stage
+ * interfaces.
  *
- *              The IStagePreviewCapability interface supersedes the implicit
- *              capability inference previously done from PreviewOption lists.
- *              The legacy PreviewableStage::render_preview() baked-RGB path
- * will be retired in Phase 2 when the carrier-backed rendering pipeline
- *              replaces it.
+ *              IStagePreviewCapability supersedes the legacy PreviewableStage
+ *              interface, which has been fully retired.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -190,9 +187,7 @@ struct StagePreviewCapability {
  * StagePreviewCapability with an empty supported_data_types and a zero-item
  * navigation_extent (i.e. is_valid() == false).
  *
- * This interface replaces the implicit capability inference that was previously
- * done from PreviewOption lists; the legacy PreviewableStage::render_preview()
- * baked-RGB path will be retired in Phase 2.
+ * This interface replaces the legacy PreviewableStage interface.
  */
 class IStagePreviewCapability {
  public:

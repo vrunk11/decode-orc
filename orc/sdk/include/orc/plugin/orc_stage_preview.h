@@ -17,5 +17,5 @@
 #include <orc_preview_types.h>
 #include <orc_rendering.h>
 #include <preview_helpers.h>
-#include <previewable_stage.h>
+#include <preview_stage_types.h>
 #include <stage_preview_capability.h>

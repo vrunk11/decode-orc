@@ -25,7 +25,8 @@
 #include "dag_executor.h"
 #include "logging.h"
 #include "plugin_safe_call.h"
-#include "previewable_stage.h"
+#include "preview_helpers.h"
+#include "stage_custom_preview_renderer.h"
 
 namespace orc {
 
@@ -51,13 +52,6 @@ bool has_signal_domain_type(const StagePreviewCapability& capability) {
       capability.supported_data_types.begin(),
       capability.supported_data_types.end(),
       [](VideoDataType type) { return is_signal_domain_type(type); });
-}
-
-bool should_use_legacy_stage_preview(NodeType node_type) {
-  // Keep legacy stage preview enabled for all node families until the
-  // generic VFR/capability path reaches full option parity (e.g. clamped/raw).
-  return node_type == NodeType::SOURCE || node_type == NodeType::TRANSFORM ||
-         node_type == NodeType::SINK || node_type == NodeType::ANALYSIS_SINK;
 }
 
 }  // namespace
@@ -324,8 +318,7 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_available_outputs(
       const auto node_type = node_it->stage->get_node_type_info().type;
       auto* capability_stage =
           dynamic_cast<const IStagePreviewCapability*>(node_it->stage.get());
-      auto* colour_provider =
-          dynamic_cast<const IColourPreviewProvider*>(node_it->stage.get());
+
       if (capability_stage) {
         ensure_node_executed(node_id, false);
         StagePreviewCapability capability =
@@ -337,55 +330,35 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_available_outputs(
         }
 
         if (capability.is_valid()) {
-          const bool has_colour = has_colour_domain_type(capability);
-          const bool has_signal = has_signal_domain_type(capability);
+          auto* colour_provider =
+              dynamic_cast<const IColourPreviewProvider*>(node_it->stage.get());
 
-          if (has_signal) {
-            if (auto* previewable_stage =
-                    dynamic_cast<const PreviewableStage*>(node_it->stage.get());
-                previewable_stage && previewable_stage->supports_preview() &&
-                should_use_legacy_stage_preview(node_type)) {
-              return get_stage_preview_outputs(node_id, *node_it,
-                                               *previewable_stage);
-            }
-          }
-
-          // Phase 2 pivot: signal-domain preview comes from VFR path.
-          // If the stage also exposes colour-domain output, prefer
-          // capability-driven outputs only when a carrier provider exists.
-          if (has_colour && colour_provider != nullptr) {
+          if (has_colour_domain_type(capability) && colour_provider) {
             return get_capability_preview_outputs(capability);
           }
 
-          if (has_signal) {
-            // Continue with generic VFR output discovery below.
-          } else if (auto* previewable_stage =
-                         dynamic_cast<const PreviewableStage*>(
-                             node_it->stage.get());
-                     previewable_stage &&
-                     previewable_stage->supports_preview() &&
-                     should_use_legacy_stage_preview(node_type)) {
-            return get_stage_preview_outputs(node_id, *node_it,
-                                             *previewable_stage);
+          // Signal-domain: render from the VFR produced by the DAG executor.
+          if (has_signal_domain_type(capability) && frame_renderer_) {
+            auto vfr_result = frame_renderer_->render_frame_at_node(
+                node_id, static_cast<FrameID>(0));
+            if (vfr_result.is_valid && vfr_result.representation) {
+              auto options = PreviewHelpers::get_standard_preview_options(
+                  vfr_result.representation);
+              return build_outputs_from_options(node_id, *node_it, options);
+            }
           }
         }
-      } else if (auto* previewable_stage =
-                     dynamic_cast<const PreviewableStage*>(
-                         node_it->stage.get());
-                 previewable_stage &&
-                 should_use_legacy_stage_preview(node_type)) {
-        // Compatibility path for non-migrated stages. Execute the node first
-        // so that supports_preview() reflects actual availability; source
-        // stages like CVBS/TBC only return true after their first execution.
+      } else if (auto* custom =
+                     dynamic_cast<const IStageCustomPreviewRenderer*>(
+                         node_it->stage.get())) {
+        // Custom rendering path for multi-output stages (e.g. SourceAlignStage)
+        // that cannot expose their preview through the standard VFR mechanism.
         ensure_node_executed(node_id, false);
-        if (previewable_stage->supports_preview()) {
-          return get_stage_preview_outputs(node_id, *node_it,
-                                           *previewable_stage);
-        }
+        auto options = custom->get_preview_options();
+        return build_outputs_from_options(node_id, *node_it, options);
       }
 
       if (node_type == NodeType::SINK) {
-        // Sink doesn't support preview - return empty (no preview available)
         ORC_LOG_DEBUG("Sink node '{}' does not support preview",
                       node_id.to_string());
         return outputs;
@@ -440,7 +413,6 @@ PreviewRenderResult PreviewRenderer::render_output(const NodeID& node_id,
         [&node_id](const auto& n) { return n.node_id == node_id; });
 
     if (node_it != dag_nodes.end() && node_it->stage) {
-      const auto node_type = node_it->stage->get_node_type_info().type;
       if (auto* capability_stage = dynamic_cast<const IStagePreviewCapability*>(
               node_it->stage.get())) {
         ensure_node_executed(node_id, true);
@@ -448,50 +420,39 @@ PreviewRenderResult PreviewRenderer::render_output(const NodeID& node_id,
             capability_stage->get_preview_capability();
 
         if (capability.is_valid()) {
-          // Colour carrier preview takes priority: stages that implement
-          // IColourPreviewProvider and advertise a colour-domain type
-          // (ColourNTSC/ColourPAL) use the bounds-checked
-          // render_colour_carrier_preview path. This must be checked before the
-          // signal-domain path to avoid dispatching NN chroma stages (which
-          // advertise both ColourNTSC and CompositeNTSC) to the unchecked
-          // render_stage_preview path with a stale frame index.
-          if (auto* colour_provider =
-                  dynamic_cast<const IColourPreviewProvider*>(
-                      node_it->stage.get())) {
-            if (has_colour_domain_type(capability)) {
+          // Colour-domain stages use the carrier-backed rendering path.
+          if (has_colour_domain_type(capability)) {
+            if (auto* colour_provider =
+                    dynamic_cast<const IColourPreviewProvider*>(
+                        node_it->stage.get())) {
               return render_colour_carrier_preview(
                   node_id, *colour_provider, capability, type, index, hint);
             }
           }
 
-          if (has_signal_domain_type(capability)) {
-            if (auto* previewable_stage =
-                    dynamic_cast<const PreviewableStage*>(node_it->stage.get());
-                previewable_stage && previewable_stage->supports_preview() &&
-                should_use_legacy_stage_preview(node_type)) {
-              return render_stage_preview(node_id, *node_it, *previewable_stage,
-                                          type, index, option_id, hint);
-            }
-          }
-
-          if (!has_signal_domain_type(capability)) {
-            if (auto* previewable_stage =
-                    dynamic_cast<const PreviewableStage*>(node_it->stage.get());
-                previewable_stage && previewable_stage->supports_preview() &&
-                should_use_legacy_stage_preview(node_type)) {
-              return render_stage_preview(node_id, *node_it, *previewable_stage,
-                                          type, index, option_id, hint);
+          // Signal-domain stages: render directly from the DAG VFR output.
+          if (has_signal_domain_type(capability) && frame_renderer_) {
+            auto vfr_result = frame_renderer_->render_frame_at_node(
+                node_id, static_cast<FrameID>(0));
+            if (vfr_result.is_valid && vfr_result.representation) {
+              result.image = PreviewHelpers::render_standard_preview(
+                  vfr_result.representation, option_id, index, hint);
+              result.success = result.image.is_valid();
+              if (result.success) render_dropouts(result.image);
+              return result;
             }
           }
         }
-      } else if (auto* previewable_stage =
-                     dynamic_cast<const PreviewableStage*>(
-                         node_it->stage.get());
-                 previewable_stage && previewable_stage->supports_preview() &&
-                 should_use_legacy_stage_preview(node_type)) {
-        // Compatibility path for non-migrated stages.
-        return render_stage_preview(node_id, *node_it, *previewable_stage, type,
-                                    index, option_id, hint);
+      } else if (auto* custom =
+                     dynamic_cast<const IStageCustomPreviewRenderer*>(
+                         node_it->stage.get())) {
+        // Custom rendering path for multi-output stages (e.g.
+        // SourceAlignStage).
+        ensure_node_executed(node_id, true);
+        result.image = custom->render_preview(option_id, index, hint);
+        result.success = result.image.is_valid();
+        if (result.success) render_dropouts(result.image);
+        return result;
       }
     }
   }
@@ -1274,14 +1235,15 @@ SuggestedViewNode PreviewRenderer::get_suggested_view_node() const {
     }
   }
 
-  // Priority 3: First previewable SINK node
+  // Priority 3: First SINK node that declares preview capability
   for (const auto& node : dag_nodes) {
     if (node.stage) {
       auto node_type_info = node.stage->get_node_type_info();
       if (node_type_info.type == NodeType::SINK) {
-        auto* previewable_stage =
-            dynamic_cast<const PreviewableStage*>(node.stage.get());
-        if (previewable_stage && previewable_stage->supports_preview()) {
+        auto* capability_stage =
+            dynamic_cast<const IStagePreviewCapability*>(node.stage.get());
+        if (capability_stage &&
+            capability_stage->get_preview_capability().is_valid()) {
           return SuggestedViewNode{
               node.node_id, true,
               fmt::format("Viewing sink preview: {}", node.node_id)};
@@ -1427,76 +1389,45 @@ PreviewRenderResult PreviewRenderer::render_colour_carrier_preview(
   return result;
 }
 
-std::vector<PreviewOutputInfo> PreviewRenderer::get_stage_preview_outputs(
+std::vector<PreviewOutputInfo> PreviewRenderer::build_outputs_from_options(
     const NodeID& stage_node_id, const DAGNode& stage_node,
-    const PreviewableStage& previewable) {
-  (void)stage_node;  // Unused for now
+    const std::vector<PreviewOption>& options) {
   std::vector<PreviewOutputInfo> outputs;
-
-  ORC_LOG_DEBUG("get_stage_preview_outputs called for node '{}'",
-                stage_node_id.to_string());
-
-  // Ensure the node has been executed so it has cached output
-  // Use cached execution to avoid re-processing all fields through observers
-  ensure_node_executed(stage_node_id, false);
-
-  // Get options from the stage
-  std::vector<PreviewOption> options;
-  std::string plugin_fault_error;
-  if (!core_internal::plugin_safe_call(
-          [&] { options = previewable.get_preview_options(); },
-          plugin_fault_error)) {
-    ORC_LOG_ERROR(
-        "Stage node '{}' preview options faulted; suppressing outputs: {}",
-        stage_node_id.to_string(), plugin_fault_error);
-    return outputs;
-  }
 
   if (options.empty()) {
     ORC_LOG_WARN(
-        "Stage node '{}' has no preview options after execution - cached "
-        "output may be null",
+        "Stage node '{}' has no preview options after execution - "
+        "cached output may be null",
         stage_node_id.to_string());
-    auto node_type_info = stage_node.stage->get_node_type_info();
-    ORC_LOG_WARN("Node '{}' is type '{}' ({})", stage_node_id.to_string(),
-                 node_type_info.stage_name, node_type_info.display_name);
+    if (stage_node.stage) {
+      auto node_type_info = stage_node.stage->get_node_type_info();
+      ORC_LOG_WARN("Node '{}' is type '{}' ({})", stage_node_id.to_string(),
+                   node_type_info.stage_name, node_type_info.display_name);
+    }
     return outputs;
   }
 
-  // Convert each option to a PreviewOutputInfo
+  bool has_separate_channels = false;
+  if (frame_renderer_) {
+    auto vfr_probe = frame_renderer_->render_frame_at_node(
+        stage_node_id, static_cast<FrameID>(0));
+    if (vfr_probe.is_valid && vfr_probe.representation) {
+      has_separate_channels = vfr_probe.representation->has_separate_channels();
+    }
+  }
+
+  const std::string stage_name =
+      stage_node.stage ? stage_node.stage->get_node_type_info().stage_name : "";
+  const bool is_chroma_decoder = (stage_name == "chroma_sink");
+
   for (const auto& option : options) {
-    // Infer the output type from the option ID
-    PreviewOutputType type = PreviewOutputType::Frame_Field1_First;  // Default
+    PreviewOutputType type = PreviewOutputType::Frame_Field1_First;
     if (option.id == "field" || option.id == "field_raw") {
       type = PreviewOutputType::Frame_Field1;
     } else if (option.id == "split" || option.id == "split_raw") {
       type = PreviewOutputType::Split;
-    } else if (option.id == "sequential_clamped" ||
-               option.id == "sequential_raw" ||
-               option.id == "interlaced_clamped" ||
-               option.id == "interlaced_raw") {
-      type = PreviewOutputType::Frame_Field1_First;
     }
 
-    // Check if this is a chroma decoder stage (chroma_sink)
-    // Chroma decoder outputs RGB frames, not YUV fields, so dropouts are not
-    // available
-    std::string stage_name = stage_node.stage->get_node_type_info().stage_name;
-    bool is_chroma_decoder = (stage_name == "chroma_sink");
-
-    // Check if the stage has separate Y/C channels via VFR probe.
-    // For legacy stages not yet on VFR, fall back to false.
-    bool has_separate_channels = false;
-    if (frame_renderer_) {
-      auto vfr_probe = frame_renderer_->render_frame_at_node(
-          stage_node_id, static_cast<FrameID>(0));
-      if (vfr_probe.is_valid && vfr_probe.representation) {
-        has_separate_channels =
-            vfr_probe.representation->has_separate_channels();
-      }
-    }
-
-    // In VFR domain field1 is always first; first_field_offset is always 0.
     uint64_t first_field_offset = 0;
     if (type == PreviewOutputType::Frame_Field1_First ||
         type == PreviewOutputType::Frame_Reversed ||
@@ -1505,137 +1436,21 @@ std::vector<PreviewOutputInfo> PreviewRenderer::get_stage_preview_outputs(
     }
 
     outputs.push_back(PreviewOutputInfo{
-        type, option.display_name, option.count,
-        true,                          // If stage advertises it, it's available
-        option.dar_aspect_correction,  // Use stage-provided DAR correction
-        option.id,                     // Store original option ID
-        !is_chroma_decoder,  // Dropouts not available for chroma decoder (RGB
-                             // output)
-        has_separate_channels,  // YC sources have separate channels
-        first_field_offset      // field offset for frame-based outputs
+        type,
+        option.display_name,
+        option.count,
+        true,
+        option.dar_aspect_correction,
+        option.id,
+        !is_chroma_decoder,
+        has_separate_channels,
+        first_field_offset,
     });
   }
 
   ORC_LOG_DEBUG("Stage node '{}' has {} preview options",
                 stage_node_id.to_string(), outputs.size());
-
   return outputs;
-}
-
-PreviewRenderResult PreviewRenderer::render_stage_preview(
-    const NodeID& stage_node_id, const DAGNode& stage_node,
-    const PreviewableStage& previewable, PreviewOutputType type, uint64_t index,
-    const std::string& requested_option_id, PreviewNavigationHint hint) {
-  (void)stage_node;  // Unused for now
-  ORC_LOG_DEBUG(
-      "render_stage_preview called for node '{}', type={}, index={}, "
-      "option_id='{}', hint={}",
-      stage_node_id.to_string(), static_cast<int>(type), index,
-      requested_option_id,
-      (hint == PreviewNavigationHint::Sequential ? "Sequential" : "Random"));
-
-  PreviewRenderResult result;
-  result.node_id = stage_node_id;
-  result.output_type = type;
-  result.output_index = index;
-  result.success = false;
-
-  // Ensure the node and its inputs have been executed so the stage has cached
-  // input data Disable cache to force fresh execution with cached_output_
-  // populated
-  ensure_node_executed(stage_node_id, true);
-
-  // Determine effective option ID (fallback if empty)
-  std::string effective_option_id = requested_option_id;
-  std::string plugin_fault_error;
-  if (effective_option_id.empty()) {
-    std::vector<PreviewOption> options;
-    if (!core_internal::plugin_safe_call(
-            [&] { options = previewable.get_preview_options(); },
-            plugin_fault_error)) {
-      result.image = create_placeholder_image(type, "Rendering failed");
-      result.success = true;
-      result.error_message =
-          "Stage preview options faulted: " + plugin_fault_error;
-      ORC_LOG_ERROR(
-          "Rendering aborted for node '{}' while querying preview options: {}",
-          stage_node_id.to_string(), plugin_fault_error);
-      return result;
-    }
-    if (!options.empty()) {
-      // Prefer an option that matches the requested output type
-      for (const auto& option : options) {
-        if ((type == PreviewOutputType::Frame_Field1 &&
-             (option.id == "field" || option.id == "field_raw")) ||
-            (type == PreviewOutputType::Frame_Field2 &&
-             (option.id == "field" || option.id == "field_raw")) ||
-            (type == PreviewOutputType::Split &&
-             (option.id == "split" || option.id == "split_raw")) ||
-            (type == PreviewOutputType::Frame_Field1_First &&
-             (option.id == "sequential_clamped" ||
-              option.id == "sequential_raw" ||
-              option.id == "interlaced_clamped" ||
-              option.id == "interlaced_raw")) ||
-            (type == PreviewOutputType::Frame_Reversed &&
-             (option.id == "sequential_clamped" ||
-              option.id == "sequential_raw" ||
-              option.id == "interlaced_clamped" ||
-              option.id == "interlaced_raw"))) {
-          effective_option_id = option.id;
-          break;
-        }
-      }
-      if (effective_option_id.empty()) {
-        effective_option_id = options.front().id;
-      }
-    }
-  }
-
-  // Get preview image from the stage
-  PreviewImage stage_result;
-  if (!core_internal::plugin_safe_call(
-          [&] {
-            stage_result =
-                previewable.render_preview(effective_option_id, index, hint);
-          },
-          plugin_fault_error)) {
-    result.image = create_placeholder_image(type, "Rendering failed");
-    result.success = true;
-    result.error_message =
-        "Stage preview render faulted: " + plugin_fault_error;
-    ORC_LOG_ERROR(
-        "Rendering faulted for node '{}', type={}, index={}, option_id='{}': "
-        "{}",
-        stage_node_id.to_string(), static_cast<int>(type), index,
-        effective_option_id, plugin_fault_error);
-    return result;
-  }
-
-  if (!stage_result.is_valid()) {
-    result.image = create_placeholder_image(type, "Rendering failed");
-    result.success = true;
-    result.error_message = "Failed to render stage preview";
-
-    // Log the failure to render
-    ORC_LOG_DEBUG(
-        "Rendering failed for node '{}', type={}, index={}, option_id='{}'",
-        stage_node_id.to_string(), static_cast<int>(type), index,
-        effective_option_id);
-    return result;
-  }
-
-  // Stage returned a valid image
-  result.image = std::move(stage_result);
-  result.success = true;
-
-  // Render dropout highlighting onto the image if enabled
-  if (result.success && result.image.is_valid()) {
-    render_dropouts(result.image);
-  }
-
-  // Aspect ratio scaling removed from core; GUI handles display scaling
-
-  return result;
 }
 
 }  // namespace orc

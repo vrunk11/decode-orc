@@ -919,20 +919,19 @@ TEST(CVBSPALMTest, PALMStage_RejectsNTSCFile) {
 // Preview and report (smoke tests)
 // ===========================================================================
 
-TEST(CVBSPreviewTest, SupportsPreview_OnlyAfterLoad) {
+TEST(CVBSPreviewTest, PreviewCapability_InvalidBeforeLoad) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
   PALCVBSSourceStage stage(deps);
-  EXPECT_FALSE(stage.supports_preview());
-  execute_and_get_vfr(stage, kDefaultParams);
-  EXPECT_TRUE(stage.supports_preview());
+  EXPECT_FALSE(stage.get_preview_capability().is_valid());
 }
 
-TEST(CVBSPreviewTest, GetPreviewOptions_ReturnsOptionsAfterLoad) {
+TEST(CVBSPreviewTest, PreviewCapability_ValidAfterLoad) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
   PALCVBSSourceStage stage(deps);
   execute_and_get_vfr(stage, kDefaultParams);
-  auto options = stage.get_preview_options();
-  EXPECT_FALSE(options.empty());
+  auto cap = stage.get_preview_capability();
+  EXPECT_TRUE(cap.is_valid());
+  EXPECT_FALSE(cap.supported_data_types.empty());
 }
 
 TEST(CVBSReportTest, GenerateReport_NotLoadedShowsNotConfigured) {
