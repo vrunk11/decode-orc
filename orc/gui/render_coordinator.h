@@ -419,9 +419,9 @@ class IRenderPresenter {
       std::function<void(int, int, const std::string&)>;
 
   struct LineSampleData {
-    std::vector<uint16_t> composite_samples;
-    std::vector<uint16_t> y_samples;
-    std::vector<uint16_t> c_samples;
+    std::vector<int16_t> composite_samples;
+    std::vector<int16_t> y_samples;
+    std::vector<int16_t> c_samples;
     bool has_separate_channels;
     int first_field_height = 0;
     int second_field_height = 0;
@@ -891,22 +891,22 @@ class RenderCoordinator : public QObject {
    */
   void lineSamplesReady(uint64_t request_id, uint64_t field_index,
                         int line_number, int sample_x,
-                        std::vector<uint16_t> samples,
+                        std::vector<int16_t> samples,
                         std::optional<orc::SourceParameters> video_params,
-                        std::vector<uint16_t> y_samples,
-                        std::vector<uint16_t> c_samples);
+                        std::vector<int16_t> y_samples,
+                        std::vector<int16_t> c_samples);
 
   /**
    * @brief Emitted when field timing data is ready
    */
   void fieldTimingDataReady(uint64_t request_id, uint64_t field_index,
                             std::optional<uint64_t> field_index_2,
-                            std::vector<uint16_t> samples,
-                            std::vector<uint16_t> samples_2,
-                            std::vector<uint16_t> y_samples,
-                            std::vector<uint16_t> c_samples,
-                            std::vector<uint16_t> y_samples_2,
-                            std::vector<uint16_t> c_samples_2,
+                            std::vector<int16_t> samples,
+                            std::vector<int16_t> samples_2,
+                            std::vector<int16_t> y_samples,
+                            std::vector<int16_t> c_samples,
+                            std::vector<int16_t> y_samples_2,
+                            std::vector<int16_t> c_samples_2,
                             int first_field_height, int second_field_height);
 
   /**

@@ -452,11 +452,11 @@ class RenderPresenter {
    * For single field outputs, only first_field_height is used.
    */
   struct LineSampleData {
-    std::vector<uint16_t>
+    std::vector<int16_t>
         composite_samples;  ///< Composite/combined samples (always populated)
-    std::vector<uint16_t> y_samples;  ///< Luma samples (only for Y/C sources)
-    std::vector<uint16_t> c_samples;  ///< Chroma samples (only for Y/C sources)
-    bool has_separate_channels;       ///< True if Y/C separation is available
+    std::vector<int16_t> y_samples;  ///< Luma samples (only for Y/C sources)
+    std::vector<int16_t> c_samples;  ///< Chroma samples (only for Y/C sources)
+    bool has_separate_channels;      ///< True if Y/C separation is available
     int first_field_height = 0;  ///< Height of first field from VFR descriptor
     int second_field_height =
         0;  ///< Height of second field (0 if single field)
@@ -473,10 +473,10 @@ class RenderPresenter {
    * @param preview_width Width of preview image (for coordinate mapping)
    * @return Vector of 16-bit sample values
    */
-  std::vector<uint16_t> getLineSamples(NodeID node_id,
-                                       orc::PreviewOutputType output_type,
-                                       uint64_t output_index, int line_number,
-                                       int sample_x, int preview_width);
+  std::vector<int16_t> getLineSamples(NodeID node_id,
+                                      orc::PreviewOutputType output_type,
+                                      uint64_t output_index, int line_number,
+                                      int sample_x, int preview_width);
 
   /**
    * @brief Get line samples with Y/C separation for oscilloscope display

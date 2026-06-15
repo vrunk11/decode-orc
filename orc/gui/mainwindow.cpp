@@ -4194,10 +4194,10 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
 
 void MainWindow::onFieldTimingDataReady(
     uint64_t request_id, uint64_t field_index,
-    std::optional<uint64_t> field_index_2, std::vector<uint16_t> samples,
-    std::vector<uint16_t> samples_2, std::vector<uint16_t> y_samples,
-    std::vector<uint16_t> c_samples, std::vector<uint16_t> y_samples_2,
-    std::vector<uint16_t> c_samples_2, int first_field_height,
+    std::optional<uint64_t> field_index_2, std::vector<int16_t> samples,
+    std::vector<int16_t> samples_2, std::vector<int16_t> y_samples,
+    std::vector<int16_t> c_samples, std::vector<int16_t> y_samples_2,
+    std::vector<int16_t> c_samples_2, int first_field_height,
     int second_field_height) {
   Q_UNUSED(request_id);
 
@@ -4745,9 +4745,9 @@ void MainWindow::onLineScopeRequested(int image_x, int image_y) {
 
 void MainWindow::onLineSamplesReady(
     uint64_t request_id, uint64_t field_index, int line_number, int sample_x,
-    std::vector<uint16_t> samples,
+    std::vector<int16_t> samples,
     std::optional<orc::SourceParameters> video_params,
-    std::vector<uint16_t> y_samples, std::vector<uint16_t> c_samples) {
+    std::vector<int16_t> y_samples, std::vector<int16_t> c_samples) {
   Q_UNUSED(request_id);
 
   // Core API returns 0-based line numbers, convert to 1-based for display
@@ -4995,7 +4995,7 @@ void MainWindow::refreshLineScopeForCurrentStage() {
     // Show empty line scope
     QString node_id_str = "(none)";
     preview_dialog_->showLineScope(node_id_str, 0, 0, 0, 0,
-                                   std::vector<uint16_t>(),  // Empty samples
+                                   std::vector<int16_t>(),  // Empty samples
                                    std::nullopt, 0, 0, 0, current_output_type_);
     return;
   }
@@ -5043,7 +5043,7 @@ void MainWindow::refreshLineScopeForCurrentStage() {
   QString node_id_str =
       QString::fromStdString(current_view_node_id_.to_string());
   preview_dialog_->showLineScope(node_id_str, 0, 0, 0, 0,
-                                 std::vector<uint16_t>(),  // Empty samples
+                                 std::vector<int16_t>(),  // Empty samples
                                  std::nullopt, 0, 0, 0, current_output_type_);
 }
 

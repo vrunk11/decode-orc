@@ -382,49 +382,10 @@ class PreviewRenderer {
   // ========================================================================
 
   /**
-   * @brief Render a single field (field 1 or field 2) from a VFR frame to
-   * RGB888
-   *
-   * @param vfr The VideoFrameRepresentation containing the frame
-   * @param frame_id The FrameID to render
-   * @param field_idx 0 for field 1, 1 for field 2
-   */
-  PreviewImage render_vfr_field(const VideoFrameRepresentation& vfr,
-                                FrameID frame_id, int field_idx);
-
-  /**
-   * @brief Render an interlaced frame (two fields woven together) to RGB888
-   *
-   * @param vfr The VideoFrameRepresentation containing the frame
-   * @param frame_id The FrameID to render
-   * @param field1_first If true, field 1 occupies even lines; if false, field 2
-   * does
-   */
-  PreviewImage render_vfr_interlaced(const VideoFrameRepresentation& vfr,
-                                     FrameID frame_id, bool field1_first);
-
-  /**
-   * @brief Render a split frame (field 1 above field 2) to RGB888
-   *
-   * @param vfr The VideoFrameRepresentation containing the frame
-   * @param frame_id The FrameID to render
-   */
-  PreviewImage render_vfr_split(const VideoFrameRepresentation& vfr,
-                                FrameID frame_id);
-
-  /**
    * @brief Render dropout regions onto an image
    * @param image Image to render dropouts onto (modified in place)
    */
   void render_dropouts(PreviewImage& image) const;
-
-  /**
-   * @brief Convert CVBS_U10_4FSC int16_t samples to 8-bit display value
-   *
-   * Maps blanking_level → 0, white_level → 255. Only clamps the 8-bit output.
-   */
-  uint8_t cvbs_sample_to_8bit(int16_t sample, int32_t blanking_level,
-                              int32_t white_level);
 
   // ========================================================================
   // Stage preview support (new interface for sources/transforms)

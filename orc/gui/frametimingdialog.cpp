@@ -271,41 +271,27 @@ void FrameTimingDialog::setupUI() {
 
 void FrameTimingDialog::setFieldData(
     const QString& node_id, uint64_t field_index,
-    const std::vector<uint16_t>& samples,
+    const std::vector<int16_t>& samples,
     const std::optional<uint64_t>& field_index_2,
-    const std::vector<uint16_t>& samples_2,
-    const std::vector<uint16_t>& y_samples,
-    const std::vector<uint16_t>& c_samples,
-    const std::vector<uint16_t>& y_samples_2,
-    const std::vector<uint16_t>& c_samples_2,
+    const std::vector<int16_t>& samples_2,
+    const std::vector<int16_t>& y_samples,
+    const std::vector<int16_t>& c_samples,
+    const std::vector<int16_t>& y_samples_2,
+    const std::vector<int16_t>& c_samples_2,
     const std::optional<orc::presenters::VideoParametersView>& video_params,
     const std::optional<int>& marker_sample, int first_field_height,
     int second_field_height) {
   first_field_height_ = first_field_height;
   second_field_height_ = second_field_height;
 
-  // Convert uint16_t VFR samples to int16_t CVBS_U10_4FSC domain.
-  // Values above 32767 are clamped; on-spec composite signals fit within range.
-  auto toI16 = [](const std::vector<uint16_t>& src) -> std::vector<int16_t> {
-    std::vector<int16_t> dst;
-    dst.reserve(src.size());
-    for (uint16_t v : src) {
-      dst.push_back(static_cast<int16_t>(std::min<uint32_t>(v, 32767U)));
-    }
-    return dst;
-  };
-
-  std::vector<int16_t> frame_samples = toI16(samples);
-  std::vector<int16_t> frame_y = toI16(y_samples);
-  std::vector<int16_t> frame_c = toI16(c_samples);
+  std::vector<int16_t> frame_samples = samples;
+  std::vector<int16_t> frame_y = y_samples;
+  std::vector<int16_t> frame_c = c_samples;
 
   if (field_index_2.has_value()) {
-    auto s2 = toI16(samples_2);
-    frame_samples.insert(frame_samples.end(), s2.begin(), s2.end());
-    auto y2 = toI16(y_samples_2);
-    frame_y.insert(frame_y.end(), y2.begin(), y2.end());
-    auto c2 = toI16(c_samples_2);
-    frame_c.insert(frame_c.end(), c2.begin(), c2.end());
+    frame_samples.insert(frame_samples.end(), samples_2.begin(), samples_2.end());
+    frame_y.insert(frame_y.end(), y_samples_2.begin(), y_samples_2.end());
+    frame_c.insert(frame_c.end(), c_samples_2.begin(), c_samples_2.end());
   }
 
   int frame_height = first_field_height + second_field_height;
@@ -368,28 +354,10 @@ void FrameTimingDialog::setFrameData(
           .arg(lines_per_frame)
           .arg(cfi_str));
 
-  // Convert int16_t → uint16_t at the FieldTimingWidget boundary.
-  // CVBS_U10_4FSC values are in [0, 1023] (non-negative 10-bit), so the cast
-  // is lossless for on-spec samples.  The waveform amplitude display will
-  // appear at the bottom of the uint16_t range; this is a known migration
-  // limitation and will be resolved when FieldTimingWidget is updated.
-  auto toU16 = [](const std::vector<int16_t>& src) -> std::vector<uint16_t> {
-    std::vector<uint16_t> dst;
-    dst.reserve(src.size());
-    for (const int16_t v : src) {
-      dst.push_back(static_cast<uint16_t>(std::max<int16_t>(0, v)));
-    }
-    return dst;
-  };
-
-  const std::vector<uint16_t> u16_samples = toU16(samples);
-  const std::vector<uint16_t> u16_y = toU16(y_samples);
-  const std::vector<uint16_t> u16_c = toU16(c_samples);
-
   // Pass to FieldTimingWidget (single-field path — frame-flat samples)
   // The second-field arguments are left empty; the widget treats this as a
   // single contiguous buffer equal to the full frame height.
-  timing_widget_->setFieldData(u16_samples, {}, u16_y, u16_c, {}, {},
+  timing_widget_->setFieldData(samples, {}, y_samples, c_samples, {}, {},
                                video_params, marker_sample);
 
   const bool is_yc = !y_samples.empty() || !c_samples.empty();

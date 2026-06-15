@@ -1022,9 +1022,9 @@ void RenderCoordinator::handleGetFieldTiming(const GetFieldTimingRequest& req) {
     // Determine field indices based on output type
     uint64_t field_index = req.output_index;
     std::optional<uint64_t> field_index_2;
-    std::vector<uint16_t> samples_2;
-    std::vector<uint16_t> y_samples_2;
-    std::vector<uint16_t> c_samples_2;
+    std::vector<int16_t> samples_2;
+    std::vector<int16_t> y_samples_2;
+    std::vector<int16_t> c_samples_2;
 
     if (req.output_type == orc::PreviewOutputType::Frame_Field1_First ||
         req.output_type == orc::PreviewOutputType::Frame_Reversed ||

@@ -22,7 +22,7 @@
  * @brief Widget for displaying field sample data as a timing graph
  *
  * Renders sample values over time with horizontal scrolling.
- * Y-axis: sample value (0-65535)
+ * Y-axis: sample value in mV (derived from CVBS_U10_4FSC int16_t domain)
  * X-axis: sample position
  */
 class FieldTimingWidget : public QWidget {
@@ -46,12 +46,12 @@ class FieldTimingWidget : public QWidget {
    * @param video_params Optional video parameters for mV conversion and level
    * markers
    */
-  void setFieldData(const std::vector<uint16_t>& samples,
-                    const std::vector<uint16_t>& samples_2 = {},
-                    const std::vector<uint16_t>& y_samples = {},
-                    const std::vector<uint16_t>& c_samples = {},
-                    const std::vector<uint16_t>& y_samples_2 = {},
-                    const std::vector<uint16_t>& c_samples_2 = {},
+  void setFieldData(const std::vector<int16_t>& samples,
+                    const std::vector<int16_t>& samples_2 = {},
+                    const std::vector<int16_t>& y_samples = {},
+                    const std::vector<int16_t>& c_samples = {},
+                    const std::vector<int16_t>& y_samples_2 = {},
+                    const std::vector<int16_t>& c_samples_2 = {},
                     const std::optional<orc::presenters::VideoParametersView>&
                         video_params = std::nullopt,
                     const std::optional<int>& marker_sample = std::nullopt);
@@ -121,18 +121,18 @@ class FieldTimingWidget : public QWidget {
   void updateScrollBar();
   void drawGraph(QPainter& painter, const QRect& graph_area);
   void drawSamples(QPainter& painter, const QRect& graph_area,
-                   const std::vector<uint16_t>& samples, const QColor& color,
+                   const std::vector<int16_t>& samples, const QColor& color,
                    int y_offset = 0);
-  double convertSampleToMV(uint16_t sample) const;
+  double convertSampleToMV(int16_t sample) const;
   double getMVRange(double& min_mv, double& max_mv) const;
 
   // Sample data
-  std::vector<uint16_t> field1_samples_;
-  std::vector<uint16_t> field2_samples_;
-  std::vector<uint16_t> y1_samples_;
-  std::vector<uint16_t> c1_samples_;
-  std::vector<uint16_t> y2_samples_;
-  std::vector<uint16_t> c2_samples_;
+  std::vector<int16_t> field1_samples_;
+  std::vector<int16_t> field2_samples_;
+  std::vector<int16_t> y1_samples_;
+  std::vector<int16_t> c1_samples_;
+  std::vector<int16_t> y2_samples_;
+  std::vector<int16_t> c2_samples_;
 
   // Scrolling
   QScrollBar* scroll_bar_;

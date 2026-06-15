@@ -176,19 +176,15 @@ class PreviewDialog : public QDialog {
   /**
    * @brief Show frame scope dialog with sample data
    *
-   * The samples are still received as uint16_t from the render coordinator
-   * (migration phase); conversion to int16_t happens at this boundary.
    * field_index is used as frame_id and line_number (1-based) is converted
    * to a 0-based frame-flat line index.
    *
    * @param node_id          Stage node identifier
    * @param stage_index      1-based pipeline stage number
-   * @param field_index      0-based field index (used as frame_id during
-   * migration)
+   * @param field_index      0-based field index (used as frame_id)
    * @param line_number      1-based field line number
    * @param sample_x         Sample X position that was clicked
-   * @param samples          16-bit composite samples (converted to int16_t
-   * internally)
+   * @param samples          CVBS_U10_4FSC composite samples
    * @param video_params     Optional video parameters for level markers
    * @param preview_image_width  Pixel width of preview image
    * @param original_sample_x    Preview-space X (for cross-hair sync)
@@ -200,12 +196,12 @@ class PreviewDialog : public QDialog {
    */
   void showLineScope(
       const QString& node_id, int stage_index, uint64_t field_index,
-      int line_number, int sample_x, const std::vector<uint16_t>& samples,
+      int line_number, int sample_x, const std::vector<int16_t>& samples,
       const std::optional<orc::presenters::VideoParametersView>& video_params,
       int preview_image_width, int original_sample_x, int original_image_y,
       orc::PreviewOutputType preview_mode,
-      const std::vector<uint16_t>& y_samples = {},
-      const std::vector<uint16_t>& c_samples = {});
+      const std::vector<int16_t>& y_samples = {},
+      const std::vector<int16_t>& c_samples = {});
 
   /**
    * @brief Close all child dialogs (e.g., line scope)

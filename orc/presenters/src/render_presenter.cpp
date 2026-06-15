@@ -613,7 +613,7 @@ RenderPresenter::FrameLineNavigation RenderPresenter::navigateFrameLine(
   return {result.is_valid, result.new_field_index, result.new_line_number};
 }
 
-std::vector<uint16_t> RenderPresenter::getLineSamples(
+std::vector<int16_t> RenderPresenter::getLineSamples(
     NodeID node_id, orc::PreviewOutputType output_type, uint64_t output_index,
     int line_number, int /*sample_x*/, int /*preview_width*/) {
   if (!impl_->preview_renderer_) {
@@ -658,11 +658,7 @@ std::vector<uint16_t> RenderPresenter::getLineSamples(
     }
 
     size_t width = descriptor->samples_per_line_nominal;
-    std::vector<uint16_t> result(width);
-    for (size_t i = 0; i < width; ++i) {
-      result[i] = static_cast<uint16_t>(line_data[i]);
-    }
-    return result;
+    return std::vector<int16_t>(line_data, line_data + width);
 
   } catch (const std::exception&) {
     return {};
@@ -717,17 +713,11 @@ RenderPresenter::LineSampleData RenderPresenter::getLineSamplesWithYC(
     if (result.has_separate_channels) {
       const auto* y_data = repr->get_line_luma(frame_id, frame_line);
       if (y_data) {
-        result.y_samples.resize(width);
-        for (size_t i = 0; i < width; ++i) {
-          result.y_samples[i] = static_cast<uint16_t>(y_data[i]);
-        }
+        result.y_samples.assign(y_data, y_data + width);
       }
       const auto* c_data = repr->get_line_chroma(frame_id, frame_line);
       if (c_data) {
-        result.c_samples.resize(width);
-        for (size_t i = 0; i < width; ++i) {
-          result.c_samples[i] = static_cast<uint16_t>(c_data[i]);
-        }
+        result.c_samples.assign(c_data, c_data + width);
       }
       result.composite_samples = result.y_samples;
     } else {
@@ -735,10 +725,7 @@ RenderPresenter::LineSampleData RenderPresenter::getLineSamplesWithYC(
       if (!line_data) {
         return result;
       }
-      result.composite_samples.resize(width);
-      for (size_t i = 0; i < width; ++i) {
-        result.composite_samples[i] = static_cast<uint16_t>(line_data[i]);
-      }
+      result.composite_samples.assign(line_data, line_data + width);
     }
 
     return result;
@@ -769,30 +756,18 @@ RenderPresenter::LineSampleData RenderPresenter::getFieldSamplesForTiming(
 
     auto collect_lines =
         [&](orc::FrameID frame_id, size_t line_offset, size_t line_count,
-            size_t spl, std::vector<uint16_t>& composite,
-            std::vector<uint16_t>& y_out, std::vector<uint16_t>& c_out) {
+            size_t spl, std::vector<int16_t>& composite,
+            std::vector<int16_t>& y_out, std::vector<int16_t>& c_out) {
           for (size_t l = 0; l < line_count; ++l) {
             size_t fl = line_offset + l;
             if (result.has_separate_channels) {
               const auto* y = repr->get_line_luma(frame_id, fl);
               const auto* c = repr->get_line_chroma(frame_id, fl);
-              if (y) {
-                for (size_t s = 0; s < spl; ++s) {
-                  y_out.push_back(static_cast<uint16_t>(y[s]));
-                }
-              }
-              if (c) {
-                for (size_t s = 0; s < spl; ++s) {
-                  c_out.push_back(static_cast<uint16_t>(c[s]));
-                }
-              }
+              if (y) y_out.insert(y_out.end(), y, y + spl);
+              if (c) c_out.insert(c_out.end(), c, c + spl);
             } else {
               const auto* d = repr->get_line(frame_id, fl);
-              if (d) {
-                for (size_t s = 0; s < spl; ++s) {
-                  composite.push_back(static_cast<uint16_t>(d[s]));
-                }
-              }
+              if (d) composite.insert(composite.end(), d, d + spl);
             }
           }
         };
@@ -857,7 +832,7 @@ RenderPresenter::LineSampleData RenderPresenter::getFieldSamplesForTiming(
       collect_lines(frame_id, field1_offset, field1_height, spl,
                     result.composite_samples, result.y_samples,
                     result.c_samples);
-      std::vector<uint16_t> comp2, y2, c2;
+      std::vector<int16_t> comp2, y2, c2;
       collect_lines(frame_id, field2_offset, field2_height, spl, comp2, y2, c2);
 
       result.composite_samples.insert(result.composite_samples.end(),

@@ -43,34 +43,32 @@ static orc::VideoSystem toOrcVideoSystem(orc::presenters::VideoSystem sys) {
 }
 
 namespace {
-std::vector<uint16_t> buildCombinedYPlusC(
-    const std::vector<uint16_t>& y_samples,
-    const std::vector<uint16_t>& c_samples) {
+std::vector<int16_t> buildCombinedYPlusC(
+    const std::vector<int16_t>& y_samples,
+    const std::vector<int16_t>& c_samples,
+    int32_t chroma_mid) {
   if (y_samples.empty() || c_samples.empty()) {
     return {};
   }
 
   const size_t sample_count = std::min(y_samples.size(), c_samples.size());
-  std::vector<uint16_t> combined_samples;
+  std::vector<int16_t> combined_samples;
   combined_samples.reserve(sample_count);
 
-  constexpr int32_t CHROMA_MID_CODE = 32768;
   for (size_t i = 0; i < sample_count; ++i) {
-    const int32_t combined =
-        static_cast<int32_t>(y_samples[i]) +
-        (static_cast<int32_t>(c_samples[i]) - CHROMA_MID_CODE);
+    const int32_t combined = static_cast<int32_t>(y_samples[i]) +
+                             (static_cast<int32_t>(c_samples[i]) - chroma_mid);
     combined_samples.push_back(
-        static_cast<uint16_t>(std::clamp(combined, 0, 65535)));
+        static_cast<int16_t>(std::clamp(combined, 0, 1023)));
   }
 
   return combined_samples;
 }
 }  // namespace
 
-double FieldTimingWidget::convertSampleToMV(uint16_t sample) const {
+double FieldTimingWidget::convertSampleToMV(int16_t sample) const {
   if (!video_params_.has_value()) {
-    // No video params - just return raw sample value scaled down
-    return sample / 100.0;  // Scale to reasonable range
+    return sample / 100.0;
   }
 
   const auto& vp = video_params_.value();
@@ -96,7 +94,7 @@ double FieldTimingWidget::convertSampleToMV(uint16_t sample) const {
 double FieldTimingWidget::getMVRange(double& min_mv, double& max_mv) const {
   if (!video_params_.has_value()) {
     min_mv = 0;
-    max_mv = 655.35;  // 65535 / 100
+    max_mv = 10.23;  // 1023 / 100 (10-bit CVBS_U10_4FSC fallback)
     return max_mv - min_mv;
   }
 
@@ -111,7 +109,7 @@ double FieldTimingWidget::getMVRange(double& min_mv, double& max_mv) const {
 
   if (vp.white_level <= vp.blanking_level) {
     min_mv = 0;
-    max_mv = 655.35;
+    max_mv = 10.23;
     return max_mv - min_mv;
   }
 
@@ -153,12 +151,12 @@ void FieldTimingWidget::setChannelMode(ChannelMode mode) {
 }
 
 void FieldTimingWidget::setFieldData(
-    const std::vector<uint16_t>& samples,
-    const std::vector<uint16_t>& samples_2,
-    const std::vector<uint16_t>& y_samples,
-    const std::vector<uint16_t>& c_samples,
-    const std::vector<uint16_t>& y_samples_2,
-    const std::vector<uint16_t>& c_samples_2,
+    const std::vector<int16_t>& samples,
+    const std::vector<int16_t>& samples_2,
+    const std::vector<int16_t>& y_samples,
+    const std::vector<int16_t>& c_samples,
+    const std::vector<int16_t>& y_samples_2,
+    const std::vector<int16_t>& c_samples_2,
     const std::optional<orc::presenters::VideoParametersView>& video_params,
     const std::optional<int>& marker_sample) {
   field1_samples_ = samples;
@@ -549,7 +547,7 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
 
     // Draw level lines using CVBS_U10_4FSC reference levels from video params.
     double blanking_mv =
-        convertSampleToMV(static_cast<uint16_t>(vp.blanking_level));
+        convertSampleToMV(static_cast<int16_t>(vp.blanking_level));
     drawLevelLine(blanking_mv, theme_tokens::neutralLine(palette, 0.35),
                   Qt::DashLine);
 
@@ -558,12 +556,12 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
         vp.white_level > vp.blanking_level &&
         vp.black_level != vp.blanking_level) {
       double black_mv =
-          convertSampleToMV(static_cast<uint16_t>(vp.black_level));
+          convertSampleToMV(static_cast<int16_t>(vp.black_level));
       drawLevelLine(black_mv, theme_tokens::neutralLine(palette, 0.5),
                     Qt::DashDotLine);
     }
 
-    double white_mv = convertSampleToMV(static_cast<uint16_t>(vp.white_level));
+    double white_mv = convertSampleToMV(static_cast<int16_t>(vp.white_level));
     drawLevelLine(white_mv, theme_tokens::neutralLine(palette, 0.7),
                   Qt::DashLine);
   }
@@ -723,10 +721,13 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
         break;
 
       case ChannelMode::YPlusC: {
-        const std::vector<uint16_t> combined_1 =
-            buildCombinedYPlusC(y1_samples_, c1_samples_);
-        const std::vector<uint16_t> combined_2 =
-            buildCombinedYPlusC(y2_samples_, c2_samples_);
+        const int32_t chroma_mid =
+            video_params_.has_value() ? video_params_->blanking_level
+                                      : orc::kPalBlanking;
+        const std::vector<int16_t> combined_1 =
+            buildCombinedYPlusC(y1_samples_, c1_samples_, chroma_mid);
+        const std::vector<int16_t> combined_2 =
+            buildCombinedYPlusC(y2_samples_, c2_samples_, chroma_mid);
 
         if (!combined_1.empty()) {
           drawSamples(painter, graph_area, combined_1, composite1_color, 0);
@@ -753,7 +754,7 @@ void FieldTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
 }
 
 void FieldTimingWidget::drawSamples(QPainter& painter, const QRect& graph_area,
-                                    const std::vector<uint16_t>& samples,
+                                    const std::vector<int16_t>& samples,
                                     const QColor& color, int y_offset) {
   if (samples.empty()) return;
 
@@ -804,16 +805,16 @@ void FieldTimingWidget::drawSamples(QPainter& painter, const QRect& graph_area,
         continue;
       }
 
-      uint64_t sum = 0;
-      uint16_t min_sample = samples[bucket_start];
-      uint16_t max_sample = samples[bucket_start];
+      int64_t sum = 0;
+      int16_t min_sample = samples[bucket_start];
+      int16_t max_sample = samples[bucket_start];
       for (int i = bucket_start; i < bucket_end; ++i) {
         sum += samples[i];
         min_sample = std::min(min_sample, samples[i]);
         max_sample = std::max(max_sample, samples[i]);
       }
-      uint16_t avg_sample = static_cast<uint16_t>(
-          sum / static_cast<uint64_t>(bucket_end - bucket_start));
+      int16_t avg_sample = static_cast<int16_t>(
+          sum / static_cast<int64_t>(bucket_end - bucket_start));
 
       int center_index = bucket_start + ((bucket_end - bucket_start) / 2);
       int x =
@@ -880,17 +881,17 @@ void FieldTimingWidget::drawSamples(QPainter& painter, const QRect& graph_area,
       }
 
       // Find min and max sample values in this pixel column
-      uint16_t min_sample = samples[bucket_start];
-      uint16_t max_sample = samples[bucket_start];
-      uint64_t sum_samples = 0;
+      int16_t min_sample = samples[bucket_start];
+      int16_t max_sample = samples[bucket_start];
+      int64_t sum_samples = 0;
 
       for (int i = bucket_start; i < bucket_end; ++i) {
         min_sample = std::min(min_sample, samples[i]);
         max_sample = std::max(max_sample, samples[i]);
         sum_samples += samples[i];
       }
-      uint16_t avg_sample = static_cast<uint16_t>(
-          sum_samples / static_cast<uint64_t>(bucket_end - bucket_start));
+      int16_t avg_sample = static_cast<int16_t>(
+          sum_samples / static_cast<int64_t>(bucket_end - bucket_start));
 
       // Convert to Y coordinates
       double min_mv_value = convertSampleToMV(min_sample);

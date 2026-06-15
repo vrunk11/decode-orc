@@ -51,8 +51,7 @@ class QTimer;
  * @brief Dialog for viewing frame samples as a timing graph
  *
  * Replaces FieldTimingDialog with frame-level semantics:
- *  - Takes int16_t CVBS_U10_4FSC samples (converted to uint16_t at the
- *    FieldTimingWidget boundary during the migration period).
+ *  - Takes int16_t CVBS_U10_4FSC samples throughout.
  *  - Displays colour_frame_index (PAL: 1-4, NTSC: A/B, -1 → Unknown).
  *  - Provides a LineNumberingMode selector shared with FrameScopeDialog.
  *  - Shows video system, frame rate, and field line count metadata.
@@ -91,19 +90,18 @@ class FrameTimingDialog : public QDialog {
   /**
    * @brief Field-domain bridge: set two fields as a combined frame.
    *
-   * Adapts the old field-domain API (two uint16_t field buffers) to the
-   * frame-domain setFrameData() call.  This is a migration-period bridge; the
-   * caller should move to setFrameData() once it produces frame-level data.
+   * Adapts the field-domain API (two int16_t field buffers) to the
+   * frame-domain setFrameData() call.
    */
   void setFieldData(
       const QString& node_id, uint64_t field_index,
-      const std::vector<uint16_t>& samples,
+      const std::vector<int16_t>& samples,
       const std::optional<uint64_t>& field_index_2,
-      const std::vector<uint16_t>& samples_2,
-      const std::vector<uint16_t>& y_samples,
-      const std::vector<uint16_t>& c_samples,
-      const std::vector<uint16_t>& y_samples_2,
-      const std::vector<uint16_t>& c_samples_2,
+      const std::vector<int16_t>& samples_2,
+      const std::vector<int16_t>& y_samples,
+      const std::vector<int16_t>& c_samples,
+      const std::vector<int16_t>& y_samples_2,
+      const std::vector<int16_t>& c_samples_2,
       const std::optional<orc::presenters::VideoParametersView>& video_params,
       const std::optional<int>& marker_sample, int first_field_height,
       int second_field_height);

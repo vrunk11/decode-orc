@@ -1008,12 +1008,12 @@ bool PreviewDialog::isLineScopeVisible() const {
 }
 void PreviewDialog::showLineScope(
     const QString& node_id, int stage_index, uint64_t field_index,
-    int line_number, int sample_x, const std::vector<uint16_t>& samples,
+    int line_number, int sample_x, const std::vector<int16_t>& samples,
     const std::optional<orc::presenters::VideoParametersView>& video_params,
     int preview_image_width, int original_sample_x, int original_image_y,
     orc::PreviewOutputType /*preview_mode*/,
-    const std::vector<uint16_t>& y_samples,
-    const std::vector<uint16_t>& c_samples) {
+    const std::vector<int16_t>& y_samples,
+    const std::vector<int16_t>& c_samples) {
   if (frame_scope_dialog_) {
     current_line_scope_preview_width_ = preview_image_width;
     current_line_scope_samples_count_ = static_cast<int>(samples.size());
@@ -1033,23 +1033,14 @@ void PreviewDialog::showLineScope(
       preview_widget_->setCrosshairsEnabled(true);
     }
 
-    // Convert uint16_t → int16_t at the migration boundary.
-    // CVBS_U10_4FSC values are in [0, 1023] so the cast is lossless.
-    auto toI16 = [](const std::vector<uint16_t>& src) {
-      std::vector<int16_t> dst;
-      dst.reserve(src.size());
-      for (uint16_t v : src) dst.push_back(static_cast<int16_t>(v));
-      return dst;
-    };
-
     // field_index is used as frame_id; line_number (1-based) → frame_line
     // (0-based)
     const size_t frame_line = static_cast<size_t>(std::max(0, line_number - 1));
 
     frame_scope_dialog_->setFrameLineSamples(
-        node_id, stage_index, field_index, frame_line, sample_x, toI16(samples),
+        node_id, stage_index, field_index, frame_line, sample_x, samples,
         video_params, preview_image_width, original_sample_x, original_image_y,
-        toI16(y_samples), toI16(c_samples));
+        y_samples, c_samples);
 
     const bool was_visible = frame_scope_dialog_->isVisible();
     if (!was_visible) {

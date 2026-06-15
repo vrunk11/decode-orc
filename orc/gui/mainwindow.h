@@ -154,18 +154,18 @@ class MainWindow : public QMainWindow {
                                std::vector<orc::PreviewOutputInfo> outputs);
   void onLineSamplesReady(uint64_t request_id, uint64_t field_index,
                           int line_number, int sample_x,
-                          std::vector<uint16_t> samples,
+                          std::vector<int16_t> samples,
                           std::optional<orc::SourceParameters> video_params,
-                          std::vector<uint16_t> y_samples,
-                          std::vector<uint16_t> c_samples);
+                          std::vector<int16_t> y_samples,
+                          std::vector<int16_t> c_samples);
   void onFieldTimingDataReady(uint64_t request_id, uint64_t field_index,
                               std::optional<uint64_t> field_index_2,
-                              std::vector<uint16_t> samples,
-                              std::vector<uint16_t> samples_2,
-                              std::vector<uint16_t> y_samples,
-                              std::vector<uint16_t> c_samples,
-                              std::vector<uint16_t> y_samples_2,
-                              std::vector<uint16_t> c_samples_2,
+                              std::vector<int16_t> samples,
+                              std::vector<int16_t> samples_2,
+                              std::vector<int16_t> y_samples,
+                              std::vector<int16_t> c_samples,
+                              std::vector<int16_t> y_samples_2,
+                              std::vector<int16_t> c_samples_2,
                               int first_field_height, int second_field_height);
   void onFrameLineNavigationReady(uint64_t request_id,
                                   orc::FrameLineNavigationResult result);
