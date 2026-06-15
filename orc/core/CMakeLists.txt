@@ -38,6 +38,7 @@ add_library(orc-core SHARED
     observers/fm_code_observer.cpp
     observers/white_flag_observer.cpp
     observers/burst_level_observer.cpp
+    observers/colour_frame_phase_observer.cpp
     observers/white_snr_observer.cpp
     observers/black_psnr_observer.cpp
     observers/field_quality_observer.cpp

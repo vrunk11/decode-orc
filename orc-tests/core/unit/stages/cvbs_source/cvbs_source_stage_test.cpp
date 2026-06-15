@@ -4,9 +4,12 @@
  * Purpose:     Unit tests for PAL, NTSC, and PAL_M CVBS source stages
  *
  * Tests: stage identity, signal state validation, encoding normalisation,
- * SourceParameters from spec constants, colour burst phase measurement,
- * sidecar loading (dropout / audio / EFM / AC3), and NTSC-J black level.
+ * SourceParameters from spec constants, sidecar loading (dropout / audio /
+ * EFM / AC3), and NTSC-J black level.
  * All I/O is fully mocked through ICVBSSourceStageDeps.
+ *
+ * Colour burst phase measurement is not performed by the source stage;
+ * see colour_frame_phase_observer_test.cpp.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -17,7 +20,6 @@
 #include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
 
-#include <cmath>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -49,68 +51,6 @@ std::vector<uint16_t> make_blank_payload_u16(size_t word_count,
                                              int32_t blanking_10bit) {
   return std::vector<uint16_t>(word_count,
                                static_cast<uint16_t>(blanking_10bit * 64));
-}
-
-// Build a PAL frame payload (CVBS_U10_4FSC) with a colour burst at the
-// reference position (line 9, sample 93) at the given phase angle (degrees).
-// All other samples are at PAL blanking level (256).
-// Burst amplitude: amp ADU.  40 burst samples are written.
-std::vector<uint16_t> make_pal_frame_with_burst_u10(double burst_phase_deg,
-                                                    int32_t amp) {
-  const size_t frame_words = static_cast<size_t>(kPalFrameSamples);
-  // Initialise at blanking level 256 encoded as int16_t in uint16_t
-  // bit-pattern.
-  const int16_t blanking = static_cast<int16_t>(kPalBlanking);
-  std::vector<uint16_t> words(frame_words, static_cast<uint16_t>(blanking));
-
-  // Offset of line 9 in the flat frame buffer: lines 0-8 each have 1135
-  // samples (none is a kPalExtraSampleLines line within 0..8).
-  // kPalExtraSampleLines = {155, 311, 468, 624} — all > 8.
-  const size_t line9_offset =
-      static_cast<size_t>(9 * (kPalMaxSamplesPerLine - 1));
-  const size_t burst_abs_offset = line9_offset + 93;
-
-  // burst[n] = blanking + amp * cos((burst_abs_offset+n)*90° + burst_phase)
-  // Encoded as int16_t in the CVBS_U10_4FSC domain (uint16_t bit-pattern).
-  const double phi_rad = burst_phase_deg * (M_PI / 180.0);
-  for (int n = 0; n < 40; ++n) {
-    const double carrier_phase =
-        static_cast<double>((burst_abs_offset + static_cast<size_t>(n)) % 4) *
-        (M_PI / 2.0);
-    const double sample =
-        static_cast<double>(kPalBlanking) +
-        static_cast<double>(amp) * std::cos(carrier_phase + phi_rad);
-    const int16_t val = static_cast<int16_t>(std::lround(sample));
-    words[burst_abs_offset + static_cast<size_t>(n)] =
-        static_cast<uint16_t>(val);
-  }
-
-  return words;
-}
-
-// Build an NTSC frame payload (CVBS_U10_4FSC) with a colour burst at the
-// reference position (line 9, sample 74).
-std::vector<uint16_t> make_ntsc_frame_with_burst_u10(double burst_phase_deg,
-                                                     int32_t amp) {
-  const size_t frame_words = static_cast<size_t>(kNtscFrameSamples);
-  const int16_t blanking = static_cast<int16_t>(kNtscBlanking);
-  std::vector<uint16_t> words(frame_words, static_cast<uint16_t>(blanking));
-
-  const size_t line9_offset = static_cast<size_t>(9 * kNtscSamplesPerLine);
-  const size_t burst_abs = line9_offset + 74;
-
-  const double phi_rad = burst_phase_deg * (M_PI / 180.0);
-  for (int n = 0; n < 40; ++n) {
-    const double carrier_phase =
-        static_cast<double>((burst_abs + static_cast<size_t>(n)) % 4) *
-        (M_PI / 2.0);
-    const double sample =
-        static_cast<double>(kNtscBlanking) +
-        static_cast<double>(amp) * std::cos(carrier_phase + phi_rad);
-    const int16_t val = static_cast<int16_t>(std::lround(sample));
-    words[burst_abs + static_cast<size_t>(n)] = static_cast<uint16_t>(val);
-  }
-  return words;
 }
 
 // ---------------------------------------------------------------------------
@@ -622,66 +562,15 @@ TEST(CVBSSourceParamsTest, FrameCountMatchesMetadata) {
 }
 
 // ===========================================================================
-// Colour burst phase measurement
+// Colour-frame phase: source stage does not measure
 // ===========================================================================
+// The source stage loads raw samples only; colour-frame phase measurement is
+// delegated to ColourFramePhaseObserver.  See colour_frame_phase_observer_test.
 
-// PAL line 9 burst window: abs_offset = 9*1135 + 93 = 10308, phase_base = 0.
-// burst[n] = A * cos(n*90° + φ).  Measured angle = −φ (mod 360°).
-// PAL sectors: [0°,90°)→1, [90°,180°)→2, [180°,270°)→3, [270°,360°)→4.
-
-TEST(CVBSBurstPhaseTest, PAL_BurstAt315Deg_ColourFrameIndex1) {
-  // φ=315° → measured angle = 45° → sector 0 → index 1.
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL", "CVBS_U10_4FSC");
-  deps->payload_words = make_pal_frame_with_burst_u10(315.0, 100);
-  PALCVBSSourceStage stage(deps);
-  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
-  ASSERT_NE(vfr, nullptr);
-  auto desc = vfr->get_frame_descriptor(0);
-  ASSERT_TRUE(desc.has_value());
-  EXPECT_EQ(desc->colour_frame_index, 1);
-}
-
-TEST(CVBSBurstPhaseTest, PAL_BurstAt225Deg_ColourFrameIndex2) {
-  // φ=225° → measured = 135° → sector 1 → index 2.
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL", "CVBS_U10_4FSC");
-  deps->payload_words = make_pal_frame_with_burst_u10(225.0, 100);
-  PALCVBSSourceStage stage(deps);
-  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
-  ASSERT_NE(vfr, nullptr);
-  auto desc = vfr->get_frame_descriptor(0);
-  ASSERT_TRUE(desc.has_value());
-  EXPECT_EQ(desc->colour_frame_index, 2);
-}
-
-TEST(CVBSBurstPhaseTest, PAL_BurstAt135Deg_ColourFrameIndex3) {
-  // φ=135° → measured = 225° → sector 2 → index 3.
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL", "CVBS_U10_4FSC");
-  deps->payload_words = make_pal_frame_with_burst_u10(135.0, 100);
-  PALCVBSSourceStage stage(deps);
-  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
-  ASSERT_NE(vfr, nullptr);
-  auto desc = vfr->get_frame_descriptor(0);
-  ASSERT_TRUE(desc.has_value());
-  EXPECT_EQ(desc->colour_frame_index, 3);
-}
-
-TEST(CVBSBurstPhaseTest, PAL_BurstAt45Deg_ColourFrameIndex4) {
-  // φ=45° → measured = 315° → sector 3 → index 4.
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL", "CVBS_U10_4FSC");
-  deps->payload_words = make_pal_frame_with_burst_u10(45.0, 100);
-  PALCVBSSourceStage stage(deps);
-  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
-  ASSERT_NE(vfr, nullptr);
-  auto desc = vfr->get_frame_descriptor(0);
-  ASSERT_TRUE(desc.has_value());
-  EXPECT_EQ(desc->colour_frame_index, 4);
-}
-
-TEST(CVBSBurstPhaseTest, PAL_BurstAbsent_ColourFrameIndexUnknown) {
-  // All-blanking frame: no burst → colour_frame_index = -1.
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL", "CVBS_U10_4FSC");
-  deps->payload_words.assign(static_cast<size_t>(kPalFrameSamples),
-                             static_cast<uint16_t>(kPalBlanking));
+TEST(CVBSSourcePhaseContractTest, ColourFrameIndex_IsUnknown) {
+  // The source stage always reports colour_frame_index = -1 regardless of
+  // burst content; measurement is ColourFramePhaseObserver's responsibility.
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
   PALCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
   ASSERT_NE(vfr, nullptr);
@@ -690,41 +579,13 @@ TEST(CVBSBurstPhaseTest, PAL_BurstAbsent_ColourFrameIndexUnknown) {
   EXPECT_EQ(desc->colour_frame_index, -1);
 }
 
-TEST(CVBSBurstPhaseTest, NTSC_BurstAt180Deg_ColourFrameIndex0) {
-  // NTSC frame A: burst phase 180° → measured 180° → [90°,270°) → index 0.
-  auto deps =
-      std::make_shared<FakeCVBSSourceStageDeps>("NTSC", "CVBS_U10_4FSC");
-  deps->payload_words = make_ntsc_frame_with_burst_u10(180.0, 100);
-  NTSCCVBSSourceStage stage(deps);
-  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
-  ASSERT_NE(vfr, nullptr);
-  auto desc = vfr->get_frame_descriptor(0);
-  ASSERT_TRUE(desc.has_value());
-  EXPECT_EQ(desc->colour_frame_index, 0);
-}
-
-TEST(CVBSBurstPhaseTest, NTSC_BurstAt0Deg_ColourFrameIndex1) {
-  // NTSC frame B: burst phase 0° → measured 0° → not in [90°,270°) → index 1.
-  auto deps =
-      std::make_shared<FakeCVBSSourceStageDeps>("NTSC", "CVBS_U10_4FSC");
-  deps->payload_words = make_ntsc_frame_with_burst_u10(0.0, 100);
-  NTSCCVBSSourceStage stage(deps);
-  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
-  ASSERT_NE(vfr, nullptr);
-  auto desc = vfr->get_frame_descriptor(0);
-  ASSERT_TRUE(desc.has_value());
-  EXPECT_EQ(desc->colour_frame_index, 1);
-}
-
-TEST(CVBSBurstPhaseTest, FramePhaseHint_MatchesColourFrameIndex) {
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL", "CVBS_U10_4FSC");
-  deps->payload_words = make_pal_frame_with_burst_u10(315.0, 100);
+TEST(CVBSSourcePhaseContractTest, FramePhaseHint_IsNullopt) {
+  // The source stage provides no phase hint; it is set by ColourFramePhaseObserver.
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
   PALCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
   ASSERT_NE(vfr, nullptr);
-  auto hint = vfr->get_frame_phase_hint(0);
-  ASSERT_TRUE(hint.has_value());
-  EXPECT_EQ(*hint, 1);
+  EXPECT_FALSE(vfr->get_frame_phase_hint(0).has_value());
 }
 
 // ===========================================================================

@@ -212,6 +212,13 @@ orc_add_core_unit_tests(
         types/line_numbering_test.cpp
 )
 
+orc_add_core_unit_tests(
+        orc-core-unit-tests-observers
+        "unit"
+
+        observers/colour_frame_phase_observer_test.cpp
+)
+
         orc_add_core_unit_tests(
                 orc-core-unit-tests-preview-foundation
                 "unit;preview"

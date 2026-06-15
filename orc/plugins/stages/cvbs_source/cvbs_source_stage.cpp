@@ -12,8 +12,6 @@
 #include <cvbs_signal_constants.h>
 #include <sqlite3.h>
 
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -25,7 +23,6 @@
 #include <vector>
 
 #include "error_types.h"
-#include "frame_line_util.h"
 #include "logging.h"
 #include "preview_helpers.h"
 
@@ -76,117 +73,6 @@ inline int16_t normalize_to_cvbs_u10(uint16_t raw, const std::string& encoding,
   }
   // Fallback — treat unknown encoding as CVBS_U16_4FSC.
   return static_cast<int16_t>(static_cast<int32_t>(raw) / 64);
-}
-
-// ---------------------------------------------------------------------------
-// Colour burst phase measurement
-// ---------------------------------------------------------------------------
-
-// Measure the colour frame sequence index for a decoded CVBS_U10_4FSC frame.
-//
-// Demodulates the colour burst at a fixed reference position (line 9, burst
-// window) and maps the measured carrier angle to the colour frame index.
-//
-// Returns -1 when the burst is absent or too weak to classify (e.g., blank
-// tape or pre-programme leader).
-//
-// EBU Tech. 3280-E §1.1.1 (PAL); SMPTE 244M-2003 §3.2 (NTSC);
-// ITU-R BT.1700-1 Annex 1 Part B (PAL_M).
-int measure_colour_frame_index(const int16_t* frame_data, VideoSystem system,
-                               int32_t blanking_10bit) {
-  constexpr int kRefLine = 9;      // 0-based frame-flat line index
-  constexpr int kBurstCount = 40;  // samples to demodulate
-
-  // EBU Tech. 3280-E §1.2: PAL colour burst at samples 93..132.
-  // SMPTE 244M-2003 §4.2.1: NTSC colour burst at samples 74..109.
-  // ITU-R BT.1700-1 Annex 1 Part B: PAL_M uses same window as NTSC.
-  int burst_start = 0;
-  size_t line_start = 0;
-  switch (system) {
-    case VideoSystem::PAL:
-      burst_start = 93;
-      line_start = frame_line_sample_offset(VideoSystem::PAL,
-                                            static_cast<size_t>(kPalMaxSamplesPerLine - 1),
-                                            static_cast<size_t>(kRefLine));
-      break;
-    case VideoSystem::NTSC:
-      burst_start = 74;
-      line_start = frame_line_sample_offset(VideoSystem::NTSC,
-                                            static_cast<size_t>(kNtscSamplesPerLine),
-                                            static_cast<size_t>(kRefLine));
-      break;
-    case VideoSystem::PAL_M:
-      burst_start = 74;
-      line_start = frame_line_sample_offset(VideoSystem::PAL_M,
-                                            static_cast<size_t>(kPalMSamplesPerLine),
-                                            static_cast<size_t>(kRefLine));
-      break;
-    default:
-      return -1;
-  }
-
-  const size_t abs_offset = line_start + static_cast<size_t>(burst_start);
-  // Phase base: position of burst[0] within the 4-sample subcarrier cycle.
-  const int phase_base = static_cast<int>(abs_offset % 4);
-  const int16_t* burst_ptr = frame_data + abs_offset;
-
-  // Quadrature demodulation at 4FSC: cos/sin values cycle
-  // {1,0,-1,0}/{0,1,0,-1}.
-  double I = 0.0;
-  double Q = 0.0;
-  for (int n = 0; n < kBurstCount; ++n) {
-    const double ac = static_cast<double>(burst_ptr[n]) - blanking_10bit;
-    switch ((phase_base + n) % 4) {
-      case 0:
-        I += ac;
-        break;
-      case 1:
-        Q += ac;
-        break;
-      case 2:
-        I -= ac;
-        break;
-      case 3:
-        Q -= ac;
-        break;
-      default:
-        break;
-    }
-  }
-
-  // Reject absent or corrupted bursts.  Threshold = ~2 ADU RMS amplitude,
-  // which is far below the spec minimum burst amplitude (~50 ADU for PAL).
-  const double amplitude = std::sqrt(I * I + Q * Q);
-  constexpr double kMinBurstAmplitude = 20.0;
-  if (amplitude < kMinBurstAmplitude) {
-    return -1;
-  }
-
-  double angle_deg = std::atan2(Q, I) * (180.0 / M_PI);
-  if (angle_deg < 0.0) {
-    angle_deg += 360.0;
-  }
-
-  if (system == VideoSystem::NTSC) {
-    // SMPTE 244M-2003 §3.2: Frame A (~180°) → index 0; Frame B (~0°) → index 1.
-    return (angle_deg >= 90.0 && angle_deg < 270.0) ? 0 : 1;
-  }
-
-  const int sector = static_cast<int>(angle_deg / 90.0) % 4;
-
-  if (system == VideoSystem::PAL) {
-    // EBU Tech. 3280-E §1.1.1: PAL 4-frame sequence.
-    // Measured angle = −burst_phase; consecutive frames: 45°,135°,225°,315°.
-    // sector [0°,90°)→1, [90°,180°)→2, [180°,270°)→3, [270°,360°)→4.
-    static constexpr int kPalMap[4] = {1, 2, 3, 4};
-    return kPalMap[sector];
-  }
-
-  // ITU-R BT.1700-1 Annex 1 Part B: PAL_M 4-frame sequence (+90°/frame).
-  // Consecutive measured angles: 45°,315°,225°,135°.
-  // sector [0°,90°)→1, [90°,180°)→4, [180°,270°)→3, [270°,360°)→2.
-  static constexpr int kPalMMap[4] = {1, 4, 3, 2};
-  return kPalMMap[sector];
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +246,7 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
     desc.height = frame_height_;
     desc.samples_total = frame_samples_;
     desc.samples_per_line_nominal = spl_nominal_;
-    desc.colour_frame_index = it->second.colour_frame_index;
+    desc.colour_frame_index = -1;  // measured by ColourFramePhaseObserver
     if (ntsc_j_black_level_.has_value()) {
       desc.black_level_override = ntsc_j_black_level_;
     }
@@ -396,16 +282,6 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
     return result;
   }
 
-  std::optional<int> get_frame_phase_hint(FrameID id) const override {
-    if (!has_frame(id)) return std::nullopt;
-    ensure_frame_cached(id);
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    const auto it = frame_cache_.find(id);
-    if (it == frame_cache_.end()) return std::nullopt;
-    const int idx = it->second.colour_frame_index;
-    return (idx == -1) ? std::optional<int>{std::nullopt}
-                       : std::optional<int>{idx};
-  }
 
   std::optional<ActiveLineHint> get_active_line_hint() const override {
     if (video_params_.first_active_frame_line < 0) return std::nullopt;
@@ -481,7 +357,6 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
  private:
   struct DecodedFrame {
     std::vector<sample_type> samples;
-    int colour_frame_index = -1;
   };
 
   void ensure_frame_cached(FrameID id) const {
@@ -520,8 +395,6 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
           raw_words[i], sample_encoding_, blanking_level_));
     }
 
-    result.colour_frame_index = measure_colour_frame_index(
-        result.samples.data(), system_, blanking_level_);
     return result;
   }
 

@@ -170,6 +170,12 @@ class FramePhaseCorrectorStage : public DAGStage,
 
   // Expected next colour_frame_index.
   static int next_colour_index(int current, VideoSystem sys);
+
+  // Measure the colour-frame sequence index directly from the raw signal
+  // using quadrature burst demodulation.
+  // Returns -1 when the burst is absent or too weak to classify.
+  static int measure_colour_frame_index(const VideoFrameRepresentation& src,
+                                        FrameID id, VideoSystem sys);
 };
 
 }  // namespace orc

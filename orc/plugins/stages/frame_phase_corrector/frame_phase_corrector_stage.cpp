@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <numeric>
 #include <sstream>
 
@@ -185,6 +186,80 @@ int FramePhaseCorrectorStage::next_colour_index(int current, VideoSystem sys) {
   }
 }
 
+int FramePhaseCorrectorStage::measure_colour_frame_index(
+    const VideoFrameRepresentation& src, FrameID id, VideoSystem sys) {
+  auto params = src.get_video_parameters();
+  if (!params) return -1;
+
+  const int16_t* frame_data = src.get_frame(id);
+  if (!frame_data) return -1;
+
+  // EBU Tech. 3280-E §1.2: PAL colour burst at samples 93..132.
+  // SMPTE 244M-2003 §4.2.1: NTSC colour burst at samples 74..109.
+  // ITU-R BT.1700-1 Annex 1 Part B: PAL_M uses same window as NTSC.
+  constexpr size_t kRefLine = 9;
+  constexpr size_t kBurstCount = 40;
+  size_t burst_start = 0;
+  size_t line_start = 0;
+
+  switch (sys) {
+    case VideoSystem::PAL:
+      burst_start = 93;
+      line_start = static_cast<size_t>(kRefLine) *
+                   static_cast<size_t>(kPalMaxSamplesPerLine - 1);
+      break;
+    case VideoSystem::NTSC:
+      burst_start = 74;
+      line_start = static_cast<size_t>(kRefLine) * kNtscSamplesPerLine;
+      break;
+    case VideoSystem::PAL_M:
+      burst_start = 74;
+      line_start = static_cast<size_t>(kRefLine) * kPalMSamplesPerLine;
+      break;
+    default:
+      return -1;
+  }
+
+  const size_t abs_offset = line_start + burst_start;
+  const int phase_base = static_cast<int>(abs_offset % 4);
+  const int16_t* burst_ptr = frame_data + abs_offset;
+  const int32_t blanking = params->blanking_level;
+
+  double I = 0.0;
+  double Q = 0.0;
+  for (size_t n = 0; n < kBurstCount; ++n) {
+    const double ac = static_cast<double>(burst_ptr[n]) - blanking;
+    switch ((phase_base + static_cast<int>(n)) % 4) {
+      case 0: I += ac; break;
+      case 1: Q += ac; break;
+      case 2: I -= ac; break;
+      case 3: Q -= ac; break;
+      default: break;
+    }
+  }
+
+  constexpr double kMinBurstAmplitude = 20.0;
+  if (std::sqrt(I * I + Q * Q) < kMinBurstAmplitude) return -1;
+
+  double angle_deg = std::atan2(Q, I) * (180.0 / M_PI);
+  if (angle_deg < 0.0) angle_deg += 360.0;
+
+  if (sys == VideoSystem::NTSC) {
+    // SMPTE 244M-2003 §3.2: Frame A (~180°) → 0; Frame B (~0°) → 1.
+    return (angle_deg >= 90.0 && angle_deg < 270.0) ? 0 : 1;
+  }
+
+  const int sector = static_cast<int>(angle_deg / 90.0) % 4;
+  if (sys == VideoSystem::PAL) {
+    // EBU Tech. 3280-E §1.1.1: sector [0°,90°)→1, [90°,180°)→2, …
+    static constexpr int kPalMap[4] = {1, 2, 3, 4};
+    return kPalMap[sector];
+  }
+  // ITU-R BT.1700-1 Annex 1 Part B: PAL_M
+  static constexpr int kPalMMap[4] = {1, 4, 3, 2};
+  return kPalMMap[sector];
+}
+
 double FramePhaseCorrectorStage::measure_field_burst_phase(
     const VideoFrameRepresentation& src, FrameID id, bool second_field,
     VideoSystem sys) {
@@ -297,11 +372,17 @@ std::vector<ArtifactPtr> FramePhaseCorrectorStage::execute(
   for (FrameID fid = rng.first; fid <= rng.last; ++fid) {
     if (!source->has_frame(fid)) continue;
 
-    auto desc = source->get_frame_descriptor(fid);
-    if (!desc) continue;
+    if (!source->get_frame_descriptor(fid)) continue;
+
+    // Measure colour-frame index from the raw signal; the source stage does
+    // not perform this measurement (that is ColourFramePhaseObserver's role).
+    const int measured_colour_index =
+        (sys != VideoSystem::Unknown)
+            ? measure_colour_frame_index(*source, fid, sys)
+            : -1;
 
     PhaseCorectedRepresentation::FrameCorrection corr;
-    corr.corrected_colour_index = desc->colour_frame_index;
+    corr.corrected_colour_index = measured_colour_index;
     bool needs_entry = false;
 
     // 1. Field-swap detection and correction
@@ -323,7 +404,7 @@ std::vector<ArtifactPtr> FramePhaseCorrectorStage::execute(
         ORC_LOG_DEBUG(
             "FramePhaseCorrectorStage: field swap detected at frame {}; "
             "corrected colour_frame_index {} → {}",
-            fid.value(), desc->colour_frame_index, corr.corrected_colour_index);
+            fid.value(), measured_colour_index, corr.corrected_colour_index);
       }
     }
 
