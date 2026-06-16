@@ -9,6 +9,7 @@
 
 #include "../../../../orc/plugins/stages/sinks/common/decoders/comb.h"
 
+#include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -182,5 +183,132 @@ TEST(CombTest, InvalidConfiguration_DoesNotAttemptDecode) {
 
   EXPECT_EQ(output[0].getWidth(), -1);
   EXPECT_EQ(output[0].getHeight(), -1);
+}
+
+// ----------------------------------------------------------------------------
+// NTSC burst detection at CVBS_U10_4FSC 10-bit levels
+// ----------------------------------------------------------------------------
+// Regression test: the burst-norm underflow guard in detectBurst() must be
+// below the actual burst amplitude so that phase-compensated I/Q demodulation
+// (splitIQlocked) produces non-zero chroma from a valid NTSC composite signal.
+//
+// The old guard (≈ 1016) was calibrated for the legacy 16-bit TBC domain; in
+// the CVBS_U10_4FSC 10-bit domain the nominal burst norm is ≈ 56, so the old
+// value clamped burstNorm to 1016 and reduced the normalised burst vector to
+// ≈ 5 % of its true value, erasing all colour.
+//
+// Signal construction (SMPTE 170M-2004):
+//   – Frame width = 200; burst window = samples 72–107 (kNtscColourBurstStart
+//     to kNtscColourBurstEnd).
+//   – Burst amplitude = 40 IRE p-p (20 IRE half-amplitude) at CVBS_U10_4FSC
+//     levels: half_amp = 20 × (kNtscWhite − kNtscBlanking) / 100 ≈ 112.
+//     Pattern: sin(π i/2) → {0, +half_amp, 0, −half_amp} per sample.
+//   – Active video (samples 120–159): blanking + chroma × sin(π h / 2) with
+//     chroma = 10 IRE × ire_scale ≈ 56 units.
+//   – Both fields carry the same signal to exercise the 1D path.
+//
+// Expected result: at least one sample in the active area has |U| > threshold
+// after phase-compensated 1D decoding.
+TEST(CombTest, PhaseCompensation_BurstAtNtscCvbsLevels_ProducesNonZeroChroma) {
+  // SMPTE 170M-2004 §4.1: 525-line/60 Hz system at 4FSC.
+  orc::SourceParameters params;
+  params.system = orc::VideoSystem::NTSC;
+  params.frame_width_nominal = 200;
+  params.active_video_start = 120;
+  params.active_video_end = 160;
+  params.first_active_frame_line = 0;
+  params.last_active_frame_line = 4;
+
+  // phaseCompensation = true exercises splitIQlocked() → detectBurst(),
+  // which is the path that contained the incorrect underflow guard.
+  // dimensions = 1 uses only the 1D comb result so the test is self-contained.
+  Comb::Configuration config;
+  config.dimensions = 1;
+  config.phaseCompensation = true;
+
+  Comb decoder;
+  decoder.updateConfiguration(params, config);
+
+  // SMPTE 170M-2004 Table 4: burst = 40 IRE p-p → half-amplitude = 20 IRE.
+  const double ire_scale =
+      static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking) / 100.0;
+  const auto burst_half_amp =
+      static_cast<int16_t>(std::lround(20.0 * ire_scale));  // ≈ 112
+  const auto chroma_amp =
+      static_cast<int16_t>(std::lround(10.0 * ire_scale));  // ≈ 56
+
+  // Build a single-line template: blanking everywhere, with burst at 72–107
+  // and chroma subcarrier in the active area.
+  // sin(π i/2) pattern → {0, +1, 0, −1} for i%4 = {0, 1, 2, 3}.
+  auto make_ntsc_line = [&]() -> std::vector<int16_t> {
+    std::vector<int16_t> line(200, orc::kNtscBlanking);
+
+    // SMPTE 170M-2004 §6.4: colour burst at positions 72–107.
+    for (int i = orc::kNtscColourBurstStart; i < orc::kNtscColourBurstEnd;
+         ++i) {
+      const int ph = i % 4;
+      const int16_t s = (ph == 1)   ? burst_half_amp
+                        : (ph == 3) ? -burst_half_amp
+                                    : 0;
+      line[i] = static_cast<int16_t>(orc::kNtscBlanking + s);
+    }
+
+    // Active video: luma at black level + subcarrier chroma.
+    for (int h = params.active_video_start; h < params.active_video_end; ++h) {
+      const int ph = h % 4;
+      const int16_t c = (ph == 1) ? chroma_amp : (ph == 3) ? -chroma_amp : 0;
+      line[h] = static_cast<int16_t>(orc::kNtscBlack + c);
+    }
+
+    return line;
+  };
+
+  // Build two 4-line fields with the same NTSC signal on every line.
+  auto build_owned_field = [&](bool is_first_field) -> OwnedField {
+    OwnedField of;
+    of.field.is_yc = false;
+    of.field.is_first_field = is_first_field;
+    of.field.frame_phase_id = is_first_field ? 1 : 2;
+    of.field.line_count = 4;
+    of.field.samples_per_line = 200;
+
+    const auto line = make_ntsc_line();
+    for (int l = 0; l < 4; ++l) {
+      of.composite_buf.insert(of.composite_buf.end(), line.begin(), line.end());
+    }
+    of.field.data = of.composite_buf.data();
+    return of;
+  };
+
+  auto field1 = build_owned_field(true);
+  auto field2 = build_owned_field(false);
+
+  std::vector<SourceField> fields = {field1.field, field2.field};
+  std::vector<ComponentFrame> output(1);
+  decoder.decodeFrames(fields, 0, 2, output);
+
+  // With a correctly normalised burst vector the demodulated U channel must
+  // be significantly non-zero in the active video area.  The old guard
+  // (≈ 1016) would reduce the burst vector to ≈ 5 % of its true value,
+  // producing |U| < 1; the corrected guard (≈ 6.65) lets the full burst
+  // through (burstNorm ≈ 56) giving |U| > 10 for 10 IRE chroma.
+  const double kChromaThreshold = 1.0;
+  bool found_chroma = false;
+  const double* u0 = output[0].u(0);
+  if (u0 != nullptr) {
+    for (int h = params.active_video_start; h < params.active_video_end; ++h) {
+      if (std::abs(u0[h]) > kChromaThreshold) {
+        found_chroma = true;
+        break;
+      }
+    }
+  }
+
+  EXPECT_TRUE(found_chroma)
+      << "Phase-compensated NTSC decode must produce non-zero chroma from a "
+         "40 IRE p-p burst at CVBS_U10_4FSC 10-bit levels (kNtscBlanking="
+      << orc::kNtscBlanking << ", kNtscWhite=" << orc::kNtscWhite
+      << "). burstNorm for 20 IRE half-amplitude ≈ " << (20.0 * ire_scale / 2)
+      << "; the underflow guard must remain well below this value.";
 }
 }  // namespace orc_unit_test

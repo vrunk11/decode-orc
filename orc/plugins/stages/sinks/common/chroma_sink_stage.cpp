@@ -2330,6 +2330,7 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
           : carrier.height;
   // CVBS_U10_4FSC normative levels from source parameters.
   carrier.cvbs_blanking = videoParams.blanking_level;
+  carrier.cvbs_black = videoParams.black_level;
   carrier.cvbs_white = videoParams.white_level;
 
   carrier.vectorscope_data = VectorscopeAnalysisTool::extractFromComponentFrame(

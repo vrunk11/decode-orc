@@ -762,10 +762,23 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(
 }
 
 namespace {
-// Rotate the burst angle to get the correct values.
-// We do the 33 degree rotation here to avoid computing it for every pixel.
-constexpr double ROTATE_SIN = 0.5446390350150271;
-constexpr double ROTATE_COS = 0.838670567945424;
+// SMPTE 170M-2004 §6.1: I-axis is rotated 33° from the U-axis in NTSC I/Q
+// colour space. Pre-computed to avoid per-pixel trigonometry.
+constexpr double ROTATE_SIN = 0.5446390350150271;  // sin(33° × π/180)
+constexpr double ROTATE_COS = 0.838670567945424;   // cos(33° × π/180)
+
+// SMPTE 170M-2004 Table 4: minimum NTSC burst amplitude = 38 IRE p-p
+// (half-amplitude ≥ 19 IRE).  At exactly 4FSC, product detection over a burst
+// window of N samples yields burstNorm ≈ half_amplitude / 2 after averaging
+// (half the sin4fsc terms are non-zero).  Minimum burstNorm in the
+// CVBS_U10_4FSC 10-bit domain:
+//   19 IRE × (kNtscWhite − kNtscBlanking) / 100 / 2  ≈  53.2 units.
+// The floor is set to 1/8 of this minimum (≈ 6.65) to prevent divide-by-zero
+// on burst-free lines (blanking, VBI) while remaining well below any real
+// burst.
+constexpr double kNtscBurstNormFloor =
+    (19.0 * static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking) / 100.0) /
+    2.0 / 8.0;
 
 Comb::BurstInfo detectBurst(const int16_t* lineData,
                             const ::orc::SourceParameters& videoParameters) {
@@ -785,13 +798,16 @@ Comb::BurstInfo detectBurst(const int16_t* lineData,
     bcos += lineData[i] * cos4fsc(i);
   }
 
-  // Normalise the sums above
+  // Normalise the sums: burstNorm ≈ half_amplitude / 2.
+  // The floor prevents divide-by-zero on lines without a burst signal.
+  // SMPTE 170M-2004 Table 4: nominal burst gives burstNorm ≈ 56 in the
+  // CVBS_U10_4FSC 10-bit domain; kNtscBurstNormFloor is well below that.
   const int32_t colourBurstLength = comb_burst_end - comb_burst_start;
   bsin /= colourBurstLength;
   bcos /= colourBurstLength;
 
   const double burstNorm =
-      std::max(sqrt(bsin * bsin + bcos * bcos), 130000.0 / 128);
+      std::max(sqrt(bsin * bsin + bcos * bcos), kNtscBurstNormFloor);
 
   bsin /= burstNorm;
   bcos /= burstNorm;

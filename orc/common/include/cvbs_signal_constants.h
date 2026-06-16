@@ -56,9 +56,10 @@ constexpr int32_t kPalSamplesPerLineNominal = 1135;
 constexpr int32_t kPalMaxSamplesPerLine = 1137;
 
 // EBU Tech. 3280-E: Normative CVBS_U10_4FSC signal levels (10-bit domain).
+// PAL carries no setup pedestal: black level equals blanking level (0 IRE).
 constexpr int32_t kPalSyncTip = 4;
 constexpr int32_t kPalBlanking = 256;
-constexpr int32_t kPalBlack = 282;
+constexpr int32_t kPalBlack = 256;  // 0x100: no pedestal; black = blanking
 constexpr int32_t kPalWhite = 844;
 constexpr int32_t kPalPeak = 1019;
 
@@ -99,12 +100,15 @@ constexpr int32_t kNtscFrameLines = 525;
 // The even-scan field (262 lines) follows at odd file indices → VFR field 2.
 constexpr int32_t kNtscField1Lines = 263;
 
-// SMPTE 244M-2003: Normative CVBS_U10_4FSC signal levels (10-bit domain).
-constexpr int32_t kNtscSyncTip = 16;
-constexpr int32_t kNtscBlanking = 240;
-constexpr int32_t kNtscBlack = 252;
-constexpr int32_t kNtscWhite = 800;
-constexpr int32_t kNtscPeak = 988;
+// SMPTE 244M-2003 §4.2.1 Table 1: Normative CVBS_U10_4FSC signal levels.
+constexpr int32_t kNtscSyncTip = 16;    // 0x010: -40 IRE sync tip
+constexpr int32_t kNtscBlanking = 240;  // 0x0F0: 0 IRE blanking reference
+// SMPTE 170M-2004 Table 1: black (setup) = 7.5 IRE above blanking.
+// 240 + 7.5 x (800 - 240) / 100 = 240 + 42 = 282.
+constexpr int32_t kNtscBlack = 282;  // 0x11A: +7.5 IRE picture black
+constexpr int32_t kNtscWhite = 800;  // 0x320: +100 IRE white
+// SMPTE 244M-2003 §4.2.4: maximum permitted 10-bit value = 0x3FB = 1019.
+constexpr int32_t kNtscPeak = 1019;  // 0x3FB: maximum legal sample value
 
 // ---------------------------------------------------------------------------
 // PAL_M — ITU-R BT.1700-1 Annex 1 Part B

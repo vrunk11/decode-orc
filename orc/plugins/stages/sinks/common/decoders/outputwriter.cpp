@@ -293,10 +293,11 @@ void OutputWriter::convertLine(int32_t lineNumber,
 
   const int32_t outputLine = topPadLines + lineNumber;
 
-  const double yOffset = static_cast<double>(videoParameters.blanking_level);
-  double yRange = static_cast<double>(videoParameters.white_level -
-                                      videoParameters.blanking_level);
-  const double uvRange = yRange;
+  const double yOffset = static_cast<double>(videoParameters.black_level);
+  const double yRange = static_cast<double>(videoParameters.white_level -
+                                            videoParameters.black_level);
+  const double uvRange = static_cast<double>(videoParameters.white_level -
+                                             videoParameters.blanking_level);
 
   switch (config.pixelFormat) {
     case RGB48: {

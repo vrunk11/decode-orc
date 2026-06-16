@@ -68,7 +68,9 @@ TEST(CVBSSignalConstants, PalExtraSampleLinesHaveTwoEntriesPerLongLine) {
 
 TEST(CVBSSignalConstants, PalLevelOrdering) {
   EXPECT_LT(kPalSyncTip, kPalBlanking);
-  EXPECT_LT(kPalBlanking, kPalBlack);
+  // PAL has no setup pedestal: black level equals blanking level (EBU Tech.
+  // 3280-E).
+  EXPECT_EQ(kPalBlanking, kPalBlack);
   EXPECT_LT(kPalBlack, kPalWhite);
   EXPECT_LT(kPalWhite, kPalPeak);
 }

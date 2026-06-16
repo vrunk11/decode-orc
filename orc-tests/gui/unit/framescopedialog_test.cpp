@@ -28,15 +28,16 @@
 namespace gui_unit_test {
 
 // PAL spec values (cvbs_signal_constants.h / EBU Tech. 3280-E Table 1)
+// PAL has no setup pedestal: black level equals blanking level.
 constexpr int32_t kPalBlanking = 256;
-constexpr int32_t kPalBlack = 282;
+constexpr int32_t kPalBlack = 256;
 constexpr int32_t kPalWhite = 844;
 constexpr int32_t kPalSyncTip = 4;
 constexpr int32_t kPalPeak = 1019;
 
-// NTSC spec values (SMPTE 170M-2004 §11.4)
+// NTSC spec values (SMPTE 244M-2003 §4.2.1 Table 1 / SMPTE 170M-2004 Table 1)
 constexpr int32_t kNtscBlanking = 240;
-constexpr int32_t kNtscBlack = 252;
+constexpr int32_t kNtscBlack = 282;  // 7.5 IRE: 240 + 7.5×5.6 = 282
 constexpr int32_t kNtscWhite = 800;
 
 // ---- cvbs_sample_to_mv() ---------------------------------------------------
@@ -76,12 +77,11 @@ TEST(CvbsSampleToMvTest, Peak_IsAboveWhite_PAL) {
   EXPECT_GT(mv, 700.0);
 }
 
-TEST(CvbsSampleToMvTest, Black_IsSmallPositive_PAL) {
-  // black > blanking → small positive mV
+TEST(CvbsSampleToMvTest, Black_IsZeroMillivolts_PAL) {
+  // PAL has no pedestal: black == blanking → 0 mV (EBU Tech. 3280-E)
   const double mv = cvbs_sample_to_mv(static_cast<int16_t>(kPalBlack),
                                       kPalBlanking, kPalWhite, 700.0);
-  EXPECT_GT(mv, 0.0);
-  EXPECT_LT(mv, 700.0);
+  EXPECT_DOUBLE_EQ(mv, 0.0);
 }
 
 TEST(CvbsSampleToMvTest, InvalidRange_ReturnsZero) {
