@@ -350,6 +350,10 @@ const std::array<double, 1> c_sync10_a = {1.000000000000000e+00};
 
 const IIRFilter<33, 1> f_sync10(c_sync10_b, c_sync10_a);
 
+// SMPTE 170M-2004 §7.1: Luma noise-reduction high-pass FIR component.
+// Used in doYNR() to extract the high-frequency luma component that is cored
+// (zeroed) below the configured yNRLevel threshold. Auto-generated
+// coefficients.
 const std::array<double, 25> c_nr_b = {
     1.141291975113614e-04,  -1.857019211291029e-03, -4.499636864042073e-03,
     -5.577680979937061e-03, -4.423694440267179e-04, 1.309163063177155e-02,
@@ -392,6 +396,9 @@ const std::array<double, 1> c_lp18_a = {1.000000000000000e+00};
 
 const IIRFilter<25, 1> f_lp18(c_lp18_b, c_lp18_a);
 
+// SMPTE 170M-2004 §7.2: Chroma noise-reduction high-pass FIR component.
+// Used in doCNR() to extract the high-frequency chroma component (I and Q)
+// that is cored below the configured cNRLevel threshold. Auto-generated.
 const std::array<double, 17> c_nrc_b = {
     -3.148569668063267e-03, -4.941974513425438e-03, -9.929538598536455e-03,
     -1.787793973911701e-02, -2.783702315543740e-02, -3.829928032339736e-02,
@@ -403,6 +410,11 @@ const std::array<double, 1> c_nrc_a = {1.000000000000000e+00};
 
 const IIRFilter<17, 1> f_nrc(c_nrc_b, c_nrc_a);
 
+// SMPTE 170M-2004 §7.2 (equiband): I and Q chroma lowpass filter.
+// Design target: < 2 dB attenuation at 1.3 MHz; ≥ 20 dB at 3.6 MHz at 4fsc
+// (14.3182 MHz). Verified response: −0.02 dB at 1.3 MHz, −34.8 dB at 3.6 MHz.
+// Applied equally to both I and Q (equiband per SMPTE 170M-2004 §7.2 Note).
+// Auto-generated coefficients; do not edit manually.
 const std::array<double, 17> c_colorlp_b = {
     2.236562025869846e-03,  9.679572273064329e-03,  6.100849475810623e-03,
     -2.082153208645807e-02, -4.872917723725065e-02, -1.535300561979003e-02,

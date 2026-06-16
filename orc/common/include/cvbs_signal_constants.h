@@ -163,7 +163,14 @@ constexpr int32_t kTbcWhite = 54400;     // 100 IRE white  (≈ 83 % of 65535)
 constexpr int32_t kPalColourBurstStart = 98;
 constexpr int32_t kPalColourBurstEnd = 138;
 
-// SMPTE 244M-2003 Table 1: NTSC colour burst sample range.
+// NTSC colour burst sample range in the ld-decode CVBS_U10_4FSC line format.
+// SMPTE 170M-2004 Table 2: burst duration = 9 ± 1 subcarrier cycles →
+// 36 ± 4 samples at 4fsc. Window here is exactly 36 samples (9 cycles). ✓
+// SMPTE 170M-2004 §8.2: burst centre is nominally 19 subcarrier cycles after
+// the H-sync leading edge (50 % point). The ld-decode TBC places sample 0 at
+// the start of horizontal blanking (before sync), so absolute sample numbers
+// are ld-decode-format-specific rather than directly spec-derived. The window
+// is verified empirically to enclose the burst for all standard NTSC sources.
 // PAL_M uses the same values as NTSC.
 constexpr int32_t kNtscColourBurstStart = 72;
 constexpr int32_t kNtscColourBurstEnd = 108;

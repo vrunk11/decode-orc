@@ -553,6 +553,8 @@ void Comb::FrameBuffer::split2D() {
       // Map the difference into a weighting 0-1.
       // 1 means in phase or unknown; 0 means out of phase (more than kRange
       // difference).
+      // 45 IRE is an empirically tuned threshold with no basis in any NTSC
+      // normative specification (SMPTE 170M-2004 / SMPTE 244M-2003).
       const double kRange = 45 * irescale;
       kp = std::clamp(1 - (kp / kRange), 0.0, 1.0);
       kn = std::clamp(1 - (kn / kRange), 0.0, 1.0);
@@ -639,7 +641,11 @@ void Comb::FrameBuffer::getBestCandidate(int32_t lineNumber, int32_t h,
                                          double& bestSample) const {
   Candidate candidates[8];
 
-  // adaptThreshold scales these bonuses: higher = stronger 3D preference
+  // Candidate selection bias weights. Higher adaptThreshold strengthens
+  // preference for 2D/3D temporal candidates over 1D spatial candidates.
+  // The multipliers (2×, 4×, 6× adaptThreshold) are empirically tuned
+  // implementation values with no basis in any NTSC normative specification
+  // (SMPTE 170M-2004 / SMPTE 244M-2003).
   const double LINE_BONUS = -2.0 * configuration.adaptThreshold;
   const double FIELD_BONUS = LINE_BONUS - (2.0 * configuration.adaptThreshold);
   const double FRAME_BONUS = FIELD_BONUS - (2.0 * configuration.adaptThreshold);
@@ -752,8 +758,10 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(
     static constexpr double weights[] = {0.5, 1.0, 0.5};
     iqPenalty += fabs(refC - candidateC) * weights[offset + 1];
   }
-  // Weaken this relative to luma, to avoid spurious colour in the 2D result
-  // from showing through
+  // Weaken chroma penalty relative to luma to prevent spurious colour in the
+  // 2D result from biasing 3D candidate selection. The 0.28 factor is an
+  // empirically tuned implementation value with no basis in any NTSC normative
+  // specification (SMPTE 170M-2004 / SMPTE 244M-2003).
   iqPenalty = (iqPenalty / 2 / irescale) * 0.28;
 
   result.penalty =
@@ -767,17 +775,17 @@ namespace {
 constexpr double ROTATE_SIN = 0.5446390350150271;  // sin(33° × π/180)
 constexpr double ROTATE_COS = 0.838670567945424;   // cos(33° × π/180)
 
-// SMPTE 170M-2004 Table 4: minimum NTSC burst amplitude = 38 IRE p-p
-// (half-amplitude ≥ 19 IRE).  At exactly 4FSC, product detection over a burst
-// window of N samples yields burstNorm ≈ half_amplitude / 2 after averaging
-// (half the sin4fsc terms are non-zero).  Minimum burstNorm in the
-// CVBS_U10_4FSC 10-bit domain:
-//   19 IRE × (kNtscWhite − kNtscBlanking) / 100 / 2  ≈  53.2 units.
-// The floor is set to 1/8 of this minimum (≈ 6.65) to prevent divide-by-zero
+// SMPTE 170M-2004 Table 1: nominal NTSC burst amplitude = 40 ± 1 IRE p-p,
+// giving a minimum of 39 IRE p-p (half-amplitude ≥ 19.5 IRE at minimum).
+// At exactly 4FSC, product detection over a burst window of N samples yields
+// burstNorm ≈ half_amplitude / 2 after averaging (half the sin4fsc terms are
+// non-zero).  Minimum burstNorm in the CVBS_U10_4FSC 10-bit domain:
+//   19.5 IRE × (kNtscWhite − kNtscBlanking) / 100 / 2  ≈  54.6 units.
+// The floor is set to 1/8 of this minimum (≈ 6.83) to prevent divide-by-zero
 // on burst-free lines (blanking, VBI) while remaining well below any real
 // burst.
 constexpr double kNtscBurstNormFloor =
-    (19.0 * static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking) / 100.0) /
+    (19.5 * static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking) / 100.0) /
     2.0 / 8.0;
 
 Comb::BurstInfo detectBurst(const int16_t* lineData,
@@ -800,7 +808,7 @@ Comb::BurstInfo detectBurst(const int16_t* lineData,
 
   // Normalise the sums: burstNorm ≈ half_amplitude / 2.
   // The floor prevents divide-by-zero on lines without a burst signal.
-  // SMPTE 170M-2004 Table 4: nominal burst gives burstNorm ≈ 56 in the
+  // SMPTE 170M-2004 Table 1: nominal burst gives burstNorm ≈ 56 in the
   // CVBS_U10_4FSC 10-bit domain; kNtscBurstNormFloor is well below that.
   const int32_t colourBurstLength = comb_burst_end - comb_burst_start;
   bsin /= colourBurstLength;
@@ -836,12 +844,12 @@ void Comb::FrameBuffer::demodulateChromaLocked(const double* chromaLine,
     const auto ti = (lsin * burstInfo.bcos - lcos * burstInfo.bsin);
     const auto tq = (lsin * burstInfo.bsin + lcos * burstInfo.bcos);
 
-    // Invert Q and rotate to get the correct I/Q vector
-    // TODO(sdi): Needed to shift the chroma 1 sample to the right to get it to
-    // line up may not get the first pixel in each line correct because of this
-    const int32_t outIndex = h + 1 - xOffset;
-    if (h + 1 < videoParameters.active_video_end && outIndex >= 0 &&
-        outIndex < outputWidth) {
+    // Invert Q and rotate to get the correct I/Q vector.
+    // SMPTE 170M-2004 §9: Y'/chroma co-siting tolerance is ±25 ns (≈ ±0.36
+    // sample at 4fsc). Demodulated I/Q is written at the same sample position
+    // as the input chroma to maintain co-siting within spec.
+    const int32_t outIndex = h - xOffset;
+    if (outIndex >= 0 && outIndex < outputWidth) {
       I[outIndex] = ti * ROTATE_COS - tq * -ROTATE_SIN;
       Q[outIndex] = -(ti * -ROTATE_SIN + tq * ROTATE_COS);
     }
