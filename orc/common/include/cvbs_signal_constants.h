@@ -94,9 +94,9 @@ constexpr int32_t kNtscFrameSamples = 477'750;
 constexpr int32_t kNtscFrameLines = 525;
 
 // SMPTE 244M-2003 §3.2: Lines in NTSC VFR field 1 (top spatial field).
-// ld-decode stores fields in temporal order; VFR reorders so the top spatial
-// field (263 lines, even-scan) is field 1 and the earlier temporal field
-// (262 lines, odd-scan) becomes VFR field 2.
+// ld-decode stores the odd-scan field (NTSC Field 1, first temporal, 263 lines)
+// at even file indices (isFirstField=true); this becomes VFR field 1 (top).
+// The even-scan field (262 lines) follows at odd file indices → VFR field 2.
 constexpr int32_t kNtscField1Lines = 263;
 
 // SMPTE 244M-2003: Normative CVBS_U10_4FSC signal levels (10-bit domain).
@@ -128,8 +128,8 @@ constexpr int32_t kPalMFrameSamples = 477'225;
 constexpr int32_t kPalMFrameLines = 525;
 
 // ITU-R BT.1700-1 Annex 1 Part B: Lines in PAL_M VFR field 1 (top spatial
-// field). Same swap convention as NTSC: the 263-line even-scan field becomes
-// VFR field 1 (top).
+// field). Identical to NTSC: ld-decode stores the odd-scan field (263 lines,
+// first temporal) at even file indices → VFR field 1 (top).
 constexpr int32_t kPalMField1Lines = 263;
 
 // PAL_M signal levels are identical to NTSC (same line count and blanking).

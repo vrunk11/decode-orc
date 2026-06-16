@@ -9,7 +9,7 @@
  *   - tbc_to_cvbs level mapping at blanking and white (SMPTE 244M-2003 §4.1)
  *   - assemble_frame sample count equals kNtscFrameSamples = 477,750
  *   - assemble_frame throws on wrong field sizes
- *   - Field 1 (262 lines) appears before field 2 (263 lines) in output
+ *   - TBC field 1 (263 lines, VFR top) appears first in output
  *   - map_field_phase_to_colour_frame_index: 1→0 (A), 2→1 (B), others→−1
  *
  *   NtscTBCYCConverter:
@@ -54,20 +54,20 @@ static std::vector<uint16_t> make_field_u16(int32_t lines, int32_t width,
 constexpr int32_t kRefBlanking = 16384;
 constexpr int32_t kRefWhite = 54400;
 
-// NTSC TBC field line counts (raw ld-decode TBC convention, NOT VFR field
-// sizes). TBC field 1 = earlier temporal, 262 real lines → VFR field 2 (bottom
-// spatial). TBC field 2 = later temporal,  263 real lines → VFR field 1 (top
-// spatial). kNtscField1Lines = VFR field 1 = 263; TBC field 1 = kNtscFrameLines
-// - kNtscField1Lines = 262.
-constexpr int32_t kNtscF1Lines =
-    orc::kNtscFrameLines - orc::kNtscField1Lines;         // 262 (TBC f1)
-constexpr int32_t kNtscF2Lines = orc::kNtscField1Lines;   // 263 (TBC f2)
+// NTSC TBC field line counts (ld-decode convention).
+// TBC field 1 (even file index, isFirstField=true) = odd-scan/first temporal,
+//   263 real lines → VFR field 1 (top spatial).
+// TBC field 2 (odd file index) = even-scan/second temporal,
+//   262 real lines → VFR field 2 (bottom spatial).
+constexpr int32_t kNtscF1Lines = orc::kNtscField1Lines;  // 263 (TBC f1/VFR top)
+constexpr int32_t kNtscF2Lines =
+    orc::kNtscFrameLines - orc::kNtscField1Lines;  // 262 (TBC f2/VFR bottom)
 constexpr int32_t kNtscLineW = orc::kNtscSamplesPerLine;  // 910
 
-// PAL_M TBC field line counts (same swap convention as NTSC).
-constexpr int32_t kPalMF1Lines =
-    orc::kPalMFrameLines - orc::kPalMField1Lines;         // 262 (TBC f1)
-constexpr int32_t kPalMF2Lines = orc::kPalMField1Lines;   // 263 (TBC f2)
+// PAL_M TBC field line counts (identical convention to NTSC).
+constexpr int32_t kPalMF1Lines = orc::kPalMField1Lines;  // 263 (TBC f1/VFR top)
+constexpr int32_t kPalMF2Lines =
+    orc::kPalMFrameLines - orc::kPalMField1Lines;  // 262 (TBC f2/VFR bottom)
 constexpr int32_t kPalMLineW = orc::kPalMSamplesPerLine;  // 909
 
 // ============================================================================
@@ -121,10 +121,10 @@ TEST(NtscTBCConverterTest,
 }
 
 TEST(NtscTBCConverterTest, AssembleFrame_ThrowsOnWrongField1Size) {
-  // Field 1 must be exactly 262 × 910 = 238,220 samples.
+  // Field 1 must be exactly 263 × 910 = 239,530 samples.
   auto bad_f1 =
       make_field_u16(kNtscF2Lines, kNtscLineW,
-                     static_cast<uint16_t>(kRefBlanking));  // 263, wrong
+                     static_cast<uint16_t>(kRefBlanking));  // 262, wrong
   auto f2 = make_field_u16(kNtscF2Lines, kNtscLineW,
                            static_cast<uint16_t>(kRefBlanking));
   EXPECT_THROW(orc::NtscTBCConverter::assemble_frame(bad_f1, f2, kRefBlanking,
@@ -143,35 +143,35 @@ TEST(NtscTBCConverterTest, AssembleFrame_ThrowsOnWrongField2Size) {
                std::invalid_argument);
 }
 
-TEST(NtscTBCConverterTest, AssembleFrame_VfrField1IsFirstFromTbcField2) {
-  // TBC field 2 (later temporal, 263 lines) → VFR field 1 (top spatial, first
-  // in output). TBC field 1 (earlier temporal, 262 lines) → VFR field 2 (bottom
-  // spatial, second in output).
+TEST(NtscTBCConverterTest, AssembleFrame_VfrField1IsFirstFromTbcField1) {
+  // TBC field 1 (odd-scan/first temporal, 263 lines) → VFR field 1 (top
+  // spatial, first in output). TBC field 2 (even-scan, 262 lines) → VFR field 2
+  // (bottom spatial, second in output).
   const uint16_t tbc_white = static_cast<uint16_t>(kRefWhite);
   const uint16_t tbc_blank = static_cast<uint16_t>(kRefBlanking);
 
   auto f1 = make_field_u16(kNtscF1Lines, kNtscLineW,
-                           tbc_blank);  // TBC f1 = 262 lines, blank
+                           tbc_white);  // TBC f1 = 263 lines, white
   auto f2 = make_field_u16(kNtscF2Lines, kNtscLineW,
-                           tbc_white);  // TBC f2 = 263 lines, white
+                           tbc_blank);  // TBC f2 = 262 lines, blank
 
   const auto frame =
       orc::NtscTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
-  // First sample in output is from TBC field 2 (white → VFR field 1, top).
+  // First sample in output is from TBC field 1 (white → VFR field 1, top).
   EXPECT_EQ(frame[0], static_cast<int16_t>(orc::kNtscWhite));
 
-  // VFR field 2 (from TBC field 1 = blank) begins at offset 263 × 910 =
+  // VFR field 2 (from TBC field 2 = blank) begins at offset 263 × 910 =
   // 239,530.
   const size_t vfr_field2_start =
-      static_cast<size_t>(kNtscF2Lines) * static_cast<size_t>(kNtscLineW);
+      static_cast<size_t>(kNtscF1Lines) * static_cast<size_t>(kNtscLineW);
   ASSERT_LT(vfr_field2_start, frame.size());
   EXPECT_EQ(frame[vfr_field2_start], static_cast<int16_t>(orc::kNtscBlanking));
 }
 
 TEST(NtscTBCConverterTest, AssembleFrame_NoExtraSamplesInserted) {
   // NTSC is orthogonal: output size = exactly 477,750 with no padding or
-  // extra samples.  Verified via: 262×910 + 263×910 = 477,750 =
+  // extra samples.  Verified via: 263×910 + 262×910 = 477,750 =
   // kNtscFrameSamples.
   auto f1 = make_field_u16(kNtscF1Lines, kNtscLineW,
                            static_cast<uint16_t>(kRefBlanking));

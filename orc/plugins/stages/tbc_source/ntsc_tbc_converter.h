@@ -26,14 +26,15 @@ namespace orc {
 // SMPTE 244M-2003 §3.1: 525 lines/frame, 2:1 interlace.
 //
 // TBC field ordering (SMPTE 244M-2003 §3.2 / SMPTE 170M-2004 §11.3):
-//   ld-decode stores both fields at 263 lines in the TBC file.
-//   TBC field 1 (even file index) = odd/earlier temporal, 262 real lines → VFR
-//   field 2 (bottom) TBC field 2 (odd file index)  = even/later temporal, 263
-//   real lines → VFR field 1 (top) VFR frame layout: [VFR field 1 = TBC field 2
-//   (263 lines, top spatial)]
-//                      [VFR field 2 = TBC field 1 (262 lines, bottom spatial)]
-//   Field order swap matches PAL convention; VFR field 1 is always the top
-//   spatial field per broadcast specification.
+//   ld-decode stores both fields padded to 263 lines in the TBC file.
+//   TBC field 1 (even file index, isFirstField=true) = odd-scan/first temporal,
+//     263 real lines → VFR field 1 (top spatial).
+//   TBC field 2 (odd file index) = even-scan/second temporal,
+//     262 real lines → VFR field 2 (bottom spatial).
+//   VFR frame layout: [VFR field 1 = TBC field 1 (263 lines, top)]
+//                     [VFR field 2 = TBC field 2 (262 lines, bottom)]
+//   NTSC Field 1 (odd-scan, 263 lines) starts at the very top of the picture,
+//   unlike PAL where field ordering is reversed.
 class NtscTBCConverter {
  public:
   // -------------------------------------------------------------------------
@@ -55,13 +56,15 @@ class NtscTBCConverter {
 
   // Assemble a CVBS_U10_4FSC NTSC frame from two TBC fields.
   //
-  // tbc_field1: (kNtscFrameLines - kNtscField1Lines) = 262 lines × 910
-  //   = 238,220 samples.  Earlier temporal field; becomes VFR field 2 (bottom).
-  //   The TBC file stores both fields at 263 lines; caller strips the padding
-  //   line and passes exactly 262 × 910 samples.
+  // tbc_field1: kNtscField1Lines = 263 lines × 910 = 239,530 samples.
+  //   Odd-scan/first temporal field (ld-decode even file index); becomes
+  //   VFR field 1 (top spatial).
   //
-  // tbc_field2: kNtscField1Lines = 263 lines × kNtscSamplesPerLine = 910
-  //   = 239,530 samples.  Later temporal field; becomes VFR field 1 (top).
+  // tbc_field2: kNtscFrameLines - kNtscField1Lines = 262 lines × 910
+  //   = 238,220 samples.  Even-scan/second temporal field (ld-decode odd file
+  //   index); becomes VFR field 2 (bottom spatial).  The TBC file stores both
+  //   fields padded to 263 lines; caller strips the padding line and passes
+  //   exactly 262 × 910 samples.
   //
   // SMPTE 244M-2003 §4.1: NTSC is orthogonal — all lines have exactly
   // kNtscSamplesPerLine = 910 samples; no extra samples are inserted.
@@ -69,8 +72,8 @@ class NtscTBCConverter {
   // Output: [VFR field 1 (top): 263 × 910][VFR field 2 (bottom): 262 × 910]
   //         = kNtscFrameSamples.
   static std::vector<int16_t> assemble_frame(
-      const std::vector<uint16_t>& tbc_field1,  // 262 × 910 samples
-      const std::vector<uint16_t>& tbc_field2,  // 263 × 910 samples
+      const std::vector<uint16_t>& tbc_field1,  // 263 × 910 samples
+      const std::vector<uint16_t>& tbc_field2,  // 262 × 910 samples
       int32_t tbc_blanking, int32_t tbc_white);
 
   // -------------------------------------------------------------------------

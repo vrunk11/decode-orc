@@ -39,9 +39,9 @@ struct TBCVideoParams {
   VideoSystem system = VideoSystem::Unknown;
   int32_t number_of_fields = 0;  // total fields in the TBC file
   int32_t field_width = 0;       // nominal samples per line
-  // PAL: field1_height=312 (TBC field 1, odd), field2_height=313 (TBC field 2)
-  // NTSC/PAL_M: field1_height=262, field2_height=263 (both stored at 263 in
-  // TBC)
+  // PAL: field1_height=312 (TBC field 1), field2_height=313 (TBC field 2)
+  // NTSC/PAL_M: field1_height=263 (TBC field 1, VFR top), field2_height=262
+  //   (TBC field 2, VFR bottom; both stored at 263 lines in the TBC file)
   int32_t field1_height = 0;
   int32_t field2_height = 0;
   int32_t blanking_16b = 0;  // ld-decode 16-bit domain blanking (0 IRE)
