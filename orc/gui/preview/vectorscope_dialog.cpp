@@ -668,10 +668,12 @@ void VectorscopeDialogPrivate::drawGraticule(QPainter& painter,
       // rgb values: 1=B, 2=G, 3=Cy, 4=R, 5=Mg, 6=Yl
       const char* color_labels[] = {"", "B", "G", "Cy", "R", "Mg", "Yl"};
 
-      // Draw targets for six colour bars (R'G'B' 001..110)
+      // Draw targets for six colour bars (R'G'B' 001..110).
+      // Targets are in the ±32767 display scale (kVectorscopeSignedFullScale),
+      // matching the scale used for all UVSample data.
       for (int rgb = 1; rgb < 7; rgb++) {
         const orc::UVSample target = orc::gui::vectorscopeDisplayTargetUv(
-            rgb, percent, ireRange, system);
+            rgb, percent, orc::gui::kVectorscopeSignedFullScale, system);
         const double barTheta = std::atan2(-target.v, target.u);
         const double barMagnitude = std::hypot(target.u, target.v);
         const QPointF target_point = geometry.mapUV(target.u, target.v);

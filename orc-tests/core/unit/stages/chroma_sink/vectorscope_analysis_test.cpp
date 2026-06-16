@@ -24,6 +24,11 @@ TEST(VectorscopeAnalysisTest,
   source_parameters.active_video_end = 6;
   source_parameters.first_active_frame_line = 1;
   source_parameters.last_active_frame_line = 6;
+  // Set CVBS levels so normalization works correctly.  Active-area test values
+  // (y*100+x ≈ 102-505) stay well below the clamp threshold; the outside-area
+  // sentinel (10000) saturates to ±32767 after division by level_range (600).
+  source_parameters.blanking_level = 200;
+  source_parameters.white_level = 800;
 
   ComponentFrame frame;
   frame.init(source_parameters, false);
@@ -43,6 +48,7 @@ TEST(VectorscopeAnalysisTest,
         u_line[x] = static_cast<double>((y * 100) + x);
         v_line[x] = -static_cast<double>((y * 100) + x);
       } else {
+        // Sentinel value that saturates to ±32767 after normalisation
         u_line[x] = 10000.0;
         v_line[x] = -10000.0;
       }
@@ -61,8 +67,10 @@ TEST(VectorscopeAnalysisTest,
   bool saw_second_field = false;
 
   for (const auto& sample : data.samples) {
-    EXPECT_LT(std::abs(sample.u), 10000.0);
-    EXPECT_LT(std::abs(sample.v), 10000.0);
+    // Active-area values (≤505) normalised by level_range (600) stay below
+    // the ±32767 saturation ceiling that outside-area sentinels reach.
+    EXPECT_LT(std::abs(sample.u), 32767.0);
+    EXPECT_LT(std::abs(sample.v), 32767.0);
 
     if (sample.field_id == 0) {
       saw_first_field = true;
@@ -85,8 +93,10 @@ TEST(VectorscopeAnalysisTest, ExtractFromColourFrameCarrier_CanUseFullFrame) {
   carrier.active_x_end = 5;
   carrier.active_y_start = 1;
   carrier.active_y_end = 3;
+  // uv_range = 900: active-area values (y*100+x ≤ 204) stay below the clamp
+  // threshold; the sentinel (10000) saturates to ±32767.
   carrier.cvbs_blanking = 100.0;
-  carrier.cvbs_white = 200.0;
+  carrier.cvbs_white = 1000.0;
 
   const size_t sample_count =
       static_cast<size_t>(carrier.width) * static_cast<size_t>(carrier.height);
@@ -105,6 +115,7 @@ TEST(VectorscopeAnalysisTest, ExtractFromColourFrameCarrier_CanUseFullFrame) {
         carrier.u_plane[index] = static_cast<double>((y * 100) + x);
         carrier.v_plane[index] = -static_cast<double>((y * 100) + x);
       } else {
+        // Sentinel value that saturates to ±32767 after normalisation
         carrier.u_plane[index] = 10000.0;
         carrier.v_plane[index] = -10000.0;
       }
@@ -128,14 +139,17 @@ TEST(VectorscopeAnalysisTest, ExtractFromColourFrameCarrier_CanUseFullFrame) {
   EXPECT_EQ(full_data.height, 4u);
   ASSERT_EQ(full_data.samples.size(), 24u);
 
+  // Active-area values (≤204) normalised by uv_range (900) stay below the
+  // ±32767 saturation ceiling that outside-area sentinels reach.
   for (const auto& sample : active_data.samples) {
-    EXPECT_LT(std::abs(sample.u), 10000.0);
-    EXPECT_LT(std::abs(sample.v), 10000.0);
+    EXPECT_LT(std::abs(sample.u), 32767.0);
+    EXPECT_LT(std::abs(sample.v), 32767.0);
   }
 
   bool saw_full_frame_only_sample = false;
   for (const auto& sample : full_data.samples) {
-    if (std::abs(sample.u) == 10000.0 && std::abs(sample.v) == 10000.0) {
+    // Outside-area sentinels (10000 / uv_range 900 > 1) saturate to ±32767.
+    if (std::abs(sample.u) == 32767.0 && std::abs(sample.v) == 32767.0) {
       saw_full_frame_only_sample = true;
       break;
     }

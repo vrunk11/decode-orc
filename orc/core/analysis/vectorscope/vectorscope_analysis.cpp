@@ -243,6 +243,14 @@ VectorscopeData VectorscopeAnalysisTool::extractFromComponentFrame(
       (active_width / subsample) * (active_height / subsample);
   data.samples.reserve(estimated_samples);
 
+  // Normalise CVBS-domain U/V to the ±32767 scale expected by UVSample.
+  // ComponentFrame U/V planes carry values in the CVBS decoder domain;
+  // dividing by the active-video voltage range (blanking→white) maps them
+  // to approximately ±1, consistent with render_preview_from_colour_carrier.
+  const double level_range =
+      std::max(1.0, static_cast<double>(video_parameters.white_level -
+                                        video_parameters.blanking_level));
+
   // Process both fields separately
   // Field 0 (first/odd field): even lines (0, 2, 4, ...)
   // Field 1 (second/even field): odd lines (1, 3, 5, ...)
@@ -260,11 +268,9 @@ VectorscopeData VectorscopeAnalysisTool::extractFromComponentFrame(
 
       for (int32_t x = x_start; x < x_end;
            x += static_cast<int32_t>(subsample)) {
-        // U and V are already in the native decoder format (doubles)
-        // They represent the actual chroma signal levels
         UVSample uv;
-        uv.u = uLine[x];
-        uv.v = vLine[x];
+        uv.u = clamp_normalized(uLine[x] / level_range) * 32767.0;
+        uv.v = clamp_normalized(vLine[x] / level_range) * 32767.0;
         uv.field_id = field_id;  // Tag which field this sample came from
         data.samples.push_back(uv);
       }
@@ -322,6 +328,10 @@ VectorscopeData VectorscopeAnalysisTool::extractFromColourFrameCarrier(
       (sample_width / subsample) * (sample_height / subsample);
   data.samples.reserve(estimated_samples);
 
+  // Normalise CVBS-domain U/V to the ±32767 scale expected by UVSample.
+  const double uv_range =
+      std::max(1.0, carrier.cvbs_white - carrier.cvbs_blanking);
+
   for (uint8_t field_id = 0; field_id < 2; ++field_id) {
     uint32_t first_y = y_start;
     if ((first_y & 1U) != field_id) {
@@ -335,8 +345,10 @@ VectorscopeData VectorscopeAnalysisTool::extractFromColourFrameCarrier(
       for (uint32_t x = x_start; x < x_end; x += subsample) {
         const size_t sample_index = line_offset + static_cast<size_t>(x);
         UVSample uv;
-        uv.u = carrier.u_plane[sample_index];
-        uv.v = carrier.v_plane[sample_index];
+        uv.u = clamp_normalized(carrier.u_plane[sample_index] / uv_range) *
+               32767.0;
+        uv.v = clamp_normalized(carrier.v_plane[sample_index] / uv_range) *
+               32767.0;
         uv.field_id = field_id;
         data.samples.push_back(uv);
       }
