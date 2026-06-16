@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "../../../../orc/common/include/error_types.h"
+#include "../../../../orc/common/include/node_type.h"
 #include "../../../../orc/core/include/observation_context.h"
 #include "../source_common/source_stage_descriptor_test_utils.h"
 
@@ -188,20 +189,26 @@ TEST(TBCSourceStageTest, NodeTypeInfo_ZeroInputsOneOutput) {
 // ===========================================================================
 
 TEST(TBCSourceStageTest, SetParameters_AcceptsValidStringMap) {
-  orc::TBCSourceStage stage;
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  ON_CALL(*deps, validate_input_file(_, _)).WillByDefault(Return(true));
+  ON_CALL(*deps, load_video_params(_, _))
+      .WillByDefault(Return(make_pal_video_params()));
+  orc::TBCSourceStage stage(deps);
   EXPECT_TRUE(
       stage.set_parameters({{"input_path", std::string("/tmp/test.tbc")},
                             {"pcm_path", std::string("")}}));
 }
 
 TEST(TBCSourceStageTest, SetParameters_RejectsNonStringValues) {
-  orc::TBCSourceStage stage;
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  orc::TBCSourceStage stage(deps);
   EXPECT_FALSE(
       stage.set_parameters({{"input_path", static_cast<int32_t>(42)}}));
 }
 
 TEST(TBCSourceStageTest, SetParameters_AcceptsEmptyMap) {
-  orc::TBCSourceStage stage;
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  orc::TBCSourceStage stage(deps);
   EXPECT_TRUE(stage.set_parameters({}));
 }
 
@@ -409,6 +416,67 @@ TEST(TBCSourceStageTest, OutputVFR_GetFrameLazilyAssemblesFromMockedDeps) {
 
   // All samples must be at kPalBlanking (TBC blanking maps to CVBS blanking).
   EXPECT_EQ(frame_ptr[0], static_cast<int16_t>(orc::kPalBlanking));
+}
+
+// ===========================================================================
+// set_parameters status feedback tests
+// ===========================================================================
+
+TEST(TBCSourceStageStatusTest, SetParameters_ShowsRed_WhenPathEmpty) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  orc::TBCSourceStage stage(deps);
+  EXPECT_TRUE(stage.set_parameters({}));
+  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Red);
+}
+
+TEST(TBCSourceStageStatusTest,
+     SetParameters_ShowsYellow_WhenFileNotAccessible) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  ON_CALL(*deps, validate_input_file(_, _)).WillByDefault(Return(false));
+  orc::TBCSourceStage stage(deps);
+  std::map<std::string, orc::ParameterValue> params;
+  params["input_path"] = std::string("/path/to/video.tbc");
+  EXPECT_TRUE(stage.set_parameters(params));
+  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Yellow);
+}
+
+TEST(TBCSourceStageStatusTest,
+     SetParameters_ShowsYellow_WhenMetadataNotAccessible) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  ON_CALL(*deps, validate_input_file(_, _)).WillByDefault(Return(true));
+  ON_CALL(*deps, load_video_params(_, _)).WillByDefault(Return(std::nullopt));
+  orc::TBCSourceStage stage(deps);
+  std::map<std::string, orc::ParameterValue> params;
+  params["input_path"] = std::string("/path/to/video.tbc");
+  EXPECT_TRUE(stage.set_parameters(params));
+  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Yellow);
+}
+
+TEST(TBCSourceStageStatusTest,
+     SetParameters_ShowsGreen_WhenFileAndMetadataAccessible) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  ON_CALL(*deps, validate_input_file(_, _)).WillByDefault(Return(true));
+  ON_CALL(*deps, load_video_params(_, _))
+      .WillByDefault(Return(make_pal_video_params()));
+  orc::TBCSourceStage stage(deps);
+  std::map<std::string, orc::ParameterValue> params;
+  params["input_path"] = std::string("/path/to/video.tbc");
+  EXPECT_TRUE(stage.set_parameters(params));
+  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Green);
+}
+
+TEST(TBCSourceStageStatusTest,
+     SetParameters_ShowsGreen_WhenYCModeAndMetadataAccessible) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  ON_CALL(*deps, validate_input_file(_, _)).WillByDefault(Return(true));
+  ON_CALL(*deps, load_video_params(_, _))
+      .WillByDefault(Return(make_pal_video_params()));
+  orc::TBCSourceStage stage(deps);
+  std::map<std::string, orc::ParameterValue> params;
+  params["y_path"] = std::string("/path/to/video_y.tbc");
+  params["c_path"] = std::string("/path/to/video_c.tbc");
+  EXPECT_TRUE(stage.set_parameters(params));
+  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Green);
 }
 
 }  // namespace orc_unit_test

@@ -31,6 +31,7 @@
 #include "project.h"
 
 #include <common_types.h>
+#include <sqlite3.h>
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
@@ -1036,6 +1037,56 @@ bool can_remove_node(const Project& project, NodeID node_id,
   return true;
 }
 
+// Returns the preset string from a CVBS .meta SQLite sidecar, or empty string
+// if the file is not accessible or does not contain the expected data.
+static std::string read_cvbs_meta_preset(const std::string& meta_path) {
+  if (!std::filesystem::exists(meta_path)) return {};
+  sqlite3* db = nullptr;
+  if (sqlite3_open_v2(meta_path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) !=
+      SQLITE_OK) {
+    if (db) sqlite3_close(db);
+    return {};
+  }
+  sqlite3_stmt* stmt = nullptr;
+  std::string preset;
+  if (sqlite3_prepare_v2(db, "SELECT preset FROM cvbs_file LIMIT 1", -1, &stmt,
+                         nullptr) == SQLITE_OK) {
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+      const char* val =
+          reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+      if (val) preset = val;
+    }
+    sqlite3_finalize(stmt);
+  }
+  sqlite3_close(db);
+  return preset;
+}
+
+// Returns the system string from a TBC .tbc.db SQLite sidecar, or empty
+// string if the file is not accessible or does not contain the expected data.
+static std::string read_tbc_video_system(const std::string& db_path) {
+  if (!std::filesystem::exists(db_path)) return {};
+  sqlite3* db = nullptr;
+  if (sqlite3_open_v2(db_path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) !=
+      SQLITE_OK) {
+    if (db) sqlite3_close(db);
+    return {};
+  }
+  sqlite3_stmt* stmt = nullptr;
+  std::string system;
+  if (sqlite3_prepare_v2(db, "SELECT system FROM capture LIMIT 1", -1, &stmt,
+                         nullptr) == SQLITE_OK) {
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+      const char* val =
+          reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+      if (val) system = val;
+    }
+    sqlite3_finalize(stmt);
+  }
+  sqlite3_close(db);
+  return system;
+}
+
 void set_node_parameters(
     Project& project, NodeID node_id,
     const std::map<std::string, ParameterValue>& parameters) {
@@ -1048,33 +1099,91 @@ void set_node_parameters(
     throw std::runtime_error("Node not found: " + node_id.to_string());
   }
 
-  // tbc_source derives metadata from input_path at persist time.
-  const bool requires_tbc_metadata_sidecar =
-      (node_it->stage_name == "tbc_source");
+  // CVBS source: validate that the source file's format matches the stage's
+  // fixed system. Throws if the .meta sidecar is accessible and reports a
+  // format mismatch.
+  static const std::array<std::pair<std::string, std::string>, 3>
+      kCvbsStageExpectedSystem = {{{"PAL_CVBS_Source", "PAL"},
+                                   {"NTSC_CVBS_Source", "NTSC"},
+                                   {"PALM_CVBS_Source", "PAL_M"}}};
+  for (const auto& [stage, expected_system] : kCvbsStageExpectedSystem) {
+    if (node_it->stage_name == stage) {
+      auto it = parameters.find("input_path");
+      if (it != parameters.end() &&
+          std::holds_alternative<std::string>(it->second)) {
+        const std::string& input_path = std::get<std::string>(it->second);
+        if (!input_path.empty()) {
+          namespace fs = std::filesystem;
+          const fs::path p(input_path);
+          const std::string meta_path =
+              (p.parent_path() / p.stem()).string() + ".meta";
+          const std::string preset = read_cvbs_meta_preset(meta_path);
+          if (!preset.empty() && preset != expected_system) {
+            throw std::runtime_error("The selected " + preset +
+                                     " source file cannot be used with a " +
+                                     expected_system + " source stage");
+          }
+        }
+      }
+      break;
+    }
+  }
 
-  if (requires_tbc_metadata_sidecar) {
-    auto input_path_it = parameters.find("input_path");
-    if (input_path_it != parameters.end() &&
-        std::holds_alternative<std::string>(input_path_it->second)) {
-      std::string input_path = std::get<std::string>(input_path_it->second);
+  // tbc_source: validate that the source file's video system matches the
+  // project's video system. Throws if the .tbc.db sidecar is accessible and
+  // reports a system mismatch.
+  if (node_it->stage_name == "tbc_source") {
+    const VideoSystem project_system = project.get_video_format();
 
-      // Only validate if a path is provided (empty is allowed)
-      if (!input_path.empty()) {
-        // Check that a metadata file exists (either .tbc.db or legacy
-        // .tbc.json). Full decoder/system validation is deferred to the source
-        // stage on first execution, which calls open_tbc_metadata() and reports
-        // any mismatch with a clear error at that point.
-        // input_path is the source file; metadata lives alongside as
-        // .tbc.db or .tbc.json
-        std::string db_path = input_path + ".db";
-        std::string json_path = input_path + ".json";
-        bool metadata_exists = std::filesystem::exists(db_path) ||
-                               std::filesystem::exists(json_path);
-        if (!metadata_exists) {
-          throw std::runtime_error(
-              "Failed to validate source file: metadata file not found "
-              "(expected " +
-              db_path + " or " + json_path + ")");
+    // Determine the path to check: composite uses input_path, YC uses y_path.
+    auto get_str_param = [&](const std::string& key) -> std::string {
+      auto pit = parameters.find(key);
+      if (pit != parameters.end() &&
+          std::holds_alternative<std::string>(pit->second)) {
+        return std::get<std::string>(pit->second);
+      }
+      return {};
+    };
+
+    std::string tbc_path = get_str_param("input_path");
+    if (tbc_path.empty()) {
+      tbc_path = get_str_param("y_path");
+    }
+
+    // Prefer an explicit db_path parameter if provided.
+    std::string db_path = get_str_param("db_path");
+    if (db_path.empty() && !tbc_path.empty()) {
+      db_path = tbc_path + ".db";
+    }
+
+    if (!tbc_path.empty()) {
+      // Existence check: metadata file must be present (legacy: .json).
+      std::string legacy_json = tbc_path + ".json";
+      bool metadata_exists =
+          (!db_path.empty() && std::filesystem::exists(db_path)) ||
+          std::filesystem::exists(legacy_json);
+      if (!metadata_exists) {
+        throw std::runtime_error(
+            "Failed to validate source file: metadata file not found "
+            "(expected " +
+            db_path + " or " + legacy_json + ")");
+      }
+
+      // Format check: if the .tbc.db is accessible and the project system is
+      // known, verify the source system matches.
+      if (!db_path.empty() && project_system != VideoSystem::Unknown) {
+        const std::string file_system_str = read_tbc_video_system(db_path);
+        if (!file_system_str.empty()) {
+          // DB uses underscore (PAL_M); video_system_from_string handles this.
+          const VideoSystem file_system =
+              video_system_from_string(file_system_str);
+          if (file_system != VideoSystem::Unknown &&
+              file_system != project_system) {
+            throw std::runtime_error(
+                "The selected " + video_system_to_string(file_system) +
+                " source file cannot be used with a " +
+                video_system_to_string(project_system) + " project");
+          }
         }
       }
     }

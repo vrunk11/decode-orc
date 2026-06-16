@@ -30,6 +30,7 @@
 #include "pal_tbc_converter.h"
 #include "pal_tbc_yc_converter.h"
 #include "preview_helpers.h"
+#include "tbc_metadata_json_reader.h"
 #include "tbc_metadata_reader.h"
 #include "tbc_metadata_types.h"
 #include "tbc_reader.h"
@@ -716,6 +717,80 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
 };
 
 // ---------------------------------------------------------------------------
+// Metadata helpers shared by TBCSourceStageDeps
+// ---------------------------------------------------------------------------
+
+// Derive the legacy JSON sidecar path from a .db sidecar path.
+// "foo.tbc.db" → "foo.tbc.json"
+std::string json_path_from_db(const std::string& db_path) {
+  constexpr std::string_view kSuffix = ".db";
+  if (db_path.size() > kSuffix.size() &&
+      db_path.compare(db_path.size() - kSuffix.size(), kSuffix.size(), ".db") ==
+          0) {
+    return db_path.substr(0, db_path.size() - kSuffix.size()) + ".json";
+  }
+  return {};
+}
+
+// Build TBCVideoParams from any open ITBCMetadataReader.
+std::optional<TBCVideoParams> build_tvp_from_reader(
+    ITBCMetadataReader& reader, const std::string& path,
+    std::string& error_message) {
+  const auto sp = reader.read_video_parameters();
+  if (!sp) {
+    error_message = "No video parameters in '" + path + "'";
+    return std::nullopt;
+  }
+  TBCVideoParams tvp;
+  tvp.system = sp->system;
+  tvp.decoder = sp->decoder;
+  tvp.tape_format = sp->tape_format;
+  tvp.git_branch = sp->git_branch;
+  tvp.git_commit = sp->git_commit;
+  tvp.is_widescreen = sp->is_widescreen;
+  // Read actual ld-decode 16-bit domain levels from the metadata.
+  // These are the blanking/white levels the original ld-decode decoder
+  // recorded; using them gives accurate CVBS_U10_4FSC conversion.
+  const auto tbc_levels = reader.read_tbc_domain_levels();
+  tvp.blanking_16b = tbc_levels ? tbc_levels->blanking_16b : kTbcBlanking;
+  tvp.white_16b = tbc_levels ? tbc_levels->white_16b : kTbcWhite;
+  tvp.number_of_fields = sp->number_of_sequential_frames * 2;
+  tvp.field_width = sp->frame_width_nominal;
+  // Field heights: both stored at max height in the TBC file.
+  // PAL: max = 313 lines (padded field height); shorter field = 312 lines.
+  // NTSC/PAL_M: max = 263 lines; shorter field = 262 lines.
+  const int32_t padded_fh =
+      static_cast<int32_t>(calculate_padded_field_height(sp->system));
+  tvp.field2_height = padded_fh;
+  tvp.field1_height = padded_fh - 1;
+  tvp.active_video_start = sp->active_video_start;
+  tvp.active_video_end = sp->active_video_end;
+  tvp.first_active_frame_line = sp->first_active_frame_line;
+  tvp.last_active_frame_line = sp->last_active_frame_line;
+  return tvp;
+}
+
+// Build TBCFieldMeta list from any open ITBCMetadataReader.
+std::vector<TBCFieldMeta> build_field_meta_from_reader(
+    ITBCMetadataReader& reader) {
+  const auto all = reader.read_all_field_metadata();
+  reader.read_all_dropouts();
+  std::vector<TBCFieldMeta> result;
+  result.reserve(all.size());
+  for (const auto& [fid, fm] : all) {
+    TBCFieldMeta meta;
+    meta.field_phase_id = fm.field_phase_id;
+    meta.audio_sample_count = fm.audio_samples;
+    meta.efm_t_value_count = fm.efm_t_values;
+    meta.ac3rf_symbol_count = fm.ac3rf_symbols;
+    meta.file_location = fm.file_location;
+    meta.dropouts = reader.read_dropouts(fid);
+    result.push_back(meta);
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // TBCSourceStageDeps — production filesystem / SQLite implementation
 // ---------------------------------------------------------------------------
 
@@ -745,80 +820,66 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
       const std::string& db_path, std::string& error_message) const override {
     namespace fs = std::filesystem;
     std::error_code ec;
-    if (!fs::exists(db_path, ec)) {
-      error_message = "TBC metadata database not found: '" + db_path + "'";
-      return std::nullopt;
+
+    // Try SQLite (.tbc.db) first.
+    if (fs::exists(db_path, ec)) {
+      TBCMetadataSqliteReader reader;
+      if (!reader.open(db_path)) {
+        error_message = "Failed to open TBC metadata: '" + db_path + "'";
+        return std::nullopt;
+      }
+      return build_tvp_from_reader(reader, db_path, error_message);
     }
 
-    TBCMetadataSqliteReader reader;
-    if (!reader.open(db_path)) {
-      error_message = "Failed to open TBC metadata: '" + db_path + "'";
-      return std::nullopt;
+    // Fall back to legacy JSON (.tbc.json) when the SQLite sidecar is absent.
+    const std::string json_path = json_path_from_db(db_path);
+    if (!json_path.empty() && fs::exists(json_path, ec)) {
+      ORC_LOG_INFO("tbc_source: falling back to legacy JSON metadata: {}",
+                   json_path);
+      TBCMetadataJsonReader reader;
+      if (!reader.open(json_path)) {
+        error_message =
+            "Failed to open TBC legacy JSON metadata: '" + json_path + "'";
+        return std::nullopt;
+      }
+      return build_tvp_from_reader(reader, json_path, error_message);
     }
 
-    const auto sp = reader.read_video_parameters();
-    if (!sp) {
-      error_message = "No video parameters in '" + db_path + "'";
-      return std::nullopt;
-    }
-
-    TBCVideoParams tvp;
-    tvp.system = sp->system;
-    tvp.decoder = sp->decoder;
-    tvp.tape_format = sp->tape_format;
-    tvp.git_branch = sp->git_branch;
-    tvp.git_commit = sp->git_commit;
-    tvp.is_widescreen = sp->is_widescreen;
-    // Read actual ld-decode 16-bit domain levels from the metadata.
-    // These are the blanking/white levels the original ld-decode decoder
-    // recorded; using them gives accurate CVBS_U10_4FSC conversion.
-    const auto tbc_levels = reader.read_tbc_domain_levels();
-    tvp.blanking_16b = tbc_levels ? tbc_levels->blanking_16b : kTbcBlanking;
-    tvp.white_16b = tbc_levels ? tbc_levels->white_16b : kTbcWhite;
-    tvp.number_of_fields = sp->number_of_sequential_frames * 2;
-    tvp.field_width = sp->frame_width_nominal;
-
-    // Field heights: both stored at max height in the TBC file.
-    // PAL: max = 313 lines (padded field height); shorter field = 312 lines.
-    // NTSC/PAL_M: max = 263 lines; shorter field = 262 lines.
-    // calculate_padded_field_height() returns the max (longer) field height.
-    const int32_t padded_fh =
-        static_cast<int32_t>(calculate_padded_field_height(sp->system));
-    tvp.field2_height = padded_fh;      // max (stored) height
-    tvp.field1_height = padded_fh - 1;  // shorter field
-
-    tvp.active_video_start = sp->active_video_start;
-    tvp.active_video_end = sp->active_video_end;
-    tvp.first_active_frame_line = sp->first_active_frame_line;
-    tvp.last_active_frame_line = sp->last_active_frame_line;
-
-    return tvp;
+    error_message = "TBC metadata database not found: '" + db_path + "'";
+    return std::nullopt;
   }
 
   std::vector<TBCFieldMeta> load_all_field_meta(
       const std::string& db_path, std::string& error_message) const override {
-    TBCMetadataSqliteReader reader;
-    if (!reader.open(db_path)) {
-      error_message =
-          "Failed to open TBC metadata for field meta: '" + db_path + "'";
-      return {};
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    // Try SQLite (.tbc.db) first.
+    if (fs::exists(db_path, ec)) {
+      TBCMetadataSqliteReader reader;
+      if (!reader.open(db_path)) {
+        error_message =
+            "Failed to open TBC metadata for field meta: '" + db_path + "'";
+        return {};
+      }
+      return build_field_meta_from_reader(reader);
     }
 
-    const auto all = reader.read_all_field_metadata();
-    reader.read_all_dropouts();
-    std::vector<TBCFieldMeta> result;
-    result.reserve(all.size());
-    for (const auto& [fid, fm] : all) {
-      TBCFieldMeta meta;
-      meta.field_phase_id = fm.field_phase_id;
-      meta.audio_sample_count = fm.audio_samples;
-      meta.efm_t_value_count = fm.efm_t_values;
-      meta.ac3rf_symbol_count = fm.ac3rf_symbols;
-      meta.file_location = fm.file_location;
-      meta.dropouts = reader.read_dropouts(fid);
-      result.push_back(meta);
+    // Fall back to legacy JSON (.tbc.json).
+    const std::string json_path = json_path_from_db(db_path);
+    if (!json_path.empty() && fs::exists(json_path, ec)) {
+      TBCMetadataJsonReader reader;
+      if (!reader.open(json_path)) {
+        error_message = "Failed to open TBC legacy JSON for field meta: '" +
+                        json_path + "'";
+        return {};
+      }
+      return build_field_meta_from_reader(reader);
     }
-    return result;
+
+    error_message =
+        "Failed to open TBC metadata for field meta: '" + db_path + "'";
+    return {};
   }
 
   std::vector<uint16_t> read_field_samples(
@@ -938,7 +999,7 @@ TBCSourceStage::SidecarPaths TBCSourceStage::resolve_sidecars(
   SidecarPaths sp;
   sp.db_path = get_str("db_path");
   if (sp.db_path.empty()) {
-    sp.db_path = tbc_path + ".json.db";
+    sp.db_path = tbc_path + ".db";
   }
 
   sp.pcm_path = get_str("pcm_path");
@@ -1023,7 +1084,7 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
   // frame 0 for luma and chroma when operating in YC mode.
   if (is_yc && !field_meta.empty()) {
     auto c_sc = resolve_sidecars(c_path, parameters);
-    c_sc.db_path = c_path + ".json.db";
+    c_sc.db_path = c_path + ".db";
     std::vector<TBCFieldMeta> c_meta =
         deps_->load_all_field_meta(c_sc.db_path, err);
 
@@ -1181,10 +1242,30 @@ bool TBCSourceStage::set_parameters(
 
   if (comp_path.empty() && !is_yc) {
     set_configuration_status(orc::ConfigurationStatus::Red);
-  } else {
-    set_configuration_status(orc::ConfigurationStatus::Green);
+    return true;
   }
 
+  const std::string tbc_path = is_yc ? y_path : comp_path;
+  std::string err;
+  if (!deps_->validate_input_file(tbc_path, err)) {
+    ORC_LOG_WARN("tbc_source: source file not accessible: {}", err);
+    set_configuration_status(orc::ConfigurationStatus::Yellow);
+    return true;
+  }
+
+  const std::string explicit_db = get_str("db_path");
+  const std::string db_path =
+      explicit_db.empty() ? tbc_path + ".db" : explicit_db;
+
+  std::string meta_err;
+  const auto tvp_opt = deps_->load_video_params(db_path, meta_err);
+  if (!tvp_opt) {
+    ORC_LOG_WARN("tbc_source: metadata not accessible: {}", meta_err);
+    set_configuration_status(orc::ConfigurationStatus::Yellow);
+    return true;
+  }
+
+  set_configuration_status(orc::ConfigurationStatus::Green);
   return true;
 }
 

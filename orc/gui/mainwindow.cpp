@@ -61,11 +61,14 @@ class ObservationContext;
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -1294,7 +1297,7 @@ void MainWindow::quickProject(const QString& filename) {
   }
 
   // Determine metadata file and read video format
-  QString db_path;  // TBC only
+  QString db_path;  // TBC only: set when a .tbc.db SQLite sidecar is present
   orc::VideoSystem video_format = orc::VideoSystem::Unknown;
   std::string source_stage_name;
 
@@ -1321,7 +1324,27 @@ void MainWindow::quickProject(const QString& filename) {
         msgBox.setDefaultButton(continueBtn);
         msgBox.exec();
         if (msgBox.clickedButton() != continueBtn) return;
-        // User chose Continue; fall through to load with JSON backend
+
+        // Read video system from the legacy JSON file.
+        QFile jf(json_path);
+        if (jf.open(QIODevice::ReadOnly)) {
+          const QJsonDocument doc = QJsonDocument::fromJson(jf.readAll());
+          jf.close();
+          if (!doc.isNull() && doc.isObject()) {
+            const QString sys = doc["videoParameters"]["system"].toString();
+            video_format = orc::video_system_from_string(sys.toStdString());
+          }
+        }
+        if (video_format == orc::VideoSystem::Unknown) {
+          QMessageBox::critical(
+              this, "Error",
+              QString("Failed to read video system from legacy metadata: %1")
+                  .arg(json_path));
+          return;
+        }
+        ORC_LOG_INFO("Read video system from legacy JSON: {}",
+                     orc::video_system_to_string(video_format));
+        db_path.clear();  // no .tbc.db available; stage will use legacy JSON
       } else {
         QMessageBox::warning(
             this, "Missing Metadata File",
@@ -1330,20 +1353,20 @@ void MainWindow::quickProject(const QString& filename) {
                 .arg(db_path));
         return;
       }
+    } else {
+      ORC_LOG_INFO("Reading TBC metadata from: {}", db_path.toStdString());
+      auto video_params_opt =
+          orc::presenters::ProjectPresenter::readVideoParameters(
+              db_path.toStdString());
+      if (!video_params_opt) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to read video parameters from metadata file: %1")
+                .arg(db_path));
+        return;
+      }
+      video_format = video_params_opt->system;
     }
-
-    ORC_LOG_INFO("Reading TBC metadata from: {}", db_path.toStdString());
-    auto video_params_opt =
-        orc::presenters::ProjectPresenter::readVideoParameters(
-            db_path.toStdString());
-    if (!video_params_opt) {
-      QMessageBox::critical(
-          this, "Error",
-          QString("Failed to read video parameters from metadata file: %1")
-              .arg(db_path));
-      return;
-    }
-    video_format = video_params_opt->system;
 
     ORC_LOG_INFO(
         "Detected format: {}, Source type: {}",
@@ -1453,7 +1476,9 @@ void MainWindow::quickProject(const QString& filename) {
     std::map<std::string, orc::ParameterValue> source_params;
     if (source_type == orc::SourceType::Composite) {
       source_params["input_path"] = primary_file;
-      source_params["db_path"] = db_path.toStdString();
+      if (!db_path.isEmpty()) {
+        source_params["db_path"] = db_path.toStdString();
+      }
 
       QString pcm_path = base_path + ".pcm";
       if (QFileInfo::exists(pcm_path)) {
@@ -1471,7 +1496,9 @@ void MainWindow::quickProject(const QString& filename) {
         source_params["y_path"] = secondary_file;
         source_params["c_path"] = primary_file;
       }
-      source_params["db_path"] = db_path.toStdString();
+      if (!db_path.isEmpty()) {
+        source_params["db_path"] = db_path.toStdString();
+      }
 
       QString pcm_path = base_path + ".pcm";
       if (QFileInfo::exists(pcm_path)) {
@@ -1483,11 +1510,13 @@ void MainWindow::quickProject(const QString& filename) {
       }
     }
 
-    if (!project_.presenter()->setNodeParameters(source_node_id,
-                                                 source_params)) {
-      QMessageBox::critical(this, "Error",
-                            "Failed to set parameters on source stage. Check "
-                            "that the file paths are valid.");
+    try {
+      project_.presenter()->setNodeParameters(source_node_id, source_params);
+    } catch (const std::exception& e) {
+      QMessageBox::critical(
+          this, "Error",
+          QString("Failed to set parameters on source stage: %1")
+              .arg(e.what()));
       return;
     }
     ORC_LOG_INFO("Source stage parameters set successfully");
@@ -1532,11 +1561,13 @@ void MainWindow::quickProject(const QString& filename) {
       std::map<std::string, orc::ParameterValue> source_params;
       source_params["input_path"] = primary_file;
 
-      if (!project_.presenter()->setNodeParameters(source_node_id,
-                                                   source_params)) {
-        QMessageBox::critical(this, "Error",
-                              "Failed to set parameters on CVBS source stage. "
-                              "Check that the file path is valid.");
+      try {
+        project_.presenter()->setNodeParameters(source_node_id, source_params);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to set parameters on CVBS source stage: %1")
+                .arg(e.what()));
         return;
       }
       ORC_LOG_INFO("CVBS source stage parameters set successfully");
@@ -1595,17 +1626,25 @@ void MainWindow::quickProject(const QString& filename) {
 
       std::map<std::string, orc::ParameterValue> y_params;
       y_params["input_path"] = y_file;
-      if (!project_.presenter()->setNodeParameters(y_node_id, y_params)) {
-        QMessageBox::critical(this, "Error",
-                              "Failed to set parameters on Y source stage.");
+      try {
+        project_.presenter()->setNodeParameters(y_node_id, y_params);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to set parameters on Y source stage: %1")
+                .arg(e.what()));
         return;
       }
 
       std::map<std::string, orc::ParameterValue> c_params;
       c_params["input_path"] = c_file;
-      if (!project_.presenter()->setNodeParameters(c_node_id, c_params)) {
-        QMessageBox::critical(this, "Error",
-                              "Failed to set parameters on C source stage.");
+      try {
+        project_.presenter()->setNodeParameters(c_node_id, c_params);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to set parameters on C source stage: %1")
+                .arg(e.what()));
         return;
       }
       ORC_LOG_INFO("CVBS YC source stage parameters set successfully");

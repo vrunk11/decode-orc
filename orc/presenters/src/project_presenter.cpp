@@ -1399,7 +1399,7 @@ bool ProjectPresenter::setNodeParameters(
   } catch (const std::exception& e) {
     ORC_LOG_ERROR("Failed to set node parameters for node {}: {}",
                   node_id.to_string(), e.what());
-    return false;
+    throw;
   }
 }
 

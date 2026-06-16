@@ -1057,9 +1057,40 @@ bool FixedFormatCVBSSourceStage::set_parameters(
     }
   }
 
-  set_configuration_status(input_path_.empty()
-                               ? orc::ConfigurationStatus::Red
-                               : orc::ConfigurationStatus::Green);
+  if (input_path_.empty()) {
+    set_configuration_status(orc::ConfigurationStatus::Red);
+    return true;
+  }
+
+  // Validate the source file and its metadata now so the status dot reflects
+  // a format mismatch immediately, rather than only at execute() time.
+  std::string err;
+  if (!deps_->validate_input_file(input_path_, err)) {
+    ORC_LOG_WARN("{}: source file not accessible: {}", stage_name_, err);
+    set_configuration_status(orc::ConfigurationStatus::Yellow);
+    return true;
+  }
+
+  namespace fs = std::filesystem;
+  const fs::path p(input_path_);
+  const std::string meta_path = (p.parent_path() / p.stem()).string() + ".meta";
+
+  std::string meta_err;
+  const auto meta_opt = deps_->load_metadata(meta_path, meta_err);
+  if (!meta_opt) {
+    ORC_LOG_WARN("{}: metadata not accessible: {}", stage_name_, meta_err);
+    set_configuration_status(orc::ConfigurationStatus::Yellow);
+    return true;
+  }
+
+  if (meta_opt->preset != std::string(system_name(system_))) {
+    ORC_LOG_WARN("{}: source file format '{}' does not match stage system '{}'",
+                 stage_name_, meta_opt->preset, system_name(system_));
+    set_configuration_status(orc::ConfigurationStatus::Red);
+    return true;
+  }
+
+  set_configuration_status(orc::ConfigurationStatus::Green);
   return true;
 }
 

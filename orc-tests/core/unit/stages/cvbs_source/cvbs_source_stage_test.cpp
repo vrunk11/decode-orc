@@ -31,6 +31,7 @@
 
 #include "../../../../orc/common/include/common_types.h"
 #include "../../../../orc/common/include/error_types.h"
+#include "../../../../orc/common/include/node_type.h"
 #include "../../../../orc/common/include/parameter_types.h"
 #include "../../../../orc/core/include/dropout_run.h"
 #include "../../../../orc/core/include/observation_context.h"
@@ -307,6 +308,80 @@ TEST(CVBSSourceStageParamTest, SetParameters_RejectsUnknownKey) {
   PALCVBSSourceStage stage(deps);
   std::map<std::string, ParameterValue> p{{"no_such_param", std::string("x")}};
   EXPECT_FALSE(stage.set_parameters(p));
+}
+
+// ===========================================================================
+// Configuration status from set_parameters
+// ===========================================================================
+
+TEST(CVBSSourceStageStatusTest, SetParameters_ShowsRed_WhenPathEmpty) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{{"input_path", std::string("")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Red);
+}
+
+TEST(CVBSSourceStageStatusTest,
+     SetParameters_ShowsYellow_WhenFileNotAccessible) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->input_file_valid = false;
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Yellow);
+}
+
+TEST(CVBSSourceStageStatusTest,
+     SetParameters_ShowsYellow_WhenMetadataNotAccessible) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->metadata_available = false;
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Yellow);
+}
+
+TEST(CVBSSourceStageStatusTest,
+     SetParameters_ShowsRed_WhenPalFileAddedToNtscStage) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  NTSCCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Red);
+}
+
+TEST(CVBSSourceStageStatusTest,
+     SetParameters_ShowsRed_WhenNtscFileAddedToPalStage) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("NTSC");
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Red);
+}
+
+TEST(CVBSSourceStageStatusTest,
+     SetParameters_ShowsGreen_WhenPalFileInPalStage) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Green);
+}
+
+TEST(CVBSSourceStageStatusTest,
+     SetParameters_ShowsGreen_WhenNtscFileInNtscStage) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("NTSC");
+  NTSCCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Green);
 }
 
 // ===========================================================================
