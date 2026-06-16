@@ -67,7 +67,7 @@ class PalColour {
                     int32_t startIndex, int32_t endIndex,
                     std::vector<ComponentFrame>& outputFrames);
 
-  // EBU Tech. 3280-E §1.3: Maximum samples on any PAL line (non-orthogonal
+  // EBU Tech. 3280-E §1.2: Maximum samples on any PAL line (non-orthogonal
   // lines carry one extra sample).  All per-line arrays are sized to this.
   static constexpr int32_t MAX_WIDTH = orc::kPalMaxSamplesPerLine;
 

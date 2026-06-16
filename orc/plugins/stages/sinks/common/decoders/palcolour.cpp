@@ -149,30 +149,26 @@ void PalColour::buildLookUpTables() {
   // - working out what the phase of the subcarrier is on each line,
   //   so we can rotate the chroma samples to put U/V on the right axes
   //
-  // EBU Tech. 3280-E §1.2: PAL burst phase is referenced to the +U axis.
-  // SMPTE 170M-2004: NTSC burst reference is the -I axis.
-  // ITU-R BT.1700-1 Annex 1 Part B: PAL-M burst reference follows PAL-M
-  // conventions (same sign convention as PAL for V-switch).
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL burst phase referenced
+  // to the +U axis. SMPTE 170M-2004: NTSC burst reference is the -I axis.
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL-M V-switch follows PAL
+  // sign convention, but Sc-H phase origin differs from 625-line PAL.
   const double fsc = fsc_from_system(videoParameters.system);
   const double sample_rate = sample_rate_from_system(videoParameters.system);
   const int32_t field_width = videoParameters.frame_width_nominal;
   const size_t padded_field_height =
       calculate_padded_field_height(videoParameters.system);
-  if (padded_field_height != 263) {
-    for (int32_t i = 0; i < field_width; i++) {
-      const double rad = 2 * M_PI * i * fsc / sample_rate;
-      sine[i] = sin(rad);
-      cosine[i] = cos(rad);
-    }
-  } else {
-    // HACK - For whatever reason Pal-M ends up with the vectors swapped and out
-    // of phase swapping the cos and sin references seem to work around that.
-    // TODO(sdi): Find a proper solution to this.
-    for (int32_t i = 0; i < field_width; i++) {
-      const double rad = 2 * M_PI * i * fsc / sample_rate;
-      sine[i] = cos(rad);
-      cosine[i] = sin(rad);
-    }
+
+  // For PAL-M (525-line, padded_field_height == 263), vhs-decode TBC data uses
+  // the NTSC Sc-H phase convention, which places the subcarrier in the cosine
+  // quadrant at the start of each line rather than the sine quadrant of the PAL
+  // +U-axis convention (EBU Statement D23 / EBU Tech. 3280-E §1.1.1).
+  // Swapping sin↔cos in the reference compensates for this 90° Sc-H offset.
+  const bool pal_m_phase = (padded_field_height == 263);
+  for (int32_t i = 0; i < field_width; i++) {
+    const double rad = 2 * M_PI * i * fsc / sample_rate;
+    sine[i] = pal_m_phase ? cos(rad) : sin(rad);
+    cosine[i] = pal_m_phase ? sin(rad) : cos(rad);
   }
 
   // Create filter profiles for colour filtering.
@@ -556,7 +552,8 @@ void PalColour::detectBurst(LineInfo& line, const SourceField& inputField,
   // 'old') of the line immediately above and below, which have the
   // opposite V-switch phase (and a 90 degree subcarrier phase shift).
   //
-  // EBU Tech. 3280-E §1.2: PAL burst phase at 135°/225° relative to +U axis.
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f / ITU-R BT.470-6 Table 2
+  // item 2.16: PAL burst phase at 135°/225° relative to +U axis.
   double bp = 0, bq = 0, bpo = 0, bqo = 0;
   const auto [burst_start, burst_end] =
       colour_burst_range(videoParameters.system);

@@ -25,45 +25,45 @@ namespace orc {
 // PAL — EBU Tech. 3280-E
 // ---------------------------------------------------------------------------
 
-// EBU Tech. 3280-E §1.1: PAL colour subcarrier frequency.
+// EBU Tech. 3280-E §1.1.1 Table 1: PAL colour subcarrier frequency.
 constexpr double kPalFsc = 4'433'618.75;
 
-// EBU Tech. 3280-E §1.1: 4FSC sample rate = 4 × fsc.
+// EBU Tech. 3280-E §1.1.1 Table 1: 4FSC sample rate = 4 × fsc.
 constexpr double kPalSampleRate = 17'734'475.0;
 
-// EBU Tech. 3280-E §1.1: Nominal samples per line (non-integer due to
+// EBU Tech. 3280-E §1.2: Nominal samples per line (non-integer due to
 // non-orthogonal sampling).
 constexpr double kPalSamplesPerLine = 1135.0064;
 
-// EBU Tech. 3280-E §1.1: Total samples in a complete PAL frame.
+// EBU Tech. 3280-E §1.2: Total samples in a complete PAL frame.
 // = 625 lines × 1135 samples + 4 extra samples on non-orthogonal lines.
 constexpr int32_t kPalFrameSamples = 709'379;
 
-// EBU Tech. 3280-E §1.1: Total lines in a PAL frame.
+// EBU Tech. 3280-E §1.1.1 Table 1: Total lines in a PAL frame.
 constexpr int32_t kPalFrameLines = 625;
 
-// EBU Tech. 3280-E §1.3: Lines in PAL field 1 (the 313-line field; CVBS
+// EBU Tech. 3280-E §1.3.2: Lines in PAL field 1 (the 313-line field; CVBS
 // convention places the longer field first in the flat frame buffer).
 constexpr int32_t kPalField1Lines = 313;
 
-// EBU Tech. 3280-E §1.3: Nominal integer samples per line (floor of 1135.0064).
+// EBU Tech. 3280-E §1.2: Nominal integer samples per line (floor of 1135.0064).
 // Use this everywhere a fixed per-line width of 1135 is required (TBC storage,
 // frame_line_sample_offset, display width, etc.).
 constexpr int32_t kPalSamplesPerLineNominal = 1135;
 
-// EBU Tech. 3280-E §1.3: Maximum samples on any PAL line.
+// EBU Tech. 3280-E §1.2: Maximum samples on any PAL line.
 // Lines 312 and 624 (0-based) each carry 2 extra samples → 1137.
 constexpr int32_t kPalMaxSamplesPerLine = 1137;
 
-// EBU Tech. 3280-E: Normative CVBS_U10_4FSC signal levels (10-bit domain).
-// PAL carries no setup pedestal: black level equals blanking level (0 IRE).
+// EBU Tech. 3280-E §1.1.1 Table 1: Normative CVBS_U10_4FSC signal levels
+// (10-bit domain). PAL carries no setup pedestal: black = blanking (0 IRE).
 constexpr int32_t kPalSyncTip = 4;
 constexpr int32_t kPalBlanking = 256;
 constexpr int32_t kPalBlack = 256;  // 0x100: no pedestal; black = blanking
 constexpr int32_t kPalWhite = 844;
 constexpr int32_t kPalPeak = 1019;
 
-// EBU Tech. 3280-E §1.3.1: normative placement of the 4 extra samples per PAL
+// EBU Tech. 3280-E §1.2: normative placement of the 4 extra samples per PAL
 // frame.  The standard concentrates them on the last line of each field:
 //   Frame-flat line 312 (0-based = line 313 1-based, last of field 1): +2
 //   Frame-flat line 624 (0-based = line 625 1-based, last of field 2): +2
