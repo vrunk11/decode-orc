@@ -23,7 +23,6 @@ namespace orc {
 // Type aliases for convenience in core code
 using UVSample = orc::UVSample;
 using VectorscopeData = orc::VectorscopeData;
-using orc::rgb_to_uv;
 
 }  // namespace orc
 

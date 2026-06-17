@@ -126,29 +126,32 @@ inline orc::UVSample calibrateVectorscopeDisplayUv(
 // percentage.  `rgb` encodes the primary/secondary colour as a 3-bit mask
 // (bit2=R, bit1=G, bit0=B).
 //
-// PAL reference vectors (ITU-R BT.470-6 §1.1.2 / EBU Tech. 3280-E §2.1):
-//   Colour bars at 75% amplitude, 100% saturation (standard EBU bars):
-//     Red   (100): angle = +103.0°   ← V axis; sat = 75% * kV * 0.701 * scale
-//     Yellow(110): angle = +167.0°   ← V+U
-//     Green (010): angle = -104.0°   ← -V+U region
-//     Cyan  (011): angle = -77.0°    ← -V axis
-//     Blue  (001): angle = +13.0°    ← small +U
-//     Magenta(101):angle = +61.0°    ← +V+U
-//   Computed here from RGB via normalizedRgbToUv() which is exact.
+// GBR encoder inputs have no setup (SMPTE 170M-2004 §4.3 / ITU-R BT.470-6):
+// "off" components are at 0 (blanking) and "on" components are at `percent`.
 //
-// NTSC reference vectors (SMPTE 170M-2004 Table 1 / SMPTE 244M-2003 §4.2):
-//   NTSC 75% bars are at the same BT.601 UV positions as PAL.  The NTSC comb
-//   decoder (transformIQ in comb.cpp) converts I/Q → U/V before output, so
-//   decoded samples and targets share the same BT.601 U/V coordinate space.
+// NTSC / PAL_M encoding (SMPTE 170M-2004 §10 / Annex A.2):
+//   N = 0.925(Y) + 7.5 + 0.925(Q)sin(…+33°) + 0.925(I)cos(…+33°)
+//   The 0.925 factor is applied to all chroma in the encoding equation.
+//   A comb decoder that does not compensate this factor outputs chroma at
+//   0.925× the GBR-input amplitude.  Targets must therefore sit at 0.925×
+//   the PAL (no-scale) positions so that a correctly decoded NTSC signal
+//   lands on the crosshairs.
 inline orc::UVSample vectorscopeTargetUv(int rgb, double percent,
                                          double ire_range,
-                                         orc::VideoSystem /*system*/) {
-  // BT.601 UV positions are the same for PAL and NTSC: the NTSC comb decoder
-  // converts I/Q → U/V before output (comb.cpp transformIQ).
-  const double red = percent * static_cast<double>((rgb >> 2) & 1);
-  const double green = percent * static_cast<double>((rgb >> 1) & 1);
-  const double blue = percent * static_cast<double>(rgb & 1);
-  return normalizedRgbToUv(red, green, blue, ire_range);
+                                         orc::VideoSystem system) {
+  const double red = ((rgb >> 2) & 1) ? percent : 0.0;
+  const double green = ((rgb >> 1) & 1) ? percent : 0.0;
+  const double blue = (rgb & 1) ? percent : 0.0;
+  const orc::UVSample uv = normalizedRgbToUv(red, green, blue, ire_range);
+
+  // SMPTE 170M-2004 §10 / Annex A.2: NTSC and PAL_M apply 0.925 to chroma.
+  const bool has_smpte_chroma_scale =
+      (system == orc::VideoSystem::NTSC || system == orc::VideoSystem::PAL_M);
+  constexpr double kSmpteChromaScale = 0.925;
+  if (has_smpte_chroma_scale) {
+    return {uv.u * kSmpteChromaScale, uv.v * kSmpteChromaScale};
+  }
+  return uv;
 }
 
 inline orc::UVSample vectorscopeDisplayTargetUv(int rgb, double percent,

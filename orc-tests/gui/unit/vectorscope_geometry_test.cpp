@@ -44,22 +44,32 @@ TEST(VectorscopeGeometryTest, PlotGeometry_MatchesVectorscopeRasterMapping) {
   EXPECT_DOUBLE_EQ(bottom_right.y(), 1008.0);
 }
 
-TEST(VectorscopeGeometryTest, Ntsc_AndPalTargetsShareTheSameDecodedUvSpace) {
+TEST(VectorscopeGeometryTest, Ntsc_TargetsMagnitudeIs_925_Of_Pal) {
+  // SMPTE 170M-2004 §10 / Annex A.2: the NTSC encoding equation applies 0.925
+  // to all chroma: N = 0.925Y + 7.5 + 0.925(Q)sin(…) + 0.925(I)cos(…).
+  // A comb decoder that does not compensate this factor outputs chroma at
+  // 0.925× the GBR-input amplitude, so NTSC targets must lie at 0.925× the
+  // PAL (no-scale) positions for every colour bar.
   constexpr double kIreRange = 50000.0;
+  constexpr double kSetupFraction = 42.0 / 560.0;  // = 1 − 0.925
 
-  const orc::UVSample pal_target =
-      orc::gui::vectorscopeTargetUv(4, 1.0, kIreRange, orc::VideoSystem::PAL);
-  const orc::UVSample ntsc_target =
-      orc::gui::vectorscopeTargetUv(4, 1.0, kIreRange, orc::VideoSystem::NTSC);
+  for (int rgb = 1; rgb <= 6;
+       ++rgb) {  // all six standard primaries/secondaries
+    const orc::UVSample pal = orc::gui::vectorscopeTargetUv(
+        rgb, 0.75, kIreRange, orc::VideoSystem::PAL);
+    const orc::UVSample ntsc = orc::gui::vectorscopeTargetUv(
+        rgb, 0.75, kIreRange, orc::VideoSystem::NTSC);
 
-  EXPECT_DOUBLE_EQ(ntsc_target.u, pal_target.u);
-  EXPECT_DOUBLE_EQ(ntsc_target.v, pal_target.v);
+    EXPECT_NEAR(ntsc.u, pal.u * (1.0 - kSetupFraction), 1e-9) << "rgb=" << rgb;
+    EXPECT_NEAR(ntsc.v, pal.v * (1.0 - kSetupFraction), 1e-9) << "rgb=" << rgb;
+  }
 }
 
 TEST(VectorscopeGeometryTest, Ntsc_DisplayTargetsEqualRawTargets) {
-  // The NTSC comb decoder converts I/Q → U/V before output, so NTSC decoded
-  // samples are in the same BT.601 U/V space as PAL.  Display targets must
-  // match raw BT.601 targets without any additional scaling.
+  // calibrateVectorscopeDisplayUv is identity for NTSC: the comb decoder
+  // already converts I/Q → U/V, so no coordinate-space rotation is required.
+  // Display targets must equal the raw setup-adjusted targets without further
+  // modification.
   constexpr double kIreRange = 50000.0;
 
   const orc::UVSample raw_target =
@@ -122,6 +132,29 @@ TEST(VectorscopeGeometryTest, StandardDegrees_MapToExpectedScreenQuadrants) {
 
   EXPECT_GT(down.y(), geometry.centre_point.y());
   EXPECT_NEAR(down.x(), geometry.centre_point.x(), 1e-6);
+}
+
+TEST(VectorscopeGeometryTest, Ntsc_IAndQAxesAreAt123And33Degrees) {
+  // SMPTE 170M-2004 §7.3: NTSC I and Q are rotated 33° from the BT.601 V and
+  // U axes respectively.  In (U, V) space:
+  //   Positive I maps to (-sin33°, cos33°) → atan2(cos33°, -sin33°) = 123°
+  //   Positive Q maps to ( cos33°, sin33°) → atan2(sin33°,  cos33°) =  33°
+  // These are the angles that must appear on the NTSC vectorscope graticule.
+  constexpr double kDeg33 = 33.0 * M_PI / 180.0;
+  const double sin33 = std::sin(kDeg33);
+  const double cos33 = std::cos(kDeg33);
+
+  // From U = -sin33°·I + cos33°·Q; V = cos33°·I + sin33°·Q (pure I: Q=0):
+  const double i_u = -sin33;
+  const double i_v = cos33;
+  const double i_angle_deg = std::atan2(i_v, i_u) * 180.0 / M_PI;
+  EXPECT_NEAR(i_angle_deg, 123.0, 0.5);
+
+  // From U and V equations (pure Q: I=0):
+  const double q_u = cos33;
+  const double q_v = sin33;
+  const double q_angle_deg = std::atan2(q_v, q_u) * 180.0 / M_PI;
+  EXPECT_NEAR(q_angle_deg, 33.0, 0.5);
 }
 
 }  // namespace gui_unit_test

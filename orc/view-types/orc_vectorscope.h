@@ -50,37 +50,6 @@ struct VectorscopeData {
   VectorscopeData() : width(0), height(0), field_number(0) {}
 };
 
-/**
- * @brief Convert RGB to U/V (YUV color space)
- *
- * Uses standard ITU-R BT.601 conversion matrix for SD video.
- *
- * @param r Red component (16-bit, 0-65535)
- * @param g Green component (16-bit, 0-65535)
- * @param b Blue component (16-bit, 0-65535)
- * @return UVSample with U/V in range approximately -32768 to +32767 centered at
- * 0
- */
-inline UVSample rgb_to_uv(uint16_t r, uint16_t g, uint16_t b) {
-  // Convert to double and normalize to 0-1 range
-  double rd = r / 65535.0;
-  double gd = g / 65535.0;
-  double bd = b / 65535.0;
-
-  // ITU-R BT.601 conversion (SD) - Poynton p337 eq 28.5
-  // Y = 0.299*R + 0.587*G + 0.114*B
-  // U = -0.147141*R - 0.288869*G + 0.436010*B
-  // V = 0.614975*R - 0.514965*G - 0.100010*B
-
-  double u = -0.147141 * rd - 0.288869 * gd + 0.436010 * bd;
-  double v = 0.614975 * rd - 0.514965 * gd - 0.100010 * bd;
-
-  // Scale to signed range centered at 0
-  // Note: u,v are already centered around 0 in [-~0.6, ~0.6].
-  // Multiply by 32768 to map roughly to signed 16-bit amplitude without offset.
-  return UVSample{u * 32768.0, v * 32768.0};
-}
-
 }  // namespace orc
 
 #endif  // ORC_PUBLIC_ORC_VECTORSCOPE_H

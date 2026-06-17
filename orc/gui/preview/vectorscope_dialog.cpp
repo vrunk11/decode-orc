@@ -47,13 +47,16 @@ constexpr double kMajorMarkerLengthPixels = 18.0;
 constexpr double kMinorMarkerLengthPixels = 10.0;
 constexpr double kIqLabelOffsetPixels = 22.0;
 constexpr double kColorLabelOffsetPixels = 48.0;
-// Scope-angle convention in this renderer: +degrees rotate clockwise on screen.
-// Keep these in standard vectorscope degrees (0=right, 90=up,
-// counterclockwise).
-constexpr double kNtscIAxisStandardDegrees = 147.0;
-constexpr double kNtscNegIAxisStandardDegrees = -33.0;
-constexpr double kNtscQAxisStandardDegrees = 57.0;
-constexpr double kNtscNegQAxisStandardDegrees = -123.0;
+// NTSC I and Q axis angles in standard vectorscope degrees (0=right, 90=up,
+// counterclockwise positive).
+// SMPTE 170M-2004 §7.3: I and Q are rotated 33° from the V (R-Y) and U (B-Y)
+// axes respectively.  In (U,V) space the positive-I direction is
+// (-sin33°, cos33°) → atan2(cos33°, -sin33°) = 123°, and positive-Q is
+// (cos33°, sin33°) → atan2(sin33°, cos33°) = 33°.
+constexpr double kNtscIAxisStandardDegrees = 123.0;
+constexpr double kNtscNegIAxisStandardDegrees = -57.0;
+constexpr double kNtscQAxisStandardDegrees = 33.0;
+constexpr double kNtscNegQAxisStandardDegrees = -147.0;
 constexpr double kIqLabelAngularOffsetDegrees = 4.0;
 constexpr double kZoneHalfAngleDegrees = 13.0;
 constexpr double kZoneHalfRadialSpanPercent = 0.14;

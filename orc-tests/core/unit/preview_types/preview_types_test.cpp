@@ -651,41 +651,4 @@ TEST(LiveTweakableParameterViewTest, DefaultTweakClass_IsDecodePhase) {
   EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DecodePhase);
 }
 
-// =============================================================================
-// rgb_to_uv — inline chrominance conversion
-// =============================================================================
-
-TEST(RgbToUvTest, NeutralGray_ProducesNearZeroChroma) {
-  // Equal R=G=B should have near-zero U and V components.
-  const auto sample = orc::rgb_to_uv(32768, 32768, 32768);
-  EXPECT_NEAR(sample.u, 0.0, 1.0);
-  EXPECT_NEAR(sample.v, 0.0, 1.0);
-}
-
-TEST(RgbToUvTest, FullBlue_ProducesPositiveU) {
-  // Pure blue should have positive U (Cb) according to BT.601.
-  const auto sample = orc::rgb_to_uv(0, 0, 65535);
-  EXPECT_GT(sample.u, 0.0);
-}
-
-TEST(RgbToUvTest, FullRed_ProducesPositiveV) {
-  // Pure red should have positive V (Cr) according to BT.601.
-  const auto sample = orc::rgb_to_uv(65535, 0, 0);
-  EXPECT_GT(sample.v, 0.0);
-}
-
-TEST(RgbToUvTest, Output_IsInSignedRange) {
-  // U and V values should be in approximately [-32768, +32768] range.
-  const auto sample = orc::rgb_to_uv(65535, 0, 0);
-  EXPECT_GE(sample.u, -32768.0);
-  EXPECT_LE(sample.u, 32768.0);
-  EXPECT_GE(sample.v, -32768.0);
-  EXPECT_LE(sample.v, 32768.0);
-}
-
-TEST(RgbToUvTest, FieldId_DefaultsToZero) {
-  const auto sample = orc::rgb_to_uv(0, 0, 0);
-  EXPECT_EQ(sample.field_id, 0u);
-}
-
 }  // namespace orc_unit_test

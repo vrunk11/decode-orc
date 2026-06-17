@@ -25,17 +25,11 @@ class ComponentFrame;
 
 namespace orc {
 
-// Forward declarations
-class ChromaSinkStage;
-class VideoFrameRepresentation;
-
 /**
  * @brief Vectorscope visualization tool for chroma decoder output
  *
- * This is a "live" analysis tool that continuously extracts U/V data from
- * decoded RGB fields for real-time vectorscope display. Unlike batch analysis
- * tools, this one doesn't produce a static result - it provides a data stream
- * to the GUI.
+ * Extracts U/V chroma samples from the decoded output of the comb decoder for
+ * real-time vectorscope display.
  */
 class VectorscopeAnalysisTool : public AnalysisTool {
  public:
@@ -58,55 +52,10 @@ class VectorscopeAnalysisTool : public AnalysisTool {
   int estimateDurationSeconds(const AnalysisContext& ctx) const override;
 
   /**
-   * @brief Extract vectorscope data from a decoded RGB field
+   * @brief Extract vectorscope data directly from ComponentFrame U/V channels.
    *
-   * @param rgb_data RGB field data (16-bit per channel, interleaved R,G,B)
-   * @param width Field width in pixels
-   * @param height Field height in lines
-   * @param field_number Field number for identification
-   * @param subsample Subsampling factor (1 = all pixels, 2 = every other pixel,
-   * etc.)
-   * @param field_id Optional field index (0=first/odd, 1=second/even) for blend
-   * color tracking
-   * @return Vectorscope data with U/V samples
-   */
-  static VectorscopeData extractFromRGB(const uint16_t* rgb_data,
-                                        uint32_t width, uint32_t height,
-                                        uint64_t field_number,
-                                        uint32_t subsample = 1,
-                                        uint8_t field_id = 0);
-
-  /**
-   * @brief Extract vectorscope data from both fields in an interlaced RGB frame
-   *
-   * Processes even lines (first field) and odd lines (second field) separately,
-   * tagging each sample with its field_id for proper visualization.
-   *
-   * @param rgb_data RGB frame data (16-bit per channel, interleaved R,G,B)
-   * @param width Frame width in pixels
-   * @param height Frame height in lines (both fields combined)
-   * @param field_number Field number for identification (first field)
-   * @param subsample Subsampling factor (1 = all pixels, 2 = every other pixel,
-   * etc.)
-   * @return Vectorscope data with U/V samples from both fields
-   */
-  static VectorscopeData extractFromInterlacedRGB(const uint16_t* rgb_data,
-                                                  uint32_t width,
-                                                  uint32_t height,
-                                                  uint64_t field_number,
-                                                  uint32_t subsample = 1);
-
-  /**
-   * @brief Extract vectorscope data directly from ComponentFrame U/V channels
-   *
-   * This is the preferred method as it uses the native U/V chroma values from
-   * the decoder, avoiding RGB→YUV conversion artifacts and signal level issues.
-   *
-   * @param frame ComponentFrame with decoded Y/U/V data
-   * @param field_number Field number for identification
-   * @param subsample Subsampling factor (1 = all pixels, 2 = every other pixel,
-   * etc.)
-   * @return Vectorscope data with native U/V samples from both fields
+   * Uses the native U/V chroma values written by the comb decoder into
+   * ComponentFrame, normalised to ±32767 by the blanking-to-white range.
    */
   static VectorscopeData extractFromComponentFrame(
       const ::ComponentFrame& frame,
@@ -121,23 +70,6 @@ class VectorscopeAnalysisTool : public AnalysisTool {
    */
   static VectorscopeData extractFromColourFrameCarrier(
       const ColourFrameCarrier& carrier, uint64_t field_number,
-      uint32_t subsample = 1, bool active_area_only = true);
-
-  /**
-   * @brief Extract vectorscope data from composite-domain frame samples.
-   *
-   * Demodulates CVBS_U10_4FSC int16_t samples from the frame representation
-   * using the 4FSC quadrature scheme.  Signal levels are read from
-   * VideoFrameRepresentation::get_video_parameters() (10-bit domain).
-   * PAL V-axis alternation is applied at the frame-flat level.
-   *
-   * @param representation Frame representation to sample from.
-   * @param frame_id       FrameID of the frame to process.
-   * @param subsample      Subsampling factor (1 = all samples).
-   * @param active_area_only True to limit sampling to the active picture area.
-   */
-  static VectorscopeData extractFromCompositeRepresentation(
-      const VideoFrameRepresentation& representation, FrameID frame_id,
       uint32_t subsample = 1, bool active_area_only = true);
 };
 
