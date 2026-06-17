@@ -11,6 +11,8 @@
 
 #include <cvbs_signal_constants.h>
 
+#include <cmath>
+
 #include "lddecodemetadata.h"
 #include "logging.h"
 
@@ -100,12 +102,29 @@ bool TBCMetadataJsonReader::open(const std::string& json_path) {
   source_params_ = sp;
 
   // ---- ld-decode 16-bit domain levels ----
-  // white16bIre / black16bIre from the JSON are the actual 16-bit TBC levels
-  // the ld-decode decoder used.  Store them for the tbc_source stage to use
-  // when scaling raw TBC samples into CVBS_U10_4FSC.
+  // ld-decode stores white16bIre as the 100 IRE white level and black16bIre as
+  // the picture black level — which for NTSC and PAL_M is the 7.5 IRE setup
+  // pedestal (kNtscBlack × 64 = 18048), NOT the 0 IRE blanking reference
+  // (kNtscBlanking × 64 = 15360).  For PAL there is no setup pedestal, so
+  // black16bIre IS the 0 IRE blanking level.
+  //
+  // tbc_to_cvbs() requires the 0 IRE blanking as its reference point, so we
+  // must derive it from black16bIre for NTSC/PAL_M:
+  //   blanking = black − 7.5 × (white − black) / 92.5
+  // The 92.5 denominator is the IRE span from black (7.5 IRE) to white (100
+  // IRE). SMPTE 170M-2004 Table 1 / SMPTE 244M-2003 §4.2.1.
   if (vp.white16bIre > vp.black16bIre && vp.black16bIre >= 0) {
     TbcDomainLevels levels;
-    levels.blanking_16b = vp.black16bIre;  // JSON "black" = blanking (0 IRE)
+    if (vp.system == LdVideoSystem::NTSC || vp.system == LdVideoSystem::PAL_M) {
+      // Derive 0 IRE blanking by subtracting the 7.5 IRE setup pedestal.
+      const double ire_per_unit =
+          static_cast<double>(vp.white16bIre - vp.black16bIre) / 92.5;
+      levels.blanking_16b =
+          static_cast<int32_t>(std::round(vp.black16bIre - 7.5 * ire_per_unit));
+    } else {
+      // PAL: no setup pedestal; black == blanking (0 IRE).
+      levels.blanking_16b = vp.black16bIre;
+    }
     levels.white_16b = vp.white16bIre;
     tbc_domain_levels_ = levels;
   }

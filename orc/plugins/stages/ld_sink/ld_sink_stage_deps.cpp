@@ -203,9 +203,12 @@ bool LDSinkStageDeps::write_tbc_and_metadata(
     }
     video_params->decoder = "ld-decode";
 
-    const int32_t tbc_blanking = kTbcBlanking;
-    const int32_t tbc_white = kTbcWhite;
     const VideoSystem sys = video_params->system;
+    const bool is_ntsc_like =
+        (sys == VideoSystem::NTSC || sys == VideoSystem::PAL_M);
+    const int32_t tbc_blanking =
+        is_ntsc_like ? kTbcNtscBlanking : kTbcPalBlanking;
+    const int32_t tbc_white = is_ntsc_like ? kTbcNtscWhite : kTbcPalWhite;
 
     // CVBS_U10_4FSC normative levels for the inverse mapping.
     int32_t cvbs_blanking, cvbs_white;

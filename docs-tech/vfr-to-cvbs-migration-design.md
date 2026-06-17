@@ -102,19 +102,19 @@ These are the sole reference values for all signal level analysis, preview rende
 |-------|-------------|-------|
 | Sync tip | 4 | Minimum legal value |
 | Blanking | 256 | 0 IRE reference |
-| Black | 282 | Nominal picture black (0 IRE) |
+| Black | 256 | 0 IRE (no pedestal: black = blanking) |
 | White (100%) | 844 | 100 IRE |
 | Peak (w/ chroma) | 1019 | Maximum legal value |
 
-**NTSC** — SMPTE 244M-2003 (see [SMPTE-244M-2003.md](analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md)):
+**NTSC** — SMPTE 244M-2003 / SMPTE 170M-2004 (see [SMPTE-244M-2003.md](analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md)):
 
 | Level | 10-bit value | Notes |
 |-------|-------------|-------|
 | Sync tip | 16 | Minimum legal value |
-| Blanking | 240 | 0 IRE reference |
-| Black | 252 | 7.5 IRE pedestal |
+| Blanking | 240 | 0 IRE reference (SMPTE 244M-2003 §4.2.1) |
+| Black | 282 | +7.5 IRE setup pedestal (SMPTE 170M-2004 Table 1; 240 + 7.5 × 5.6 = 282) |
 | White (100%) | 800 | 100 IRE |
-| Peak (w/ chroma) | 988 | Maximum legal value |
+| Peak (w/ chroma) | 1019 | Maximum legal value (SMPTE 244M-2003 §4.2.4) |
 
 **PAL_M** — ITU-R BT.1700-1 / SMPTE 244M-compatible (see [BT-1700-E.md](analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md)):
 
@@ -122,9 +122,9 @@ These are the sole reference values for all signal level analysis, preview rende
 |-------|-------------|-------|
 | Sync tip | 16 | |
 | Blanking | 240 | 0 IRE reference |
-| Black | 252 | 7.5 IRE pedestal |
+| Black | 282 | +7.5 IRE setup pedestal (SMPTE 170M-2004 Table 1; same as NTSC) |
 | White (100%) | 800 | 100 IRE |
-| Peak (w/ chroma) | 988 | |
+| Peak (w/ chroma) | 1019 | |
 
 **NTSC-J:** NTSC with `black_level` = 240 (no 7.5 IRE pedestal). Handled as a `FrameDescriptor.black_level_override` flag. No separate `VideoSystem` enum value is required.
 

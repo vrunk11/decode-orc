@@ -599,15 +599,16 @@ void PalColour::detectBurst(LineInfo& line, const SourceField& inputField,
 
   // Normalise the magnitude of the bp/bq vector to 1.
   // Kill colour if burst amplitude is below ~12% of nominal.
-  // The original constant 130000/128 was calibrated for the 16-bit TBC domain
-  // (active range = kTbcWhite − kTbcBlanking = 38016 counts).  Scale to the
-  // CVBS_U10_4FSC active range (white_level − blanking_level) so the threshold
-  // is domain-independent.
+  // The original constant 130000/128 was calibrated for the PAL 16-bit TBC
+  // domain (kTbcPalWhite − kTbcPalBlanking = 54016 − 16384 = 37632 counts).
+  // Scale to the CVBS_U10_4FSC active range (white_level − blanking_level) so
+  // the threshold is domain-independent.
+  // EBU Tech. 3280-E §1.1.1 Table 1 / kTbcPalBlanking / kTbcPalWhite.
   const double burstKillThreshold =
       130000.0 / 128.0 *
       static_cast<double>(videoParameters.white_level -
                           videoParameters.blanking_level) /
-      static_cast<double>(orc::kTbcWhite - orc::kTbcBlanking);
+      static_cast<double>(orc::kTbcPalWhite - orc::kTbcPalBlanking);
   const double burstNorm =
       std::max(sqrt(line.bp * line.bp + line.bq * line.bq), burstKillThreshold);
   line.bp /= burstNorm;

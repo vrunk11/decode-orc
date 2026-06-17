@@ -50,9 +50,15 @@ static std::vector<uint16_t> make_field_u16(int32_t lines, int32_t width,
       static_cast<size_t>(lines) * static_cast<size_t>(width), fill);
 }
 
-// Reference TBC levels (ld-decode NTSC defaults).
-constexpr int32_t kRefBlanking = 16384;
-constexpr int32_t kRefWhite = 54400;
+// Reference TBC levels matching actual ld-decode NTSC files (CVBS_U10 × 64).
+// kNtscBlanking × 64 = 240 × 64 = 15360 (0 IRE blanking reference)
+// kNtscWhite    × 64 = 800 × 64 = 51200 (100 IRE white)
+// Note: ld-decode JSON stores black16bIre = kNtscBlack × 64 = 282 × 64 = 18048
+// (the 7.5 IRE setup level), NOT the blanking.  tbc_metadata_json_reader
+// derives the 0 IRE blanking from black16bIre before passing it here.
+constexpr int32_t kRefBlanking = orc::kTbcNtscBlanking;  // 15360
+constexpr int32_t kRefBlack = orc::kTbcNtscBlack;        // 18048 (7.5 IRE)
+constexpr int32_t kRefWhite = orc::kTbcNtscWhite;        // 51200
 
 // NTSC TBC field line counts (ld-decode convention).
 // TBC field 1 (even file index, isFirstField=true) = odd-scan/first temporal,
@@ -101,6 +107,18 @@ TEST(NtscTBCConverterTest,
   const int16_t result = orc::NtscTBCConverter::tbc_to_cvbs(
       static_cast<uint16_t>(kRefBlanking - 1000), kRefBlanking, kRefWhite);
   EXPECT_LT(result, static_cast<int16_t>(orc::kNtscBlanking));
+}
+
+TEST(NtscTBCConverterTest, LevelMapping_BlackInputYieldsCVBSBlack) {
+  // Verifies that when the correct 0 IRE blanking is used as the reference,
+  // the 7.5 IRE picture black level (kTbcNtscBlack = 18048 = kNtscBlack × 64)
+  // maps to kNtscBlack (282) in CVBS.  This confirms that
+  // tbc_metadata_json_reader must NOT pass black16bIre as the blanking
+  // reference — it must derive the true 0 IRE blanking first. SMPTE 170M-2004
+  // Table 1 / SMPTE 244M-2003 §4.2.1.
+  const int16_t result = orc::NtscTBCConverter::tbc_to_cvbs(
+      static_cast<uint16_t>(kRefBlack), kRefBlanking, kRefWhite);
+  EXPECT_NEAR(result, static_cast<int16_t>(orc::kNtscBlack), 1);
 }
 
 // ============================================================================

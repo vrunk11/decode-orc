@@ -752,11 +752,18 @@ std::optional<TBCVideoParams> build_tvp_from_reader(
   tvp.git_commit = sp->git_commit;
   tvp.is_widescreen = sp->is_widescreen;
   // Read actual ld-decode 16-bit domain levels from the metadata.
-  // These are the blanking/white levels the original ld-decode decoder
-  // recorded; using them gives accurate CVBS_U10_4FSC conversion.
+  // These are the 0 IRE blanking and 100 IRE white levels in the TBC 16-bit
+  // domain (CVBS_U10_4FSC × 64); using them gives accurate CVBS_U10_4FSC
+  // conversion.  The JSON reader derives blanking from black16bIre for
+  // NTSC/PAL_M.
   const auto tbc_levels = reader.read_tbc_domain_levels();
-  tvp.blanking_16b = tbc_levels ? tbc_levels->blanking_16b : kTbcBlanking;
-  tvp.white_16b = tbc_levels ? tbc_levels->white_16b : kTbcWhite;
+  const bool is_ntsc_like =
+      (tvp.system == VideoSystem::NTSC || tvp.system == VideoSystem::PAL_M);
+  tvp.blanking_16b = tbc_levels
+                         ? tbc_levels->blanking_16b
+                         : (is_ntsc_like ? kTbcNtscBlanking : kTbcPalBlanking);
+  tvp.white_16b = tbc_levels ? tbc_levels->white_16b
+                             : (is_ntsc_like ? kTbcNtscWhite : kTbcPalWhite);
   tvp.number_of_fields = sp->number_of_sequential_frames * 2;
   tvp.field_width = sp->frame_width_nominal;
   // Field heights: both stored at max height in the TBC file.

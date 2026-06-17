@@ -142,14 +142,34 @@ constexpr int32_t kPalMField1Lines = 263;
 // ---------------------------------------------------------------------------
 // ld-decode 16-bit domain normative levels
 // ---------------------------------------------------------------------------
-// The ld-decode .tbc format stores samples as uint16_t with the following
-// standard mapping.  kTbcBlanking / kTbcWhite are ONLY for use in the
-// tbc_source and ld_sink stages when converting CVBS_U10_4FSC ↔ ld-decode
-// 16-bit.  All other pipeline code must use the system-specific CVBS_U10_4FSC
-// constants above (kPalBlanking/kPalWhite, kNtscBlanking/kNtscWhite) or the
-// 10-bit values from SourceParameters (blanking_level, white_level).
-constexpr int32_t kTbcBlanking = 16384;  // 0 IRE blanking (0x4000 = 25 %)
-constexpr int32_t kTbcWhite = 54400;     // 100 IRE white  (≈ 83 % of 65535)
+// The ld-decode .tbc format stores samples as uint16_t using a ×64 scale
+// factor applied to the CVBS_U10_4FSC signal levels.  These constants are
+// ONLY for use in tbc_source and ld_sink when converting CVBS_U10_4FSC ↔
+// ld-decode 16-bit.  All other pipeline code must use the system-specific
+// CVBS_U10_4FSC constants above (kPalBlanking/kPalWhite, kNtscBlanking/
+// kNtscWhite) or the 10-bit values from SourceParameters.
+//
+// NTSC setup note: ld-decode JSON stores black16bIre at the 7.5 IRE picture
+// black (setup) level = kNtscBlack × 64 = 282 × 64 = 18048, NOT the 0 IRE
+// blanking level = kNtscBlanking × 64 = 240 × 64 = 15360.  The tbc_source
+// reader must derive blanking from black using the formula:
+//   blanking_16b = black16bIre − 7.5 × (white16bIre − black16bIre) / 92.5
+// PAL and PAL_M have no setup pedestal so black == blanking.
+
+// PAL ld-decode 16-bit domain levels (CVBS_U10_4FSC × 64):
+// kPalBlanking × 64 = 256 × 64 = 16384 (0 IRE blanking)
+constexpr int32_t kTbcPalBlanking = 16384;
+// kPalWhite × 64 = 844 × 64 = 54016 (100 IRE white)
+constexpr int32_t kTbcPalWhite = 54016;
+
+// NTSC ld-decode 16-bit domain levels (CVBS_U10_4FSC × 64):
+// kNtscBlanking × 64 = 240 × 64 = 15360 (0 IRE blanking)
+constexpr int32_t kTbcNtscBlanking = 15360;
+// kNtscBlack × 64 = 282 × 64 = 18048 (7.5 IRE setup; stored as black16bIre in
+// ld-decode JSON — NOT the blanking reference)
+constexpr int32_t kTbcNtscBlack = 18048;
+// kNtscWhite × 64 = 800 × 64 = 51200 (100 IRE white)
+constexpr int32_t kTbcNtscWhite = 51200;
 
 // ---------------------------------------------------------------------------
 // Colour burst sample range constants
