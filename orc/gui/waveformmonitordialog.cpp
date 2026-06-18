@@ -268,6 +268,7 @@ void WaveformMonitorDialog::updateWidgetForCurrentChannel() {
           ? sliceToActiveLines(raw_samples, f1, f2, first_active_line)
           : raw_samples;
 
+  monitor_widget_->setYOnlyMode(ch == WaveformChannel::YOnly);
   monitor_widget_->setData(display_samples, f1, f2, display_params);
 }
 

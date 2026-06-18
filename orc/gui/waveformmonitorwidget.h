@@ -57,6 +57,12 @@ class WaveformMonitorWidget : public QWidget {
   void setPhosphorMode(bool enabled);
   bool phosphorMode() const { return phosphor_mode_; }
 
+  // Constrain the Y-axis to the legal luma range when displaying a Y-only
+  // channel.  Must be called before setData() to take effect on the current
+  // frame.
+  void setYOnlyMode(bool y_only);
+  bool yOnlyMode() const { return y_only_mode_; }
+
  protected:
   void paintEvent(QPaintEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
@@ -93,6 +99,7 @@ class WaveformMonitorWidget : public QWidget {
 
   double gain_ = 1.0;
   bool phosphor_mode_ = false;
+  bool y_only_mode_ = false;
   bool image_dirty_ = true;
   QImage cached_image_;
 

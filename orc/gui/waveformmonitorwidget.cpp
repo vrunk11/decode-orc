@@ -43,10 +43,19 @@ void WaveformMonitorWidget::setData(
     const std::optional<orc::presenters::VideoParametersView>& video_params) {
   video_params_ = video_params;
 
-  // Derive Y-axis range from video_params (matching Frame-scope style).
+  // Derive Y-axis range.
   y_min_mv_ = -350.0;
   y_max_mv_ = 950.0;
-  if (video_params.has_value()) {
+  if (y_only_mode_) {
+    // Luma-legal range: blanking (0 mV) to white level, ±100 mV headroom.
+    // EBU Tech. 3280-E §1.1: PAL = 700 mV peak-to-peak luma.
+    // SMPTE 170M-2004 §11.4: NTSC/PAL-M = 714.3 mV (7.143 mV/IRE × 100 IRE).
+    const double amv = video_params.has_value()
+                           ? active_video_mv(video_params->system)
+                           : 700.0;
+    y_min_mv_ = -100.0;
+    y_max_mv_ = amv + 100.0;
+  } else if (video_params.has_value()) {
     const auto& vp = *video_params;
     if (vp.blanking_level >= 0 && vp.white_level > vp.blanking_level &&
         vp.sync_tip_level >= 0 && vp.peak_level >= 0) {
@@ -188,6 +197,13 @@ void WaveformMonitorWidget::setGain(double gain) {
 void WaveformMonitorWidget::setPhosphorMode(bool enabled) {
   if (phosphor_mode_ == enabled) return;
   phosphor_mode_ = enabled;
+  image_dirty_ = true;
+  update();
+}
+
+void WaveformMonitorWidget::setYOnlyMode(bool y_only) {
+  if (y_only_mode_ == y_only) return;
+  y_only_mode_ = y_only;
   image_dirty_ = true;
   update();
 }
