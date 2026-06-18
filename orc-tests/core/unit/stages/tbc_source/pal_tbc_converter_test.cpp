@@ -7,7 +7,7 @@
  *   - tbc_to_cvbs level mapping at blanking, white, and sync-tip reference
  *     points (EBU Tech. 3280-E §1.3.1)
  *   - assemble_frame sample count equals kPalFrameSamples
- *   - CVBS field 1 (first 313 lines in output) is sourced from TBC field 2
+ *   - CVBS field 1 (first 313 lines in output) is sourced from TBC field 1
  *   - Extra samples are inserted at frame-flat lines 312 and 624 (EBU3280)
  *   - map_field_phase_to_colour_frame_index covers all 1–8 phase values, -1
  *     for absent/invalid
@@ -44,9 +44,11 @@ static std::vector<uint16_t> make_field(int32_t lines, int32_t width,
 constexpr int32_t kRefBlanking = 16384;
 constexpr int32_t kRefWhite = 54400;
 
-// Expected CVBS field line counts.
-constexpr int32_t kCVBSField1Lines = orc::kPalField1Lines;  // 313
-constexpr int32_t kCVBSField2Lines =
+// TBC field line counts (matching EBU/ld-decode PAL convention):
+//   TBC field 1 (odd-scan, isFirstField) = 313 lines → CVBS field 1
+//   TBC field 2 (even-scan) = 312 lines → CVBS field 2
+constexpr int32_t kTBCField1Lines = orc::kPalField1Lines;  // 313
+constexpr int32_t kTBCField2Lines =
     orc::kPalFrameLines - orc::kPalField1Lines;                 // 312
 constexpr int32_t kLineWidth = orc::kPalSamplesPerLineNominal;  // 1135
 
@@ -93,10 +95,10 @@ TEST(PalTBCConverterTest,
 TEST(PalTBCConverterTest,
      AssembleFrame_OutputSampleCountEqualskPalFrameSamples) {
   // Build minimal synthetic TBC fields at blanking level.
-  auto f1 = make_field(kCVBSField2Lines, kLineWidth,
-                       static_cast<uint16_t>(kRefBlanking));  // 312 × 1135
-  auto f2 = make_field(kCVBSField1Lines, kLineWidth,
+  auto f1 = make_field(kTBCField1Lines, kLineWidth,
                        static_cast<uint16_t>(kRefBlanking));  // 313 × 1135
+  auto f2 = make_field(kTBCField2Lines, kLineWidth,
+                       static_cast<uint16_t>(kRefBlanking));  // 312 × 1135
 
   const auto frame =
       orc::PalTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
@@ -105,10 +107,10 @@ TEST(PalTBCConverterTest,
 }
 
 TEST(PalTBCConverterTest, AssembleFrame_ThrowsOnWrongField1Size) {
-  // field1 must be 312 × 1135 samples.
-  auto bad_f1 = make_field(kCVBSField1Lines, kLineWidth,
-                           static_cast<uint16_t>(kRefBlanking));  // 313, wrong
-  auto f2 = make_field(kCVBSField1Lines, kLineWidth,
+  // field1 must be 313 × 1135 samples.
+  auto bad_f1 = make_field(kTBCField2Lines, kLineWidth,
+                           static_cast<uint16_t>(kRefBlanking));  // 312, wrong
+  auto f2 = make_field(kTBCField2Lines, kLineWidth,
                        static_cast<uint16_t>(kRefBlanking));
   EXPECT_THROW(
       orc::PalTBCConverter::assemble_frame(bad_f1, f2, kRefBlanking, kRefWhite),
@@ -116,29 +118,30 @@ TEST(PalTBCConverterTest, AssembleFrame_ThrowsOnWrongField1Size) {
 }
 
 TEST(PalTBCConverterTest, AssembleFrame_ThrowsOnWrongField2Size) {
-  auto f1 = make_field(kCVBSField2Lines, kLineWidth,
+  auto f1 = make_field(kTBCField1Lines, kLineWidth,
                        static_cast<uint16_t>(kRefBlanking));
-  auto bad_f2 = make_field(kCVBSField2Lines, kLineWidth,
-                           static_cast<uint16_t>(kRefBlanking));  // 312, wrong
+  auto bad_f2 = make_field(kTBCField1Lines, kLineWidth,
+                           static_cast<uint16_t>(kRefBlanking));  // 313, wrong
   EXPECT_THROW(
       orc::PalTBCConverter::assemble_frame(f1, bad_f2, kRefBlanking, kRefWhite),
       std::invalid_argument);
 }
 
 TEST(PalTBCConverterTest, AssembleFrame_CVBSField1IsFirst313Lines) {
-  // Fill TBC field 2 (313 lines) with white, TBC field 1 (312 lines) with
-  // blanking.  The first 313 × 1135 samples in the output must be white
+  // Fill TBC field 1 (313 lines, odd-scan) with white, TBC field 2 (312 lines)
+  // with blanking.  The first 313 × 1135 samples in the output must be white
   // (with small deviations at the 4 extra-sample positions).
+  // EBU Tech. 3280-E §1.3: field 1 (odd-scan) is placed first in the buffer.
   const uint16_t tbc_white = static_cast<uint16_t>(kRefWhite);
   const uint16_t tbc_blank = static_cast<uint16_t>(kRefBlanking);
 
-  auto f1 = make_field(kCVBSField2Lines, kLineWidth, tbc_blank);  // TBC field 1
-  auto f2 = make_field(kCVBSField1Lines, kLineWidth, tbc_white);  // TBC field 2
+  auto f1 = make_field(kTBCField1Lines, kLineWidth, tbc_white);  // TBC field 1
+  auto f2 = make_field(kTBCField2Lines, kLineWidth, tbc_blank);  // TBC field 2
 
   const auto frame =
       orc::PalTBCConverter::assemble_frame(f1, f2, kRefBlanking, kRefWhite);
 
-  // First sample of the frame must be kPalWhite (sourced from TBC field 2).
+  // First sample of the frame must be kPalWhite (sourced from TBC field 1).
   EXPECT_EQ(frame[0], static_cast<int16_t>(orc::kPalWhite));
 
   // First sample of CVBS field 2 (after 313 lines) must be kPalBlanking.
@@ -146,7 +149,7 @@ TEST(PalTBCConverterTest, AssembleFrame_CVBSField1IsFirst313Lines) {
   // of field 1), which carries 2 extra bridge samples.
   // Field 1 occupies samples 0 .. (313×1135 + 2) - 1 = 355,257 - 1.
   const size_t cvbs_field2_start =
-      static_cast<size_t>(kCVBSField1Lines) * static_cast<size_t>(kLineWidth) +
+      static_cast<size_t>(kTBCField1Lines) * static_cast<size_t>(kLineWidth) +
       2;  // +2 for the extra samples on line 312 (last of field 1)
   ASSERT_LT(cvbs_field2_start, frame.size());
   EXPECT_EQ(frame[cvbs_field2_start], static_cast<int16_t>(orc::kPalBlanking));
@@ -157,21 +160,21 @@ TEST(PalTBCConverterTest, AssembleFrame_ExtraSamplesInsertedAtLines312And624) {
   // bridge samples.  Frame size baseline: 625 × 1135 = 709,375; + 4 extras →
   // 709,379 = kPalFrameSamples.
   //
-  // Direct verification: fill TBC field 2 line 312 (the last line of CVBS
+  // Direct verification: fill TBC field 1 line 312 (the last line of CVBS
   // field 1) with a distinctive value and confirm 2 extra samples follow it.
   // Line 312 starts at offset 312 × 1135 = 354,120 and is 1137 samples long
   // (2 extras appended).  Line 313 (first of field 2) starts at 355,257.
 
-  auto f1 = make_field(kCVBSField2Lines, kLineWidth,
+  auto f1 = make_field(kTBCField1Lines, kLineWidth,
                        static_cast<uint16_t>(kRefBlanking));
-  auto f2 = make_field(kCVBSField1Lines, kLineWidth,
+  auto f2 = make_field(kTBCField2Lines, kLineWidth,
                        static_cast<uint16_t>(kRefBlanking));
 
-  // Fill TBC field 2 line 312 with a distinctive value.
+  // Fill TBC field 1 line 312 with a distinctive value.
   constexpr int32_t kLineWidth32 = kLineWidth;
   constexpr uint16_t kDistinctive = 40000;
   for (int i = 0; i < kLineWidth32; ++i) {
-    f2[static_cast<size_t>(312 * kLineWidth32 + i)] = kDistinctive;
+    f1[static_cast<size_t>(312 * kLineWidth32 + i)] = kDistinctive;
   }
 
   const auto frame =

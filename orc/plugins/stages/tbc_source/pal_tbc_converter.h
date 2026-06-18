@@ -25,12 +25,13 @@ namespace orc {
 // EBU Tech. 3280-E §1.1: PAL 4FSC sampling.
 // EBU Tech. 3280-E §1.3: PAL non-orthogonal line structure.
 //
-// TBC field ordering note (design §5.2.3 / EBU Tech. 3280-E §1.3):
-//   ld-decode stores the odd (earlier temporal) field as TBC field 1 with
-//   312 lines, and the even field as TBC field 2 with 313 lines.
-//   CVBS convention places the 313-line block first in the flat frame buffer.
-//   Therefore: TBC field 2 (313 lines) → CVBS field 1;
-//               TBC field 1 (312 lines) → CVBS field 2.
+// TBC field ordering note (EBU Tech. 3280-E §1.3 / ld-decode PAL convention):
+//   PAL field 1 (odd scan, first temporal, isFirstField=true) has 313 stored
+//   lines (lines 1, 3, 5, …, 625). Field 2 (even scan, second temporal) has
+//   312 stored lines (lines 2, 4, …, 624). EBU/CVBS convention places field 1
+//   first in the flat frame buffer. Therefore:
+//     TBC field 1 (313 lines) → CVBS field 1 (top, odd scan);
+//     TBC field 2 (312 lines) → CVBS field 2 (bottom, even scan).
 class PalTBCConverter {
  public:
   // -------------------------------------------------------------------------
@@ -52,24 +53,22 @@ class PalTBCConverter {
 
   // Assemble a CVBS_U10_4FSC PAL frame from two TBC fields.
   //
-  // tbc_field1: kPalField1Lines-1 = 312 lines × 1135 samples from the TBC
-  //   file (the odd/earlier temporal field — ld-decode TBC field 1).
-  //   Only the first (kPalFrameLines - kPalField1Lines) × field_width = 312
-  //   lines are used; the caller must pass exactly 312 × field_width samples.
+  // tbc_field1: kPalField1Lines = 313 lines × 1135 samples from the TBC file
+  //   (the odd/earlier temporal field — ld-decode TBC field 1, isFirstField).
   //
-  // tbc_field2: kPalField1Lines = 313 lines × 1135 samples from the TBC file
-  //   (the even/later temporal field — ld-decode TBC field 2).
+  // tbc_field2: kPalFrameLines - kPalField1Lines = 312 lines × 1135 samples
+  //   from the TBC file (even/later temporal — ld-decode TBC field 2).
   //
   // tbc_blanking / tbc_white: TBC-domain level values.
   //
   // Output layout:
-  //   [CVBS field 1: 313 lines (= TBC field 2)] followed by
-  //   [CVBS field 2: 312 lines (= TBC field 1)]
+  //   [CVBS field 1: 313 lines (= TBC field 1, odd scan)] followed by
+  //   [CVBS field 2: 312 lines (= TBC field 2, even scan)]
   //   with 2 extra bridge samples on line 312 and 2 on line 624 (EBU3280).
   //   Total output size = kPalFrameSamples = 709,379.
   static std::vector<int16_t> assemble_frame(
-      const std::vector<uint16_t>& tbc_field1,  // 312 × 1135 samples
-      const std::vector<uint16_t>& tbc_field2,  // 313 × 1135 samples
+      const std::vector<uint16_t>& tbc_field1,  // 313 × 1135 samples
+      const std::vector<uint16_t>& tbc_field2,  // 312 × 1135 samples
       int32_t tbc_blanking, int32_t tbc_white);
 
   // -------------------------------------------------------------------------

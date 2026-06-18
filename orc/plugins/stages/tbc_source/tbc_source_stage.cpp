@@ -308,10 +308,10 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
 
     std::vector<DropoutRun> result;
 
-    // PAL: even index (TBC field 1, 312 lines) → VFR field 2 (bottom).
-    // NTSC/PAL_M: even index (TBC field 1, 263 lines) → VFR field 1 (top).
-    const int32_t f1_vfr = (sys == VideoSystem::PAL) ? 2 : 1;
-    const int32_t f2_vfr = (sys == VideoSystem::PAL) ? 1 : 2;
+    // PAL/NTSC/PAL_M: even index (TBC field 1, isFirstField) → VFR field 1
+    // (top).
+    const int32_t f1_vfr = 1;
+    const int32_t f2_vfr = 2;
 
     if (tbc_f1_idx < field_meta_.size()) {
       for (const auto& d : field_meta_[tbc_f1_idx].dropouts) {
@@ -482,16 +482,17 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   }
 
   CachedFrame assemble_pal_frame(FrameID id) const {
-    // TBC field ordering (design §5.2.3 / EBU Tech. 3280-E §1.3):
-    //   Even field indices (0, 2, 4…) → TBC field 1 (312 lines, odd/earlier)
-    //   Odd field indices  (1, 3, 5…) → TBC field 2 (313 lines, even/later)
+    // TBC field ordering (EBU Tech. 3280-E §1.3 / ld-decode PAL convention):
+    //   Even field indices (0, 2, 4…) → TBC field 1 (313 lines,
+    //   odd-scan/earlier) Odd field indices  (1, 3, 5…) → TBC field 2 (312
+    //   lines, even-scan/later)
     const int32_t tbc_f1_idx = static_cast<int32_t>(id) * 2;
     const int32_t tbc_f2_idx = tbc_f1_idx + 1;
 
-    constexpr int32_t kF1Lines = kPalFrameLines - kPalField1Lines;  // 312
-    constexpr int32_t kF2Lines = kPalField1Lines;                   // 313
+    constexpr int32_t kF1Lines = kPalField1Lines;                   // 313
+    constexpr int32_t kF2Lines = kPalFrameLines - kPalField1Lines;  // 312
     constexpr int32_t kLineW = kPalSamplesPerLineNominal;           // 1135
-    const int32_t stored_field_size = kF2Lines * kLineW;
+    const int32_t stored_field_size = kF1Lines * kLineW;
 
     std::string err;
 
@@ -767,17 +768,13 @@ std::optional<TBCVideoParams> build_tvp_from_reader(
   tvp.number_of_fields = sp->number_of_sequential_frames * 2;
   tvp.field_width = sp->frame_width_nominal;
   // Field heights: both stored at max height in the TBC file.
-  // PAL: TBC field 1 = 312 lines, TBC field 2 = 313 lines (the longer field).
-  // NTSC/PAL_M: TBC field 1 = 263 lines (the longer field), TBC field 2 = 262.
+  // PAL: TBC field 1 = 313 lines (odd-scan, isFirstField), TBC field 2 = 312.
+  // NTSC/PAL_M: TBC field 1 = 263 lines (isFirstField), TBC field 2 = 262.
+  // In all systems, field 1 (isFirstField=true) is the longer stored field.
   const int32_t padded_fh =
       static_cast<int32_t>(calculate_padded_field_height(sp->system));
-  if (sp->system == VideoSystem::NTSC || sp->system == VideoSystem::PAL_M) {
-    tvp.field1_height = padded_fh;
-    tvp.field2_height = padded_fh - 1;
-  } else {
-    tvp.field1_height = padded_fh - 1;
-    tvp.field2_height = padded_fh;
-  }
+  tvp.field1_height = padded_fh;
+  tvp.field2_height = padded_fh - 1;
   tvp.active_video_start = sp->active_video_start;
   tvp.active_video_end = sp->active_video_end;
   tvp.first_active_frame_line = sp->first_active_frame_line;

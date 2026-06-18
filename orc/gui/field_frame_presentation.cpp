@@ -55,13 +55,14 @@ int getFieldWithinFrame(uint64_t field_id) {
 int getPresentationFieldLine(uint64_t field_id, int field_line_index,
                              bool is_pal) {
   bool is_first_field = (field_id % 2 == 0);
-  int first_field_height = is_pal ? 312 : 262;
+  // ITU-R BT.1700 / EBU Tech. 3280-E: PAL field 1 (odd-scan) has 313 lines.
+  int first_field_height = is_pal ? 313 : 262;
 
   if (is_first_field) {
-    // First field: lines 1..312 (PAL) or 1..262 (NTSC)
+    // First field: lines 1..313 (PAL) or 1..262 (NTSC)
     return field_line_index + 1;
   } else {
-    // Second field: lines 313..625 (PAL) or 263..525 (NTSC)
+    // Second field: lines 314..625 (PAL) or 263..525 (NTSC)
     return first_field_height + field_line_index + 1;
   }
 }

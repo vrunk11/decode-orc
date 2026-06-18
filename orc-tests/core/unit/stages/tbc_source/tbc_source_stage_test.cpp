@@ -99,8 +99,8 @@ static orc::TBCVideoParams make_pal_video_params(int32_t num_fields = 2) {
   tvp.system = orc::VideoSystem::PAL;
   tvp.number_of_fields = num_fields;
   tvp.field_width = orc::kPalSamplesPerLineNominal;                // 1135
-  tvp.field1_height = orc::kPalFrameLines - orc::kPalField1Lines;  // 312
-  tvp.field2_height = orc::kPalField1Lines;                        // 313
+  tvp.field1_height = orc::kPalField1Lines;                        // 313
+  tvp.field2_height = orc::kPalFrameLines - orc::kPalField1Lines;  // 312
   tvp.blanking_16b = 16384;
   tvp.white_16b = 54400;
   return tvp;
@@ -372,10 +372,10 @@ TEST(TBCSourceStageTest, OutputVFR_GetFrameLazilyAssemblesFromMockedDeps) {
   orc::ObservationContext ctx;
 
   constexpr int32_t kF1Samples =
+      orc::kPalField1Lines * (orc::kPalSamplesPerLineNominal);  // 313 × 1135
+  constexpr int32_t kF2Samples =
       (orc::kPalFrameLines - orc::kPalField1Lines) *
       (orc::kPalSamplesPerLineNominal);  // 312 × 1135
-  constexpr int32_t kF2Samples =
-      orc::kPalField1Lines * (orc::kPalSamplesPerLineNominal);  // 313 × 1135
 
   ON_CALL(*deps, validate_input_file(_, _)).WillByDefault(Return(true));
   ON_CALL(*deps, load_video_params(_, _))

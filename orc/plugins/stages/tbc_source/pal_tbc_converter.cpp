@@ -59,14 +59,17 @@ static void append_two_extra_samples(std::vector<int16_t>& buf, int16_t last,
 // ---------------------------------------------------------------------------
 
 std::vector<int16_t> PalTBCConverter::assemble_frame(
-    const std::vector<uint16_t>& tbc_field1,  // 312 lines × 1135 samples
-    const std::vector<uint16_t>& tbc_field2,  // 313 lines × 1135 samples
+    const std::vector<uint16_t>& tbc_field1,  // 313 lines × 1135 samples
+    const std::vector<uint16_t>& tbc_field2,  // 312 lines × 1135 samples
     int32_t tbc_blanking, int32_t tbc_white) {
-  // TBC field ordering (design §5.2.3 / EBU Tech. 3280-E §1.3):
-  //   TBC field 1 = odd (earlier temporal), 312 lines → CVBS field 2
-  //   TBC field 2 = even (later temporal),  313 lines → CVBS field 1
-  constexpr int32_t kField1Lines = kPalFrameLines - kPalField1Lines;  // 312
-  constexpr int32_t kField2Lines = kPalField1Lines;                   // 313
+  // TBC field ordering (EBU Tech. 3280-E §1.3 / ld-decode PAL convention):
+  //   TBC field 1 = odd-scan (earlier temporal), 313 lines → CVBS field 1
+  //   TBC field 2 = even-scan (later temporal),  312 lines → CVBS field 2
+  // EBU Tech. 3280-E §1.1: PAL field 1 (odd scan, first temporal) carries
+  // lines 1, 3, 5, …, 625 → 313 stored lines. Field 2 carries lines 2, 4, …,
+  // 624 → 312 stored lines.
+  constexpr int32_t kField1Lines = kPalField1Lines;                   // 313
+  constexpr int32_t kField2Lines = kPalFrameLines - kPalField1Lines;  // 312
   constexpr int32_t kLineWidth = kPalSamplesPerLineNominal;           // 1135
 
   const size_t expected_field1 =
@@ -97,26 +100,7 @@ std::vector<int16_t> PalTBCConverter::assemble_frame(
   std::vector<int16_t> frame;
   frame.reserve(static_cast<size_t>(kPalFrameSamples));
 
-  // ---- CVBS field 1: sourced from TBC field 2 (313 lines) ----
-  for (int32_t line = 0; line < kField2Lines; ++line) {
-    const size_t src_start =
-        static_cast<size_t>(line) * static_cast<size_t>(kLineWidth);
-
-    frame.insert(
-        frame.end(), cvbs2.begin() + static_cast<ptrdiff_t>(src_start),
-        cvbs2.begin() + static_cast<ptrdiff_t>(
-                            src_start + static_cast<size_t>(kLineWidth)));
-
-    // Frame-flat line 312 (last of field 1) gets 2 extra bridge samples.
-    if (line == kField2Lines - 1) {
-      const int16_t last_this =
-          cvbs2[src_start + static_cast<size_t>(kLineWidth) - 1];
-      const int16_t first_next = cvbs1[0];  // first sample of CVBS field 2
-      append_two_extra_samples(frame, last_this, first_next);
-    }
-  }
-
-  // ---- CVBS field 2: sourced from TBC field 1 (312 lines) ----
+  // ---- CVBS field 1: sourced from TBC field 1 (313 lines, odd-scan) ----
   for (int32_t line = 0; line < kField1Lines; ++line) {
     const size_t src_start =
         static_cast<size_t>(line) * static_cast<size_t>(kLineWidth);
@@ -126,11 +110,30 @@ std::vector<int16_t> PalTBCConverter::assemble_frame(
         cvbs1.begin() + static_cast<ptrdiff_t>(
                             src_start + static_cast<size_t>(kLineWidth)));
 
-    // Frame-flat line 624 (last of field 2) gets 2 extra bridge samples.
-    // No following line in this frame; bridge toward the last sample itself.
+    // Frame-flat line 312 (last of field 1) gets 2 extra bridge samples.
     if (line == kField1Lines - 1) {
       const int16_t last_this =
           cvbs1[src_start + static_cast<size_t>(kLineWidth) - 1];
+      const int16_t first_next = cvbs2[0];  // first sample of CVBS field 2
+      append_two_extra_samples(frame, last_this, first_next);
+    }
+  }
+
+  // ---- CVBS field 2: sourced from TBC field 2 (312 lines, even-scan) ----
+  for (int32_t line = 0; line < kField2Lines; ++line) {
+    const size_t src_start =
+        static_cast<size_t>(line) * static_cast<size_t>(kLineWidth);
+
+    frame.insert(
+        frame.end(), cvbs2.begin() + static_cast<ptrdiff_t>(src_start),
+        cvbs2.begin() + static_cast<ptrdiff_t>(
+                            src_start + static_cast<size_t>(kLineWidth)));
+
+    // Frame-flat line 624 (last of field 2) gets 2 extra bridge samples.
+    // No following line in this frame; bridge toward the last sample itself.
+    if (line == kField2Lines - 1) {
+      const int16_t last_this =
+          cvbs2[src_start + static_cast<size_t>(kLineWidth) - 1];
       append_two_extra_samples(frame, last_this, last_this);
     }
   }
