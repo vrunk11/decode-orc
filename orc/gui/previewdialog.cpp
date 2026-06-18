@@ -22,7 +22,6 @@
 #include <QScreen>
 #include <QSettings>
 #include <QShowEvent>
-#include <QSignalBlocker>
 #include <QStatusBar>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -39,35 +38,6 @@ constexpr const char* kLineScopeViewId = "preview.linescope";
 constexpr const char* kFieldTimingViewId = "preview.field_timing";
 constexpr const char* kComponentVectorscopeViewId = "preview.vectorscope";
 
-orc::ParameterValue resolveTweakParameterValue(
-    const orc::ParameterDescriptor& desc,
-    const std::map<std::string, orc::ParameterValue>& values) {
-  auto val_it = values.find(desc.name);
-  if (val_it != values.end()) {
-    return val_it->second;
-  }
-
-  if (desc.constraints.default_value.has_value()) {
-    return *desc.constraints.default_value;
-  }
-
-  switch (desc.type) {
-    case orc::ParameterType::INT32:
-      return int32_t{0};
-    case orc::ParameterType::UINT32:
-      return uint32_t{0};
-    case orc::ParameterType::DOUBLE:
-      return double{0.0};
-    case orc::ParameterType::BOOL:
-      return false;
-    case orc::ParameterType::STRING:
-    case orc::ParameterType::FILE_PATH:
-      return std::string{};
-  }
-
-  return std::string{};
-}
-
 }  // namespace
 
 PreviewDialog::PreviewDialog(QWidget* parent)
@@ -75,23 +45,11 @@ PreviewDialog::PreviewDialog(QWidget* parent)
       frame_scope_dialog_(nullptr),
       frame_timing_dialog_(nullptr),
       vectorscope_dialog_(nullptr),
-      nav_debounce_timer_(new QTimer(this)),
-      tweak_debounce_timer_(new QTimer(this)) {
+      nav_debounce_timer_(new QTimer(this)) {
   nav_debounce_timer_->setSingleShot(true);
   nav_debounce_timer_->setInterval(100);  // ms: coalesces rapid scrub moves
   connect(nav_debounce_timer_, &QTimer::timeout,
           [this]() { emit renderRequested(currentIndex()); });
-
-  tweak_debounce_timer_->setSingleShot(true);
-  tweak_debounce_timer_->setInterval(
-      150);  // ms: coalesces rapid widget changes
-  connect(tweak_debounce_timer_, &QTimer::timeout, [this]() {
-    if (!tweak_node_id_.is_valid() || tweak_widgets_.empty()) {
-      return;
-    }
-    emit tweakParameterChanged(tweak_node_id_, collectTweakValues(),
-                               last_tweak_class_);
-  });
 
   setupUI();
   setWindowTitle("Field/Frame Preview");
@@ -204,14 +162,6 @@ void PreviewDialog::setupUI() {
   show_component_vectorscope_action_->setEnabled(false);
   connect(show_component_vectorscope_action_, &QAction::triggered, this,
           &PreviewDialog::onComponentVectorscopeActionTriggered);
-
-  show_live_tweaks_action_ = viewMenu->addAction("&Live Tweaks");
-  show_live_tweaks_action_->setShortcut(
-      QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L));
-  show_live_tweaks_action_->setCheckable(true);
-  show_live_tweaks_action_->setChecked(false);
-  connect(show_live_tweaks_action_, &QAction::toggled, this,
-          &PreviewDialog::onShowLiveTweaksToggled);
 
   mainLayout->setMenuBar(menu_bar_);
 
@@ -332,51 +282,6 @@ void PreviewDialog::setupUI() {
   status_bar_ = new QStatusBar(this);
   status_bar_->showMessage("No stage selected");
   mainLayout->addWidget(status_bar_);
-
-  // -----------------------------------------------------------------------
-  // Live Preview Tweaks Dialog (Phase 6)
-  // Hosted in its own window and opened from View -> Live Tweaks.
-  // -----------------------------------------------------------------------
-  live_tweaks_dialog_ = new QDialog(this, Qt::Window);
-  live_tweaks_dialog_->setAttribute(Qt::WA_DeleteOnClose, false);
-  updateLiveTweaksWindowTitle();
-  live_tweaks_dialog_->resize(460, 520);
-
-  auto* tweak_dialog_layout = new QVBoxLayout(live_tweaks_dialog_);
-  tweak_panel_content_ = new QWidget(live_tweaks_dialog_);
-  tweak_form_layout_ = new QFormLayout(tweak_panel_content_);
-  tweak_form_layout_->setContentsMargins(8, 8, 8, 8);
-
-  tweak_panel_scroll_ = new QScrollArea(live_tweaks_dialog_);
-  tweak_panel_scroll_->setWidget(tweak_panel_content_);
-  tweak_panel_scroll_->setWidgetResizable(true);
-  tweak_panel_scroll_->setFrameShape(QFrame::NoFrame);
-  tweak_dialog_layout->addWidget(tweak_panel_scroll_);
-
-  auto* tweak_buttons_layout = new QHBoxLayout();
-  tweak_buttons_layout->addStretch();
-  tweak_reset_button_ =
-      new QPushButton("Reset to stage parameters", live_tweaks_dialog_);
-  tweak_write_button_ =
-      new QPushButton("Write to stage parameters", live_tweaks_dialog_);
-  tweak_reset_button_->setEnabled(false);
-  tweak_write_button_->setEnabled(false);
-  tweak_buttons_layout->addWidget(tweak_reset_button_);
-  tweak_buttons_layout->addWidget(tweak_write_button_);
-  tweak_dialog_layout->addLayout(tweak_buttons_layout);
-
-  connect(tweak_reset_button_, &QPushButton::clicked, this,
-          &PreviewDialog::onResetLiveTweaksClicked);
-  connect(tweak_write_button_, &QPushButton::clicked, this,
-          &PreviewDialog::onWriteLiveTweaksClicked);
-
-  connect(live_tweaks_dialog_, &QDialog::finished, this, [this](int) {
-    if (show_live_tweaks_action_) {
-      QSignalBlocker blocker(show_live_tweaks_action_);
-      show_live_tweaks_action_->setChecked(false);
-    }
-    emit allLiveTweaksDismissed();
-  });
 
   // -----------------------------------------------------------------------
   // Internal sync: keep spinbox display in step with slider (handles range-
@@ -505,11 +410,6 @@ void PreviewDialog::setCurrentNode(const QString& node_label,
 }
 
 void PreviewDialog::setCurrentNodeId(orc::NodeID node_id) {
-  if (tweak_node_id_ != node_id) {
-    clearTweakPanel();
-    tweak_node_id_ = node_id;
-    updateLiveTweaksWindowTitle();
-  }
   current_node_id_ = node_id;
 
   if (vectorscope_dialog_ && vectorscope_dialog_->isVisible() &&
@@ -651,330 +551,7 @@ void PreviewDialog::onSampleMarkerMoved(int sample_x) {
   emit sampleMarkerMovedInLineScope(sample_x);
 }
 
-// =============================================================================
-// Live Preview Tweak Panel (Phase 6)
-// =============================================================================
-
-void PreviewDialog::setTweakableParameters(
-    orc::NodeID node_id,
-    const std::vector<orc::LiveTweakableParameterView>& tweakable,
-    const std::vector<orc::ParameterDescriptor>& descriptors,
-    const std::map<std::string, orc::ParameterValue>& display_values,
-    bool has_unsaved_changes) {
-  clearTweakPanel();
-  tweak_node_id_ = node_id;
-  updateLiveTweaksWindowTitle();
-
-  if (tweakable.empty() || descriptors.empty()) {
-    tweak_form_layout_->addRow(
-        new QLabel("No live tweak parameters available for this stage.",
-                   tweak_panel_content_));
-    tweak_reset_button_->setEnabled(false);
-    tweak_write_button_->setEnabled(false);
-    return;
-  }
-
-  buildTweakPanel(tweakable, descriptors, display_values);
-
-  const bool has_live_tweaks = !tweak_widgets_.empty();
-  tweak_reset_button_->setEnabled(has_live_tweaks);
-  tweak_write_button_->setEnabled(has_live_tweaks);
-  if (!has_live_tweaks) {
-    tweak_form_layout_->addRow(
-        new QLabel("No live tweak parameters available for this stage.",
-                   tweak_panel_content_));
-  }
-
-  tweak_unsaved_changes_ = has_unsaved_changes && has_live_tweaks;
-  updateLiveTweaksWindowTitle();
-}
-
-void PreviewDialog::setLiveTweaksDirty(bool has_unsaved_changes) {
-  tweak_unsaved_changes_ = has_unsaved_changes && !tweak_widgets_.empty();
-  updateLiveTweaksWindowTitle();
-}
-
-void PreviewDialog::clearTweakPanel() {
-  tweak_debounce_timer_->stop();
-  tweak_widgets_.clear();
-  tweak_node_id_ = orc::NodeID{};
-  tweak_unsaved_changes_ = false;
-  updateLiveTweaksWindowTitle();
-  tweak_reset_button_->setEnabled(false);
-  tweak_write_button_->setEnabled(false);
-
-  // Remove all rows from the form
-  while (tweak_form_layout_->rowCount() > 0) {
-    tweak_form_layout_->removeRow(0);
-  }
-}
-
-void PreviewDialog::updateLiveTweaksWindowTitle() {
-  if (!live_tweaks_dialog_) {
-    return;
-  }
-
-  const QString dirty_marker = tweak_unsaved_changes_ ? "*" : "";
-
-  if (tweak_node_id_.is_valid()) {
-    live_tweaks_dialog_->setWindowTitle(
-        QString("Live Preview Tweaks%1 - Stage ID: %2")
-            .arg(dirty_marker)
-            .arg(QString::fromStdString(tweak_node_id_.to_string())));
-    return;
-  }
-
-  live_tweaks_dialog_->setWindowTitle(
-      QString("Live Preview Tweaks%1 - No stage selected").arg(dirty_marker));
-}
-
-void PreviewDialog::buildTweakPanel(
-    const std::vector<orc::LiveTweakableParameterView>& tweakable,
-    const std::vector<orc::ParameterDescriptor>& descriptors,
-    const std::map<std::string, orc::ParameterValue>& current_values) {
-  // Build lookup maps for quick access
-  std::map<std::string, const orc::ParameterDescriptor*> desc_map;
-  for (const auto& d : descriptors) {
-    desc_map[d.name] = &d;
-  }
-  std::map<std::string, orc::LiveTweakClass> tweak_class_map;
-  for (const auto& t : tweakable) {
-    tweak_class_map[t.parameter_name] = t.tweak_class;
-  }
-
-  for (const auto& tweak : tweakable) {
-    auto desc_it = desc_map.find(tweak.parameter_name);
-    if (desc_it == desc_map.end()) {
-      continue;  // Descriptor not provided — skip
-    }
-    const auto& desc = *desc_it->second;
-
-    const orc::ParameterValue value =
-        resolveTweakParameterValue(desc, current_values);
-
-    QWidget* widget = nullptr;
-    TweakWidgetEntry entry;
-    entry.type = desc.type;
-    entry.tweak_class = tweak.tweak_class;
-
-    switch (desc.type) {
-      case orc::ParameterType::INT32: {
-        auto* spin = new QSpinBox(tweak_panel_content_);
-        if (desc.constraints.min_value.has_value()) {
-          spin->setMinimum(std::get<int32_t>(*desc.constraints.min_value));
-        } else {
-          spin->setMinimum(std::numeric_limits<int32_t>::min());
-        }
-        if (desc.constraints.max_value.has_value()) {
-          spin->setMaximum(std::get<int32_t>(*desc.constraints.max_value));
-        } else {
-          spin->setMaximum(std::numeric_limits<int32_t>::max());
-        }
-        spin->setValue(std::get<int32_t>(value));
-        widget = spin;
-        const std::string pname = desc.name;
-        const orc::LiveTweakClass tc = tweak.tweak_class;
-        connect(spin, QOverload<int>::of(&QSpinBox::valueChanged),
-                [this, pname, tc](int) {
-                  last_tweak_class_ = tc;
-                  tweak_debounce_timer_->start();
-                });
-        break;
-      }
-      case orc::ParameterType::UINT32: {
-        auto* spin = new QSpinBox(tweak_panel_content_);
-        spin->setMinimum(0);
-        if (desc.constraints.min_value.has_value()) {
-          spin->setMinimum(static_cast<int>(
-              std::get<uint32_t>(*desc.constraints.min_value)));
-        }
-        if (desc.constraints.max_value.has_value()) {
-          spin->setMaximum(static_cast<int>(
-              std::get<uint32_t>(*desc.constraints.max_value)));
-        } else {
-          spin->setMaximum(std::numeric_limits<int>::max());
-        }
-        spin->setValue(static_cast<int>(std::get<uint32_t>(value)));
-        widget = spin;
-        const std::string pname = desc.name;
-        const orc::LiveTweakClass tc = tweak.tweak_class;
-        connect(spin, QOverload<int>::of(&QSpinBox::valueChanged),
-                [this, pname, tc](int) {
-                  last_tweak_class_ = tc;
-                  tweak_debounce_timer_->start();
-                });
-        break;
-      }
-      case orc::ParameterType::DOUBLE: {
-        auto* spin = new QDoubleSpinBox(tweak_panel_content_);
-        spin->setDecimals(4);
-        if (desc.constraints.min_value.has_value()) {
-          spin->setMinimum(std::get<double>(*desc.constraints.min_value));
-        } else {
-          spin->setMinimum(-std::numeric_limits<double>::max());
-        }
-        if (desc.constraints.max_value.has_value()) {
-          spin->setMaximum(std::get<double>(*desc.constraints.max_value));
-        } else {
-          spin->setMaximum(std::numeric_limits<double>::max());
-        }
-        spin->setValue(std::get<double>(value));
-        widget = spin;
-        const std::string pname = desc.name;
-        const orc::LiveTweakClass tc = tweak.tweak_class;
-        connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-                [this, pname, tc](double) {
-                  last_tweak_class_ = tc;
-                  tweak_debounce_timer_->start();
-                });
-        break;
-      }
-      case orc::ParameterType::BOOL: {
-        auto* check = new QCheckBox(tweak_panel_content_);
-        check->setChecked(std::get<bool>(value));
-        widget = check;
-        const std::string pname = desc.name;
-        const orc::LiveTweakClass tc = tweak.tweak_class;
-        connect(check, &QCheckBox::toggled, [this, pname, tc](bool) {
-          last_tweak_class_ = tc;
-          tweak_debounce_timer_->start();
-        });
-        break;
-      }
-      case orc::ParameterType::STRING: {
-        if (!desc.constraints.allowed_strings.empty()) {
-          auto* combo = new QComboBox(tweak_panel_content_);
-          for (const auto& s : desc.constraints.allowed_strings) {
-            combo->addItem(QString::fromStdString(s));
-          }
-          combo->setCurrentText(
-              QString::fromStdString(std::get<std::string>(value)));
-          widget = combo;
-          const std::string pname = desc.name;
-          const orc::LiveTweakClass tc = tweak.tweak_class;
-          connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                  [this, pname, tc](int) {
-                    last_tweak_class_ = tc;
-                    tweak_debounce_timer_->start();
-                  });
-        }
-        // Free-form strings and FILE_PATH are not shown in the tweak panel
-        break;
-      }
-      case orc::ParameterType::FILE_PATH:
-        // Output file paths are never tweak-panel items; skip.
-        break;
-    }
-
-    if (widget) {
-      entry.widget = widget;
-      tweak_widgets_[desc.name] = std::move(entry);
-      const QString label = QString::fromStdString(
-          desc.display_name.empty() ? desc.name : desc.display_name);
-      tweak_form_layout_->addRow(label + ":", widget);
-    }
-  }
-}
-
-std::map<std::string, orc::ParameterValue> PreviewDialog::collectTweakValues()
-    const {
-  std::map<std::string, orc::ParameterValue> result;
-  for (const auto& [name, entry] : tweak_widgets_) {
-    if (!entry.widget) {
-      continue;
-    }
-    switch (entry.type) {
-      case orc::ParameterType::INT32: {
-        if (auto* spin = qobject_cast<QSpinBox*>(entry.widget)) {
-          result[name] = static_cast<int32_t>(spin->value());
-        }
-        break;
-      }
-      case orc::ParameterType::UINT32: {
-        if (auto* spin = qobject_cast<QSpinBox*>(entry.widget)) {
-          result[name] = static_cast<uint32_t>(spin->value());
-        }
-        break;
-      }
-      case orc::ParameterType::DOUBLE: {
-        if (auto* spin = qobject_cast<QDoubleSpinBox*>(entry.widget)) {
-          result[name] = spin->value();
-        }
-        break;
-      }
-      case orc::ParameterType::BOOL: {
-        if (auto* check = qobject_cast<QCheckBox*>(entry.widget)) {
-          result[name] = check->isChecked();
-        }
-        break;
-      }
-      case orc::ParameterType::STRING: {
-        if (auto* combo = qobject_cast<QComboBox*>(entry.widget)) {
-          result[name] = combo->currentText().toStdString();
-        }
-        break;
-      }
-      case orc::ParameterType::FILE_PATH:
-        break;
-    }
-  }
-  return result;
-}
-
-orc::LiveTweakClass PreviewDialog::dominantTweakClass(
-    const std::string& changed_param_name) const {
-  auto it = tweak_widgets_.find(changed_param_name);
-  if (it != tweak_widgets_.end()) {
-    return it->second.tweak_class;
-  }
-  return orc::LiveTweakClass::DecodePhase;
-}
-
-void PreviewDialog::onShowLiveTweaksToggled(bool checked) {
-  if (!live_tweaks_dialog_) {
-    return;
-  }
-
-  if (!checked) {
-    live_tweaks_dialog_->hide();
-    status_bar_->showMessage("Live tweaks hidden", 1500);
-    return;
-  }
-
-  live_tweaks_dialog_->show();
-  live_tweaks_dialog_->raise();
-  live_tweaks_dialog_->activateWindow();
-
-  if (tweak_widgets_.empty() && tweak_form_layout_ &&
-      tweak_form_layout_->rowCount() == 0) {
-    tweak_form_layout_->addRow(
-        new QLabel("No live tweak parameters available for this stage.",
-                   tweak_panel_content_));
-  }
-
-  status_bar_->showMessage("Live tweaks shown", 1500);
-}
-
-void PreviewDialog::onResetLiveTweaksClicked() {
-  if (!tweak_node_id_.is_valid()) {
-    status_bar_->showMessage("No selected stage for reset", 2000);
-    return;
-  }
-  emit resetLiveTweaksRequested(tweak_node_id_);
-}
-
-void PreviewDialog::onWriteLiveTweaksClicked() {
-  if (!tweak_node_id_.is_valid()) {
-    status_bar_->showMessage("No selected stage for write", 2000);
-    return;
-  }
-  emit writeLiveTweaksRequested(tweak_node_id_, collectTweakValues());
-}
-
 void PreviewDialog::closeEvent(QCloseEvent* event) {
-  if (live_tweaks_dialog_) {
-    live_tweaks_dialog_->hide();
-  }
   closeChildDialogs();
   QDialog::closeEvent(event);
 }

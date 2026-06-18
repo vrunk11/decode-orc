@@ -71,19 +71,6 @@ void MainWindow::onPreviewReady(uint64_t request_id,
   refreshVectorscopeForCurrentCoordinate();
 }
 
-void MainWindow::onStageParametersApplied(uint64_t request_id, bool success) {
-  // On failure the worker never emits previewReady, so
-  // preview_render_in_flight_ would stay true permanently.  Clear it here so
-  // the normal render path recovers.
-  if (!success && request_id == pending_preview_request_id_) {
-    ORC_LOG_WARN(
-        "onStageParametersApplied: apply failed for request {}; clearing "
-        "in-flight flag",
-        request_id);
-    endPreviewRenderInFlight();
-  }
-}
-
 void MainWindow::onVBIDataReady(uint64_t request_id,
                                 orc::presenters::VBIFieldInfoView info) {
   if (request_id != pending_vbi_request_id_ &&

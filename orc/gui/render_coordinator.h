@@ -49,22 +49,20 @@ class GUIProject;
  * @brief Request types for the render coordinator
  */
 enum class RenderRequestType {
-  UpdateDAG,             // Update the DAG being rendered
-  RenderPreview,         // Render a preview image
-  GetVBIData,            // Decode VBI data for a field
-  GetDropoutData,        // Get dropout analysis data
-  GetSNRData,            // Get SNR analysis data
-  GetBurstLevelData,     // Get burst level analysis data
-  TriggerStage,          // Trigger a stage (batch processing)
-  CancelTrigger,         // Cancel ongoing trigger
-  GetAvailableOutputs,   // Query available preview outputs
-  GetLineSamples,        // Get 16-bit samples for a line
-  GetFieldTiming,        // Get all field samples for timing view
-  SavePNG,               // Save preview as PNG file
-  NavigateFrameLine,     // Navigate to next/previous line in frame mode
-  ApplyStageParameters,  // Apply parameter update to live stage without DAG
-                         // rebuild
-  Shutdown               // Shutdown the worker thread
+  UpdateDAG,            // Update the DAG being rendered
+  RenderPreview,        // Render a preview image
+  GetVBIData,           // Decode VBI data for a field
+  GetDropoutData,       // Get dropout analysis data
+  GetSNRData,           // Get SNR analysis data
+  GetBurstLevelData,    // Get burst level analysis data
+  TriggerStage,         // Trigger a stage (batch processing)
+  CancelTrigger,        // Cancel ongoing trigger
+  GetAvailableOutputs,  // Query available preview outputs
+  GetLineSamples,       // Get 16-bit samples for a line
+  GetFieldTiming,       // Get all field samples for timing view
+  SavePNG,              // Save preview as PNG file
+  NavigateFrameLine,    // Navigate to next/previous line in frame mode
+  Shutdown              // Shutdown the worker thread
 };
 
 /**
@@ -243,32 +241,6 @@ struct GetFieldTimingRequest : public RenderRequest {
         node_id(std::move(node)),
         output_type(type),
         output_index(index) {}
-};
-
-/**
- * @brief Request to apply stage parameters without rebuilding the DAG.
- *
- * The worker thread finds the live stage, calls set_parameters(), and
- * then immediately re-renders the current field/frame so the preview
- * updates to reflect the change.
- */
-struct ApplyStageParametersRequest : public RenderRequest {
-  orc::NodeID node_id;
-  std::map<std::string, orc::ParameterValue> params;
-  orc::PreviewOutputType output_type;
-  uint64_t output_index;
-  std::string option_id;
-
-  ApplyStageParametersRequest(uint64_t id, orc::NodeID node,
-                              std::map<std::string, orc::ParameterValue> p,
-                              orc::PreviewOutputType type, uint64_t index,
-                              std::string opt_id = "")
-      : RenderRequest(RenderRequestType::ApplyStageParameters, id),
-        node_id(std::move(node)),
-        params(std::move(p)),
-        output_type(type),
-        output_index(index),
-        option_id(std::move(opt_id)) {}
 };
 
 /**
@@ -493,14 +465,6 @@ class IRenderPresenter {
   virtual orc::PreviewViewDataResult requestPreviewViewData(
       NodeID node_id, const std::string& view_id, orc::VideoDataType data_type,
       const orc::PreviewCoordinate& coordinate) = 0;
-
-  virtual bool applyStageParameters(
-      NodeID node_id, const std::map<std::string, ParameterValue>& params) = 0;
-
-  virtual std::vector<orc::LiveTweakableParameterView>
-  getStageTweakableParameters(NodeID node_id) = 0;
-  virtual std::map<std::string, ParameterValue> getStageCurrentParameters(
-      NodeID node_id) = 0;
 };
 
 }  // namespace orc::presenters
@@ -770,41 +734,6 @@ class RenderCoordinator : public QObject {
                           double aspect_correction = 1.0);
 
   /**
-   * @brief Apply stage parameters without rebuilding the DAG (async).
-   *
-   * Enqueues an ApplyStageParametersRequest. The worker thread applies the
-   * parameters to the live stage instance and immediately re-renders the
-   * current field/frame. The resulting preview is emitted via previewReady.
-   *
-   * @param node_id      Node whose stage to update.
-   * @param output_type  Current output type for the re-render.
-   * @param output_index Current output index for the re-render.
-   * @param option_id    Option ID string for the re-render (may be empty).
-   * @param params       Parameters to apply to the stage.
-   * @return Request ID (matched by previewReady signal).
-   */
-  uint64_t requestApplyStageParameters(
-      const orc::NodeID& node_id, orc::PreviewOutputType output_type,
-      uint64_t output_index, const std::string& option_id,
-      std::map<std::string, orc::ParameterValue> params);
-
-  /**
-   * @brief Query a node's live-tweakable parameter declarations (synchronous).
-   *
-   * Returns the view-model list needed to build a preview tweak panel.
-   * Returns an empty vector when the stage has no tweakable parameters or
-   * has not yet loaded any data.
-   *
-   * @param node_id Node to query.
-   * @return Tweakable parameter view-models (may be empty).
-   */
-  std::vector<orc::LiveTweakableParameterView> getStageTweakableParameters(
-      const orc::NodeID& node_id);
-
-  std::map<std::string, orc::ParameterValue> getStageCurrentParameters(
-      const orc::NodeID& node_id);
-
-  /**
    * @brief Trigger a stage for batch processing (async)
    *
    * Progress updates emitted via triggerProgress signal.
@@ -926,15 +855,6 @@ class RenderCoordinator : public QObject {
                                 orc::FrameLineNavigationResult result);
 
   /**
-   * @brief Emitted when an ApplyStageParameters request completes.
-   *
-   * A successful apply is always followed by a previewReady signal carrying
-   * the freshly re-rendered frame so callers typically only need to handle
-   * previewReady.
-   */
-  void stageParametersApplied(uint64_t request_id, bool success);
-
-  /**
    * @brief Emitted on any error
    */
   void error(uint64_t request_id, QString message);
@@ -1005,11 +925,6 @@ class RenderCoordinator : public QObject {
   void handleNavigateFrameLine(const NavigateFrameLineRequest& req);
 
   void handleSavePNG(const SavePNGRequest& req);
-
-  /**
-   * @brief Handle ApplyStageParameters request
-   */
-  void handleApplyStageParameters(const ApplyStageParametersRequest& req);
 
   /**
    * @brief Handle TriggerStage request

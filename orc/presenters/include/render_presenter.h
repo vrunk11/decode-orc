@@ -601,39 +601,6 @@ class RenderPresenter {
    */
   std::string getCacheStats() const;
 
-  // === Live Preview Tweak Panel ===
-
-  /**
-   * @brief Apply updated parameters to the live stage instance without
-   * rebuilding the DAG.
-   *
-   * For DecodePhase tweaks this invalidates the decoder cache so the next
-   * renderPreview() call produces a fresh frame with the new parameters.
-   * Never triggers a full DAG rebuild.
-   *
-   * @param node_id  Node whose stage should receive the parameter update.
-   * @param params   Parameters to apply (only tweakable keys need be present).
-   * @return true if the stage was found and accepted the parameters.
-   */
-  bool applyStageParameters(
-      NodeID node_id, const std::map<std::string, ParameterValue>& params);
-
-  /**
-   * @brief Return the live-tweakable parameter declarations for a node's stage.
-   *
-   * Returns a view-model list suitable for building the preview tweak panel.
-   * Returns an empty vector if the stage does not implement
-   * IStagePreviewCapability or has not yet loaded any input data.
-   *
-   * @param node_id Node to query.
-   * @return View-model list of tweakable parameters (may be empty).
-   */
-  std::vector<orc::LiveTweakableParameterView> getStageTweakableParameters(
-      NodeID node_id);
-
-  std::map<std::string, ParameterValue> getStageCurrentParameters(
-      NodeID node_id);
-
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

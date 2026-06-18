@@ -92,46 +92,6 @@ struct PreviewGeometry {
 };
 
 // =============================================================================
-// Preview-Tweakable Parameters
-// =============================================================================
-
-/**
- * @brief Cost class for a preview-tweakable parameter.
- *
- * Determines the update cycle triggered when the user moves a live tweak
- * control inside the preview window:
- *
- * - DisplayPhase: re-apply conversion to the already-decoded cached output
- *   only.  No re-decode is needed.  Example: colorimetric matrix/primaries/
- *   transfer (issue #140).
- *
- * - DecodePhase: apply the updated parameter to the stage instance and
- *   re-decode the current preview field/frame only.  Example: chroma_gain,
- *   chroma_phase, luma_nr, decoder_type, transform_threshold.
- *
- * Output parameters (file path, container format, encoder preset) are never
- * preview-tweakable and must not appear in the tweakable_parameters list.
- */
-enum class PreviewTweakClass {
-  DisplayPhase,  ///< Conversion-only update; no re-decode
-  DecodePhase,   ///< Single-field re-decode; no full encode-to-file
-};
-
-/**
- * @brief Declares a single stage parameter as live-tweakable in the preview
- * window.
- *
- * The parameter_name must match the key used in get_parameters() and
- * get_parameter_descriptors() for the same stage so that the live panel can
- * drive the existing ParameterDescriptor metadata without new UI descriptors.
- */
-struct PreviewTweakableParameter {
-  std::string parameter_name;  ///< Key identifying the parameter
-  PreviewTweakClass tweak_class{
-      PreviewTweakClass::DecodePhase};  ///< Update cost class
-};
-
-// =============================================================================
 // Stage Preview Capability
 // =============================================================================
 
@@ -147,8 +107,6 @@ struct PreviewTweakableParameter {
  * the upstream node's VFR and expose input-side views without per-stage
  * caching.
  *
- * tweakable_parameters may be empty when no live tweaking is supported.
- *
  * is_valid() is false on a default-constructed or pre-load capability; callers
  * must check before using the contained values.
  */
@@ -158,14 +116,12 @@ struct StagePreviewCapability {
                              ///< supply
   PreviewNavigationExtent navigation_extent;  ///< Navigable range description
   PreviewGeometry geometry;  ///< Active picture dimensions and DAR
-  std::vector<PreviewTweakableParameter>
-      tweakable_parameters;  ///< Optional; empty when no live tweaking
 
   /**
    * @brief Returns true when the capability is fully populated and usable.
    *
    * Requires: at least one supported data type, a valid navigation extent,
-   * and a valid geometry.  tweakable_parameters may be empty.
+   * and a valid geometry.
    */
   bool is_valid() const {
     return !supported_data_types.empty() && navigation_extent.is_valid() &&

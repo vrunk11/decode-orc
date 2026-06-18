@@ -96,16 +96,6 @@ class MockRenderPresenter : public IRenderPresenter {
                orc::VideoDataType data_type,
                const orc::PreviewCoordinate& coordinate),
               (override));
-
-  MOCK_METHOD(bool, applyStageParameters,
-              (NodeID node_id,
-               (const std::map<std::string, orc::ParameterValue>& params)),
-              (override));
-
-  MOCK_METHOD((std::vector<orc::LiveTweakableParameterView>),
-              getStageTweakableParameters, (NodeID node_id), (override));
-  MOCK_METHOD((std::map<std::string, orc::ParameterValue>),
-              getStageCurrentParameters, (NodeID node_id), (override));
 };
 
 }  // namespace orc::presenters::test

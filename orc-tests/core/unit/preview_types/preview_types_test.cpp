@@ -403,29 +403,6 @@ TEST(PreviewGeometryTest, WithZeroDarCorrectionFactor_IsNotValid) {
 }
 
 // =============================================================================
-// PreviewTweakableParameter — tweak class values
-// =============================================================================
-
-TEST(PreviewTweakableParameterTest, DisplayPhaseClass_IsPreserved) {
-  orc::PreviewTweakableParameter param{"chroma_matrix",
-                                       orc::PreviewTweakClass::DisplayPhase};
-  EXPECT_EQ(param.parameter_name, "chroma_matrix");
-  EXPECT_EQ(param.tweak_class, orc::PreviewTweakClass::DisplayPhase);
-}
-
-TEST(PreviewTweakableParameterTest, DecodePhaseClass_IsPreserved) {
-  orc::PreviewTweakableParameter param{"chroma_gain",
-                                       orc::PreviewTweakClass::DecodePhase};
-  EXPECT_EQ(param.parameter_name, "chroma_gain");
-  EXPECT_EQ(param.tweak_class, orc::PreviewTweakClass::DecodePhase);
-}
-
-TEST(PreviewTweakableParameterTest, DisplayPhaseAndDecodePhase_AreDistinct) {
-  EXPECT_NE(orc::PreviewTweakClass::DisplayPhase,
-            orc::PreviewTweakClass::DecodePhase);
-}
-
-// =============================================================================
 // StagePreviewCapability — schema and validity
 // =============================================================================
 
@@ -474,30 +451,6 @@ TEST(StagePreviewCapabilityTest, MultipleDataTypes_IsValid) {
   cap.geometry = {928, 576, 4.0 / 3.0, 0.7};
   EXPECT_TRUE(cap.is_valid());
   EXPECT_EQ(cap.supported_data_types.size(), 2u);
-}
-
-TEST(StagePreviewCapabilityTest,
-     EmptyTweakableParameters_DoesNotInvalidateCapability) {
-  orc::StagePreviewCapability cap{};
-  cap.supported_data_types = {orc::VideoDataType::CompositeNTSC};
-  cap.navigation_extent = {200, 1, "field"};
-  cap.geometry = {760, 263, 4.0 / 3.0, 0.7};
-  EXPECT_TRUE(cap.is_valid());
-  EXPECT_TRUE(cap.tweakable_parameters.empty());
-}
-
-TEST(StagePreviewCapabilityTest, TweakableParameters_AreIncluded) {
-  orc::StagePreviewCapability cap{};
-  cap.supported_data_types = {orc::VideoDataType::ColourNTSC,
-                              orc::VideoDataType::YC_NTSC};
-  cap.navigation_extent = {100, 1, "frame"};
-  cap.geometry = {760, 486, 4.0 / 3.0, 0.7};
-  cap.tweakable_parameters = {
-      {"chroma_matrix", orc::PreviewTweakClass::DisplayPhase},
-      {"chroma_gain", orc::PreviewTweakClass::DecodePhase},
-  };
-  EXPECT_TRUE(cap.is_valid());
-  EXPECT_EQ(cap.tweakable_parameters.size(), 2u);
 }
 
 // =============================================================================
@@ -619,36 +572,6 @@ TEST(PreviewViewDataResultTest,
   result.payload_kind = orc::PreviewViewPayloadKind::Vectorscope;
   // vectorscope left as std::nullopt
   EXPECT_FALSE(result.is_valid());
-}
-
-// =============================================================================
-// LiveTweakableParameterView — view-types mirror of PreviewTweakableParameter
-// =============================================================================
-
-TEST(LiveTweakableParameterViewTest, DisplayPhaseClass_IsPreserved) {
-  orc::LiveTweakableParameterView param;
-  param.parameter_name = "chroma_matrix";
-  param.tweak_class = orc::LiveTweakClass::DisplayPhase;
-  EXPECT_EQ(param.parameter_name, "chroma_matrix");
-  EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DisplayPhase);
-}
-
-TEST(LiveTweakableParameterViewTest, DecodePhaseClass_IsPreserved) {
-  orc::LiveTweakableParameterView param;
-  param.parameter_name = "chroma_gain";
-  param.tweak_class = orc::LiveTweakClass::DecodePhase;
-  EXPECT_EQ(param.parameter_name, "chroma_gain");
-  EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DecodePhase);
-}
-
-TEST(LiveTweakableParameterViewTest, DisplayPhaseAndDecodePhase_AreDistinct) {
-  EXPECT_NE(orc::LiveTweakClass::DisplayPhase,
-            orc::LiveTweakClass::DecodePhase);
-}
-
-TEST(LiveTweakableParameterViewTest, DefaultTweakClass_IsDecodePhase) {
-  orc::LiveTweakableParameterView param;
-  EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DecodePhase);
 }
 
 }  // namespace orc_unit_test
