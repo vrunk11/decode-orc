@@ -285,6 +285,11 @@ std::vector<ArtifactPtr> SourceAlignStage::execute(
   std::vector<FrameID> offsets;
 
   if (alignment_map_.empty()) {
+    if (sources.size() == 1) {
+      alignment_offsets_ = {FrameID{0}};
+      cached_outputs_ = {sources[0]};
+      return {inputs[0]};
+    }
     throw DAGExecutionError(
         "Alignment map is not configured. Use the Source Alignment tool to "
         "generate the map, or set the alignmentMap parameter manually.");
