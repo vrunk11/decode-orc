@@ -224,12 +224,12 @@ QColor WaveformMonitorWidget::displayTrace() const {
 }
 
 QColor WaveformMonitorWidget::displayAxis() const {
-  if (phosphor_mode_) return QColor(0, 180, 0);
+  if (phosphor_mode_) return Qt::white;
   return palette().color(QPalette::WindowText);
 }
 
 QColor WaveformMonitorWidget::displayGrid() const {
-  if (phosphor_mode_) return QColor(0, 55, 0);
+  if (phosphor_mode_) return QColor(55, 55, 55);
   return theme_tokens::gridLine(palette());
 }
 
@@ -519,8 +519,7 @@ void WaveformMonitorWidget::drawLevelMarkers(QPainter& painter,
 
     QColor lc;
     if (phosphor_mode_) {
-      // Scale phosphor green by the same emphasis value used for neutralLine.
-      lc = QColor(0, static_cast<int>(180.0 * lv.alpha), 0);
+      lc = QColor(255, 255, 255, static_cast<int>(255.0 * lv.alpha));
     } else {
       lc = theme_tokens::neutralLine(palette(), lv.alpha);
     }
