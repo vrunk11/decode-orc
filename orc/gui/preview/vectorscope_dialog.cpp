@@ -408,18 +408,21 @@ void VectorscopeDialog::setupUI() {
   graticule_group_ = new QButtonGroup(this);
 
   graticule_none_radio_ = new QRadioButton("None");
-  graticule_full_radio_ = new QRadioButton("Full");
+  graticule_full_radio_ = new QRadioButton("100%");
   graticule_75_radio_ = new QRadioButton("75%");
+  graticule_both_radio_ = new QRadioButton("Both");
 
   graticule_75_radio_->setChecked(true);
 
   graticule_group_->addButton(graticule_none_radio_, 0);
   graticule_group_->addButton(graticule_full_radio_, 1);
   graticule_group_->addButton(graticule_75_radio_, 2);
+  graticule_group_->addButton(graticule_both_radio_, 3);
 
   graticule_layout->addWidget(graticule_none_radio_);
-  graticule_layout->addWidget(graticule_full_radio_);
   graticule_layout->addWidget(graticule_75_radio_);
+  graticule_layout->addWidget(graticule_full_radio_);
+  graticule_layout->addWidget(graticule_both_radio_);
 
   controls_layout->addWidget(graticule_group);
   controls_layout->addStretch();
@@ -667,8 +670,7 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
     font.setBold(true);
     painter.setFont(font);
     painter.drawText(QRect(0, size / 2 - 40, size, 80),
-                     Qt::AlignCenter | Qt::TextWordWrap,
-                     "NO CHROMA DATA\n(Using mono decoder?)");
+                     Qt::AlignCenter | Qt::TextWordWrap, "No chroma present");
   }
 
   scope_label_->setPixmap(QPixmap::fromImage(image));
@@ -727,11 +729,10 @@ void VectorscopeDialogPrivate::drawGraticule(QPainter& painter,
     drawNtcsIqLabels(painter, geometry);
   }
 
-  // 75% vs 100% targets scaling
+  // 75% vs 100% targets scaling (mode: 0=none, 1=100%, 2=75%, 3=both)
   const int graticule_mode = dialog->getGraticuleMode();
   const bool draw_graticule = (graticule_mode != 0);
   if (draw_graticule) {
-    const double percent = (graticule_mode == 2) ? 0.75 : 1.0;
     const int32_t white = cvbs_white;
     const int32_t black = cvbs_blanking;
 
@@ -739,45 +740,60 @@ void VectorscopeDialogPrivate::drawGraticule(QPainter& painter,
       // Color labels for the six colour bars
       // rgb values: 1=B, 2=G, 3=Cy, 4=R, 5=Mg, 6=Yl
       const char* color_labels[] = {"", "B", "G", "Cy", "R", "Mg", "Yl"};
+      const bool draw_both = (graticule_mode == 3);
 
       // Draw targets for six colour bars (R'G'B' 001..110).
       // Targets are in the ±32767 display scale (kVectorscopeSignedFullScale),
       // matching the scale used for all UVSample data.
-      for (int rgb = 1; rgb < 7; rgb++) {
-        const orc::UVSample target = orc::gui::vectorscopeDisplayTargetUv(
-            rgb, percent, orc::gui::kVectorscopeSignedFullScale, system);
-        const double barTheta = std::atan2(-target.v, target.u);
-        const double barMagnitude = std::hypot(target.u, target.v);
-        const QPointF target_point = geometry.mapUV(target.u, target.v);
-        const QColor target_color = vectorscopeTargetColor(rgb);
+      auto draw_targets_at_percent = [&](double percent, bool with_labels) {
+        for (int rgb = 1; rgb < 7; rgb++) {
+          const orc::UVSample target = orc::gui::vectorscopeDisplayTargetUv(
+              rgb, percent, orc::gui::kVectorscopeSignedFullScale, system);
+          const double barTheta = std::atan2(-target.v, target.u);
+          const double barMagnitude = std::hypot(target.u, target.v);
+          const QPointF target_point = geometry.mapUV(target.u, target.v);
+          const QColor target_color = vectorscopeTargetColor(rgb);
 
-        drawColorZone(painter, geometry, barTheta, barMagnitude, target_color);
-        drawTargetBox(painter, geometry, target_point, target_color);
+          drawColorZone(painter, geometry, barTheta, barMagnitude,
+                        target_color);
+          drawTargetBox(painter, geometry, target_point, target_color);
 
-        // Draw color label positioned just outside the target
-        const double label_distance =
-            barMagnitude + geometry.pixelsToMagnitude(kColorLabelOffsetPixels);
-        const QPointF label_position =
-            geometry.pointFromVectorscopeAngle(barTheta, label_distance);
+          if (with_labels) {
+            const double label_distance =
+                barMagnitude +
+                geometry.pixelsToMagnitude(kColorLabelOffsetPixels);
+            const QPointF label_position =
+                geometry.pointFromVectorscopeAngle(barTheta, label_distance);
 
-        QFont font = painter.font();
-        font.setPointSize(14);
-        font.setBold(true);
-        painter.setFont(font);
-        QColor label_color = target_color;
-        label_color.setAlpha(255);
-        painter.setPen(
-            QPen(label_color, orc::gui::kVectorscopeAxisStrokeWidth));
+            QFont font = painter.font();
+            font.setPointSize(14);
+            font.setBold(true);
+            painter.setFont(font);
+            QColor label_color = target_color;
+            label_color.setAlpha(255);
+            painter.setPen(
+                QPen(label_color, orc::gui::kVectorscopeAxisStrokeWidth));
 
-        // Center the text at the label position
-        QFontMetrics fm(font);
-        QString label_text(color_labels[rgb]);
-        int text_width = fm.horizontalAdvance(label_text);
-        int text_height = fm.height();
+            QFontMetrics fm(font);
+            QString label_text(color_labels[rgb]);
+            int text_width = fm.horizontalAdvance(label_text);
+            int text_height = fm.height();
 
-        painter.drawText(static_cast<int>(label_position.x()) - text_width / 2,
-                         static_cast<int>(label_position.y()) + text_height / 4,
-                         label_text);
+            painter.drawText(
+                static_cast<int>(label_position.x()) - text_width / 2,
+                static_cast<int>(label_position.y()) + text_height / 4,
+                label_text);
+          }
+        }
+      };
+
+      // In "both" mode draw 75% targets first (no labels), then 100% (with
+      // labels so they sit at the outermost ring and don't overlap).
+      if (graticule_mode == 2 || draw_both) {
+        draw_targets_at_percent(0.75, !draw_both);
+      }
+      if (graticule_mode == 1 || draw_both) {
+        draw_targets_at_percent(1.0, true);
       }
     }
   }

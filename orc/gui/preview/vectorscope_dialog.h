@@ -132,6 +132,7 @@ class VectorscopeDialog : public QDialog {
   QRadioButton* graticule_none_radio_;
   QRadioButton* graticule_full_radio_;
   QRadioButton* graticule_75_radio_;
+  QRadioButton* graticule_both_radio_;
   QButtonGroup* graticule_group_;
 };
 
