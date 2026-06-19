@@ -350,7 +350,9 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
         auto* tool_action = analysis_menu->addAction(tool_name);
         tool_action->setToolTip(tool_desc);
 
-        // Pass tool_info to signal instead of raw pointer
+        // Pass tool_info to signal instead of raw pointer.
+        // NOLINTBEGIN(bugprone-exception-escape): Qt slots — exceptions must
+        // not propagate through Qt's event loop.
         connect(tool_action, &QAction::triggered,
                 [this, tool_info, orc_node_id,
                  stage_name = node_info.stage_name]() {
@@ -363,6 +365,7 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
                                                     stage_name);
                       });
                 });
+        // NOLINTEND(bugprone-exception-escape)
       }
     }
 

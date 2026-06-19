@@ -636,7 +636,7 @@ void PlotSeries::updatePath(const QRectF& plotRect, const QRectF& dataRect) {
 // PlotGrid implementation
 PlotGrid::PlotGrid(PlotWidget* parent)
     : QGraphicsItem(),
-      m_pen(QPen(Qt::gray, 0.5)),
+      m_pen(QPen(Qt::gray, 1.0)),
       m_usePalettePen(true),
       m_enabled(true),
       m_isDarkTheme(false),
@@ -681,7 +681,7 @@ void PlotGrid::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   if (!m_enabled) return;
 
   if (m_usePalettePen) {
-    painter->setPen(QPen(theme_tokens::gridLine(QApplication::palette()), 0.5));
+    painter->setPen(QPen(theme_tokens::gridLine(QApplication::palette()), 1.0));
   } else {
     painter->setPen(m_pen);
   }
@@ -768,6 +768,7 @@ void PlotGrid::updateGrid(
     double yTickStep, double yTickOrigin, bool secondaryYEnabled,
     double secondaryYMin, double secondaryYMax, bool secondaryYUseCustomTicks,
     double secondaryYTickStep, double secondaryYTickOrigin) {
+  prepareGeometryChange();
   m_plotRect = plotRect;
   m_dataRect = dataRect;
   m_isDarkTheme = isDarkTheme;
@@ -881,6 +882,7 @@ void PlotMarker::paint(QPainter* painter,
 }
 
 void PlotMarker::updateMarker(const QRectF& plotRect, const QRectF& dataRect) {
+  prepareGeometryChange();
   m_plotRect = plotRect;
   m_dataRect = dataRect;
   update();
@@ -998,6 +1000,7 @@ void PlotAxisLabels::updateLabels(
     bool yUseCustomTicks, double yTickStep, double yTickOrigin,
     bool secondaryYUseCustomTicks, double secondaryYTickStep,
     double secondaryYTickOrigin) {
+  prepareGeometryChange();
   m_plotRect = plotRect;
   m_dataRect = dataRect;
   m_xTitle = xTitle;

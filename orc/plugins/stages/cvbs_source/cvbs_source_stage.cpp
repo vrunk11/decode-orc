@@ -626,9 +626,9 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     constexpr size_t kWavHeaderBytes = 44;
     std::ifstream ifs(wav_path, std::ios::binary);
     if (!ifs.is_open()) return {};
-    ifs.seekg(
-        static_cast<std::streamoff>(kWavHeaderBytes + stereo_pair_offset * 4),
-        std::ios::beg);
+    ifs.seekg(static_cast<std::streamoff>(kWavHeaderBytes) +
+                  static_cast<std::streamoff>(stereo_pair_offset) * 4,
+              std::ios::beg);
     if (!ifs.good()) return {};
     const size_t total_samples = stereo_pair_count * 2;
     std::vector<int16_t> buf(total_samples);

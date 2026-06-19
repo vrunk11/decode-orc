@@ -41,15 +41,13 @@ inline QColor mutedText(const QPalette& palette) {
   return palette.color(QPalette::Disabled, QPalette::WindowText);
 }
 
-inline QColor gridLine(const QPalette& palette) {
-  QColor color = palette.color(QPalette::Mid);
-  color.setAlpha(160);
-  return color;
-}
-
 inline QColor neutralLine(const QPalette& palette, qreal emphasis) {
   return blend(palette.color(QPalette::Window),
                palette.color(QPalette::WindowText), emphasis);
+}
+
+inline QColor gridLine(const QPalette& palette) {
+  return neutralLine(palette, 0.25);
 }
 
 inline QColor plotColor(PlotColorToken token, bool darkTheme) {

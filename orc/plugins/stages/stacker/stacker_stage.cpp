@@ -782,7 +782,8 @@ namespace {
 bool is_sample_dropout(const std::vector<DropoutRun>& runs, size_t line,
                        size_t x, size_t width, orc::VideoSystem system) {
   uint64_t offset = static_cast<uint64_t>(
-      orc::frame_line_sample_offset(system, width, line) + x);
+                        orc::frame_line_sample_offset(system, width, line)) +
+                    static_cast<uint64_t>(x);
   for (const auto& r : runs) {
     if (offset >= r.sample_start && offset < r.sample_start + r.sample_count) {
       return true;
