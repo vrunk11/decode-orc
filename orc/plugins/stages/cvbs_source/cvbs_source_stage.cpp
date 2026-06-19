@@ -10,6 +10,7 @@
 #include "cvbs_source_stage.h"
 
 #include <cvbs_signal_constants.h>
+#include <lru_cache.h>
 #include <sqlite3.h>
 
 #include <cstddef>
@@ -235,10 +236,7 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
       FrameID id) const override {
     if (!has_frame(id)) return std::nullopt;
     ensure_frame_cached(id);
-
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    const auto it = frame_cache_.find(id);
-    if (it == frame_cache_.end()) return std::nullopt;
+    if (!frame_cache_.contains(id)) return std::nullopt;
 
     FrameDescriptor desc;
     desc.frame_id = id;
@@ -260,9 +258,8 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   const sample_type* get_frame(FrameID id) const override {
     if (!has_frame(id)) return nullptr;
     ensure_frame_cached(id);
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    const auto it = frame_cache_.find(id);
-    return it != frame_cache_.end() ? it->second.samples.data() : nullptr;
+    const DecodedFrame* df = frame_cache_.get_ptr(id);
+    return df ? df->samples.data() : nullptr;
   }
 
   std::vector<sample_type> get_frame_copy(FrameID id) const override {
@@ -360,15 +357,9 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   };
 
   void ensure_frame_cached(FrameID id) const {
-    {
-      std::lock_guard<std::mutex> lock(cache_mutex_);
-      if (frame_cache_.count(id)) return;
-    }
-
+    if (frame_cache_.contains(id)) return;
     DecodedFrame decoded = decode_frame(id);
-
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    frame_cache_.try_emplace(id, std::move(decoded));
+    frame_cache_.put(id, std::move(decoded));
   }
 
   DecodedFrame decode_frame(FrameID id) const {
@@ -411,8 +402,8 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   std::optional<int32_t> ntsc_j_black_level_;
   int32_t blanking_level_;
 
-  mutable std::mutex cache_mutex_;
-  mutable std::unordered_map<FrameID, DecodedFrame> frame_cache_;
+  static constexpr size_t kFrameCacheSize = 150;
+  mutable LRUCache<FrameID, DecodedFrame> frame_cache_{kFrameCacheSize};
 
   std::vector<DropoutRun> dropout_runs_;
 

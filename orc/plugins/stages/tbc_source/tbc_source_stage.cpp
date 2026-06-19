@@ -10,6 +10,7 @@
 #include "tbc_source_stage.h"
 
 #include <cvbs_signal_constants.h>
+#include <lru_cache.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -213,9 +214,8 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
       FrameID id) const override {
     if (!has_frame(id)) return std::nullopt;
     ensure_frame_cached(id);
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    const auto it = frame_cache_.find(id);
-    if (it == frame_cache_.end()) return std::nullopt;
+    const CachedFrame* cf = frame_cache_.get_ptr(id);
+    if (!cf) return std::nullopt;
 
     FrameDescriptor desc;
     desc.frame_id = id;
@@ -224,7 +224,7 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     desc.samples_total = static_cast<size_t>(frame_samples_total());
     desc.samples_per_line_nominal =
         static_cast<size_t>(source_params_.frame_width_nominal);
-    desc.colour_frame_index = it->second.colour_frame_index;
+    desc.colour_frame_index = cf->colour_frame_index;
     if (video_params_.ntsc_j_black_level_16b.has_value()) {
       desc.black_level_override = source_params_.black_level;
     }
@@ -237,9 +237,8 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   const sample_type* get_frame(FrameID id) const override {
     if (!has_frame(id)) return nullptr;
     ensure_frame_cached(id);
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    const auto it = frame_cache_.find(id);
-    return it != frame_cache_.end() ? it->second.samples.data() : nullptr;
+    const CachedFrame* cf = frame_cache_.get_ptr(id);
+    return cf ? cf->samples.data() : nullptr;
   }
 
   std::vector<sample_type> get_frame_copy(FrameID id) const override {
@@ -257,21 +256,15 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   const sample_type* get_frame_luma(FrameID id) const override {
     if (!is_yc_ || !has_frame(id)) return nullptr;
     ensure_frame_cached(id);
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    const auto it = frame_cache_.find(id);
-    return (it != frame_cache_.end() && !it->second.luma.empty())
-               ? it->second.luma.data()
-               : nullptr;
+    const CachedFrame* cf = frame_cache_.get_ptr(id);
+    return (cf && !cf->luma.empty()) ? cf->luma.data() : nullptr;
   }
 
   const sample_type* get_frame_chroma(FrameID id) const override {
     if (!is_yc_ || !has_frame(id)) return nullptr;
     ensure_frame_cached(id);
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    const auto it = frame_cache_.find(id);
-    return (it != frame_cache_.end() && !it->second.chroma.empty())
-               ? it->second.chroma.data()
-               : nullptr;
+    const CachedFrame* cf = frame_cache_.get_ptr(id);
+    return (cf && !cf->chroma.empty()) ? cf->chroma.data() : nullptr;
   }
 
   // --------------------------------------------------------------------------
@@ -280,10 +273,9 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   std::optional<int> get_frame_phase_hint(FrameID id) const override {
     if (!has_frame(id)) return std::nullopt;
     ensure_frame_cached(id);
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    const auto it = frame_cache_.find(id);
-    if (it == frame_cache_.end()) return std::nullopt;
-    const int idx = it->second.colour_frame_index;
+    const CachedFrame* cf = frame_cache_.get_ptr(id);
+    if (!cf) return std::nullopt;
+    const int idx = cf->colour_frame_index;
     return (idx == -1) ? std::optional<int>{std::nullopt}
                        : std::optional<int>{idx};
   }
@@ -458,13 +450,9 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   }
 
   void ensure_frame_cached(FrameID id) const {
-    {
-      std::lock_guard<std::mutex> lock(cache_mutex_);
-      if (frame_cache_.count(id)) return;
-    }
+    if (frame_cache_.contains(id)) return;
     CachedFrame frame = assemble_frame(id);
-    std::lock_guard<std::mutex> lock(cache_mutex_);
-    frame_cache_.try_emplace(id, std::move(frame));
+    frame_cache_.put(id, std::move(frame));
   }
 
   CachedFrame assemble_frame(FrameID id) const {
@@ -716,8 +704,8 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   // NTSC/PAL_M: per-frame resampled audio blocks (1470 stereo pairs each).
   std::vector<std::vector<int16_t>> resampled_audio_frames_;
 
-  mutable std::mutex cache_mutex_;
-  mutable std::unordered_map<FrameID, CachedFrame> frame_cache_;
+  static constexpr size_t kFrameCacheSize = 150;
+  mutable LRUCache<FrameID, CachedFrame> frame_cache_{kFrameCacheSize};
 };
 
 // ---------------------------------------------------------------------------
