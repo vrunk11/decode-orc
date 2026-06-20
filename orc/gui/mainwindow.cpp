@@ -4848,18 +4848,39 @@ void MainWindow::onLineSamplesReady(
     last_line_scope_samples_count_ = static_cast<int>(y_samples.size());
   }
 
-  // Use orc-core to map the current field/line to image coordinates for display
-  // This ensures we always have the correct visual position for the current
-  // frame
   uint64_t current_index = preview_dialog_->previewSlider()->value();
+
+  // The response's field_index may be from a past frame when the decoder is
+  // slow. Resolve to the current frame's matching-parity field so that
+  // mapFieldToImage always receives a field belonging to current_index.
+  uint64_t effective_field_for_mapping = field_index;
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
+      current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
+    auto frame_fields = render_coordinator_->getFrameFields(
+        current_view_node_id_, current_index);
+    if (frame_fields.is_valid) {
+      bool is_odd = (field_index % 2) == 1;
+      bool first_is_odd = (frame_fields.first_field % 2) == 1;
+      effective_field_for_mapping = (is_odd == first_is_odd)
+                                        ? frame_fields.first_field
+                                        : frame_fields.second_field;
+    }
+  } else if (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+             current_output_type_ == orc::PreviewOutputType::Frame_Field2) {
+    effective_field_for_mapping = current_index;
+  } else if (current_output_type_ == orc::PreviewOutputType::Split) {
+    bool is_odd = (field_index % 2) == 1;
+    effective_field_for_mapping =
+        is_odd ? (current_index * 2 + 1) : (current_index * 2);
+  }
+
   auto mapping = render_coordinator_->mapFieldToImage(
-      current_view_node_id_, current_output_type_, current_index, field_index,
-      line_number_0based, preview_image_height);
+      current_view_node_id_, current_output_type_, current_index,
+      effective_field_for_mapping, line_number_0based, preview_image_height);
 
   int image_y = 0;
   if (mapping.is_valid) {
     image_y = mapping.image_y;
-    // Update cross-hairs using the correctly mapped position for this frame
     preview_dialog_->previewWidget()->updateCrosshairsPosition(
         last_line_scope_image_x_, image_y);
     last_line_scope_image_y_ = image_y;
@@ -4867,33 +4888,12 @@ void MainWindow::onLineSamplesReady(
     ORC_LOG_WARN(
         "Failed to map field coordinates to image - not updating cross-hairs "
         "to avoid jumping");
-    // Don't update cross-hairs if mapping fails - keep them at the last valid
-    // position This prevents the cross-hairs from jumping to an incorrect
-    // position during navigation
-    image_y = line_number_0based;  // Fallback for dialog display, but not for
-                                   // cross-hairs
+    image_y = line_number_0based;
   }
 
-  // Use the stored original image_x to avoid rounding errors from
-  // reverse-mapping
   int original_sample_x = last_line_scope_image_x_;
-
-  // Convert preview-space coordinate to sample index for the marker position
-  // The core returns sample_x which is clamped to the actual samples array
-  // We should use the core's clamped value as the sample index
   int sample_index = sample_x;
-
-  // Calculate image_y from field/line using orc-core
-  int image_height =
-      preview_dialog_->previewWidget()->originalImageSize().height();
-  auto image_coords = render_coordinator_->mapFieldToImage(
-      current_view_node_id_, current_output_type_,
-      preview_dialog_->previewSlider()->value(), field_index,
-      line_number_0based, image_height);
-  int calculated_image_y = image_coords.is_valid ? image_coords.image_y : 0;
-  if (image_coords.is_valid) {
-    last_line_scope_image_y_ = image_coords.image_y;
-  }
+  int calculated_image_y = image_y;
 
   // Store field/line for later navigation (already stored above)
   // last_line_scope_field_index_ = field_index;
