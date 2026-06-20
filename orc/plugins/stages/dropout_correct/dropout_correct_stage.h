@@ -27,8 +27,6 @@ namespace orc {
 
 struct DropoutCorrectionConfig {
   uint32_t overcorrect_extension = 0;
-  bool intrafield_only = false;
-  uint32_t max_replacement_distance = 10;
   bool match_chroma_phase = true;
   bool highlight_corrections = false;
 };
@@ -60,10 +58,13 @@ class CorrectedVideoFrameRepresentation
     return "corrected_video_frame_representation";
   }
 
+  const int16_t* get_frame(FrameID id) const override;
   const int16_t* get_line(FrameID id, size_t line) const override;
   std::vector<int16_t> get_frame_copy(FrameID id) const override;
 
+  const int16_t* get_frame_luma(FrameID id) const override;
   const int16_t* get_line_luma(FrameID id, size_t line) const override;
+  const int16_t* get_frame_chroma(FrameID id) const override;
   const int16_t* get_line_chroma(FrameID id, size_t line) const override;
 
   // After correction there are no dropouts in the output.
@@ -171,12 +172,8 @@ class DropoutCorrectStage : public DAGStage,
       const VideoFrameRepresentation& source, FrameID frame_id, uint32_t line,
       const LineDropout& dropout, bool intrafield,
       bool match_chroma_phase_override, size_t field1_lines,
+      const std::vector<LineDropout>& frame_dropouts,
       Channel channel = Channel::COMPOSITE) const;
-
-  void apply_correction(std::vector<int16_t>& line_data,
-                        const LineDropout& dropout,
-                        const int16_t* replacement_data,
-                        int16_t highlight_value, bool highlight) const;
 
   double calculate_line_quality(const int16_t* line_data, size_t width,
                                 const LineDropout& dropout) const;
