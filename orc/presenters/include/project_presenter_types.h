@@ -101,10 +101,8 @@ struct NodeInfo {
   double y_position;           ///< Y position in graph
   bool can_remove;             ///< Whether node can be removed
   bool can_trigger;            ///< Whether node can be triggered
-  bool can_inspect;            ///< Whether node can be inspected
   std::string remove_reason;   ///< Reason if cannot remove
   std::string trigger_reason;  ///< Reason if cannot trigger
-  std::string inspect_reason;  ///< Reason if cannot inspect
 };
 
 /**

@@ -22,7 +22,6 @@
 
 #include "i_project_presenter.h"
 #include "project_presenter_types.h"
-#include "stage_inspection_view_models.h"
 
 // Forward declare core Project type
 namespace orc {
@@ -454,14 +453,6 @@ class ProjectPresenter : public IProjectPresenter {
   static PluginRegistryMutationResult clearPluginRegistryForSafeMode();
 
   /**
-   * @brief Get stage instance for inspection (from DAG if available, else
-   * fresh)
-   * @param node_id Node to get stage for
-   * @return Stage instance or nullptr if not found
-   */
-  std::shared_ptr<void> getStageForInspection(NodeID node_id) const override;
-
-  /**
    * @brief Get stage instance for parameter editing
    * @param stage_name Stage type name
    * @return Fresh stage instance or nullptr if not found
@@ -510,20 +501,6 @@ class ProjectPresenter : public IProjectPresenter {
    * @brief Get validation errors
    */
   std::vector<std::string> getValidationErrors() const override;
-
-  // === Stage Inspection ===
-
-  /**
-   * @brief Get inspection report for a node
-   * @param node_id Node to inspect
-   * @return Inspection report, or nullopt if not available
-   *
-   * This creates a stage instance (from DAG if available, otherwise fresh),
-   * and generates an inspection report. The report contains human-readable
-   * information about the stage's current state and configuration.
-   */
-  std::optional<StageInspectionView> getNodeInspection(
-      NodeID node_id) const override;
 
   orc::ConfigurationStatus getNodeConfigurationStatus(
       NodeID node_id) const override;

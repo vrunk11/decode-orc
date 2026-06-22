@@ -17,9 +17,7 @@
 #include "framescopedialog.h"
 #include "frametimingdialog.h"
 #include "hintsdialog.h"
-#include "inspection_dialog.h"
 #include "ntscobserverdialog.h"
-#include "presenters/include/stage_inspection_view_models.h"
 #include "qualitymetricsdialog.h"
 #include "snranalysisdialog.h"
 #include "vbidialog.h"
@@ -199,26 +197,6 @@ TEST(AnalysisDialogSmokeTest, FrameTimingDialog_CanShowAndClose) {
   (void)ensureApplication();
 
   FrameTimingDialog dialog;
-
-  dialog.show();
-  QCoreApplication::processEvents();
-
-  EXPECT_TRUE(dialog.isVisible());
-
-  dialog.close();
-  QCoreApplication::processEvents();
-
-  EXPECT_FALSE(dialog.isVisible());
-}
-
-TEST(AnalysisDialogSmokeTest, InspectionDialog_CanShowAndClose) {
-  (void)ensureApplication();
-
-  orc::presenters::StageInspectionView report;
-  report.summary = "smoke test report";
-  report.items.emplace_back("key", "value");
-
-  orc::InspectionDialog dialog(report);
 
   dialog.show();
   QCoreApplication::processEvents();

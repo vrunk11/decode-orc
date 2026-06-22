@@ -59,9 +59,6 @@ struct NodeCapabilities {
       false;  ///< Whether the node can be triggered (batch processing)
   std::string trigger_reason;  ///< Explanation if node cannot be triggered
 
-  bool can_inspect = false;    ///< Whether the node can be inspected
-  std::string inspect_reason;  ///< Explanation if node cannot be inspected
-
   NodeID node_id;          ///< Node identifier
   std::string stage_name;  ///< Stage type name
   std::string node_label;  ///< User-visible label

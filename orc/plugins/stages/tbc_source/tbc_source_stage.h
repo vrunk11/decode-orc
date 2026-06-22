@@ -217,8 +217,6 @@ class TBCSourceStage : public DAGStage,
   // IStagePreviewCapability
   StagePreviewCapability get_preview_capability() const override;
 
-  std::optional<StageReport> generate_report() const override;
-
  private:
   // Resolve all sidecar paths from the composite input_path or y_path.
   struct SidecarPaths {

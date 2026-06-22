@@ -264,11 +264,6 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
                      ? ""
                      : QString("- %1").arg(
                            QString::fromStdString(node_info.trigger_reason)));
-    qDebug() << "  Can inspect:" << node_info.can_inspect
-             << (node_info.can_inspect
-                     ? ""
-                     : QString("- %1").arg(
-                           QString::fromStdString(node_info.inspect_reason)));
 
     // Create context menu (with view as parent to ensure proper cleanup)
     QMenu* menu = new QMenu(views().isEmpty() ? nullptr : views().first());
@@ -312,19 +307,6 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
     connect(trigger_action, &QAction::triggered, [this, orc_node_id]() {
       QTimer::singleShot(0, this, [this, orc_node_id]() {
         Q_EMIT triggerStageRequested(orc_node_id);
-      });
-    });
-
-    // Inspect Stage action
-    auto* inspect_action = menu->addAction("Inspect Stage...");
-    inspect_action->setEnabled(node_info.can_inspect);
-    if (!node_info.can_inspect && !node_info.inspect_reason.empty()) {
-      inspect_action->setToolTip(
-          QString::fromStdString(node_info.inspect_reason));
-    }
-    connect(inspect_action, &QAction::triggered, [this, orc_node_id]() {
-      QTimer::singleShot(0, this, [this, orc_node_id]() {
-        Q_EMIT inspectStageRequested(orc_node_id);
       });
     });
 

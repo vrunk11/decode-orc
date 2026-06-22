@@ -122,7 +122,6 @@ class MainWindow : public QMainWindow {
   void onNodeContextMenu(QtNodes::NodeId nodeId, const QPointF& pos);
   void onArrangeDAGToGrid();
   void onQtNodeSelected(QtNodes::NodeId nodeId);
-  void onInspectStage(const orc::NodeID& node_id);
   void onShowVBIDialog();
   void updateVBIDialog();
   void onShowHintsDialog();

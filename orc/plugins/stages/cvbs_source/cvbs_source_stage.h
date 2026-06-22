@@ -182,8 +182,6 @@ class FixedFormatCVBSSourceStage : public DAGStage,
   // IStagePreviewCapability
   StagePreviewCapability get_preview_capability() const override;
 
-  std::optional<StageReport> generate_report() const override;
-
  protected:
   VideoSystem system_;
 

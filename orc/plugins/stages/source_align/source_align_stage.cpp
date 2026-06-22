@@ -384,66 +384,6 @@ bool SourceAlignStage::set_parameters(
 }
 
 // ============================================================================
-// Report
-// ============================================================================
-
-std::optional<StageReport> SourceAlignStage::generate_report() const {
-  StageReport report;
-  report.summary = "Source Alignment Report";
-
-  if (input_sources_.empty() || alignment_offsets_.empty()) {
-    report.items.push_back({"Status", "Not yet executed"});
-    return report;
-  }
-
-  const FrameID kExcluded = std::numeric_limits<FrameID>::max();
-
-  for (size_t i = 0; i < input_sources_.size(); ++i) {
-    const auto& src = input_sources_[i];
-    if (!src) {
-      continue;
-    }
-
-    const std::string lbl = "Source " + std::to_string(i);
-    const FrameID offset = alignment_offsets_[i];
-
-    if (offset == kExcluded) {
-      report.items.push_back({lbl + " Status", "EXCLUDED"});
-    } else {
-      const size_t total = src->frame_count();
-      report.items.push_back({lbl + " Status", "INCLUDED"});
-      report.items.push_back({lbl + " Total Frames", std::to_string(total)});
-      report.items.push_back(
-          {lbl + " Alignment Offset", std::to_string(offset)});
-      report.items.push_back({lbl + " Dropped Frames", std::to_string(offset)});
-      report.items.push_back(
-          {lbl + " Output Frames",
-           std::to_string(total > offset ? total - offset : 0)});
-    }
-    if (i + 1 < input_sources_.size()) {
-      report.items.push_back({"", ""});
-    }
-  }
-
-  size_t total_dropped = 0;
-  size_t excluded = 0;
-  for (const auto& off : alignment_offsets_) {
-    if (off == kExcluded) {
-      excluded++;
-    } else {
-      total_dropped += off;
-    }
-  }
-  report.metrics["source_count"] = static_cast<int64_t>(input_sources_.size());
-  report.metrics["total_dropped_frames"] = static_cast<int64_t>(total_dropped);
-  report.metrics["excluded_sources"] = static_cast<int64_t>(excluded);
-  report.metrics["included_sources"] =
-      static_cast<int64_t>(input_sources_.size() - excluded);
-
-  return report;
-}
-
-// ============================================================================
 // Preview
 // ============================================================================
 

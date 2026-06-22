@@ -1044,29 +1044,5 @@ TEST(CVBSPreviewTest, PreviewCapability_ValidAfterLoad) {
   EXPECT_FALSE(cap.supported_data_types.empty());
 }
 
-TEST(CVBSReportTest, GenerateReport_NotLoadedShowsNotConfigured) {
-  PALCVBSSourceStage stage;
-  auto report = stage.generate_report();
-  ASSERT_TRUE(report.has_value());
-  bool found = false;
-  for (const auto& item : report->items) {
-    if (item.first == "Status" && item.second == "No input file path set") {
-      found = true;
-      break;
-    }
-  }
-  EXPECT_TRUE(found);
-}
-
-TEST(CVBSReportTest, GenerateReport_AfterLoadShowsFrameCount) {
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
-  PALCVBSSourceStage stage(deps);
-  execute_and_get_vfr(stage, kDefaultParams);
-  auto report = stage.generate_report();
-  ASSERT_TRUE(report.has_value());
-  EXPECT_NE(report->metrics.find("frame_count"), report->metrics.end());
-  EXPECT_EQ(std::get<int64_t>(report->metrics.at("frame_count")), int64_t{1});
-}
-
 }  // namespace tests
 }  // namespace orc

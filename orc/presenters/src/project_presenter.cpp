@@ -503,10 +503,8 @@ std::vector<NodeInfo> ProjectPresenter::getNodes() const {
     info.y_position = node.y_position;
     info.can_remove = caps.can_remove;
     info.can_trigger = caps.can_trigger;
-    info.can_inspect = caps.can_inspect;
     info.remove_reason = caps.remove_reason;
     info.trigger_reason = caps.trigger_reason;
-    info.inspect_reason = caps.inspect_reason;
 
     result.push_back(info);
   }
@@ -569,10 +567,8 @@ NodeInfo ProjectPresenter::getNodeInfo(orc::NodeID node_id) const {
       info.y_position = node.y_position;
       info.can_remove = caps.can_remove;
       info.can_trigger = caps.can_trigger;
-      info.can_inspect = caps.can_inspect;
       info.remove_reason = caps.remove_reason;
       info.trigger_reason = caps.trigger_reason;
-      info.inspect_reason = caps.inspect_reason;
 
       return info;
     }
@@ -1051,36 +1047,6 @@ ProjectPresenter::clearPluginRegistryForSafeMode() {
   return result;
 }
 
-std::shared_ptr<void> ProjectPresenter::getStageForInspection(
-    NodeID node_id) const {
-  if (!project_.get()) return nullptr;
-
-  // Try to get from DAG first (preserves execution state)
-  auto dag = orc::project_to_dag(*getProject());
-  if (dag) {
-    const auto& dag_nodes = dag->nodes();
-    auto it = std::find_if(
-        dag_nodes.begin(), dag_nodes.end(),
-        [&node_id](const orc::DAGNode& n) { return n.node_id == node_id; });
-    if (it != dag_nodes.end() && it->stage) {
-      return std::static_pointer_cast<void>(it->stage);
-    }
-  }
-
-  // Fall back to creating fresh instance
-  const auto& nodes = project_.get()->get_nodes();
-  auto node_it = std::find_if(nodes.begin(), nodes.end(),
-                              [&node_id](const orc::ProjectDAGNode& n) {
-                                return n.node_id == node_id;
-                              });
-
-  if (node_it != nodes.end()) {
-    return createStageInstance(node_it->stage_name);
-  }
-
-  return nullptr;
-}
-
 std::shared_ptr<void> ProjectPresenter::createStageInstance(
     const std::string& stage_name) {
   auto stage = orc::StageRegistry::instance().create_stage(stage_name);
@@ -1237,55 +1203,6 @@ std::vector<std::string> ProjectPresenter::getValidationErrors() const {
   }
 
   return errors;
-}
-
-std::optional<StageInspectionView> ProjectPresenter::getNodeInspection(
-    NodeID node_id) const {
-  if (!project_) {
-    return std::nullopt;
-  }
-
-  // Find the node in the project
-  const auto& nodes = project_.get()->get_nodes();
-  auto node_it = std::find_if(nodes.begin(), nodes.end(),
-                              [&node_id](const orc::ProjectDAGNode& n) {
-                                return n.node_id == node_id;
-                              });
-
-  if (node_it == nodes.end()) {
-    return std::nullopt;  // Node not found
-  }
-
-  const std::string& stage_name = node_it->stage_name;
-
-  // Create a stage instance from the registry
-  std::shared_ptr<orc::DAGStage> stage;
-  try {
-    auto& stage_registry = orc::StageRegistry::instance();
-    stage = stage_registry.create_stage(stage_name);
-
-    // Apply the node's parameters to the stage if it's parameterized
-    auto* param_stage = dynamic_cast<orc::ParameterizedStage*>(stage.get());
-    if (param_stage) {
-      param_stage->set_parameters(node_it->parameters);
-    }
-  } catch (const std::exception&) {
-    return std::nullopt;  // Failed to create stage
-  }
-
-  // Generate report from the stage
-  auto core_report = stage->generate_report();
-  if (!core_report) {
-    return std::nullopt;  // Stage doesn't support inspection
-  }
-
-  // Convert to view model
-  StageInspectionView view;
-  view.summary = core_report->summary;
-  view.items = core_report->items;
-  view.metrics = core_report->metrics;
-
-  return view;
 }
 
 orc::ConfigurationStatus ProjectPresenter::getNodeConfigurationStatus(

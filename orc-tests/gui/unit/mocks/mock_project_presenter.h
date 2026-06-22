@@ -78,8 +78,6 @@ class MockProjectPresenter : public IProjectPresenter {
               (const, override));
   MOCK_METHOD(std::shared_ptr<void>, instantiateStage,
               (const std::string& stage_name), (const, override));
-  MOCK_METHOD(std::shared_ptr<void>, getStageForInspection, (NodeID node_id),
-              (const, override));
   MOCK_METHOD(std::vector<LoadedPluginInfo>, listLoadedPlugins, (),
               (const, override));
   MOCK_METHOD(std::vector<PluginDiagnosticInfo>, listPluginDiagnostics, (),
@@ -108,9 +106,6 @@ class MockProjectPresenter : public IProjectPresenter {
   MOCK_METHOD(bool, validateProject, (), (const, override));
   MOCK_METHOD(std::vector<std::string>, getValidationErrors, (),
               (const, override));
-
-  MOCK_METHOD(std::optional<StageInspectionView>, getNodeInspection,
-              (NodeID node_id), (const, override));
 
   MOCK_METHOD(orc::ConfigurationStatus, getNodeConfigurationStatus,
               (NodeID node_id), (const, override));

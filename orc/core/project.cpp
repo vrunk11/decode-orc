@@ -1623,7 +1623,6 @@ NodeCapabilities get_node_capabilities(const Project& project, NodeID node_id) {
   if (it == project.nodes_.end()) {
     caps.remove_reason = "Node not found";
     caps.trigger_reason = "Node not found";
-    caps.inspect_reason = "Node not found";
     return caps;
   }
 
@@ -1672,18 +1671,11 @@ NodeCapabilities get_node_capabilities(const Project& project, NodeID node_id) {
         }
       }
 
-      // Check can_inspect - must have generate_report
-      caps.can_inspect = stage->generate_report().has_value();
-      if (!caps.can_inspect) {
-        caps.inspect_reason = "Stage does not support inspection";
-      }
     } else {
       caps.trigger_reason = "Failed to create stage";
-      caps.inspect_reason = "Failed to create stage";
     }
   } catch (const std::exception& e) {
     caps.trigger_reason = std::string("Error: ") + e.what();
-    caps.inspect_reason = std::string("Error: ") + e.what();
   }
 
   return caps;

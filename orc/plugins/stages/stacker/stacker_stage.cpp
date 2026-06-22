@@ -1380,37 +1380,6 @@ bool StackerStage::set_parameters(
 // ── Report / Preview
 // ──────────────────────────────────────────────────────────
 
-std::optional<StageReport> StackerStage::generate_report() const {
-  StageReport r;
-  r.summary = "Stacker Configuration";
-
-  const char* mode_names[] = {"Auto",       "Mean",           "Median",
-                              "Smart Mean", "Smart Neighbor", "Neighbor"};
-  int mi = m_mode + 1;
-  if (mi < 0 || mi > 5) {
-    mi = 0;
-  }
-
-  const char* stack_names[] = {"Disabled", "Mean", "Median"};
-  r.items.push_back({"Stacking Mode", mode_names[mi]});
-  r.items.push_back({"Smart Threshold", std::to_string(m_smart_threshold)});
-  r.items.push_back({"Differential Dropout Detection",
-                     m_no_diff_dod ? "Disabled" : "Enabled"});
-  r.items.push_back(
-      {"Dropout Passthrough", m_passthrough ? "Enabled" : "Disabled"});
-  r.items.push_back(
-      {"Audio Stacking", stack_names[static_cast<int>(m_audio_stacking_mode)]});
-  r.items.push_back(
-      {"EFM Stacking", stack_names[static_cast<int>(m_efm_stacking_mode)]});
-
-  r.metrics["mode"] = static_cast<int64_t>(m_mode);
-  r.metrics["smart_threshold"] = static_cast<int64_t>(m_smart_threshold);
-  r.metrics["audio_stacking_mode"] =
-      static_cast<int64_t>(m_audio_stacking_mode);
-  r.metrics["efm_stacking_mode"] = static_cast<int64_t>(m_efm_stacking_mode);
-  return r;
-}
-
 StagePreviewCapability StackerStage::get_preview_capability() const {
   return PreviewHelpers::make_signal_preview_capability(cached_output_);
 }

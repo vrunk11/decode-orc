@@ -69,8 +69,6 @@ class OrcGraphicsScene : public QtNodes::BasicGraphicsScene {
           node_id);  ///< Emitted when user wants to edit node parameters
   void triggerStageRequested(
       const NodeID& node_id);  ///< Emitted when user wants to trigger a stage
-  void inspectStageRequested(
-      const NodeID& node_id);  ///< Emitted when user wants to inspect a stage
 
   /**
    * @brief Emitted when user requests to run an analysis tool on a node

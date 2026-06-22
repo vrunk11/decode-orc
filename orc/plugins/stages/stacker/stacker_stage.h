@@ -162,8 +162,6 @@ class StackerStage : public DAGStage,
   // IStagePreviewCapability
   StagePreviewCapability get_preview_capability() const override;
 
-  std::optional<StageReport> generate_report() const override;
-
   std::shared_ptr<const VideoFrameRepresentation> process(
       const std::vector<std::shared_ptr<const VideoFrameRepresentation>>&
           sources) const;

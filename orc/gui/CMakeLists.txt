@@ -68,10 +68,6 @@ set(ORC_GUI_LIB_SOURCES
     generic_analysis_dialog.cpp
     generic_analysis_dialog.h
     
-    # Inspection dialog
-    inspection_dialog.cpp
-    inspection_dialog.h
-    
     # VBI dialog
     vbidialog.cpp
     vbidialog.h

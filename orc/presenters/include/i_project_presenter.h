@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "project_presenter_types.h"
-#include "stage_inspection_view_models.h"
 
 namespace orc::presenters {
 
@@ -78,7 +77,6 @@ class IProjectPresenter {
   virtual bool stageExists(const std::string& stage_name) const = 0;
   virtual std::shared_ptr<void> instantiateStage(
       const std::string& stage_name) const = 0;
-  virtual std::shared_ptr<void> getStageForInspection(NodeID node_id) const = 0;
   virtual std::vector<LoadedPluginInfo> listLoadedPlugins() const = 0;
   virtual std::vector<PluginDiagnosticInfo> listPluginDiagnostics() const = 0;
   virtual std::vector<std::string> listPluginSearchPaths() const = 0;
@@ -101,10 +99,6 @@ class IProjectPresenter {
   // === Validation ===
   virtual bool validateProject() const = 0;
   virtual std::vector<std::string> getValidationErrors() const = 0;
-
-  // === Stage Inspection ===
-  virtual std::optional<StageInspectionView> getNodeInspection(
-      NodeID node_id) const = 0;
 
   // === Configuration Status ===
   virtual orc::ConfigurationStatus getNodeConfigurationStatus(

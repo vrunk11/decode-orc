@@ -23,7 +23,6 @@
 #include "frametimingwidget.h"
 #include "generic_analysis_dialog.h"
 #include "hintsdialog.h"
-#include "inspection_dialog.h"
 #include "line_navigation_mapper.h"
 #include "logging.h"
 #include "masklineconfigdialog.h"
@@ -811,8 +810,6 @@ void MainWindow::connectDAGSignals() {
           &MainWindow::onEditParameters);
   connect(dag_scene_, &OrcGraphicsScene::triggerStageRequested, this,
           &MainWindow::onTriggerStage);
-  connect(dag_scene_, &OrcGraphicsScene::inspectStageRequested, this,
-          &MainWindow::onInspectStage);
   connect(dag_scene_, &OrcGraphicsScene::runAnalysisRequested, this,
           &MainWindow::runAnalysisForNode);
   connect(dag_scene_, &QtNodes::BasicGraphicsScene::nodeDoubleClicked, this,
@@ -3293,50 +3290,6 @@ void MainWindow::onQtNodeSelected(QtNodes::NodeId nodeId) {
   if (orc_node_id.is_valid()) {
     ORC_LOG_DEBUG("QtNode {} selected -> ORC node '{}'", nodeId, orc_node_id);
     onNodeSelectedForView(orc_node_id);
-  }
-}
-
-void MainWindow::onInspectStage(const NodeID& node_id) {
-  ORC_LOG_DEBUG("Inspect stage requested for node: {}", node_id);
-
-  // Find the node in the project
-  const auto nodes = project_.presenter()->getNodes();
-  auto node_it = std::find_if(nodes.begin(), nodes.end(),
-                              [&node_id](const orc::presenters::NodeInfo& n) {
-                                return n.node_id == node_id;
-                              });
-
-  if (node_it == nodes.end()) {
-    ORC_LOG_ERROR("Stage '{}' not found in project", node_id);
-    QMessageBox::warning(this, "Inspection Failed",
-                         QString("Stage '%1' not found.")
-                             .arg(QString::fromStdString(node_id.to_string())));
-    return;
-  }
-
-  const std::string& stage_name = node_it->stage_name;
-
-  // Use presenter to get inspection report (handles DAG vs fresh stage
-  // internally)
-  try {
-    auto inspection_view = project_.presenter()->getNodeInspection(node_id);
-
-    if (!inspection_view.has_value()) {
-      QMessageBox::information(
-          this, "Stage Inspection",
-          QString("Stage '%1' does not support inspection reporting.")
-              .arg(QString::fromStdString(stage_name)));
-      return;
-    }
-
-    // Show inspection dialog with presenter view model
-    orc::InspectionDialog dialog(inspection_view.value(), this);
-    dialog.exec();
-
-  } catch (const std::exception& e) {
-    ORC_LOG_ERROR("Failed to inspect stage '{}': {}", stage_name, e.what());
-    QMessageBox::warning(this, "Inspection Failed",
-                         QString("Failed to inspect stage: %1").arg(e.what()));
   }
 }
 

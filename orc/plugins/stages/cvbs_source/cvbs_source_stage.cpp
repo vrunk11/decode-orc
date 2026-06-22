@@ -1133,59 +1133,6 @@ StagePreviewCapability FixedFormatCVBSSourceStage::get_preview_capability()
           cached_representation_));
 }
 
-std::optional<StageReport> FixedFormatCVBSSourceStage::generate_report() const {
-  StageReport report;
-  report.summary = display_name_ + " Status";
-
-  if (input_path_.empty()) {
-    report.items.push_back({"Source File", "Not configured"});
-    report.items.push_back({"Status", "No input file path set"});
-    return report;
-  }
-
-  report.items.push_back({"Source File", input_path_});
-  report.items.push_back({"Video System", system_name(system_)});
-
-  if (cached_representation_) {
-    auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(
-        cached_representation_);
-    if (vfr) {
-      auto params = vfr->get_video_parameters();
-      if (params) {
-        report.items.push_back(
-            {"Frame Count",
-             std::to_string(params->number_of_sequential_frames)});
-        report.items.push_back(
-            {"Frame Size", std::to_string(params->frame_width_nominal) + " × " +
-                               std::to_string(params->frame_height)});
-        report.items.push_back(
-            {"Blanking Level", std::to_string(params->blanking_level)});
-        report.items.push_back(
-            {"White Level", std::to_string(params->white_level)});
-        report.items.push_back(
-            {"Audio", vfr->has_audio() ? (vfr->audio_locked() ? "Frame-locked"
-                                                              : "Free-running")
-                                       : "None"});
-        report.items.push_back({"EFM", vfr->has_efm() ? "Present" : "None"});
-        report.items.push_back(
-            {"AC3 RF", vfr->has_ac3_rf() ? "Present" : "None"});
-
-        report.metrics["frame_count"] =
-            static_cast<int64_t>(params->number_of_sequential_frames);
-        report.metrics["frame_width"] =
-            static_cast<int64_t>(params->frame_width_nominal);
-        report.metrics["frame_height"] =
-            static_cast<int64_t>(params->frame_height);
-      }
-      report.items.push_back({"Status", "Loaded"});
-    }
-  } else {
-    report.items.push_back({"Status", "Not yet loaded"});
-  }
-
-  return report;
-}
-
 // ---------------------------------------------------------------------------
 // Concrete stage constructors
 // ---------------------------------------------------------------------------

@@ -68,9 +68,6 @@ class SourceAlignStage : public DAGStage,
   PreviewImage render_preview(const std::string& option_id, uint64_t index,
                               PreviewNavigationHint hint) const override;
 
-  // Stage inspection
-  std::optional<StageReport> generate_report() const override;
-
   // ParameterizedStage
   std::vector<ParameterDescriptor> get_parameter_descriptors(
       VideoSystem project_format, SourceType source_type) const override;
