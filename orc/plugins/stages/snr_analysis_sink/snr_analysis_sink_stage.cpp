@@ -12,7 +12,6 @@
 #include <stdexcept>
 
 #include "logging.h"
-#include "preview_helpers.h"
 #include "snr_analysis_sink_deps.h"
 #include "snr_analysis_sink_deps_interface.h"
 
@@ -41,13 +40,9 @@ std::vector<ArtifactPtr> SNRAnalysisSinkStage::execute(
     const std::vector<ArtifactPtr>& inputs,
     const std::map<std::string, ParameterValue>& parameters,
     ObservationContext& observation_context) {
+  (void)inputs;
   (void)parameters;
   (void)observation_context;
-  // Cache input for preview rendering (pass-through preview of upstream output)
-  if (!inputs.empty()) {
-    cached_input_ =
-        std::dynamic_pointer_cast<const VideoFrameRepresentation>(inputs[0]);
-  }
   return {};
 }
 
@@ -88,9 +83,10 @@ SNRAnalysisSinkStage::get_parameter_descriptors(VideoSystem project_format,
                            std::nullopt}});
 
   descriptors.push_back(
-      ParameterDescriptor{"max_frames", "Max Frames",
-                          "Deprecated: data is automatically binned to ~1000 "
-                          "points based on total fields (0 = auto).",
+      ParameterDescriptor{"max_frames", "Display Buckets",
+                          "Number of data points in the output chart (0 = "
+                          "automatic, defaults to ~1000). Pass the chart pixel "
+                          "width for optimal resolution without over-sampling.",
                           ParameterType::UINT32,
                           ParameterConstraints{ParameterValue(0U),
                                                std::nullopt,
@@ -233,10 +229,6 @@ bool SNRAnalysisSinkStage::trigger(
     is_processing_.store(false);
     return false;
   }
-}
-
-StagePreviewCapability SNRAnalysisSinkStage::get_preview_capability() const {
-  return PreviewHelpers::make_signal_preview_capability(cached_input_);
 }
 
 }  // namespace orc

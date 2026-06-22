@@ -47,8 +47,7 @@ class BurstLevelObserver : public Observer {
   }
 
  private:
-  // Calculate median of samples
-  double calculate_median(std::vector<double> values) const;
+  double calculate_median(const double* values, size_t count) const;
 };
 
 }  // namespace orc

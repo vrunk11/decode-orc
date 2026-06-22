@@ -95,6 +95,22 @@ class VideoFrameRepresentation {
   // Returns an owned copy of the complete frame buffer.
   virtual std::vector<sample_type> get_frame_copy(FrameID id) const = 0;
 
+  // Returns an owned copy of the samples for a single line.
+  // Prefer this over get_line() when only a few lines are needed per frame:
+  // sources can override it to seek+read just the target line from disk
+  // rather than loading the full frame (important for analysis sinks that
+  // scan the entire recording but only touch 3-6 lines per frame).
+  // Default: falls back through get_line() → get_frame() → full load.
+  virtual std::vector<sample_type> get_line_samples(FrameID id,
+                                                    size_t line) const {
+    const auto params = get_video_parameters();
+    if (!params) return {};
+    const sample_type* ptr = get_line(id, line);
+    if (!ptr) return {};
+    const size_t width = static_cast<size_t>(params->frame_width_nominal);
+    return std::vector<sample_type>(ptr, ptr + width);
+  }
+
   // --------------------------------------------------------------------------
   // YC (separate luma / chroma) access
   // --------------------------------------------------------------------------
@@ -233,6 +249,11 @@ class VideoFrameRepresentationWrapper : public VideoFrameRepresentation {
   }
   const sample_type* get_line(FrameID id, size_t line) const override {
     return source_ ? source_->get_line(id, line) : nullptr;
+  }
+  std::vector<sample_type> get_line_samples(FrameID id,
+                                            size_t line) const override {
+    return source_ ? source_->get_line_samples(id, line)
+                   : std::vector<sample_type>{};
   }
   std::vector<sample_type> get_frame_copy(FrameID id) const override {
     return source_ ? source_->get_frame_copy(id) : std::vector<sample_type>{};

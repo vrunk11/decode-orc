@@ -162,18 +162,43 @@ FrameRenderResult DAGFrameRenderer::execute_to_node(NodeID node_id,
       }
 
       if (is_sink) {
-        ORC_LOG_DEBUG(
-            "DAGFrameRenderer: sink node '{}' produced no output (expected)",
-            node_id.to_string());
+        // Sink stages produce no output by design. Fall back to the nearest
+        // upstream node that does produce a VFR so the host can show a
+        // pass-through preview without requiring any boilerplate in the plugin.
+        if (dag_it != dag_nodes.end() && !dag_it->input_node_ids.empty()) {
+          const NodeID& upstream_id = dag_it->input_node_ids[0];
+          auto up_it = node_outputs.find(upstream_id);
+          if (up_it != node_outputs.end() && !up_it->second.empty()) {
+            auto up_vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(
+                up_it->second[0]);
+            if (up_vfr) {
+              ORC_LOG_DEBUG(
+                  "DAGFrameRenderer: sink node '{}' — using upstream node "
+                  "'{}' output for preview",
+                  node_id.to_string(), upstream_id.to_string());
+              it = up_it;
+            }
+          }
+        }
+
+        if (it == node_outputs.end() || it->second.empty()) {
+          ORC_LOG_DEBUG(
+              "DAGFrameRenderer: sink node '{}' has no upstream VFR for "
+              "preview",
+              node_id.to_string());
+          result.is_valid = false;
+          result.error_message =
+              fmt::format("Node '{}' produced no output", node_id);
+          return result;
+        }
       } else {
         ORC_LOG_ERROR("DAGFrameRenderer: node '{}' produced no output",
                       node_id.to_string());
+        result.is_valid = false;
+        result.error_message =
+            fmt::format("Node '{}' produced no output", node_id);
+        return result;
       }
-
-      result.is_valid = false;
-      result.error_message =
-          fmt::format("Node '{}' produced no output", node_id);
-      return result;
     }
 
     auto vfr =

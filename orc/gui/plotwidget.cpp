@@ -31,6 +31,7 @@ PlotWidget::PlotWidget(QWidget* parent)
       m_yMax(100),
       m_xAutoScale(true),
       m_yAutoScale(true),
+      m_xIntegerLabels(false),
       m_yIntegerLabels(false),
       m_isDarkTheme(false),
       m_secondaryYAxisEnabled(false),
@@ -144,6 +145,11 @@ void PlotWidget::setAxisAutoScale(Qt::Orientation orientation, bool enable) {
 
 void PlotWidget::setYAxisIntegerLabels(bool integerOnly) {
   m_yIntegerLabels = integerOnly;
+  replot();
+}
+
+void PlotWidget::setXAxisIntegerLabels(bool integerOnly) {
+  m_xIntegerLabels = integerOnly;
   replot();
 }
 
@@ -388,7 +394,7 @@ void PlotWidget::replot() {
   if (m_axisLabels) {
     m_axisLabels->updateLabels(
         m_plotRect, m_dataRect, m_xAxisTitle, m_yAxisTitle, m_xMin, m_xMax,
-        m_yMin, m_yMax, m_yIntegerLabels, m_isDarkTheme,
+        m_yMin, m_yMax, m_xIntegerLabels, m_yIntegerLabels, m_isDarkTheme,
         m_secondaryYAxisEnabled, m_secondaryYAxisTitle, m_secondaryYMin,
         m_secondaryYMax, m_xAxisUseCustomTicks, m_xAxisTickStep,
         m_xAxisTickOrigin, m_yAxisUseCustomTicks, m_yAxisTickStep,
@@ -985,6 +991,7 @@ PlotAxisLabels::PlotAxisLabels(PlotWidget* parent)
       m_xMax(100),
       m_yMin(0),
       m_yMax(100),
+      m_xIntegerLabels(false),
       m_yIntegerLabels(false),
       m_isDarkTheme(false),
       m_plotWidget(parent) {
@@ -994,12 +1001,12 @@ PlotAxisLabels::PlotAxisLabels(PlotWidget* parent)
 void PlotAxisLabels::updateLabels(
     const QRectF& plotRect, const QRectF& dataRect, const QString& xTitle,
     const QString& yTitle, double xMin, double xMax, double yMin, double yMax,
-    bool yIntegerLabels, bool isDarkTheme, bool secondaryYEnabled,
-    const QString& secondaryYTitle, double secondaryYMin, double secondaryYMax,
-    bool xUseCustomTicks, double xTickStep, double xTickOrigin,
-    bool yUseCustomTicks, double yTickStep, double yTickOrigin,
-    bool secondaryYUseCustomTicks, double secondaryYTickStep,
-    double secondaryYTickOrigin) {
+    bool xIntegerLabels, bool yIntegerLabels, bool isDarkTheme,
+    bool secondaryYEnabled, const QString& secondaryYTitle,
+    double secondaryYMin, double secondaryYMax, bool xUseCustomTicks,
+    double xTickStep, double xTickOrigin, bool yUseCustomTicks,
+    double yTickStep, double yTickOrigin, bool secondaryYUseCustomTicks,
+    double secondaryYTickStep, double secondaryYTickOrigin) {
   prepareGeometryChange();
   m_plotRect = plotRect;
   m_dataRect = dataRect;
@@ -1015,6 +1022,7 @@ void PlotAxisLabels::updateLabels(
   m_yMax = yMax;
   m_secondaryYMin = secondaryYMin;
   m_secondaryYMax = secondaryYMax;
+  m_xIntegerLabels = xIntegerLabels;
   m_yIntegerLabels = yIntegerLabels;
   m_isDarkTheme = isDarkTheme;
   m_secondaryYEnabled = secondaryYEnabled;
@@ -1080,13 +1088,17 @@ void PlotAxisLabels::paint(QPainter* painter,
       painter->drawLine(QPointF(sceneX, m_plotRect.bottom()),
                         QPointF(sceneX, m_plotRect.bottom() + 5));
 
-      // Draw label - format without .0 for whole numbers
+      // Draw label
       QString label;
-      double intPart;
-      if (std::modf(dataX, &intPart) == 0.0) {
-        label = QString::number(static_cast<int64_t>(dataX));
+      if (m_xIntegerLabels) {
+        label = QString::number(qRound(dataX));
       } else {
-        label = QString::number(dataX, 'f', 1);
+        double intPart;
+        if (std::modf(dataX, &intPart) == 0.0) {
+          label = QString::number(static_cast<int64_t>(dataX));
+        } else {
+          label = QString::number(dataX, 'f', 1);
+        }
       }
       QRect textRect = fm.boundingRect(label);
       painter->drawText(
@@ -1109,13 +1121,17 @@ void PlotAxisLabels::paint(QPainter* painter,
       painter->drawLine(QPointF(sceneX, m_plotRect.bottom()),
                         QPointF(sceneX, m_plotRect.bottom() + 5));
 
-      // Draw label - format without .0 for whole numbers
+      // Draw label
       QString label;
-      double intPart;
-      if (std::modf(dataX, &intPart) == 0.0) {
-        label = QString::number(static_cast<int64_t>(dataX));
+      if (m_xIntegerLabels) {
+        label = QString::number(qRound(dataX));
       } else {
-        label = QString::number(dataX, 'f', 1);
+        double intPart;
+        if (std::modf(dataX, &intPart) == 0.0) {
+          label = QString::number(static_cast<int64_t>(dataX));
+        } else {
+          label = QString::number(dataX, 'f', 1);
+        }
       }
       QRect textRect = fm.boundingRect(label);
       painter->drawText(

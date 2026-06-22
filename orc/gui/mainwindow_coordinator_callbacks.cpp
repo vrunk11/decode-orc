@@ -334,10 +334,18 @@ void MainWindow::onTriggerComplete(uint64_t request_id, bool success,
   }
 
   // If trigger was successful, automatically create dialog and request analysis
-  // data for display
+  // data for display.
+  //
+  // IMPORTANT: createAndShowAnalysisDialog must be deferred to the next event
+  // loop iteration via QueuedConnection. QProgressDialog::setValue() calls
+  // QCoreApplication::processEvents() internally; if triggerComplete arrives
+  // during that processEvents (i.e. we are on the call stack of the trigger
+  // dialog's setValue), running createAndShowAnalysisDialog synchronously
+  // causes a second modal dialog's setValue to trigger another processEvents,
+  // during which the DeferredDelete for the trigger dialog fires and destroys
+  // it while its setValue stack frame is still live. The dangling d-pointer
+  // then causes a null-dereference crash in QProgressBar::maximum().
   if (success && pending_trigger_node_id_.is_valid()) {
-    // Descriptor-driven analysis routing: resolve the node stage and defer
-    // tool selection to createAndShowAnalysisDialog().
     const auto nodes = project_.presenter()->getNodes();
     auto node_it = std::find_if(nodes.begin(), nodes.end(),
                                 [this](const orc::presenters::NodeInfo& n) {
@@ -345,8 +353,14 @@ void MainWindow::onTriggerComplete(uint64_t request_id, bool success,
                                 });
 
     if (node_it != nodes.end()) {
-      createAndShowAnalysisDialog(pending_trigger_node_id_,
-                                  node_it->stage_name);
+      orc::NodeID analysis_node_id = pending_trigger_node_id_;
+      std::string analysis_stage_name = node_it->stage_name;
+      QMetaObject::invokeMethod(
+          this,
+          [this, analysis_node_id, analysis_stage_name]() {
+            createAndShowAnalysisDialog(analysis_node_id, analysis_stage_name);
+          },
+          Qt::QueuedConnection);
     }
   }
 

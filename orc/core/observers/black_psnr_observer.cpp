@@ -35,51 +35,55 @@ void BlackPSNRObserver::process_frame(
 
   size_t f1_lines = field1_lines(vp.system);
 
+  // VITS black level locations (from ld-process-vits)
+  // PAL: Line 22, 12μs start, 50μs length
+  // NTSC: Line 1, 10μs start, 20μs length
+  size_t line;
+  double start_us;
+  double length_us;
+
+  if (vp.system == VideoSystem::PAL) {
+    line = 22;
+    start_us = 12.0;
+    length_us = 50.0;
+  } else {
+    line = 1;
+    start_us = 10.0;
+    length_us = 20.0;
+  }
+
+  // Accumulate PSNR from both field halves, then store one frame-level result.
+  double psnr_sum = 0.0;
+  size_t psnr_count = 0;
+
   for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
-    FieldID derived_fid(frame_id * 2 + field_idx);
     size_t line_offset = (field_idx == 0) ? 0 : f1_lines;
     size_t field_height = (field_idx == 0)
                               ? f1_lines
                               : static_cast<size_t>(vp.frame_height) - f1_lines;
-
-    // VITS black level locations (from ld-process-vits)
-    // PAL: Line 22, 12μs start, 50μs length
-    // NTSC: Line 1, 10μs start, 20μs length
-    size_t line;
-    double start_us;
-    double length_us;
-
-    if (vp.system == VideoSystem::PAL) {
-      line = 22;
-      start_us = 12.0;
-      length_us = 50.0;
-    } else {
-      line = 1;
-      start_us = 10.0;
-      length_us = 20.0;
-    }
 
     auto black_slice =
         get_line_slice_ire(representation, frame_id, line_offset, line,
                            start_us, length_us, field_height, vp);
 
     if (black_slice.empty()) {
-      ORC_LOG_TRACE("BlackPSNRObserver: No valid black level data for field {}",
-                    derived_fid.value());
       continue;
     }
 
-    [[maybe_unused]] double noise_std = calc_std(black_slice);
-    [[maybe_unused]] double black_mean = calc_mean(black_slice);
-    double psnr_db = calculate_psnr(black_slice);
-
-    context.set(derived_fid, "black_psnr", "psnr_db", psnr_db);
-
-    ORC_LOG_DEBUG(
-        "BlackPSNRObserver: Field {} psnr={:.2f} dB (mean={:.1f} IRE, "
-        "std={:.3f})",
-        derived_fid.value(), psnr_db, black_mean, noise_std);
+    psnr_sum += calculate_psnr(black_slice);
+    ++psnr_count;
   }
+
+  if (psnr_count == 0) {
+    ORC_LOG_TRACE("BlackPSNRObserver: No valid black level data for frame {}",
+                  frame_id);
+    return;
+  }
+
+  double psnr_db = psnr_sum / static_cast<double>(psnr_count);
+  context.set(FieldID(frame_id * 2), "black_psnr", "psnr_db", psnr_db);
+  ORC_LOG_DEBUG("BlackPSNRObserver: Frame {} psnr={:.2f} dB", frame_id,
+                psnr_db);
 }
 
 std::vector<double> BlackPSNRObserver::get_line_slice_ire(
@@ -112,12 +116,17 @@ std::vector<double> BlackPSNRObserver::get_line_slice_ire(
     return result;
   }
 
-  // Get the line data (YC sources use luma only)
+  // Get the line data; use get_line_samples() for composite sources so the
+  // field-level buffer in the VFR is used instead of a full-frame LRU load.
   size_t frame_line = line_offset + line_index;
-  const int16_t* line_data =
-      representation.has_separate_channels()
-          ? representation.get_line_luma(frame_id, frame_line)
-          : representation.get_line(frame_id, frame_line);
+  auto line_samples_buf = std::vector<int16_t>{};
+  const int16_t* line_data = nullptr;
+  if (representation.has_separate_channels()) {
+    line_data = representation.get_line_luma(frame_id, frame_line);
+  } else {
+    line_samples_buf = representation.get_line_samples(frame_id, frame_line);
+    line_data = line_samples_buf.empty() ? nullptr : line_samples_buf.data();
+  }
   if (!line_data) {
     return result;
   }

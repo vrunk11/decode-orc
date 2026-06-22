@@ -535,6 +535,96 @@ uint64_t RenderPresenter::triggerStage(NodeID node_id,
   return request_id;
 }
 
+uint64_t RenderPresenter::triggerStage(
+    NodeID node_id, ProgressCallback callback,
+    std::map<std::string, ParameterValue> parameter_overrides) {
+  if (!impl_->getConcreteDAG()) {
+    throw std::runtime_error("DAG not initialized");
+  }
+
+  impl_->trigger_cancel_requested_.store(false);
+  impl_->trigger_active_.store(true);
+  uint64_t request_id = impl_->next_request_id_++;
+
+  try {
+    const orc::DAGNode* target_node = nullptr;
+    for (const auto& node : impl_->getConcreteDAG()->nodes()) {
+      if (node.node_id == node_id) {
+        target_node = &node;
+        break;
+      }
+    }
+
+    if (!target_node) {
+      impl_->trigger_active_.store(false);
+      throw std::runtime_error("Node '" + node_id.to_string() +
+                               "' not found in DAG");
+    }
+
+    auto trigger_stage =
+        dynamic_cast<orc::TriggerableStage*>(target_node->stage.get());
+    if (!trigger_stage) {
+      impl_->trigger_active_.store(false);
+      throw std::runtime_error("Stage '" + node_id.to_string() +
+                               "' is not triggerable");
+    }
+
+    auto executor = std::make_shared<orc::DAGExecutor>();
+    std::vector<orc::ArtifactPtr> inputs;
+    if (!target_node->input_node_ids.empty()) {
+      auto node_outputs = executor->execute_to_node(
+          *impl_->getConcreteDAG(), target_node->input_node_ids[0]);
+      for (size_t i = 0; i < target_node->input_node_ids.size(); ++i) {
+        const auto& input_node_id = target_node->input_node_ids[i];
+        size_t input_index = (i < target_node->input_indices.size())
+                                 ? target_node->input_indices[i]
+                                 : 0;
+        auto it = node_outputs.find(input_node_id);
+        if (it != node_outputs.end() && input_index < it->second.size()) {
+          inputs.push_back(it->second[input_index]);
+        }
+      }
+    }
+
+    impl_->current_trigger_stage_.store(trigger_stage);
+    trigger_stage->set_progress_callback([this, trigger_stage, callback](
+                                             size_t current, size_t total,
+                                             const std::string& message) {
+      if (impl_->trigger_cancel_requested_.load()) {
+        trigger_stage->cancel_trigger();
+      }
+      if (callback) {
+        callback(static_cast<int>(current), static_cast<int>(total), message);
+      }
+    });
+
+    // Merge overrides into a copy of the node's stored parameters so the
+    // project file is not modified.
+    auto merged_params = target_node->parameters;
+    for (const auto& [key, value] : parameter_overrides) {
+      merged_params[key] = value;
+    }
+
+    orc::ObservationContext& obs_context = executor->get_observation_context();
+    bool success = trigger_stage->trigger(inputs, merged_params, obs_context);
+
+    impl_->current_trigger_stage_.store(nullptr);
+    impl_->trigger_active_.store(false);
+
+    if (!success) {
+      std::string status = trigger_stage->get_trigger_status();
+      throw std::runtime_error("Trigger failed: " + status);
+    }
+
+  } catch (...) {
+    impl_->current_trigger_stage_.store(nullptr);
+    impl_->trigger_active_.store(false);
+    throw;
+  }
+
+  return request_id;
+}
+
 void RenderPresenter::cancelTrigger() {
   impl_->trigger_cancel_requested_.store(true);
   // Load the pointer atomically so the read is safe from the GUI thread

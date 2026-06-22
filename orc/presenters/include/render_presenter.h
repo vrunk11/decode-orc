@@ -330,6 +330,24 @@ class RenderPresenter {
   uint64_t triggerStage(NodeID node_id, ProgressCallback callback);
 
   /**
+   * @brief Trigger a stage with transient parameter overrides
+   *
+   * Like triggerStage() but merges the supplied overrides into the node's
+   * stored parameters for this trigger only — the node's saved parameters
+   * are not modified.  Use this to pass display-resolution hints (e.g.
+   * "max_frames") without persisting them to the project file.
+   *
+   * @param node_id Node to trigger
+   * @param callback Progress callback
+   * @param parameter_overrides Key/value pairs that shadow the node's params
+   * @return Request ID for tracking
+   * @throws std::runtime_error if triggering fails
+   */
+  uint64_t triggerStage(
+      NodeID node_id, ProgressCallback callback,
+      std::map<std::string, ParameterValue> parameter_overrides);
+
+  /**
    * @brief Cancel ongoing trigger operation
    *
    * This sets a cancellation flag that the trigger operation will check.

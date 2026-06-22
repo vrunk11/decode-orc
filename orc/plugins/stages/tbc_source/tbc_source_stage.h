@@ -105,6 +105,19 @@ class ITBCSourceStageDeps {
       int32_t stored_samples_per_field, int32_t use_sample_count,
       std::string& error_message) const = 0;
 
+  // Targeted variant: read use_sample_count samples starting at sample_offset
+  // within the field's stored area.  Enables per-line reads without loading
+  // the entire field — critical for analysis sinks that only need a few lines
+  // per frame across a long recording.
+  // sample_offset is relative to the start of the field (0 = first sample of
+  // line 0).  stored_samples_per_field is used only to compute the field's
+  // start byte offset in the file.
+  // Returns empty vector on error.
+  virtual std::vector<uint16_t> read_field_samples_at(
+      const std::string& tbc_path, int32_t field_index,
+      int32_t stored_samples_per_field, int32_t sample_offset,
+      int32_t use_sample_count, std::string& error_message) const = 0;
+
   // Audio: returns true when the PCM sidecar exists.
   virtual bool has_audio_file(const std::string& pcm_path) const = 0;
 

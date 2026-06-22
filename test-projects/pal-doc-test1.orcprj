@@ -3,7 +3,7 @@
 
 project:
   name: set1_side1
-  version: "2.0"
+  version: 2.0
   video_format: PAL
   source_format: Composite
   amplitude_unit: mV
@@ -48,6 +48,44 @@ dag:
       user_label: Dropout Correction
       x: 500
       y: 50
+      parameters:
+        highlight_corrections:
+          type: bool
+          value: false
+        match_chroma_phase:
+          type: bool
+          value: true
+        overcorrect_extension:
+          type: uint32
+          value: 0
+    - id: 5
+      stage: burst_level_analysis_sink
+      node_type: ANALYSIS_SINK
+      display_name: Burst Level Analysis Sink
+      user_label: Burst Level Analysis Sink
+      x: 275
+      y: 175
+    - id: 6
+      stage: dropout_analysis_sink
+      node_type: ANALYSIS_SINK
+      display_name: Dropout Analysis Sink
+      user_label: Dropout Analysis Sink
+      x: 275
+      y: 300
+    - id: 7
+      stage: snr_analysis_sink
+      node_type: ANALYSIS_SINK
+      display_name: SNR Analysis Sink
+      user_label: SNR Analysis Sink
+      x: 275
+      y: 425
+    - id: 8
+      stage: dropout_analysis_sink
+      node_type: ANALYSIS_SINK
+      display_name: Dropout Analysis Sink
+      user_label: Dropout Analysis Sink
+      x: 725
+      y: 175
   edges:
     - from: 1
       to: 3
@@ -55,3 +93,11 @@ dag:
       to: 4
     - from: 4
       to: 2
+    - from: 1
+      to: 5
+    - from: 1
+      to: 6
+    - from: 1
+      to: 7
+    - from: 4
+      to: 8

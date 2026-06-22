@@ -12,8 +12,8 @@
 #include <cvbs_signal_constants.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <numeric>
 
 #include "../include/field_id.h"
 #include "../include/logging.h"
@@ -46,17 +46,20 @@ void BurstLevelObserver::process_frame(
   const double outlier_threshold_10bit =
       30.0 * static_cast<double>(vp.white_level - vp.blanking_level) / 100.0;
 
+  // peak = RMS * sqrt(2) for a pure sine burst
+  static constexpr double k_sqrt2 = 1.41421356237309504880;
+
+  // Collect samples from both field halves (3 lines each = up to 6 total),
+  // producing one frame-level result rather than two field-level entries.
+  std::array<double, 6> burst_levels_raw{};
+  size_t burst_sample_count = 0;
+
   for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
-    FieldID derived_fid(frame_id * 2 + field_idx);
     size_t line_offset = (field_idx == 0) ? 0 : f1_lines;
     size_t field_height = (field_idx == 0)
                               ? f1_lines
                               : static_cast<size_t>(vp.frame_height) - f1_lines;
 
-    // Collect all burst samples from sampled lines
-    std::vector<double> burst_levels_raw;
-
-    // Sample from line 11 to end of active area
     size_t start_line = 11;
     size_t last_active_field_line =
         static_cast<size_t>(vp.last_active_frame_line / 2);
@@ -68,14 +71,17 @@ void BurstLevelObserver::process_frame(
       continue;
     }
 
-    // Sample just 3 lines (top, middle, bottom) for performance
-    std::vector<size_t> sample_lines = {
+    const std::array<size_t, 3> sample_lines = {
         start_line, start_line + (end_line - start_line) / 2, end_line - 1};
 
     for (size_t field_line : sample_lines) {
-      const int16_t* line_data =
-          representation.get_line(frame_id, line_offset + field_line);
-      if (!line_data) {
+      if (burst_sample_count >= burst_levels_raw.size()) {
+        break;
+      }
+
+      const auto line_data =
+          representation.get_line_samples(frame_id, line_offset + field_line);
+      if (line_data.empty()) {
         continue;
       }
 
@@ -87,76 +93,65 @@ void BurstLevelObserver::process_frame(
         continue;
       }
 
-      // Collect raw samples from this line's burst region
-      std::vector<double> line_burst_samples;
-      for (size_t sample_idx = burst_start_idx; sample_idx <= burst_end;
-           ++sample_idx) {
-        line_burst_samples.push_back(
-            static_cast<double>(line_data[sample_idx]));
-      }
-
-      if (line_burst_samples.size() < 4) {
+      const size_t n_samples = burst_end - burst_start_idx + 1;
+      if (n_samples < 4) {
         continue;
       }
 
-      // Calculate mean of burst samples
-      double mean = std::accumulate(line_burst_samples.begin(),
-                                    line_burst_samples.end(), 0.0) /
-                    static_cast<double>(line_burst_samples.size());
-
-      // Subtract mean (remove DC component)
-      std::vector<double> centered;
-      for (double sample : line_burst_samples) {
-        centered.push_back(sample - mean);
+      double sum = 0.0;
+      for (size_t i = burst_start_idx; i <= burst_end; ++i) {
+        sum += static_cast<double>(line_data[i]);
       }
+      const double mean = sum / static_cast<double>(n_samples);
 
-      // Calculate RMS
-      double sum_squares = 0.0;
-      for (double val : centered) {
-        sum_squares += val * val;
+      double sum_sq = 0.0;
+      for (size_t i = burst_start_idx; i <= burst_end; ++i) {
+        const double d = static_cast<double>(line_data[i]) - mean;
+        sum_sq += d * d;
       }
-      double rms =
-          std::sqrt(sum_squares / static_cast<double>(centered.size()));
+      const double rms = std::sqrt(sum_sq / static_cast<double>(n_samples));
+      const double peak_amplitude = rms * k_sqrt2;
 
-      // Convert RMS to peak amplitude: peak = RMS * sqrt(2)
-      double peak_amplitude = rms * std::sqrt(2.0);
-
-      // Skip outliers (> 30 IRE equivalent in 10-bit domain)
       if (peak_amplitude > outlier_threshold_10bit) {
         continue;
       }
 
-      burst_levels_raw.push_back(peak_amplitude);
+      burst_levels_raw[burst_sample_count++] = peak_amplitude;
     }
-
-    if (burst_levels_raw.empty()) {
-      ORC_LOG_TRACE("BurstLevelObserver: No valid burst samples for field {}",
-                    derived_fid.value());
-      continue;
-    }
-
-    double median_raw = calculate_median(burst_levels_raw);
-
-    context.set(derived_fid, "burst_level", "median_burst_10bit", median_raw);
-
-    ORC_LOG_DEBUG("BurstLevelObserver: Field {} median_burst_10bit={:.2f}",
-                  derived_fid.value(), median_raw);
   }
+
+  if (burst_sample_count == 0) {
+    ORC_LOG_TRACE("BurstLevelObserver: No valid burst samples for frame {}",
+                  frame_id);
+    return;
+  }
+
+  double median_raw =
+      calculate_median(burst_levels_raw.data(), burst_sample_count);
+
+  context.set(FieldID(frame_id * 2), "burst_level", "median_burst_10bit",
+              median_raw);
+  ORC_LOG_DEBUG("BurstLevelObserver: Frame {} median_burst_10bit={:.2f}",
+                frame_id, median_raw);
 }
 
-double BurstLevelObserver::calculate_median(std::vector<double> values) const {
-  if (values.empty()) {
+double BurstLevelObserver::calculate_median(const double* values,
+                                            size_t count) const {
+  if (count == 0) {
     return 0.0;
   }
 
-  std::sort(values.begin(), values.end());
+  // At most 6 elements (3 lines × 2 field halves) — sort a local fixed-size
+  // copy
+  std::array<double, 6> sorted{};
+  for (size_t i = 0; i < count; ++i) sorted[i] = values[i];
+  std::sort(sorted.begin(),
+            sorted.begin() + static_cast<std::ptrdiff_t>(count));
 
-  size_t n = values.size();
-  if (n % 2 == 0) {
-    return (values[n / 2 - 1] + values[n / 2]) / 2.0;
-  } else {
-    return values[n / 2];
+  if (count % 2 == 0) {
+    return (sorted[count / 2 - 1] + sorted[count / 2]) / 2.0;
   }
+  return sorted[count / 2];
 }
 
 }  // namespace orc

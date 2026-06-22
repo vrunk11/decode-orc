@@ -58,6 +58,12 @@ class MockTBCSourceStageDeps : public orc::ITBCSourceStageDeps {
                std::string& error_message),
               (const, override));
 
+  MOCK_METHOD(std::vector<uint16_t>, read_field_samples_at,
+              (const std::string& tbc_path, int32_t field_index,
+               int32_t stored_samples_per_field, int32_t sample_offset,
+               int32_t use_sample_count, std::string& error_message),
+              (const, override));
+
   MOCK_METHOD(bool, has_audio_file, (const std::string& pcm_path),
               (const, override));
 

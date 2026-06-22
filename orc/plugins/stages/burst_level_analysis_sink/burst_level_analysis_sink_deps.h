@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "burst_level_analysis_sink_deps_interface.h"
+#include "burst_level_observer.h"
 #include "logging.h"
 
 namespace orc {
@@ -64,6 +65,7 @@ class BurstLevelAnalysisSinkStageDeps
 
   TriggerProgressCallback progress_callback_;
   std::atomic<bool>* cancel_requested_{nullptr};
+  BurstLevelObserver burst_level_observer_;
   SpdlogLoggerAdapter logger_;
 };
 }  // namespace orc

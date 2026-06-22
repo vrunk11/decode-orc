@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "../../../sdk/include/orc/plugin/orc_stage_preview.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_tooling.h"
 #include "analysis_sink_results.h"
@@ -29,7 +28,6 @@
 #include "dropout_analysis_types.h"
 #include "stage_parameter.h"
 #include "triggerable_stage.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 
@@ -44,7 +42,6 @@ class DropoutAnalysisSinkStage : public DAGStage,
                                  public ParameterizedStage,
                                  public TriggerableStage,
                                  public StageToolProvider,
-                                 public IStagePreviewCapability,
                                  public IDropoutAnalysisResults {
  public:
   DropoutAnalysisSinkStage();
@@ -87,9 +84,6 @@ class DropoutAnalysisSinkStage : public DAGStage,
   bool is_trigger_in_progress() const override { return is_processing_.load(); }
   void cancel_trigger() override { cancel_requested_.store(true); }
 
-  // IStagePreviewCapability
-  StagePreviewCapability get_preview_capability() const override;
-
   // IDropoutAnalysisResults interface
   const std::vector<FrameDropoutStats>& frame_stats() const override {
     return frame_stats_;
@@ -117,7 +111,6 @@ class DropoutAnalysisSinkStage : public DAGStage,
   ParsedConfig parse_config(
       const std::map<std::string, ParameterValue>& parameters) const;
 
-  mutable std::shared_ptr<const VideoFrameRepresentation> cached_input_;
   std::map<std::string, ParameterValue> parameters_;
   TriggerProgressCallback progress_callback_;
   std::atomic<bool> is_processing_{false};

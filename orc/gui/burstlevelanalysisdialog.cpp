@@ -17,6 +17,24 @@
 #include <cmath>
 #include <limits>
 
+// Burst amplitude is an AC peak value (distance from the DC mean of the burst
+// region), not an absolute sample level. Converting to display units means
+// scaling by the signal range rather than translating from blanking.
+static double burstAmplitudeToDisplay(double amplitude_10bit, int32_t blanking,
+                                      int32_t white, orc::VideoSystem sys,
+                                      orc::AmplitudeDisplayUnit unit) {
+  const double range = static_cast<double>(white - blanking);
+  if (range <= 0.0) return amplitude_10bit;
+  switch (unit) {
+    case orc::AmplitudeDisplayUnit::Millivolts:
+      return amplitude_10bit / range * orc::active_video_mv(sys);
+    case orc::AmplitudeDisplayUnit::Samples10Bit:
+      return amplitude_10bit;
+    default:  // IRE
+      return amplitude_10bit / range * 100.0;
+  }
+}
+
 static orc::VideoSystem toOrcVideoSystem(orc::presenters::VideoSystem sys) {
   switch (sys) {
     case orc::presenters::VideoSystem::NTSC:
@@ -178,8 +196,8 @@ void BurstLevelAnalysisDialog::finishUpdate(int32_t currentFrameNumber) {
     double dispMax = std::numeric_limits<double>::lowest();
     displayPoints.reserve(burstPoints_.size());
     for (const auto& pt : burstPoints_) {
-      double yDisp = orc::samples10_to_display(
-          static_cast<int32_t>(pt.y()), blanking, white, sys, amplitude_unit_);
+      double yDisp = burstAmplitudeToDisplay(pt.y(), blanking, white, sys,
+                                             amplitude_unit_);
       displayPoints.append(QPointF(pt.x(), yDisp));
       if (yDisp < dispMin) dispMin = yDisp;
       if (yDisp > dispMax) dispMax = yDisp;
@@ -199,8 +217,27 @@ void BurstLevelAnalysisDialog::finishUpdate(int32_t currentFrameNumber) {
   display_y_min_ = yMin;
   display_y_max_ = yMax;
   plot_->setAxisRange(Qt::Vertical, yMin, yMax);
-  plot_->setAxisTickStep(Qt::Vertical,
-                         orc::amplitude_major_tick(amplitude_unit_), 0.0);
+
+  // Compute a sensible Y tick step from the visible range (same algorithm as
+  // the X-axis). amplitude_major_tick() assumes a full-range signal display
+  // (e.g. 0-100 IRE) and is too coarse for the narrow burst amplitude range.
+  double yTickStep = orc::amplitude_major_tick(amplitude_unit_);
+  double yRange = yMax - yMin;
+  if (yRange > 0.0) {
+    double idealStep = yRange / 8.0;
+    double magnitude = std::pow(10.0, std::floor(std::log10(idealStep)));
+    double normalized = idealStep / magnitude;
+    if (normalized < 1.5) {
+      yTickStep = 1.0 * magnitude;
+    } else if (normalized < 3.0) {
+      yTickStep = 2.0 * magnitude;
+    } else if (normalized < 7.0) {
+      yTickStep = 5.0 * magnitude;
+    } else {
+      yTickStep = 10.0 * magnitude;
+    }
+  }
+  plot_->setAxisTickStep(Qt::Vertical, yTickStep, 0.0);
 
   if (!displayPoints.isEmpty()) {
     std::sort(displayPoints.begin(), displayPoints.end(),

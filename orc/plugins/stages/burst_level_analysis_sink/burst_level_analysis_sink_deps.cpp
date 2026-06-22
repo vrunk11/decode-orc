@@ -12,7 +12,9 @@
 #include <cmath>
 #include <fstream>
 #include <utility>
+#include <variant>
 
+#include "field_id.h"
 #include "logging.h"
 
 namespace orc {
@@ -27,13 +29,9 @@ BurstAnalysisComputeResult BurstLevelAnalysisSinkStageDeps::compute_and_analyze(
     VideoFrameRepresentation* representation,
     IObservationContext& observation_context,
     BurstAnalysisComputeOptions options) {
-  (void)observation_context;
-
   if (!representation) {
     return {false, "Input representation is null", {}, 0};
   }
-
-  (void)options.max_frames;
 
   BurstAnalysisComputeResult result;
   result.success = true;
@@ -48,16 +46,30 @@ BurstAnalysisComputeResult BurstLevelAnalysisSinkStageDeps::compute_and_analyze(
     return result;
   }
 
-  logger_.debug(
-      "BurstLevelAnalysisSinkDeps: {} total frames (no burst observer data in "
-      "VFrameR)",
-      total_frames);
+  // Bucket-sampled analysis: divide the recording into at most max_buckets
+  // display points and, within each bucket, analyze at most kSamplesPerBucket
+  // evenly-spaced frames.  For small sources (bucket size <= kSamplesPerBucket)
+  // every frame in the bucket is analyzed.  This keeps wall-clock time near-
+  // constant regardless of recording length.
+  // max_buckets comes from the caller (GUI display width) or defaults to 1000.
+  constexpr uint64_t kDefaultBuckets = 1000;
+  constexpr uint64_t kSamplesPerBucket = 1;
+  const uint64_t max_buckets = (options.max_frames > 0)
+                                   ? static_cast<uint64_t>(options.max_frames)
+                                   : kDefaultBuckets;
+  const uint64_t bucket_count =
+      (total_frames < max_buckets) ? total_frames : max_buckets;
 
-  uint64_t frames_processed = 0;
-  for (FrameID fid = frame_rng.first; fid <= frame_rng.last; ++fid) {
+  logger_.debug(
+      "BurstLevelAnalysisSinkDeps: {} frames → {} buckets (~{} samples/bucket)",
+      total_frames, bucket_count, kSamplesPerBucket);
+
+  result.frame_stats.reserve(static_cast<size_t>(bucket_count));
+
+  for (uint64_t b = 0; b < bucket_count; ++b) {
     if (cancel_requested_ && cancel_requested_->load()) {
-      logger_.warn("BurstLevelAnalysisSinkDeps: Cancel requested at frame {}",
-                   fid);
+      logger_.warn("BurstLevelAnalysisSinkDeps: Cancel requested at bucket {}",
+                   b);
       result.success = false;
       result.message = "Cancelled by user";
       result.frame_stats.clear();
@@ -65,20 +77,71 @@ BurstAnalysisComputeResult BurstLevelAnalysisSinkStageDeps::compute_and_analyze(
       return result;
     }
 
-    frames_processed++;
-    if (progress_callback_) {
-      progress_callback_(
-          frames_processed, total_frames,
-          "Processing frame " + std::to_string(frames_processed));
+    // Inclusive frame range for this bucket (no frame is missed or counted
+    // twice across adjacent buckets).
+    const FrameID bucket_start =
+        frame_rng.first + (b * total_frames) / bucket_count;
+    const FrameID bucket_end =
+        frame_rng.first + ((b + 1) * total_frames) / bucket_count - 1;
+    const uint64_t bucket_size = bucket_end - bucket_start + 1;
+    const uint64_t n_samples =
+        (kSamplesPerBucket < bucket_size) ? kSamplesPerBucket : bucket_size;
+
+    double sum = 0.0;
+    size_t count = 0;
+
+    for (uint64_t s = 0; s < n_samples; ++s) {
+      // Evenly distribute sample frames across the bucket so the first and last
+      // frames are always included.
+      const FrameID fid =
+          (n_samples == 1U)
+              ? bucket_start
+              : bucket_start + (s * (bucket_size - 1U)) / (n_samples - 1U);
+
+      burst_level_observer_.process_frame(*representation, fid,
+                                          observation_context);
+
+      const FieldID frame_fid(fid * 2U);
+      auto val = observation_context.get(frame_fid, "burst_level",
+                                         "median_burst_10bit");
+      logger_.debug(
+          "BurstLevelAnalysisSinkDeps: fid={} field_id={} val_present={} "
+          "type_ok={}",
+          fid, frame_fid.value(), val.has_value(),
+          val.has_value() && std::holds_alternative<double>(*val));
+      if (val && std::holds_alternative<double>(*val)) {
+        sum += std::get<double>(*val);
+        ++count;
+      }
+      observation_context.clear_field(frame_fid);
+    }
+
+    FrameBurstLevelStats frame_stat;
+    // Use the center frame of the bucket as the representative frame number
+    // (1-based for display).
+    frame_stat.frame_number =
+        static_cast<int32_t>(bucket_start + (bucket_end - bucket_start) / 2U) +
+        1;
+
+    if (count > 0) {
+      frame_stat.median_burst_10bit = sum / static_cast<double>(count);
+      frame_stat.has_data = true;
+      frame_stat.field_count = count;
+    }
+
+    result.frame_stats.push_back(frame_stat);
+
+    if (progress_callback_ && (b % 50 == 0 || b + 1 == bucket_count)) {
+      progress_callback_(b + 1, bucket_count,
+                         "Analysing bucket " + std::to_string(b + 1) + "/" +
+                             std::to_string(bucket_count));
     }
   }
 
   result.total_frames = static_cast<int32_t>(total_frames);
-
   logger_.debug(
-      "BurstLevelAnalysisSinkDeps: Processed {} frames, 0 data buckets (no "
-      "observer)",
-      frames_processed);
+      "BurstLevelAnalysisSinkDeps: Complete — {} buckets from {} frames",
+      result.frame_stats.size(), total_frames);
 
   return result;
 }

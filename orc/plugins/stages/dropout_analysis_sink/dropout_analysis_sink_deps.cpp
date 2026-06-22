@@ -11,9 +11,9 @@
 
 #include <algorithm>
 #include <fstream>
-#include <map>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace orc {
 
@@ -55,7 +55,10 @@ DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
   int32_t nominal_spl = 910;
   if (video_params) nominal_spl = video_params->frame_width_nominal;
 
-  std::map<int32_t, FrameDropoutStats> frame_data;
+  // Pre-allocated contiguous vector: O(1) per-frame access, single allocation.
+  // Frames are visited in monotonically increasing order so std::map's O(log n)
+  // tree insertions and per-node heap allocations are unnecessary here.
+  std::vector<FrameDropoutStats> frame_data(total_frames_count);
 
   for (size_t i = 0; i < total_frames_count; ++i) {
     if (cancel_requested_ && cancel_requested_->load()) {
@@ -68,6 +71,11 @@ DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
     }
 
     const FrameID fid = range.first + i;
+    const int32_t frame_num = static_cast<int32_t>(fid) + 1;
+
+    auto& accum = frame_data[i];
+    accum.frame_number = frame_num;
+
     const auto desc = representation->get_frame_descriptor(fid);
     if (!desc) continue;
 
@@ -128,27 +136,17 @@ DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
       }
     }
 
-    const int32_t frame_num = static_cast<int32_t>(fid) + 1;
-
-    auto& accum = frame_data[frame_num];
-    accum.frame_number = frame_num;
     accum.total_dropout_length += frame_dropout_length;
     accum.dropout_count += static_cast<double>(frame_dropout_count);
     if (frame_dropout_count > 0) accum.has_data = true;
 
-    if (progress_callback_) {
+    if (progress_callback_ && (i % 100 == 0 || i + 1 == total_frames_count)) {
       progress_callback_(i + 1, total_frames_count,
                          "Processing frame " + std::to_string(i));
     }
   }
 
-  if (frame_data.empty()) {
-    logger_.warn("DropoutAnalysisSinkDeps: No frame data accumulated");
-    result.total_frames = 0;
-    return result;
-  }
-
-  const size_t total_frames = frame_data.size();
+  const size_t total_frames = total_frames_count;
   result.total_frames = static_cast<int32_t>(total_frames);
 
   const size_t TARGET_DATA_POINTS = 1000;
@@ -162,15 +160,15 @@ DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
   size_t frames_in_bin = 0;
   [[maybe_unused]] int32_t bin_start_frame = 0;
 
-  for (const auto& [frame_number, accum] : frame_data) {
+  for (const auto& entry : frame_data) {
     if (frames_in_bin == 0) {
-      bin_start_frame = frame_number;
+      bin_start_frame = entry.frame_number;
     }
 
-    current_bin.frame_number = frame_number;
-    current_bin.total_dropout_length += accum.total_dropout_length;
-    current_bin.dropout_count += accum.dropout_count;
-    current_bin.has_data = current_bin.has_data || accum.has_data;
+    current_bin.frame_number = entry.frame_number;
+    current_bin.total_dropout_length += entry.total_dropout_length;
+    current_bin.dropout_count += entry.dropout_count;
+    current_bin.has_data = current_bin.has_data || entry.has_data;
 
     frames_in_bin++;
 

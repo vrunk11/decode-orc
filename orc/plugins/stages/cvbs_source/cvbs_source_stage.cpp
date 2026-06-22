@@ -13,6 +13,7 @@
 #include <lru_cache.h>
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -24,6 +25,7 @@
 #include <vector>
 
 #include "error_types.h"
+#include "frame_line_util.h"
 #include "logging.h"
 #include "preview_helpers.h"
 
@@ -235,9 +237,8 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   std::optional<FrameDescriptor> get_frame_descriptor(
       FrameID id) const override {
     if (!has_frame(id)) return std::nullopt;
-    ensure_frame_cached(id);
-    if (!frame_cache_.contains(id)) return std::nullopt;
-
+    // All descriptor fields come from pre-loaded metadata — no disk read
+    // needed.
     FrameDescriptor desc;
     desc.frame_id = id;
     desc.system = system_;
@@ -273,9 +274,14 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   // Hints
   // --------------------------------------------------------------------------
   std::vector<DropoutRun> get_dropout_hints(FrameID id) const override {
+    // dropout_runs_ is sorted by frame_id (loaded with ORDER BY frame_id).
+    // Binary search replaces the O(N) linear scan: O(log M + k) per call.
     std::vector<DropoutRun> result;
-    for (const auto& run : dropout_runs_) {
-      if (run.frame_id == id) result.push_back(run);
+    auto it = std::lower_bound(
+        dropout_runs_.begin(), dropout_runs_.end(), id,
+        [](const DropoutRun& run, FrameID fid) { return run.frame_id < fid; });
+    while (it != dropout_runs_.end() && it->frame_id == id) {
+      result.push_back(*it++);
     }
     return result;
   }
@@ -349,6 +355,40 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
     const auto& ref = ac3_table_[static_cast<size_t>(id)];
     if (ref.count == 0) return {};
     return deps_->read_ac3_bytes_at(ac3_data_path_, ref.offset, ref.count);
+  }
+
+  // --------------------------------------------------------------------------
+  // Targeted per-line sample access (bypasses full-frame load)
+  // --------------------------------------------------------------------------
+  // Uses frame_line_sample_offset to compute the exact byte position of the
+  // requested line in the flat CVBS file and reads only that line.
+  std::vector<sample_type> get_line_samples(FrameID id,
+                                            size_t line) const override {
+    if (!has_frame(id)) return {};
+    if (line >= frame_height_) return {};
+
+    const size_t line_offset =
+        frame_line_sample_offset(system_, spl_nominal_, line);
+    const size_t line_count =
+        frame_line_sample_count(system_, spl_nominal_, line);
+    const size_t word_offset =
+        static_cast<size_t>(id) * frame_samples_ + line_offset;
+
+    std::vector<uint16_t> raw_words;
+    std::string err;
+    if (!deps_->read_input_words_at(input_path_, word_offset, line_count,
+                                    raw_words, err)) {
+      return {};
+    }
+    if (raw_words.size() < line_count) return {};
+
+    std::vector<sample_type> result;
+    result.reserve(line_count);
+    for (const uint16_t raw : raw_words) {
+      result.push_back(
+          normalize_to_cvbs_u10(raw, sample_encoding_, blanking_level_));
+    }
+    return result;
   }
 
  private:

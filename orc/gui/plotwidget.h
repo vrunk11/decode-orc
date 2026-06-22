@@ -52,6 +52,7 @@ class PlotWidget : public QWidget {
   void setAxisRange(Qt::Orientation orientation, double min, double max);
   void setAxisAutoScale(Qt::Orientation orientation, bool enable);
   void setYAxisIntegerLabels(bool integerOnly);
+  void setXAxisIntegerLabels(bool integerOnly);
   void setAxisTickStep(Qt::Orientation orientation, double step,
                        double origin = 0.0);
 
@@ -133,6 +134,7 @@ class PlotWidget : public QWidget {
   double m_secondaryYMin, m_secondaryYMax;
   bool m_xAutoScale;
   bool m_yAutoScale;
+  bool m_xIntegerLabels;
   bool m_yIntegerLabels;
   bool m_isDarkTheme;
   bool m_secondaryYAxisEnabled;
@@ -307,8 +309,8 @@ class PlotAxisLabels : public QGraphicsItem {
   void updateLabels(const QRectF& plotRect, const QRectF& dataRect,
                     const QString& xTitle, const QString& yTitle, double xMin,
                     double xMax, double yMin, double yMax,
-                    bool yIntegerLabels = false, bool isDarkTheme = false,
-                    bool secondaryYEnabled = false,
+                    bool xIntegerLabels = false, bool yIntegerLabels = false,
+                    bool isDarkTheme = false, bool secondaryYEnabled = false,
                     const QString& secondaryYTitle = QString(),
                     double secondaryYMin = 0, double secondaryYMax = 100,
                     bool xUseCustomTicks = false, double xTickStep = 0,
@@ -328,6 +330,7 @@ class PlotAxisLabels : public QGraphicsItem {
   QString m_xTitle;
   QString m_yTitle;
   QString m_secondaryYTitle;
+  bool m_xIntegerLabels;
   bool m_yIntegerLabels;
   bool m_isDarkTheme;
   bool m_secondaryYEnabled;

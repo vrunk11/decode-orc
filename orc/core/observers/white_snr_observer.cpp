@@ -60,18 +60,18 @@ void WhiteSNRObserver::process_frame(
 
   size_t f1_lines = field1_lines(vp.system);
 
+  // Accumulate SNR from both field halves, then store one frame-level result.
+  double white_ire_min = 90.0;
+  double white_ire_max = 110.0;
+  double snr_sum = 0.0;
+  size_t snr_count = 0;
+
   for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
-    FieldID derived_fid(frame_id * 2 + field_idx);
     size_t line_offset = (field_idx == 0) ? 0 : f1_lines;
     size_t field_height = (field_idx == 0)
                               ? f1_lines
                               : static_cast<size_t>(vp.frame_height) - f1_lines;
 
-    // Validation range for white level (90-110 IRE)
-    double white_ire_min = 90.0;
-    double white_ire_max = 110.0;
-
-    bool found = false;
     for (size_t i = 0; i < configs_size; ++i) {
       const auto& config = configs[i];
       auto white_slice = get_line_slice_ire(
@@ -79,37 +79,27 @@ void WhiteSNRObserver::process_frame(
           config.length_us, field_height, vp);
 
       if (white_slice.empty()) {
-        ORC_LOG_TRACE("WhiteSNRObserver: Field {} line {} slice empty",
-                      derived_fid.value(), config.line);
         continue;
       }
 
       double white_mean = calc_mean(white_slice);
       if (white_mean >= white_ire_min && white_mean <= white_ire_max) {
-        [[maybe_unused]] double noise_std = calc_std(white_slice);
-        double snr_db = calculate_psnr(white_slice);
-
-        context.set(derived_fid, "white_snr", "snr_db", snr_db);
-
-        ORC_LOG_DEBUG(
-            "WhiteSNRObserver: Field {} snr={:.2f} dB (mean={:.1f} IRE, "
-            "std={:.3f})",
-            derived_fid.value(), snr_db, white_mean, noise_std);
-        found = true;
+        snr_sum += calculate_psnr(white_slice);
+        ++snr_count;
         break;
-      } else {
-        ORC_LOG_DEBUG(
-            "WhiteSNRObserver: Field {} line {} mean outside range ({:.1f} "
-            "IRE)",
-            derived_fid.value(), config.line, white_mean);
       }
     }
-
-    if (!found) {
-      ORC_LOG_DEBUG("WhiteSNRObserver: No valid white flag found for field {}",
-                    derived_fid.value());
-    }
   }
+
+  if (snr_count == 0) {
+    ORC_LOG_DEBUG("WhiteSNRObserver: No valid white flag found for frame {}",
+                  frame_id);
+    return;
+  }
+
+  double snr_db = snr_sum / static_cast<double>(snr_count);
+  context.set(FieldID(frame_id * 2), "white_snr", "snr_db", snr_db);
+  ORC_LOG_DEBUG("WhiteSNRObserver: Frame {} snr={:.2f} dB", frame_id, snr_db);
 }
 
 std::vector<double> WhiteSNRObserver::get_line_slice_ire(
@@ -142,12 +132,17 @@ std::vector<double> WhiteSNRObserver::get_line_slice_ire(
     return result;
   }
 
-  // Get the line data (YC sources use luma only)
+  // Get the line data; use get_line_samples() for composite sources so the
+  // field-level buffer in the VFR is used instead of a full-frame LRU load.
   size_t frame_line = line_offset + line_index;
-  const int16_t* line_data =
-      representation.has_separate_channels()
-          ? representation.get_line_luma(frame_id, frame_line)
-          : representation.get_line(frame_id, frame_line);
+  auto line_samples_buf = std::vector<int16_t>{};
+  const int16_t* line_data = nullptr;
+  if (representation.has_separate_channels()) {
+    line_data = representation.get_line_luma(frame_id, frame_line);
+  } else {
+    line_samples_buf = representation.get_line_samples(frame_id, frame_line);
+    line_data = line_samples_buf.empty() ? nullptr : line_samples_buf.data();
+  }
   if (!line_data) {
     return result;
   }
