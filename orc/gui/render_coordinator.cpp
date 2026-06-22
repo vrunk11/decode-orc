@@ -287,20 +287,16 @@ uint64_t RenderCoordinator::requestDropoutData(const orc::NodeID& node_id,
 }
 
 uint64_t RenderCoordinator::requestSNRData(const orc::NodeID& node_id,
-                                           orc::SNRAnalysisMode mode,
-                                           uint32_t display_buckets) {
+                                           orc::SNRAnalysisMode mode) {
   uint64_t id = nextRequestId();
-  auto req =
-      std::make_unique<GetSNRDataRequest>(id, node_id, mode, display_buckets);
+  auto req = std::make_unique<GetSNRDataRequest>(id, node_id, mode);
   enqueueRequest(std::move(req));
   return id;
 }
 
-uint64_t RenderCoordinator::requestBurstLevelData(const orc::NodeID& node_id,
-                                                  uint32_t display_buckets) {
+uint64_t RenderCoordinator::requestBurstLevelData(const orc::NodeID& node_id) {
   uint64_t id = nextRequestId();
-  auto req =
-      std::make_unique<GetBurstLevelDataRequest>(id, node_id, display_buckets);
+  auto req = std::make_unique<GetBurstLevelDataRequest>(id, node_id);
   enqueueRequest(std::move(req));
   return id;
 }
@@ -781,21 +777,15 @@ void RenderCoordinator::handleGetSNRData(const GetSNRDataRequest& req) {
       // available.
       ORC_LOG_DEBUG(
           "RenderCoordinator: SNR stage has no results, triggering now "
-          "(request {}, display_buckets={})",
-          req.request_id, req.display_buckets);
+          "(request {})",
+          req.request_id);
       auto progress_cb = [this](int current, int total,
                                 const std::string& message) {
         emit snrProgress(static_cast<size_t>(current),
                          static_cast<size_t>(total),
                          QString::fromStdString(message));
       };
-      if (req.display_buckets > 0) {
-        worker_render_presenter_->triggerStage(
-            req.node_id, progress_cb,
-            {{"max_frames", static_cast<uint32_t>(req.display_buckets)}});
-      } else {
-        worker_render_presenter_->triggerStage(req.node_id, progress_cb);
-      }
+      worker_render_presenter_->triggerStage(req.node_id, progress_cb);
       if (!worker_render_presenter_->getSNRAnalysisData(req.node_id, data_ptr,
                                                         total_frames)) {
         emit error(req.request_id,
@@ -848,21 +838,15 @@ void RenderCoordinator::handleGetBurstLevelData(
       // available.
       ORC_LOG_DEBUG(
           "RenderCoordinator: Burst level stage has no results, triggering now "
-          "(request {}, display_buckets={})",
-          req.request_id, req.display_buckets);
+          "(request {})",
+          req.request_id);
       auto progress_cb = [this](int current, int total,
                                 const std::string& message) {
         emit burstLevelProgress(static_cast<size_t>(current),
                                 static_cast<size_t>(total),
                                 QString::fromStdString(message));
       };
-      if (req.display_buckets > 0) {
-        worker_render_presenter_->triggerStage(
-            req.node_id, progress_cb,
-            {{"max_frames", static_cast<uint32_t>(req.display_buckets)}});
-      } else {
-        worker_render_presenter_->triggerStage(req.node_id, progress_cb);
-      }
+      worker_render_presenter_->triggerStage(req.node_id, progress_cb);
       if (!worker_render_presenter_->getBurstLevelAnalysisData(
               req.node_id, data_ptr, total_frames)) {
         emit error(req.request_id,

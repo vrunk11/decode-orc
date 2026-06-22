@@ -334,8 +334,7 @@ class RenderPresenter {
    *
    * Like triggerStage() but merges the supplied overrides into the node's
    * stored parameters for this trigger only — the node's saved parameters
-   * are not modified.  Use this to pass display-resolution hints (e.g.
-   * "max_frames") without persisting them to the project file.
+   * are not modified.
    *
    * @param node_id Node to trigger
    * @param callback Progress callback

@@ -47,19 +47,15 @@ SNRAnalysisComputeResult SNRAnalysisSinkStageDeps::compute_and_analyze(
     return result;
   }
 
-  // Bucket-sampled analysis: divide the recording into at most max_buckets
+  // Bucket-sampled analysis: divide the recording into at most kDefaultBuckets
   // display points and, within each bucket, analyze at most kSamplesPerBucket
   // evenly-spaced frames.  For small sources (bucket size <= kSamplesPerBucket)
   // every frame in the bucket is analyzed.  This keeps wall-clock time near-
   // constant regardless of recording length.
-  // max_buckets comes from the caller (GUI display width) or defaults to 1000.
   constexpr uint64_t kDefaultBuckets = 1000;
   constexpr uint64_t kSamplesPerBucket = 1;
-  const uint64_t max_buckets = (options.max_frames > 0)
-                                   ? static_cast<uint64_t>(options.max_frames)
-                                   : kDefaultBuckets;
   const uint64_t bucket_count =
-      (total_frames < max_buckets) ? total_frames : max_buckets;
+      (total_frames < kDefaultBuckets) ? total_frames : kDefaultBuckets;
 
   logger_.debug(
       "SNRAnalysisSinkDeps: {} frames → {} buckets (~{} samples/bucket)",

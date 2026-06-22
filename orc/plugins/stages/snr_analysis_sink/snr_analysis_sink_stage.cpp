@@ -91,19 +91,6 @@ SNRAnalysisSinkStage::get_parameter_descriptors(VideoSystem project_format,
                            true,
                            std::nullopt}});
 
-  descriptors.push_back(
-      ParameterDescriptor{"max_frames", "Display Buckets",
-                          "Number of data points in the output chart (0 = "
-                          "automatic, defaults to ~1000). Pass the chart pixel "
-                          "width for optimal resolution without over-sampling.",
-                          ParameterType::UINT32,
-                          ParameterConstraints{ParameterValue(0U),
-                                               std::nullopt,
-                                               ParameterValue(0U),
-                                               {},
-                                               false,
-                                               std::nullopt}});
-
   return descriptors;
 }
 
@@ -155,12 +142,6 @@ SNRAnalysisSinkStage::ParsedConfig SNRAnalysisSinkStage::parse_config(
     }
   }
 
-  auto max_it = parameters.find("max_frames");
-  if (max_it != parameters.end() &&
-      std::holds_alternative<uint32_t>(max_it->second)) {
-    cfg.max_frames = static_cast<size_t>(std::get<uint32_t>(max_it->second));
-  }
-
   return cfg;
 }
 
@@ -198,7 +179,6 @@ bool SNRAnalysisSinkStage::trigger(
     SNRAnalysisComputeOptions compute_options;
     compute_options.output_path = cfg.output_path;
     compute_options.write_csv = cfg.write_csv;
-    compute_options.max_frames = cfg.max_frames;
     compute_options.snr_mode = cfg.mode;
 
     const SNRAnalysisComputeResult compute_result = deps->compute_and_analyze(

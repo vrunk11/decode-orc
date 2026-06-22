@@ -142,14 +142,11 @@ struct GetDropoutDataRequest : public RenderRequest {
 struct GetSNRDataRequest : public RenderRequest {
   orc::NodeID node_id;
   orc::SNRAnalysisMode mode;
-  uint32_t display_buckets{0};  // 0 = use stage default (~1000)
 
-  GetSNRDataRequest(uint64_t id, orc::NodeID node, orc::SNRAnalysisMode m,
-                    uint32_t buckets = 0)
+  GetSNRDataRequest(uint64_t id, orc::NodeID node, orc::SNRAnalysisMode m)
       : RenderRequest(RenderRequestType::GetSNRData, id),
         node_id(std::move(node)),
-        mode(m),
-        display_buckets(buckets) {}
+        mode(m) {}
 };
 
 /**
@@ -157,12 +154,10 @@ struct GetSNRDataRequest : public RenderRequest {
  */
 struct GetBurstLevelDataRequest : public RenderRequest {
   orc::NodeID node_id;
-  uint32_t display_buckets{0};  // 0 = use stage default (~1000)
 
-  GetBurstLevelDataRequest(uint64_t id, orc::NodeID node, uint32_t buckets = 0)
+  GetBurstLevelDataRequest(uint64_t id, orc::NodeID node)
       : RenderRequest(RenderRequestType::GetBurstLevelData, id),
-        node_id(std::move(node)),
-        display_buckets(buckets) {}
+        node_id(std::move(node)) {}
 };
 
 /**
@@ -610,8 +605,8 @@ class RenderCoordinator : public QObject {
    * @param mode Analysis mode (white, black, or both)
    * @return Request ID for matching response
    */
-  uint64_t requestSNRData(const orc::NodeID& node_id, orc::SNRAnalysisMode mode,
-                          uint32_t display_buckets = 0);
+  uint64_t requestSNRData(const orc::NodeID& node_id,
+                          orc::SNRAnalysisMode mode);
 
   /**
    * @brief Request burst level analysis data for all fields (async)
@@ -619,13 +614,9 @@ class RenderCoordinator : public QObject {
    * Result will be emitted via burstLevelDataReady signal.
    *
    * @param node_id Node to analyze burst level from
-   * @param display_buckets Hint for the number of display buckets the chart
-   *        will use (0 = stage default ~1000). Pass the chart pixel width for
-   *        optimal resolution without over-sampling.
    * @return Request ID for matching response
    */
-  uint64_t requestBurstLevelData(const orc::NodeID& node_id,
-                                 uint32_t display_buckets = 0);
+  uint64_t requestBurstLevelData(const orc::NodeID& node_id);
 
   /**
    * @brief Request available outputs for a node (async)

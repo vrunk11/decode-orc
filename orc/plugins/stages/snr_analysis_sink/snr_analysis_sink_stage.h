@@ -108,7 +108,6 @@ class SNRAnalysisSinkStage : public DAGStage,
     std::string output_path;
     bool write_csv = false;
     SNRAnalysisMode mode = SNRAnalysisMode::BOTH;
-    size_t max_frames = 0;  // 0 = all (will be binned to ~1000 data points)
   };
 
   ParsedConfig parse_config(

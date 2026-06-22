@@ -24,7 +24,6 @@ namespace orc {
 struct SNRAnalysisComputeOptions {
   std::string output_path;
   bool write_csv{false};
-  size_t max_frames{0};
   SNRAnalysisMode snr_mode{SNRAnalysisMode::BOTH};
 };
 

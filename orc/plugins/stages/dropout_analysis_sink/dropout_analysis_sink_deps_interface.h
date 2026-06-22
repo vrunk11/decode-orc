@@ -26,7 +26,6 @@ struct DropoutAnalysisComputeOptions {
   std::string output_path;
   bool write_csv{false};
   DropoutAnalysisMode mode{DropoutAnalysisMode::FULL_FIELD};
-  size_t max_frames{0};
 };
 
 struct DropoutAnalysisComputeResult {

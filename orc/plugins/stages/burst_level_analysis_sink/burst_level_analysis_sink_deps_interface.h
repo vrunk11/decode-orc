@@ -25,7 +25,6 @@ namespace orc {
 struct BurstAnalysisComputeOptions {
   std::string output_path;
   bool write_csv{false};
-  size_t max_frames{1000};
 };
 
 struct BurstAnalysisComputeResult {

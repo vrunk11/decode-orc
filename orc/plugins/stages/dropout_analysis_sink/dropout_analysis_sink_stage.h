@@ -110,7 +110,6 @@ class DropoutAnalysisSinkStage : public DAGStage,
     std::string output_path;
     bool write_csv = false;
     DropoutAnalysisMode mode = DropoutAnalysisMode::FULL_FIELD;
-    size_t max_frames = 0;  // 0 = auto-bin to ~1000 points
   };
 
   ParsedConfig parse_config(

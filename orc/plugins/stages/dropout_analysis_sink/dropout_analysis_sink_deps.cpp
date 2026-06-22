@@ -29,7 +29,6 @@ DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
     IObservationContext& observation_context,
     DropoutAnalysisComputeOptions options) {
   (void)observation_context;
-  (void)options.max_frames;
 
   if (!representation) {
     return {false, "Input representation is null", {}, 0};

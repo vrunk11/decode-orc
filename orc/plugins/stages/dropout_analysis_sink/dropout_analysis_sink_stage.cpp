@@ -95,18 +95,6 @@ DropoutAnalysisSinkStage::get_parameter_descriptors(
                                                true,
                                                std::nullopt}});
 
-  descriptors.push_back(ParameterDescriptor{
-      "max_frames", "Max Frames",
-      "Deprecated: data is automatically binned to ~1000 points based on total "
-      "frames (0 = auto).",
-      ParameterType::UINT32,
-      ParameterConstraints{ParameterValue(0U),
-                           std::nullopt,
-                           ParameterValue(0U),
-                           {},
-                           false,
-                           std::nullopt}});
-
   return descriptors;
 }
 
@@ -153,12 +141,6 @@ DropoutAnalysisSinkStage::ParsedConfig DropoutAnalysisSinkStage::parse_config(
                    : DropoutAnalysisMode::FULL_FIELD;
   }
 
-  auto max_it = parameters.find("max_frames");
-  if (max_it != parameters.end() &&
-      std::holds_alternative<uint32_t>(max_it->second)) {
-    cfg.max_frames = static_cast<size_t>(std::get<uint32_t>(max_it->second));
-  }
-
   return cfg;
 }
 
@@ -196,7 +178,6 @@ bool DropoutAnalysisSinkStage::trigger(
     compute_options.output_path = cfg.output_path;
     compute_options.write_csv = cfg.write_csv;
     compute_options.mode = cfg.mode;
-    compute_options.max_frames = cfg.max_frames;
 
     const DropoutAnalysisComputeResult result = deps->compute_and_analyze(
         vfr.get(), observation_context, compute_options);

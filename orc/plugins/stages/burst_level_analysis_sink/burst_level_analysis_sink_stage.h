@@ -108,8 +108,6 @@ class BurstLevelAnalysisSinkStage : public DAGStage,
   struct ParsedConfig {
     std::string output_path;
     bool write_csv = false;
-    size_t max_frames =
-        1000;  // Default to 1000 frames to avoid GUI memory issues
   };
 
   ParsedConfig parse_config(
