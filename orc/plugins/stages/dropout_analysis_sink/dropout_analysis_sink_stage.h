@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../../sdk/include/orc/plugin/orc_stage_preview.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_tooling.h"
 #include "analysis_sink_results.h"
@@ -42,6 +43,7 @@ class DropoutAnalysisSinkStage : public DAGStage,
                                  public ParameterizedStage,
                                  public TriggerableStage,
                                  public StageToolProvider,
+                                 public IStagePreviewCapability,
                                  public IDropoutAnalysisResults {
  public:
   DropoutAnalysisSinkStage();
@@ -92,6 +94,9 @@ class DropoutAnalysisSinkStage : public DAGStage,
   bool has_results() const override { return has_results_; }
   DropoutAnalysisMode last_mode() const { return last_mode_; }
 
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
+
   std::vector<StageToolDescriptor> get_stage_tools() const override {
     return {
         StageToolDescriptor{"dropout_analysis", "Dropout Analysis",
@@ -122,6 +127,7 @@ class DropoutAnalysisSinkStage : public DAGStage,
   bool has_results_ = false;
   DropoutAnalysisMode last_mode_ = DropoutAnalysisMode::FULL_FIELD;
   std::shared_ptr<IDropoutAnalysisSinkStageDeps> deps_override_;
+  mutable std::shared_ptr<const VideoFrameRepresentation> cached_input_;
 };
 
 }  // namespace orc

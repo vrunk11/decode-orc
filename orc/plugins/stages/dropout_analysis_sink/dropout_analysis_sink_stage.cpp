@@ -15,6 +15,7 @@
 
 #include "dropout_analysis_sink_deps.h"
 #include "logging.h"
+#include "preview_helpers.h"
 
 namespace orc {
 
@@ -43,8 +44,17 @@ std::vector<ArtifactPtr> DropoutAnalysisSinkStage::execute(
     ObservationContext& observation_context) {
   (void)parameters;
   (void)observation_context;
-  (void)inputs;
+  cached_input_ = nullptr;
+  if (!inputs.empty()) {
+    cached_input_ =
+        std::dynamic_pointer_cast<const VideoFrameRepresentation>(inputs[0]);
+  }
   return {};
+}
+
+StagePreviewCapability DropoutAnalysisSinkStage::get_preview_capability()
+    const {
+  return PreviewHelpers::make_signal_preview_capability(cached_input_);
 }
 
 std::vector<ParameterDescriptor>

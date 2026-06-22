@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../../sdk/include/orc/plugin/orc_stage_preview.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
 #include "../../../sdk/include/orc/plugin/orc_stage_tooling.h"
 #include "analysis_sink_results.h"
@@ -41,6 +42,7 @@ class BurstLevelAnalysisSinkStage : public DAGStage,
                                     public ParameterizedStage,
                                     public TriggerableStage,
                                     public StageToolProvider,
+                                    public IStagePreviewCapability,
                                     public IBurstLevelAnalysisResults {
  public:
   BurstLevelAnalysisSinkStage();
@@ -91,6 +93,9 @@ class BurstLevelAnalysisSinkStage : public DAGStage,
   int32_t total_frames() const override { return total_frames_; }
   bool has_results() const override { return has_results_; }
 
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
+
   std::vector<StageToolDescriptor> get_stage_tools() const override {
     return {StageToolDescriptor{
         "burst_level_analysis", "Burst Level Analysis",
@@ -120,6 +125,7 @@ class BurstLevelAnalysisSinkStage : public DAGStage,
   int32_t total_frames_ = 0;
   bool has_results_ = false;
   std::shared_ptr<IBurstLevelAnalysisSinkStageDeps> deps_override_;
+  mutable std::shared_ptr<const VideoFrameRepresentation> cached_input_;
 };
 
 }  // namespace orc
