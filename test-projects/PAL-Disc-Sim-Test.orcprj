@@ -63,7 +63,10 @@ dag:
       parameters:
         alignmentMap:
           type: string
-          value: 1+7, 2+3, 3+5, 4+0
+          value: 1+0, 2+4, 3+2, 4+7
+        alignmentMode:
+          type: string
+          value: pad_for_alignment
     - id: 6
       stage: stacker
       node_type: MERGER

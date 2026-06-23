@@ -101,6 +101,7 @@ class SourceAlignStage : public DAGStage,
 
   // Parameters
   std::string alignment_map_;
+  std::string alignment_mode_{"pad_for_alignment"};
 };
 
 }  // namespace orc

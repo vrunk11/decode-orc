@@ -124,6 +124,139 @@ class AlignedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
 };
 
 // ============================================================================
+// PaddedSourceFrameRepresentation
+// ============================================================================
+// Wraps a VFrameR and prepends `pad_count_` synthetic padding frames so that
+// output frame_id 0 maps to the globally earliest VBI frame position.
+// Padding frames carry is_padding_frame=true in their FrameDescriptor so that
+// downstream stages (e.g. stacker) skip them correctly.
+class PaddedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
+                                        public Artifact {
+ public:
+  PaddedSourceFrameRepresentation(
+      std::shared_ptr<const VideoFrameRepresentation> source, size_t pad_count,
+      size_t source_index)
+      : VideoFrameRepresentationWrapper(std::move(source)),
+        Artifact(ArtifactID("padded_source_" + std::to_string(source_index) +
+                            "_pad_" + std::to_string(pad_count)),
+                 Provenance{}),
+        pad_count_(pad_count) {
+    if (source_) {
+      if (auto params = source_->get_video_parameters()) {
+        pad_system_ = params->system;
+        pad_height_ = static_cast<size_t>(params->frame_height);
+        pad_samples_per_line_ =
+            static_cast<size_t>(params->frame_width_nominal);
+        pad_samples_total_ = pad_height_ * pad_samples_per_line_;
+        blanking_level_ = static_cast<sample_type>(params->blanking_level);
+      }
+    }
+  }
+
+  std::string type_name() const override {
+    return "padded_source_frame_representation";
+  }
+
+  FrameIDRange frame_range() const override {
+    const size_t total = frame_count();
+    if (total == 0) return FrameIDRange{};
+    return FrameIDRange{FrameID{0}, FrameID{total - 1}};
+  }
+
+  size_t frame_count() const override {
+    return pad_count_ + (source_ ? source_->frame_count() : 0);
+  }
+
+  bool has_frame(FrameID id) const override { return id < frame_count(); }
+
+  std::optional<FrameDescriptor> get_frame_descriptor(
+      FrameID id) const override {
+    if (id < pad_count_) {
+      FrameDescriptor desc;
+      desc.frame_id = id;
+      desc.system = pad_system_;
+      desc.height = pad_height_;
+      desc.samples_total = pad_samples_total_;
+      desc.samples_per_line_nominal = pad_samples_per_line_;
+      desc.is_padding_frame = true;
+      return desc;
+    }
+    if (!source_) return std::nullopt;
+    auto desc = source_->get_frame_descriptor(id - pad_count_);
+    if (desc) desc->frame_id = id;
+    return desc;
+  }
+
+  const sample_type* get_frame(FrameID id) const override {
+    if (id < pad_count_) {
+      ensure_black_frame();
+      return black_frame_.empty() ? nullptr : black_frame_.data();
+    }
+    return source_ ? source_->get_frame(id - pad_count_) : nullptr;
+  }
+
+  const sample_type* get_line(FrameID id, size_t line) const override {
+    if (id < pad_count_) {
+      ensure_black_frame();
+      return black_frame_.empty() ? nullptr : black_frame_.data();
+    }
+    return source_ ? source_->get_line(id - pad_count_, line) : nullptr;
+  }
+
+  std::vector<sample_type> get_frame_copy(FrameID id) const override {
+    if (id < pad_count_) {
+      ensure_black_frame();
+      return black_frame_;
+    }
+    return source_ ? source_->get_frame_copy(id - pad_count_)
+                   : std::vector<sample_type>{};
+  }
+
+  bool has_separate_channels() const override {
+    return source_ ? source_->has_separate_channels() : false;
+  }
+
+  const sample_type* get_line_luma(FrameID id, size_t line) const override {
+    if (id < pad_count_) return nullptr;
+    return source_ ? source_->get_line_luma(id - pad_count_, line) : nullptr;
+  }
+
+  const sample_type* get_line_chroma(FrameID id, size_t line) const override {
+    if (id < pad_count_) return nullptr;
+    return source_ ? source_->get_line_chroma(id - pad_count_, line) : nullptr;
+  }
+
+  std::vector<DropoutRun> get_dropout_hints(FrameID id) const override {
+    if (id < pad_count_) return {};
+    if (!source_) return {};
+    auto runs = source_->get_dropout_hints(id - pad_count_);
+    for (auto& run : runs) {
+      run.frame_id = id;
+    }
+    return runs;
+  }
+
+  std::optional<VbiData> get_vbi_hint(FrameID id) const override {
+    if (id < pad_count_) return std::nullopt;
+    return source_ ? source_->get_vbi_hint(id - pad_count_) : std::nullopt;
+  }
+
+ private:
+  void ensure_black_frame() const {
+    if (!black_frame_.empty() || pad_samples_total_ == 0) return;
+    black_frame_.assign(pad_samples_total_, blanking_level_);
+  }
+
+  size_t pad_count_;
+  VideoSystem pad_system_ = VideoSystem::Unknown;
+  size_t pad_height_ = 0;
+  size_t pad_samples_total_ = 0;
+  size_t pad_samples_per_line_ = 0;
+  sample_type blanking_level_ = 0;
+  mutable std::vector<sample_type> black_frame_;
+};
+
+// ============================================================================
 // SourceAlignStage
 // ============================================================================
 
@@ -316,6 +449,7 @@ std::vector<ArtifactPtr> SourceAlignStage::execute(
   std::vector<std::shared_ptr<const VideoFrameRepresentation>> new_cached;
 
   const FrameID kExcluded = std::numeric_limits<FrameID>::max();
+  const bool pad_mode = (alignment_mode_ == "pad_for_alignment");
 
   for (size_t i = 0; i < sources.size(); ++i) {
     if (offsets[i] == kExcluded) {
@@ -328,6 +462,13 @@ std::vector<ArtifactPtr> SourceAlignStage::execute(
       outputs.push_back(inputs[i]);
       new_cached.push_back(sources[i]);
       ORC_LOG_DEBUG("  Source {}: pass-through (offset=0)", i);
+    } else if (pad_mode) {
+      auto padded = std::make_shared<PaddedSourceFrameRepresentation>(
+          sources[i], static_cast<size_t>(offsets[i]), i);
+      outputs.push_back(padded);
+      new_cached.push_back(padded);
+      ORC_LOG_DEBUG("  Source {}: prepended {} padding frames, {} total", i,
+                    offsets[i], padded->frame_count());
     } else {
       auto aligned = std::make_shared<AlignedSourceFrameRepresentation>(
           sources[i], offsets[i], i);
@@ -356,27 +497,55 @@ std::vector<ArtifactPtr> SourceAlignStage::execute(
 
 std::vector<ParameterDescriptor> SourceAlignStage::get_parameter_descriptors(
     VideoSystem, SourceType) const {
-  return {ParameterDescriptor{
-      "alignmentMap", "Alignment Map",
-      "Alignment map ('1+2, 2+2, 3+1'). Format: input_id+frame_offset per "
-      "input. Use the Source Alignment tool to generate this value.",
-      ParameterType::STRING,
-      ParameterConstraints{std::nullopt,
-                           std::nullopt,
-                           ParameterValue{std::string("")},
-                           {},
-                           false,
-                           std::nullopt}}};
+  return {
+      ParameterDescriptor{
+          "alignmentMode", "Alignment Mode",
+          "How to align sources: 'pad_for_alignment' prepends synthetic "
+          "padding frames so all sources start from the earliest available VBI "
+          "frame; 'first_common_frame' trims leading frames so all sources "
+          "start from the first VBI frame common to all.",
+          ParameterType::STRING,
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue{std::string("pad_for_alignment")},
+                               {"first_common_frame", "pad_for_alignment"},
+                               false,
+                               std::nullopt}},
+      ParameterDescriptor{
+          "alignmentMap", "Alignment Map",
+          "Alignment map ('1+2, 2+2, 3+1'). Format: input_id+frame_offset. "
+          "In 'first_common_frame' mode the offset skips leading frames; in "
+          "'pad_for_alignment' mode the offset is the number of padding frames "
+          "prepended. Use the Source Alignment tool to generate this value.",
+          ParameterType::STRING,
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue{std::string("")},
+                               {},
+                               false,
+                               std::nullopt}},
+  };
 }
 
 std::map<std::string, ParameterValue> SourceAlignStage::get_parameters() const {
-  return {{"alignmentMap", ParameterValue{alignment_map_}}};
+  return {{"alignmentMode", ParameterValue{alignment_mode_}},
+          {"alignmentMap", ParameterValue{alignment_map_}}};
 }
 
 bool SourceAlignStage::set_parameters(
     const std::map<std::string, ParameterValue>& params) {
   for (const auto& [key, value] : params) {
-    if (key == "alignmentMap") {
+    if (key == "alignmentMode") {
+      if (const auto* s = std::get_if<std::string>(&value)) {
+        if (*s != "first_common_frame" && *s != "pad_for_alignment") {
+          ORC_LOG_ERROR("SourceAlignStage: unknown alignmentMode '{}'", *s);
+          return false;
+        }
+        alignment_mode_ = *s;
+      } else {
+        return false;
+      }
+    } else if (key == "alignmentMap") {
       if (const auto* s = std::get_if<std::string>(&value)) {
         alignment_map_ = *s;
       } else {
