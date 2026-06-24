@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "orc_histogram.h"
 #include "orc_preview_types.h"
 #include "orc_rendering.h"
 #include "orc_vectorscope.h"
@@ -28,6 +29,7 @@ enum class PreviewViewPayloadKind {
   None,
   Image,
   Vectorscope,
+  Histogram,
 };
 
 /**
@@ -48,6 +50,7 @@ struct PreviewViewDataResult {
   PreviewViewPayloadKind payload_kind{PreviewViewPayloadKind::None};
   std::optional<PreviewImage> image;
   std::optional<VectorscopeData> vectorscope;
+  std::optional<VideoHistogramData> histogram;
 
   bool is_valid() const {
     if (!success) {
@@ -60,6 +63,10 @@ struct PreviewViewDataResult {
 
     if (payload_kind == PreviewViewPayloadKind::Vectorscope) {
       return vectorscope.has_value();
+    }
+
+    if (payload_kind == PreviewViewPayloadKind::Histogram) {
+      return histogram.has_value();
     }
 
     return false;

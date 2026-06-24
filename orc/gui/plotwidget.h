@@ -53,6 +53,7 @@ class PlotWidget : public QWidget {
   void setAxisAutoScale(Qt::Orientation orientation, bool enable);
   void setYAxisIntegerLabels(bool integerOnly);
   void setXAxisIntegerLabels(bool integerOnly);
+  void setYAxisAbbreviatedLabels(bool abbreviated);
   void setAxisTickStep(Qt::Orientation orientation, double step,
                        double origin = 0.0);
 
@@ -136,6 +137,7 @@ class PlotWidget : public QWidget {
   bool m_yAutoScale;
   bool m_xIntegerLabels;
   bool m_yIntegerLabels;
+  bool m_yAbbreviatedLabels;
   bool m_isDarkTheme;
   bool m_secondaryYAxisEnabled;
   double m_xAxisTickStep;
@@ -318,7 +320,8 @@ class PlotAxisLabels : public QGraphicsItem {
                     double yTickStep = 0, double yTickOrigin = 0,
                     bool secondaryYUseCustomTicks = false,
                     double secondaryYTickStep = 0,
-                    double secondaryYTickOrigin = 0);
+                    double secondaryYTickOrigin = 0,
+                    bool yAbbreviatedLabels = false);
 
   QRectF boundingRect() const override;
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
@@ -332,6 +335,7 @@ class PlotAxisLabels : public QGraphicsItem {
   QString m_secondaryYTitle;
   bool m_xIntegerLabels;
   bool m_yIntegerLabels;
+  bool m_yAbbreviatedLabels;
   bool m_isDarkTheme;
   bool m_secondaryYEnabled;
   double m_xMin, m_xMax, m_yMin, m_yMax;

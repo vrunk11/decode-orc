@@ -33,6 +33,7 @@ PlotWidget::PlotWidget(QWidget* parent)
       m_yAutoScale(true),
       m_xIntegerLabels(false),
       m_yIntegerLabels(false),
+      m_yAbbreviatedLabels(false),
       m_isDarkTheme(false),
       m_secondaryYAxisEnabled(false),
       m_secondaryYMin(0),
@@ -150,6 +151,11 @@ void PlotWidget::setYAxisIntegerLabels(bool integerOnly) {
 
 void PlotWidget::setXAxisIntegerLabels(bool integerOnly) {
   m_xIntegerLabels = integerOnly;
+  replot();
+}
+
+void PlotWidget::setYAxisAbbreviatedLabels(bool abbreviated) {
+  m_yAbbreviatedLabels = abbreviated;
   replot();
 }
 
@@ -399,7 +405,8 @@ void PlotWidget::replot() {
         m_secondaryYMax, m_xAxisUseCustomTicks, m_xAxisTickStep,
         m_xAxisTickOrigin, m_yAxisUseCustomTicks, m_yAxisTickStep,
         m_yAxisTickOrigin, m_secondaryYAxisUseCustomTicks,
-        m_secondaryYAxisTickStep, m_secondaryYAxisTickOrigin);
+        m_secondaryYAxisTickStep, m_secondaryYAxisTickOrigin,
+        m_yAbbreviatedLabels);
   }
 
   // Reset view transformation to 1:1 scale
@@ -993,6 +1000,7 @@ PlotAxisLabels::PlotAxisLabels(PlotWidget* parent)
       m_yMax(100),
       m_xIntegerLabels(false),
       m_yIntegerLabels(false),
+      m_yAbbreviatedLabels(false),
       m_isDarkTheme(false),
       m_plotWidget(parent) {
   setZValue(2);  // Draw on top of grid but below curves
@@ -1006,7 +1014,8 @@ void PlotAxisLabels::updateLabels(
     double secondaryYMin, double secondaryYMax, bool xUseCustomTicks,
     double xTickStep, double xTickOrigin, bool yUseCustomTicks,
     double yTickStep, double yTickOrigin, bool secondaryYUseCustomTicks,
-    double secondaryYTickStep, double secondaryYTickOrigin) {
+    double secondaryYTickStep, double secondaryYTickOrigin,
+    bool yAbbreviatedLabels) {
   prepareGeometryChange();
   m_plotRect = plotRect;
   m_dataRect = dataRect;
@@ -1024,6 +1033,7 @@ void PlotAxisLabels::updateLabels(
   m_secondaryYMax = secondaryYMax;
   m_xIntegerLabels = xIntegerLabels;
   m_yIntegerLabels = yIntegerLabels;
+  m_yAbbreviatedLabels = yAbbreviatedLabels;
   m_isDarkTheme = isDarkTheme;
   m_secondaryYEnabled = secondaryYEnabled;
   m_xUseCustomTicks = xUseCustomTicks;
@@ -1158,9 +1168,23 @@ void PlotAxisLabels::paint(QPainter* painter,
       painter->drawLine(QPointF(m_plotRect.left() - 5, sceneY),
                         QPointF(m_plotRect.left(), sceneY));
 
-      // Draw label - format without .0 for whole numbers
       QString label;
-      if (m_yIntegerLabels) {
+      if (m_yAbbreviatedLabels && m_yIntegerLabels) {
+        double v = qRound(dataY);
+        if (v >= 1'000'000.0) {
+          double x = v / 1'000'000.0;
+          label = (x == std::floor(x))
+                      ? QString::number(static_cast<int>(x)) + "M"
+                      : QString::number(x, 'f', 1) + "M";
+        } else if (v >= 1'000.0) {
+          double x = v / 1'000.0;
+          label = (x == std::floor(x))
+                      ? QString::number(static_cast<int>(x)) + "K"
+                      : QString::number(x, 'f', 1) + "K";
+        } else {
+          label = QString::number(static_cast<int>(v));
+        }
+      } else if (m_yIntegerLabels) {
         label = QString::number(qRound(dataY));
       } else {
         double intPart;
@@ -1188,9 +1212,23 @@ void PlotAxisLabels::paint(QPainter* painter,
       painter->drawLine(QPointF(m_plotRect.left() - 5, sceneY),
                         QPointF(m_plotRect.left(), sceneY));
 
-      // Draw label - format without .0 for whole numbers
       QString label;
-      if (m_yIntegerLabels) {
+      if (m_yAbbreviatedLabels && m_yIntegerLabels) {
+        double v = qRound(dataY);
+        if (v >= 1'000'000.0) {
+          double x = v / 1'000'000.0;
+          label = (x == std::floor(x))
+                      ? QString::number(static_cast<int>(x)) + "M"
+                      : QString::number(x, 'f', 1) + "M";
+        } else if (v >= 1'000.0) {
+          double x = v / 1'000.0;
+          label = (x == std::floor(x))
+                      ? QString::number(static_cast<int>(x)) + "K"
+                      : QString::number(x, 'f', 1) + "K";
+        } else {
+          label = QString::number(static_cast<int>(v));
+        }
+      } else if (m_yIntegerLabels) {
         label = QString::number(qRound(dataY));
       } else {
         double intPart;

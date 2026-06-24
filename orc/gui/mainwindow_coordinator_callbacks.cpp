@@ -60,6 +60,7 @@ void MainWindow::onPreviewReady(uint64_t request_id,
   // navigation has settled.
   preview_dialog_->setSharedPreviewCoordinate(buildCurrentPreviewCoordinate());
   refreshVectorscopeForCurrentCoordinate();
+  refreshHistogramForCurrentCoordinate();
 
   // If the user navigated while we were rendering, the dialog's current
   // index will already differ from what we just rendered — issue a follow-up.

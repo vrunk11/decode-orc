@@ -521,6 +521,8 @@ void MainWindow::setupUI() {
           &MainWindow::onWaveformMonitorRequested);
   connect(preview_dialog_, &PreviewDialog::vectorscopeRequested, this,
           &MainWindow::onPreviewVectorscopeRequested);
+  connect(preview_dialog_, &PreviewDialog::histogramRequested, this,
+          &MainWindow::onPreviewHistogramRequested);
   // Connect preview frame changed signal to line scope
   // When frame changes, line scope should refresh samples at its current
   // field/line
@@ -2883,6 +2885,66 @@ void MainWindow::onPreviewVectorscopeRequested(
   refreshVectorscopeForCurrentCoordinate();
 }
 
+void MainWindow::refreshHistogramForCurrentCoordinate() {
+  if (!preview_dialog_ || !render_coordinator_ ||
+      !current_view_node_id_.is_valid()) {
+    return;
+  }
+
+  const std::string histogram_view_id = PreviewDialog::kHistogramViewIdRef();
+  if (!preview_dialog_->hasAvailablePreviewView(histogram_view_id)) {
+    preview_dialog_->updateHistogram(current_view_node_id_, std::nullopt);
+    return;
+  }
+
+  if (preview_render_in_flight_) {
+    return;
+  }
+
+  if (!preview_dialog_->isHistogramVisibleForNode(current_view_node_id_)) {
+    return;
+  }
+
+  orc::PreviewCoordinate coordinate =
+      preview_dialog_->sharedPreviewCoordinate().has_value()
+          ? *preview_dialog_->sharedPreviewCoordinate()
+          : buildCurrentPreviewCoordinate();
+
+  coordinate.field_index =
+      static_cast<uint64_t>(preview_dialog_->currentIndex());
+  coordinate.data_type_context = inferCurrentVideoDataType();
+  if (!coordinate.is_valid()) {
+    return;
+  }
+
+  const auto result = render_coordinator_->requestPreviewViewData(
+      current_view_node_id_, histogram_view_id, coordinate.data_type_context,
+      coordinate);
+
+  if (!result.success ||
+      result.payload_kind != orc::PreviewViewPayloadKind::Histogram) {
+    preview_dialog_->updateHistogram(current_view_node_id_, std::nullopt);
+    ORC_LOG_DEBUG("refreshHistogramForCurrentCoordinate: {}",
+                  result.error_message.empty() ? "no histogram payload"
+                                               : result.error_message);
+    return;
+  }
+
+  preview_dialog_->updateHistogram(current_view_node_id_, result.histogram);
+}
+
+void MainWindow::onPreviewHistogramRequested(
+    const orc::PreviewCoordinate& coordinate) {
+  if (!current_view_node_id_.is_valid()) {
+    return;
+  }
+
+  orc::PreviewCoordinate updated = coordinate;
+  updated.data_type_context = inferCurrentVideoDataType();
+  preview_dialog_->setSharedPreviewCoordinate(updated);
+  refreshHistogramForCurrentCoordinate();
+}
+
 void MainWindow::updatePreviewModeCombo() {
   ORC_LOG_DEBUG(
       "updatePreviewModeCombo: current_output_type={}, current_option_id='{}'",
@@ -4899,6 +4961,7 @@ void MainWindow::onLineSamplesReady(
   }
 
   refreshVectorscopeForCurrentCoordinate();
+  refreshHistogramForCurrentCoordinate();
 }
 
 void MainWindow::onFrameLineNavigationReady(

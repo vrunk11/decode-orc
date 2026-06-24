@@ -31,6 +31,7 @@
 #include "framescopedialog.h"
 #include "frametimingdialog.h"
 #include "logging.h"
+#include "preview/histogram_dialog.h"
 #include "preview/vectorscope_dialog.h"
 #include "stage_help_dialog.h"
 #include "waveformmonitordialog.h"
@@ -41,6 +42,7 @@ constexpr const char* kLineScopeViewId = "preview.linescope";
 constexpr const char* kFrameTimingViewId = "preview.frame_timing";
 constexpr const char* kWaveformMonitorViewId = "preview.frame_timing";
 constexpr const char* kComponentVectorscopeViewId = "preview.vectorscope";
+constexpr const char* kHistogramViewId = "preview.histogram";
 
 }  // namespace
 
@@ -93,6 +95,11 @@ PreviewDialog::~PreviewDialog() = default;
 
 const std::string& PreviewDialog::kComponentVectorscopeViewIdRef() {
   static const std::string view_id{kComponentVectorscopeViewId};
+  return view_id;
+}
+
+const std::string& PreviewDialog::kHistogramViewIdRef() {
+  static const std::string view_id{kHistogramViewId};
   return view_id;
 }
 
@@ -195,6 +202,14 @@ void PreviewDialog::setupUI() {
   show_component_vectorscope_action_->setEnabled(false);
   connect(show_component_vectorscope_action_, &QAction::triggered, this,
           &PreviewDialog::onComponentVectorscopeActionTriggered);
+
+  show_histogram_action_ = viewMenu->addAction("&Video Histogram");
+  show_histogram_action_->setShortcut(
+      QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
+  show_histogram_action_->setVisible(false);
+  show_histogram_action_->setEnabled(false);
+  connect(show_histogram_action_, &QAction::triggered, this,
+          &PreviewDialog::onHistogramActionTriggered);
 
   auto* helpMenu = menu_bar_->addMenu("&Help");
   auto* user_guide_action = helpMenu->addAction("&User Guide...");
@@ -546,6 +561,15 @@ void PreviewDialog::setAvailablePreviewViews(
   if (!component_vectorscope_available) {
     closeVectorscopeDialogs();
   }
+
+  const bool histogram_available = hasAvailablePreviewView(kHistogramViewId);
+  if (show_histogram_action_) {
+    show_histogram_action_->setVisible(histogram_available);
+    show_histogram_action_->setEnabled(histogram_available);
+  }
+  if (!histogram_available) {
+    closeHistogramDialog();
+  }
 }
 
 bool PreviewDialog::hasAvailablePreviewView(const std::string& view_id) const {
@@ -660,6 +684,7 @@ void PreviewDialog::closeChildDialogs() {
   }
 
   closeVectorscopeDialogs();
+  closeHistogramDialog();
 
   // Disable cross-hairs when closing
   if (preview_widget_) {
@@ -684,6 +709,54 @@ void PreviewDialog::closeVectorscopeDialogs() {
     vectorscope_dialog_->close();
   }
   vectorscope_node_id_ = orc::NodeID{};
+}
+
+void PreviewDialog::showHistogramForNode(orc::NodeID node_id) {
+  if (!node_id.is_valid()) {
+    return;
+  }
+
+  if (!histogram_dialog_) {
+    histogram_dialog_ = new HistogramDialog(this);
+    histogram_dialog_->setAttribute(Qt::WA_DeleteOnClose, false);
+
+    connect(histogram_dialog_, &QObject::destroyed, this, [this]() {
+      histogram_dialog_ = nullptr;
+      histogram_node_id_ = orc::NodeID{};
+    });
+  }
+
+  histogram_node_id_ = node_id;
+  histogram_dialog_->show();
+  histogram_dialog_->raise();
+  histogram_dialog_->activateWindow();
+}
+
+void PreviewDialog::updateHistogram(
+    orc::NodeID node_id, const std::optional<orc::VideoHistogramData>& data) {
+  Q_UNUSED(node_id);
+
+  if (!histogram_dialog_ || !histogram_dialog_->isVisible()) {
+    return;
+  }
+
+  if (data.has_value()) {
+    histogram_dialog_->updateHistogram(*data);
+  } else {
+    histogram_dialog_->clearDisplay();
+  }
+}
+
+bool PreviewDialog::isHistogramVisibleForNode(orc::NodeID node_id) const {
+  Q_UNUSED(node_id);
+  return histogram_dialog_ && histogram_dialog_->isVisible();
+}
+
+void PreviewDialog::closeHistogramDialog() {
+  if (histogram_dialog_) {
+    histogram_dialog_->close();
+  }
+  histogram_node_id_ = orc::NodeID{};
 }
 
 bool PreviewDialog::isLineScopeVisible() const {
@@ -801,4 +874,25 @@ void PreviewDialog::onComponentVectorscopeActionTriggered() {
   }
 
   emit vectorscopeRequested(coordinate);
+}
+
+void PreviewDialog::onHistogramActionTriggered() {
+  if (!hasAvailablePreviewView(kHistogramViewId) ||
+      !current_node_id_.is_valid()) {
+    return;
+  }
+
+  showHistogramForNode(current_node_id_);
+
+  orc::PreviewCoordinate coordinate;
+  if (shared_preview_coordinate_.has_value() &&
+      shared_preview_coordinate_->is_valid()) {
+    coordinate = *shared_preview_coordinate_;
+  } else {
+    coordinate.field_index = static_cast<uint64_t>(currentIndex());
+    coordinate.line_index = 0;
+    coordinate.sample_offset = 0;
+  }
+
+  emit histogramRequested(coordinate);
 }

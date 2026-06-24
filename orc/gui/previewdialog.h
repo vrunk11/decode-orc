@@ -38,6 +38,7 @@
 class FieldPreviewWidget;
 class FrameScopeDialog;
 class FrameTimingDialog;
+class HistogramDialog;
 class VectorscopeDialog;
 class WaveformMonitorDialog;
 
@@ -157,6 +158,27 @@ class PreviewDialog : public QDialog {
    * @brief Show vectorscope dialog owned by the preview subsystem.
    */
   void showVectorscopeForNode(orc::NodeID node_id);
+
+  /**
+   * @brief Show video histogram dialog owned by the preview subsystem.
+   */
+  void showHistogramForNode(orc::NodeID node_id);
+
+  /**
+   * @brief Update histogram dialog content.
+   */
+  void updateHistogram(orc::NodeID node_id,
+                       const std::optional<orc::VideoHistogramData>& data);
+
+  /**
+   * @brief Check if histogram is visible for node.
+   */
+  bool isHistogramVisibleForNode(orc::NodeID node_id) const;
+
+  /**
+   * @brief Return the histogram preview view id.
+   */
+  static const std::string& kHistogramViewIdRef();
 
   /**
    * @brief Update vectorscope dialog content for the given node.
@@ -325,6 +347,9 @@ class PreviewDialog : public QDialog {
   void vectorscopeRequested(const orc::PreviewCoordinate&
                                 coordinate);  // Emitted when vectorscope should
                                               // refresh via presenter contract
+  void histogramRequested(const orc::PreviewCoordinate&
+                              coordinate);  // Emitted when histogram should
+                                            // refresh via presenter contract
   void previewCoordinateChanged(
       const orc::PreviewCoordinate&
           coordinate);  // Emitted whenever shared coordinate changes
@@ -332,6 +357,7 @@ class PreviewDialog : public QDialog {
  private slots:
   void onSampleMarkerMoved(int sample_x);
   void onComponentVectorscopeActionTriggered();
+  void onHistogramActionTriggered();
 
  private:
   void setupUI();
@@ -356,11 +382,14 @@ class PreviewDialog : public QDialog {
   QAction* show_frame_timing_action_;
   QAction* show_waveform_monitor_action_;
   QAction* show_component_vectorscope_action_;
+  QAction* show_histogram_action_;
   FrameScopeDialog* frame_scope_dialog_;
   FrameTimingDialog* frame_timing_dialog_;
   WaveformMonitorDialog* waveform_monitor_dialog_;
   VectorscopeDialog* vectorscope_dialog_{nullptr};
   orc::NodeID vectorscope_node_id_;
+  HistogramDialog* histogram_dialog_{nullptr};
+  orc::NodeID histogram_node_id_;
   orc::NodeID current_node_id_;
   std::optional<orc::PreviewCoordinate> shared_preview_coordinate_;
   std::unordered_set<std::string> available_preview_view_ids_;
@@ -387,6 +416,7 @@ class PreviewDialog : public QDialog {
   bool is_playing_{false};
 
   void closeVectorscopeDialogs();
+  void closeHistogramDialog();
 
  protected:
   void closeEvent(QCloseEvent* event) override;

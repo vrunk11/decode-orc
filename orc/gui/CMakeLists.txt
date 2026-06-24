@@ -65,6 +65,8 @@ set(ORC_GUI_LIB_SOURCES
     preview/vectorscope_dialog.cpp
     preview/vectorscope_dialog.h
     preview/vectorscope_geometry.h
+    preview/histogram_dialog.cpp
+    preview/histogram_dialog.h
     generic_analysis_dialog.cpp
     generic_analysis_dialog.h
     

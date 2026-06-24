@@ -143,6 +143,7 @@ class MainWindow : public QMainWindow {
   void onSetCrosshairsFromFrameTiming();
   void onFrameScopeDialogClosed();
   void onPreviewVectorscopeRequested(const orc::PreviewCoordinate& coordinate);
+  void onPreviewHistogramRequested(const orc::PreviewCoordinate& coordinate);
 
   // Coordinator response slots
   void onPreviewReady(uint64_t request_id, orc::PreviewRenderResult result);
@@ -243,6 +244,7 @@ class MainWindow : public QMainWindow {
   void refreshPreviewViewAvailability();
   orc::PreviewCoordinate buildCurrentPreviewCoordinate() const;
   void refreshVectorscopeForCurrentCoordinate();
+  void refreshHistogramForCurrentCoordinate();
 
   // In-flight render state helpers — all "rendering" UX lives here
   void beginPreviewRenderInFlight();  // Set flag + start slow-title timer
