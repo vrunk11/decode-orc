@@ -48,15 +48,14 @@ add_library(orc-core SHARED
     # Vectorscope analysis
     analysis/vectorscope/vectorscope_analysis.cpp
     
-    # Field mapping analysis
-    # Re-enable range-based field mapping tools (observer-independent)
+    # Field/frame mapping analysis
     analysis/disc_mapper/disc_mapper_analysis.cpp
     analysis/disc_mapper/disc_mapper_analyzer.cpp
-    analysis/field_map_range/field_map_range_analysis.cpp
+    analysis/frame_map_range/frame_map_range_analysis.cpp
     
-    # Field corruption analysis (testing tool)
-    analysis/field_corruption/field_corruption_analyzer.cpp
-    analysis/field_corruption/field_corruption_analysis.cpp
+    # Frame corruption analysis (testing tool)
+    analysis/frame_corruption/frame_corruption_analyzer.cpp
+    analysis/frame_corruption/frame_corruption_analysis.cpp
     
     # Dropout editor tool
     analysis/dropout/dropout_editor_tool.cpp

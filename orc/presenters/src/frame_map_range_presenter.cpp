@@ -1,13 +1,13 @@
 /*
- * File:        field_map_range_presenter.cpp
+ * File:        frame_map_range_presenter.cpp
  * Module:      orc-presenters
- * Purpose:     Presenter for Field Map Range Finder analysis tool
+ * Purpose:     Presenter for Frame Map Range Finder analysis tool
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include "../include/field_map_range_presenter.h"
+#include "../include/frame_map_range_presenter.h"
 
 #include <algorithm>
 #include <memory>
@@ -23,16 +23,16 @@
 
 namespace orc::presenters {
 
-FieldMapRangePresenter::FieldMapRangePresenter(void* project_handle)
+FrameMapRangePresenter::FrameMapRangePresenter(void* project_handle)
     : AnalysisToolPresenter(project_handle) {}
 
-std::string FieldMapRangePresenter::toolId() const { return "field_map_range"; }
+std::string FrameMapRangePresenter::toolId() const { return "frame_map_range"; }
 
-std::string FieldMapRangePresenter::toolName() const {
-  return "Field Map Range Finder";
+std::string FrameMapRangePresenter::toolName() const {
+  return "Frame Map Range Finder";
 }
 
-orc::AnalysisResult FieldMapRangePresenter::runAnalysis(
+orc::AnalysisResult FrameMapRangePresenter::runAnalysis(
     NodeID node_id,
     const std::map<std::string, orc::ParameterValue>& parameters,
     std::function<void(int, const std::string&)> progress_callback) {
@@ -80,12 +80,12 @@ orc::AnalysisResult FieldMapRangePresenter::runAnalysis(
   } progress(progress_callback);
 
   if (progress_callback) {
-    progress_callback(0, "Initializing field map range analysis...");
+    progress_callback(0, "Initializing frame map range analysis...");
   }
 
   auto* tool = orc::AnalysisRegistry::instance().findById(toolId());
   if (!tool) {
-    result.summary = "Field Map Range Finder tool not found in registry";
+    result.summary = "Frame Map Range Finder tool not found in registry";
     ORC_LOG_ERROR("{}", result.summary);
     return result;
   }
@@ -110,8 +110,8 @@ orc::AnalysisResult FieldMapRangePresenter::runAnalysis(
   }
 
   if (!node_it->stage ||
-      node_it->stage->get_node_type_info().stage_name != "field_map") {
-    result.summary = "Field Map Range Finder only applies to field_map stages";
+      node_it->stage->get_node_type_info().stage_name != "frame_map") {
+    result.summary = "Frame Map Range Finder only applies to frame_map stages";
     ORC_LOG_ERROR("{}", result.summary);
     return result;
   }
@@ -129,7 +129,7 @@ orc::AnalysisResult FieldMapRangePresenter::runAnalysis(
       *static_cast<orc::Project*>(getProjectPointer()));
 
   if (progress_callback) {
-    progress_callback(20, "Running field map range analysis...");
+    progress_callback(20, "Running frame map range analysis...");
   }
 
   orc::AnalysisResult core_result = tool->analyze(ctx, &progress);

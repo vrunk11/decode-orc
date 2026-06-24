@@ -219,11 +219,28 @@ QMenu* OrcGraphicsScene::createSceneMenu(QPointF const scenePos) {
           }
         };
 
+    const std::vector<std::string> kCategoryOrder = {
+        "Source", "Transform", "Sink (Core)", "Sink (Analysis)",
+        "Sink (3rd party)"};
+
+    for (const auto& category : kCategoryOrder) {
+      auto it = stages_by_category.find(category);
+      if (it == stages_by_category.end() || it->second.empty()) {
+        continue;
+      }
+      QMenu* category_menu =
+          add_node_menu->addMenu(QString::fromStdString(category));
+      add_stages_to_menu(category_menu, it->second);
+    }
+
     for (const auto& [category, category_stages] : stages_by_category) {
       if (category_stages.empty()) {
         continue;
       }
-
+      if (std::find(kCategoryOrder.begin(), kCategoryOrder.end(), category) !=
+          kCategoryOrder.end()) {
+        continue;
+      }
       QMenu* category_menu =
           add_node_menu->addMenu(QString::fromStdString(category));
       add_stages_to_menu(category_menu, category_stages);

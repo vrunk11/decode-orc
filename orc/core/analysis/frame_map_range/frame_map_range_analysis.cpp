@@ -1,14 +1,14 @@
 /*
- * File:        field_map_range_analysis.cpp
+ * File:        frame_map_range_analysis.cpp
  * Module:      analysis
- * Purpose:     Field map range locator: finds fields by picture number or CLV
+ * Purpose:     Frame map range locator: finds frames by picture number or CLV
  * timecode
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#include "field_map_range_analysis.h"
+#include "frame_map_range_analysis.h"
 
 #include <algorithm>
 #include <cctype>
@@ -29,25 +29,25 @@
 namespace orc {
 
 // Force linker to include this object file (for static registration)
-void force_link_FieldMapRangeAnalysisTool() {}
+void force_link_FrameMapRangeAnalysisTool() {}
 
 // Register the tool
-REGISTER_ANALYSIS_TOOL(FieldMapRangeAnalysisTool)
+REGISTER_ANALYSIS_TOOL(FrameMapRangeAnalysisTool)
 
-std::string FieldMapRangeAnalysisTool::id() const { return "field_map_range"; }
+std::string FrameMapRangeAnalysisTool::id() const { return "frame_map_range"; }
 
-std::string FieldMapRangeAnalysisTool::name() const {
-  return "Field Map Range Finder";
+std::string FrameMapRangeAnalysisTool::name() const {
+  return "Frame Map Range Finder";
 }
 
-std::string FieldMapRangeAnalysisTool::description() const {
-  return "Find a field range by start/end picture number or CLV timecode and "
-         "generate a Field Map range specification.";
+std::string FrameMapRangeAnalysisTool::description() const {
+  return "Find a frame range by start/end picture number or CLV timecode and "
+         "generate a Frame Map range specification.";
 }
 
-std::string FieldMapRangeAnalysisTool::category() const { return "Diagnostic"; }
+std::string FrameMapRangeAnalysisTool::category() const { return "Diagnostic"; }
 
-std::vector<ParameterDescriptor> FieldMapRangeAnalysisTool::parameters() const {
+std::vector<ParameterDescriptor> FrameMapRangeAnalysisTool::parameters() const {
   std::vector<ParameterDescriptor> params;
 
   ParameterDescriptor start_addr;
@@ -73,14 +73,14 @@ std::vector<ParameterDescriptor> FieldMapRangeAnalysisTool::parameters() const {
   return params;
 }
 
-bool FieldMapRangeAnalysisTool::canAnalyze(
+bool FrameMapRangeAnalysisTool::canAnalyze(
     AnalysisSourceType source_type) const {
   return source_type == AnalysisSourceType::LaserDisc;
 }
 
-bool FieldMapRangeAnalysisTool::isApplicableToStage(
+bool FrameMapRangeAnalysisTool::isApplicableToStage(
     const std::string& stage_name) const {
-  return stage_name == "field_map";
+  return stage_name == "frame_map";
 }
 
 namespace {
@@ -213,6 +213,7 @@ static ParsedAddress parse_address(const std::string& input, bool is_pal) {
   return result;
 }
 
+// Read picture number from one field slot in the observation context.
 static std::optional<int32_t> get_picture_number_from_vbi(
     const ObservationContext& observation_context, FieldID field_id,
     bool is_pal) {
@@ -255,14 +256,26 @@ static std::optional<int32_t> get_picture_number_from_vbi(
   return std::nullopt;
 }
 
+// BiphaseObserver stores VBI per-field at FieldID(frame_id*2 + field_idx).
+// Check both fields and return the first valid picture number found.
+static std::optional<int32_t> get_picture_number_from_frame(
+    const ObservationContext& obs_context, FrameID frame_id, bool is_pal) {
+  for (uint64_t field_idx = 0; field_idx < 2; ++field_idx) {
+    auto pn = get_picture_number_from_vbi(
+        obs_context, FieldID(frame_id * 2 + field_idx), is_pal);
+    if (pn) return pn;
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
-AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
+AnalysisResult FrameMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
                                                   AnalysisProgress* progress) {
   AnalysisResult result;
 
   if (progress) {
-    progress->setStatus("Initializing field map range analysis...");
+    progress->setStatus("Initializing frame map range analysis...");
     progress->setProgress(0);
   }
 
@@ -290,7 +303,7 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
     result.status = AnalysisResult::Failed;
     result.summary = "No DAG or project provided for analysis";
     ORC_LOG_ERROR(
-        "Field map range analysis requires DAG and project in context");
+        "Frame map range analysis requires DAG and project in context");
     return result;
   }
 
@@ -308,14 +321,14 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
 
   if (node_it->input_node_ids.empty()) {
     result.status = AnalysisResult::Failed;
-    result.summary = "Field map node has no input connected";
-    ORC_LOG_ERROR("Field map node '{}' has no input", ctx.node_id);
+    result.summary = "Frame map node has no input connected";
+    ORC_LOG_ERROR("Frame map node '{}' has no input", ctx.node_id);
     return result;
   }
 
   NodeID input_node_id = node_it->input_node_ids[0];
   ORC_LOG_DEBUG(
-      "Node '{}': Field map range analysis - getting input from node '{}'",
+      "Node '{}': Frame map range analysis - getting input from node '{}'",
       ctx.node_id, input_node_id);
 
   DAGExecutor executor;
@@ -350,22 +363,16 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
   } catch (const std::exception& e) {
     result.status = AnalysisResult::Failed;
     result.summary = "Analysis failed: " + std::string(e.what());
-    ORC_LOG_ERROR("Field map range analysis failed: {}", e.what());
+    ORC_LOG_ERROR("Frame map range analysis failed: {}", e.what());
     return result;
   }
 
-  // Derive field-level range from frame range (each frame = 2 fields).
-  // Field IDs produced here match the FieldIDs stored in ObservationContext by
-  // BiphaseObserver: derived_fid = FieldID(frame_id * 2 + field_idx).
   auto frame_range = source->frame_range();
   size_t total_frames = frame_range.count();
-  size_t total_fields = total_frames * 2;
-  uint64_t field_start = frame_range.first * 2;
-  uint64_t field_end = (frame_range.last + 1) * 2;  // exclusive
 
-  if (total_fields == 0) {
+  if (total_frames == 0) {
     result.status = AnalysisResult::Failed;
-    result.summary = "No fields found in source";
+    result.summary = "No frames found in source";
     return result;
   }
 
@@ -394,34 +401,29 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
     progress->setProgress(10);
   }
 
-  // Extract VBI on-demand, not all at once.
-  // process_frame() processes both fields of a frame, keying results by
-  // derived_fid = FieldID(frame_id * 2 + field_idx).
   BiphaseObserver biphase_observer;
   auto& obs_context = executor.get_observation_context();
   std::set<FrameID> processed_frames;
 
-  auto extract_vbi_if_needed = [&](FieldID fid) {
-    FrameID frame_id = fid.value() / 2;
+  auto extract_vbi_if_needed = [&](FrameID frame_id) {
     if (processed_frames.find(frame_id) == processed_frames.end()) {
       biphase_observer.process_frame(*source, frame_id, obs_context);
       processed_frames.insert(frame_id);
     }
   };
 
-  // Find the first valid VBI picture number/timecode to establish a baseline
+  // Find the first frame with valid VBI to establish a prediction baseline
   std::optional<int32_t> first_picture_number;
-  FieldID first_valid_field;
+  FrameID first_valid_frame = frame_range.first;
 
-  for (uint64_t fid_val = field_start; fid_val < field_end; ++fid_val) {
-    FieldID fid(fid_val);
+  for (FrameID fid = frame_range.first; fid <= frame_range.last; ++fid) {
     extract_vbi_if_needed(fid);
-    auto pn_opt = get_picture_number_from_vbi(obs_context, fid, is_pal);
+    auto pn_opt = get_picture_number_from_frame(obs_context, fid, is_pal);
     if (pn_opt) {
       first_picture_number = pn_opt;
-      first_valid_field = fid;
-      ORC_LOG_DEBUG("First valid VBI at field {}: picture number {}",
-                    fid.value(), *pn_opt);
+      first_valid_frame = fid;
+      ORC_LOG_DEBUG("First valid VBI at frame {}: picture number {}", fid,
+                    *pn_opt);
       break;
     }
   }
@@ -435,85 +437,78 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
   }
 
   if (progress) {
-    progress->setStatus("Analyzing picture-to-field mapping...");
+    progress->setStatus("Analyzing picture-to-frame mapping...");
     progress->setProgress(20);
   }
 
-  // Sample multiple points to determine the actual picture-to-field ratio
-  // This handles gaps, missing fields, and non-uniform spacing
-  std::vector<std::pair<int64_t, int32_t>>
-      samples;  // (field_id, picture_number)
-  samples.push_back({first_valid_field.value(), first_picture_number.value()});
+  // Sample spread points to measure the frames-per-picture ratio (handles gaps
+  // and non-uniform spacing; expected ~1.0 for normal CAV/CLV discs)
+  std::vector<std::pair<int64_t, int32_t>> samples;  // (frame_id, picture_num)
+  samples.push_back(
+      {static_cast<int64_t>(first_valid_frame), first_picture_number.value()});
 
-  // Sample up to 10 more points spread across the source
   const size_t max_samples = 11;
   size_t sample_interval =
-      std::max<size_t>(1, total_fields / (max_samples * 10));
+      std::max<size_t>(1, total_frames / (max_samples * 10));
 
   for (size_t i = 1; i < max_samples && samples.size() < max_samples; i++) {
-    uint64_t sample_field = first_valid_field.value() + (i * sample_interval);
-    if (sample_field >= field_end) break;
-
-    extract_vbi_if_needed(FieldID(sample_field));
+    FrameID sample_frame = first_valid_frame + (i * sample_interval);
+    if (sample_frame > frame_range.last) break;
+    extract_vbi_if_needed(sample_frame);
     auto pn_opt =
-        get_picture_number_from_vbi(obs_context, FieldID(sample_field), is_pal);
+        get_picture_number_from_frame(obs_context, sample_frame, is_pal);
     if (pn_opt) {
-      samples.push_back({sample_field, *pn_opt});
+      samples.push_back({static_cast<int64_t>(sample_frame), *pn_opt});
     }
   }
 
-  // Calculate average fields-per-picture from samples
-  double avg_fields_per_picture = 2.0;  // default fallback
+  double avg_frames_per_picture = 1.0;  // default fallback
   if (samples.size() > 1) {
-    int64_t total_field_delta = 0;
+    int64_t total_frame_delta = 0;
     int64_t total_picture_delta = 0;
     for (size_t i = 1; i < samples.size(); i++) {
-      int64_t field_delta = samples[i].first - samples[i - 1].first;
+      int64_t frame_delta = samples[i].first - samples[i - 1].first;
       int64_t picture_delta = samples[i].second - samples[i - 1].second;
-      if (picture_delta > 0 && field_delta > 0) {
-        total_field_delta += field_delta;
+      if (picture_delta > 0 && frame_delta > 0) {
+        total_frame_delta += frame_delta;
         total_picture_delta += picture_delta;
       }
     }
     if (total_picture_delta > 0) {
-      avg_fields_per_picture = static_cast<double>(total_field_delta) /
+      avg_frames_per_picture = static_cast<double>(total_frame_delta) /
                                static_cast<double>(total_picture_delta);
     }
   }
 
-  ORC_LOG_DEBUG("Sampled {} points, calculated avg fields per picture: {:.2f}",
-                samples.size(), avg_fields_per_picture);
+  ORC_LOG_DEBUG("Sampled {} points, calculated avg frames per picture: {:.2f}",
+                samples.size(), avg_frames_per_picture);
 
-  // Predict the approximate field positions based on picture number offsets and
-  // measured ratio
   int64_t start_picture_offset =
       start_addr.picture_number - first_picture_number.value();
   int64_t end_picture_offset =
       end_addr.picture_number - first_picture_number.value();
 
-  int64_t predicted_start_field =
-      static_cast<int64_t>(first_valid_field.value()) +
-      static_cast<int64_t>(static_cast<double>(start_picture_offset) *
-                           avg_fields_per_picture);
-  int64_t predicted_end_field =
-      static_cast<int64_t>(first_valid_field.value()) +
-      static_cast<int64_t>(static_cast<double>(end_picture_offset) *
-                           avg_fields_per_picture);
+  int64_t src_first = static_cast<int64_t>(frame_range.first);
+  int64_t src_last = static_cast<int64_t>(frame_range.last);
 
-  // Clamp to valid range
-  predicted_start_field =
-      std::max<int64_t>(static_cast<int64_t>(field_start),
-                        std::min<int64_t>(predicted_start_field,
-                                          static_cast<int64_t>(field_end) - 1));
-  predicted_end_field =
-      std::max<int64_t>(static_cast<int64_t>(field_start),
-                        std::min<int64_t>(predicted_end_field,
-                                          static_cast<int64_t>(field_end) - 1));
+  int64_t predicted_start_frame =
+      static_cast<int64_t>(first_valid_frame) +
+      static_cast<int64_t>(static_cast<double>(start_picture_offset) *
+                           avg_frames_per_picture);
+  int64_t predicted_end_frame =
+      static_cast<int64_t>(first_valid_frame) +
+      static_cast<int64_t>(static_cast<double>(end_picture_offset) *
+                           avg_frames_per_picture);
+
+  predicted_start_frame =
+      std::max(src_first, std::min(predicted_start_frame, src_last));
+  predicted_end_frame =
+      std::max(src_first, std::min(predicted_end_frame, src_last));
 
   ORC_LOG_DEBUG(
-      "Predicted start field: {} (picture {}), predicted end field: {} "
+      "Predicted start frame: {} (picture {}), predicted end frame: {} "
       "(picture {})",
-      predicted_start_field, start_addr.picture_number, predicted_end_field,
+      predicted_start_frame, start_addr.picture_number, predicted_end_frame,
       end_addr.picture_number);
 
   if (progress) {
@@ -521,38 +516,35 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
     progress->setProgress(40);
   }
 
-  // Jump directly to predicted position and search locally
   bool start_found = false;
-  FieldID start_field;
+  FrameID start_frame = frame_range.first;
 
-  // First check the predicted location
-  int64_t search_radius = 5000;  // Search ±5000 fields from prediction
-  int64_t start_search_begin = std::max<int64_t>(
-      static_cast<int64_t>(field_start), predicted_start_field - search_radius);
-  int64_t start_search_end = std::min<int64_t>(
-      static_cast<int64_t>(field_end), predicted_start_field + search_radius);
+  // ±2500 frames (~100 s at 25 fps) around the predicted position
+  const int64_t search_radius = 2500;
+  int64_t start_search_begin =
+      std::max(src_first, predicted_start_frame - search_radius);
+  int64_t start_search_end =
+      std::min(src_last + 1, predicted_start_frame + search_radius);
 
   ORC_LOG_DEBUG(
-      "Searching for start picture {} in field range {}-{} (predicted: {})",
+      "Searching for start picture {} in frame range {}-{} (predicted: {})",
       start_addr.picture_number, start_search_begin, start_search_end,
-      predicted_start_field);
+      predicted_start_frame);
 
-  // Search in the predicted window
-  for (int64_t fid_val = start_search_begin; fid_val < start_search_end;
-       fid_val++) {
-    extract_vbi_if_needed(FieldID(fid_val));
-    auto pn_opt =
-        get_picture_number_from_vbi(obs_context, FieldID(fid_val), is_pal);
+  for (int64_t fid = start_search_begin; fid < start_search_end; ++fid) {
+    FrameID frame_id = static_cast<FrameID>(fid);
+    extract_vbi_if_needed(frame_id);
+    auto pn_opt = get_picture_number_from_frame(obs_context, frame_id, is_pal);
     if (pn_opt && *pn_opt == start_addr.picture_number) {
       start_found = true;
-      start_field = FieldID(fid_val);
-      ORC_LOG_DEBUG("Start position found at field {}: picture number {}",
-                    fid_val, *pn_opt);
+      start_frame = frame_id;
+      ORC_LOG_DEBUG("Start position found at frame {}: picture number {}", fid,
+                    *pn_opt);
       break;
     }
   }
 
-  // If not found, fall back to full search from beginning
+  // Fallback: full scan from the beginning
   if (!start_found) {
     ORC_LOG_WARN(
         "Start not found in predicted range, falling back to full scan");
@@ -561,24 +553,23 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
           "Start not in predicted range, scanning from beginning...");
     }
 
-    for (uint64_t fid_val = field_start; fid_val < field_end; ++fid_val) {
-      FieldID fid(fid_val);
+    for (FrameID fid = frame_range.first; fid <= frame_range.last; ++fid) {
       extract_vbi_if_needed(fid);
-      auto pn_opt = get_picture_number_from_vbi(obs_context, fid, is_pal);
+      auto pn_opt = get_picture_number_from_frame(obs_context, fid, is_pal);
       if (pn_opt && *pn_opt == start_addr.picture_number) {
         start_found = true;
-        start_field = fid;
+        start_frame = fid;
         ORC_LOG_DEBUG(
-            "Start position found at field {} (full scan): picture number {}",
-            fid_val, *pn_opt);
+            "Start position found at frame {} (full scan): picture number {}",
+            fid, *pn_opt);
         break;
       }
 
-      // Progress update every 5000 fields
-      if (progress && (fid_val % 5000 == 0)) {
+      if (progress && (fid % 2500 == 0)) {
         progress->setProgress(
-            50 + static_cast<int>(15.0 * static_cast<double>(fid_val) /
-                                  static_cast<double>(total_fields)));
+            50 + static_cast<int>(15.0 *
+                                  static_cast<double>(fid - frame_range.first) /
+                                  static_cast<double>(total_frames)));
         if (progress->isCancelled()) {
           AnalysisResult cancelled_result;
           cancelled_result.status = AnalysisResult::Cancelled;
@@ -603,63 +594,43 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
     }
   }
 
-  // Search for end position
   bool end_found = false;
-  FieldID end_field;
-  bool end_same_as_start =
-      (start_addr.picture_number == end_addr.picture_number);
+  FrameID end_frame = start_frame;
 
-  if (end_same_as_start) {
-    // Special case: find last field of same picture
-    end_field = start_field;
+  if (start_addr.picture_number == end_addr.picture_number) {
     end_found = true;
-
-    for (uint64_t fid_val = start_field.value() + 1; fid_val < field_end;
-         ++fid_val) {
-      FieldID fid(fid_val);
-      extract_vbi_if_needed(fid);
-      auto pn_opt = get_picture_number_from_vbi(obs_context, fid, is_pal);
-      if (pn_opt && *pn_opt == start_addr.picture_number) {
-        end_field = fid;
-      } else if (pn_opt && *pn_opt != start_addr.picture_number) {
-        break;
-      }
-    }
-    ORC_LOG_DEBUG("End position (same as start) at field {}: picture number {}",
-                  end_field.value(), start_addr.picture_number);
+    ORC_LOG_DEBUG("End position (same as start) at frame {}: picture number {}",
+                  end_frame, start_addr.picture_number);
   } else {
-    // Search near predicted end position
-    int64_t end_search_begin =
-        std::max<int64_t>(static_cast<int64_t>(start_field.value()),
-                          predicted_end_field - search_radius);
-    int64_t end_search_end = std::min<int64_t>(
-        static_cast<int64_t>(field_end), predicted_end_field + search_radius);
+    int64_t end_search_begin = std::max(static_cast<int64_t>(start_frame),
+                                        predicted_end_frame - search_radius);
+    int64_t end_search_end =
+        std::min(src_last + 1, predicted_end_frame + search_radius);
 
     ORC_LOG_DEBUG(
-        "Searching for end picture {} in field range {}-{} (predicted: {})",
+        "Searching for end picture {} in frame range {}-{} (predicted: {})",
         end_addr.picture_number, end_search_begin, end_search_end,
-        predicted_end_field);
+        predicted_end_frame);
 
-    // Search for last field with the end picture number
-    std::optional<int64_t> last_matching_field;
-    for (int64_t fid_val = end_search_begin; fid_val < end_search_end;
-         fid_val++) {
-      extract_vbi_if_needed(FieldID(fid_val));
+    std::optional<FrameID> last_matching_frame;
+    for (int64_t fid = end_search_begin; fid < end_search_end; ++fid) {
+      FrameID frame_id = static_cast<FrameID>(fid);
+      extract_vbi_if_needed(frame_id);
       auto pn_opt =
-          get_picture_number_from_vbi(obs_context, FieldID(fid_val), is_pal);
+          get_picture_number_from_frame(obs_context, frame_id, is_pal);
       if (pn_opt && *pn_opt == end_addr.picture_number) {
-        last_matching_field = fid_val;
+        last_matching_frame = frame_id;
       }
     }
 
-    if (last_matching_field) {
+    if (last_matching_frame) {
       end_found = true;
-      end_field = FieldID(*last_matching_field);
-      ORC_LOG_DEBUG("End position found at field {}: picture number {}",
-                    *last_matching_field, end_addr.picture_number);
+      end_frame = *last_matching_frame;
+      ORC_LOG_DEBUG("End position found at frame {}: picture number {}",
+                    end_frame, end_addr.picture_number);
     }
 
-    // Fallback to full scan from start if not found
+    // Fallback: scan forward from start
     if (!end_found) {
       ORC_LOG_WARN(
           "End not found in predicted range, falling back to scan from start "
@@ -669,29 +640,24 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
             "End not in predicted range, scanning from start...");
       }
 
-      for (uint64_t fid_val = start_field.value() + 1; fid_val < field_end;
-           ++fid_val) {
-        FieldID fid(fid_val);
+      for (FrameID fid = start_frame + 1; fid <= frame_range.last; ++fid) {
         extract_vbi_if_needed(fid);
-        auto pn_opt = get_picture_number_from_vbi(obs_context, fid, is_pal);
+        auto pn_opt = get_picture_number_from_frame(obs_context, fid, is_pal);
         if (pn_opt && *pn_opt == end_addr.picture_number) {
           end_found = true;
-          end_field = fid;
+          end_frame = fid;
         } else if (end_found && pn_opt && *pn_opt != end_addr.picture_number) {
           break;
         }
 
-        // Progress update every 5000 fields
-        if (progress && (fid_val % 5000 == 0)) {
-          int64_t fields_from_start = static_cast<int64_t>(fid_val) -
-                                      static_cast<int64_t>(start_field.value());
-          int64_t total_to_scan = static_cast<int64_t>(field_end) -
-                                  static_cast<int64_t>(start_field.value());
+        if (progress && (fid % 2500 == 0)) {
+          FrameID frames_from_start = fid - start_frame;
+          FrameID total_to_scan = frame_range.last - start_frame;
           progress->setProgress(
               70 +
               static_cast<int>(
-                  20.0 * static_cast<double>(fields_from_start) /
-                  static_cast<double>(std::max<int64_t>(1, total_to_scan))));
+                  20.0 * static_cast<double>(frames_from_start) /
+                  static_cast<double>(std::max<FrameID>(1, total_to_scan))));
           if (progress->isCancelled()) {
             result.status = AnalysisResult::Cancelled;
             return result;
@@ -701,8 +667,8 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
 
       if (end_found) {
         ORC_LOG_DEBUG(
-            "End position found at field {} (full scan): picture number {}",
-            end_field.value(), end_addr.picture_number);
+            "End position found at frame {} (full scan): picture number {}",
+            end_frame, end_addr.picture_number);
       }
     }
   }
@@ -721,27 +687,26 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
     return result;
   }
 
-  if (start_field.value() > end_field.value()) {
+  if (start_frame > end_frame) {
     result.status = AnalysisResult::Failed;
-    result.summary = "Computed field range is invalid (start after end).";
+    result.summary = "Computed frame range is invalid (start after end).";
     return result;
   }
 
   std::ostringstream range_spec;
-  range_spec << start_field.value() << "-" << end_field.value();
+  range_spec << start_frame << "-" << end_frame;
 
   result.graphData["rangeSpec"] = range_spec.str();
 
   std::ostringstream summary;
-  summary << "Field range located successfully.\n\n";
+  summary << "Frame range located successfully.\n\n";
   summary << "Start address: " << start_input << " (picture number "
           << start_addr.picture_number << ")\n";
   summary << "End address: " << end_input << " (picture number "
           << end_addr.picture_number << ")\n\n";
-  summary << "Field range: " << start_field.value() << "-" << end_field.value()
-          << "\n";
+  summary << "Frame range: " << start_frame << "-" << end_frame << "\n";
   summary << "Range spec: " << range_spec.str() << "\n\n";
-  summary << "Click 'Apply to Node' to update the Field Map stage.";
+  summary << "Click 'Apply to Stage' to update the Frame Map stage.";
 
   result.summary = summary.str();
   result.status = AnalysisResult::Success;
@@ -754,9 +719,9 @@ AnalysisResult FieldMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
   return result;
 }
 
-bool FieldMapRangeAnalysisTool::canApplyToGraph() const { return true; }
+bool FrameMapRangeAnalysisTool::canApplyToGraph() const { return true; }
 
-bool FieldMapRangeAnalysisTool::applyToGraph(AnalysisResult& result,
+bool FrameMapRangeAnalysisTool::applyToGraph(AnalysisResult& result,
                                              const Project& /*project*/,
                                              [[maybe_unused]] NodeID node_id) {
   if (result.status != AnalysisResult::Success) {
@@ -783,7 +748,7 @@ bool FieldMapRangeAnalysisTool::applyToGraph(AnalysisResult& result,
   }
 }
 
-int FieldMapRangeAnalysisTool::estimateDurationSeconds(
+int FrameMapRangeAnalysisTool::estimateDurationSeconds(
     const AnalysisContext& ctx) const {
   (void)ctx;
   return 10;

@@ -1140,15 +1140,14 @@ bool ChromaSinkStage::trigger(
   // shared between threads.
 
   // Calculate how many frames to OUTPUT
-  // field_range represents the actual fields to output (already filtered by
-  // upstream stages) We output all these frames - lookahead is only for decoder
-  // context (extended_range handles that)
+  // frame_range represents the actual frames to output (already filtered by
+  // upstream stages). Lookahead is only for decoder context (extended_range
+  // handles that).
   int32_t numOutputFrames = static_cast<int32_t>(end_frame - start_frame);
   int32_t numFrames = numOutputFrames;
 
-  ORC_LOG_DEBUG("ChromaSink: Will output {} frames from field range {}-{}",
-                numOutputFrames, field_range.start.value(),
-                field_range.end.value());
+  ORC_LOG_DEBUG("ChromaSink: Will output {} frames from frame range {}-{}",
+                numOutputFrames, frame_range.first, frame_range.last);
 
   // Initialize output backend BEFORE decoding to enable streaming writes
   auto backend = OutputBackendFactory::create(output_format_);

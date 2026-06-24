@@ -1,13 +1,13 @@
 /*
- * File:        field_corruption_analysis.cpp
+ * File:        frame_corruption_analysis.cpp
  * Module:      orc-core/analysis
- * Purpose:     Field corruption analysis tool implementation
+ * Purpose:     Frame corruption analysis tool implementation
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "field_corruption_analysis.h"
+#include "frame_corruption_analysis.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -19,29 +19,29 @@
 #include "../../include/project.h"
 #include "../../include/video_frame_representation.h"
 #include "../analysis_registry.h"
-#include "field_corruption_analyzer.h"
+#include "frame_corruption_analyzer.h"
 
 namespace orc {
 
 // Force linker to include this object file (for static registration)
-void force_link_FieldCorruptionAnalysisTool() {}
+void force_link_FrameCorruptionAnalysisTool() {}
 
-std::string FieldCorruptionAnalysisTool::id() const {
-  return "field_corruption";
+std::string FrameCorruptionAnalysisTool::id() const {
+  return "frame_corruption";
 }
 
-std::string FieldCorruptionAnalysisTool::name() const {
-  return "Field Corruption Generator";
+std::string FrameCorruptionAnalysisTool::name() const {
+  return "Frame Corruption Generator";
 }
 
-std::string FieldCorruptionAnalysisTool::description() const {
+std::string FrameCorruptionAnalysisTool::description() const {
   return "Generate corruption patterns (skips, repeats, gaps) for testing disc "
          "mapper";
 }
 
-std::string FieldCorruptionAnalysisTool::category() const { return "Testing"; }
+std::string FrameCorruptionAnalysisTool::category() const { return "Testing"; }
 
-std::vector<ParameterDescriptor> FieldCorruptionAnalysisTool::parameters()
+std::vector<ParameterDescriptor> FrameCorruptionAnalysisTool::parameters()
     const {
   std::vector<ParameterDescriptor> params;
 
@@ -64,7 +64,7 @@ std::vector<ParameterDescriptor> FieldCorruptionAnalysisTool::parameters()
 }
 
 std::vector<ParameterDescriptor>
-FieldCorruptionAnalysisTool::parametersForContext(
+FrameCorruptionAnalysisTool::parametersForContext(
     const AnalysisContext& ctx) const {
   auto params = parameters();
 
@@ -103,7 +103,7 @@ FieldCorruptionAnalysisTool::parametersForContext(
   return params;
 }
 
-bool FieldCorruptionAnalysisTool::canAnalyze(
+bool FrameCorruptionAnalysisTool::canAnalyze(
     AnalysisSourceType source_type) const {
   // This is a generator tool - works with any source type (doesn't actually use
   // the source)
@@ -111,12 +111,12 @@ bool FieldCorruptionAnalysisTool::canAnalyze(
   return true;
 }
 
-bool FieldCorruptionAnalysisTool::isApplicableToStage(
+bool FrameCorruptionAnalysisTool::isApplicableToStage(
     const std::string& stage_name) const {
   return stage_name == "frame_map";
 }
 
-AnalysisResult FieldCorruptionAnalysisTool::analyze(
+AnalysisResult FrameCorruptionAnalysisTool::analyze(
     const AnalysisContext& ctx, AnalysisProgress* progress) {
   AnalysisResult result;
   result.status = AnalysisResult::Success;
@@ -168,7 +168,7 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
             if (vfr) {
               frame_count = vfr->frame_count();
               ORC_LOG_DEBUG(
-                  "Field Corruption Generator: Got frame count {} from input",
+                  "Frame Corruption Generator: Got frame count {} from input",
                   frame_count);
               break;
             }
@@ -176,7 +176,7 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
         }
       } catch (const std::exception& e) {
         ORC_LOG_WARN(
-            "Field Corruption Generator: Failed to execute input node: {}",
+            "Frame Corruption Generator: Failed to execute input node: {}",
             e.what());
       }
     }
@@ -186,7 +186,7 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
     result.status = AnalysisResult::Failed;
     result.summary =
         "Cannot determine input frame count.\n\n"
-        "Field Corruption Generator requires a VideoFrameRepresentation "
+        "Frame Corruption Generator requires a VideoFrameRepresentation "
         "input.\n"
         "Ensure this frame_map stage has an input connection.";
     return result;
@@ -221,10 +221,10 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   }
 
   // Find pattern config
-  auto patterns = FieldCorruptionAnalyzer::get_all_patterns();
+  auto patterns = FrameCorruptionAnalyzer::get_all_patterns();
   auto pattern_it =
       std::find_if(patterns.begin(), patterns.end(),
-                   [&](const FieldCorruptionAnalyzer::PatternConfig& p) {
+                   [&](const FrameCorruptionAnalyzer::PatternConfig& p) {
                      return p.name == pattern_name;
                    });
 
@@ -240,7 +240,7 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   }
 
   // Create analyzer and generate
-  FieldCorruptionAnalyzer analyzer(frame_count, *pattern_it, seed);
+  FrameCorruptionAnalyzer analyzer(frame_count, *pattern_it, seed);
   auto analysis_result = analyzer.analyze();
 
   if (progress) {
@@ -288,16 +288,16 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   result.graphData["rationale"] = analysis_result.rationale;
 
   // Statistics
-  result.statistics["normalFields"] =
-      static_cast<int64_t>(analysis_result.stats.normal_fields);
-  result.statistics["repeatedFields"] =
-      static_cast<int64_t>(analysis_result.stats.repeated_fields);
-  result.statistics["skippedFields"] =
-      static_cast<int64_t>(analysis_result.stats.skipped_fields);
+  result.statistics["normalFrames"] =
+      static_cast<int64_t>(analysis_result.stats.normal_frames);
+  result.statistics["repeatedFrames"] =
+      static_cast<int64_t>(analysis_result.stats.repeated_frames);
+  result.statistics["skippedFrames"] =
+      static_cast<int64_t>(analysis_result.stats.skipped_frames);
   result.statistics["gapMarkers"] =
       static_cast<int64_t>(analysis_result.stats.gap_markers);
-  result.statistics["totalOutputFields"] =
-      static_cast<int64_t>(analysis_result.stats.total_output_fields);
+  result.statistics["totalOutputFrames"] =
+      static_cast<int64_t>(analysis_result.stats.total_output_frames);
   result.statistics["patternName"] = pattern_it->name;
   result.statistics["seed"] = static_cast<int64_t>(seed);
 
@@ -306,7 +306,7 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   spec_item.type = "info";
   std::ostringstream spec_msg;
   spec_msg << "==================================================\n";
-  spec_msg << "Generated Field Mapping Specification\n";
+  spec_msg << "Generated Frame Mapping Specification\n";
   spec_msg << "==================================================\n\n";
 
   // Show a preview if it's long
@@ -334,13 +334,13 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   for (const auto& event : analysis_result.events) {
     AnalysisResult::ResultItem item;
     item.type =
-        (event.type == FieldCorruptionAnalyzer::CorruptionEvent::SKIP) ? "skip"
-        : (event.type == FieldCorruptionAnalyzer::CorruptionEvent::REPEAT)
+        (event.type == FrameCorruptionAnalyzer::CorruptionEvent::SKIP) ? "skip"
+        : (event.type == FrameCorruptionAnalyzer::CorruptionEvent::REPEAT)
             ? "repeat"
             : "gap";
     item.message = event.to_string();
-    item.startFrame = static_cast<int>(event.start_field);
-    item.endFrame = static_cast<int>(event.end_field);
+    item.startFrame = static_cast<int>(event.start_frame);
+    item.endFrame = static_cast<int>(event.end_frame);
     item.metadata["count"] = static_cast<int>(event.count);
     result.items.push_back(item);
 
@@ -355,15 +355,15 @@ AnalysisResult FieldCorruptionAnalysisTool::analyze(
   }
 
   ORC_LOG_DEBUG(
-      "Field corruption analysis complete: {} events, {} output frames",
-      analysis_result.events.size(), analysis_result.stats.total_output_fields);
+      "Frame corruption analysis complete: {} events, {} output frames",
+      analysis_result.events.size(), analysis_result.stats.total_output_frames);
 
   return result;
 }
 
-bool FieldCorruptionAnalysisTool::canApplyToGraph() const { return true; }
+bool FrameCorruptionAnalysisTool::canApplyToGraph() const { return true; }
 
-bool FieldCorruptionAnalysisTool::applyToGraph(AnalysisResult& result,
+bool FrameCorruptionAnalysisTool::applyToGraph(AnalysisResult& result,
                                                const Project& project,
                                                NodeID node_id) {
   // Find the ranges in graphData
@@ -417,13 +417,13 @@ bool FieldCorruptionAnalysisTool::applyToGraph(AnalysisResult& result,
   return true;
 }
 
-int FieldCorruptionAnalysisTool::estimateDurationSeconds(
+int FrameCorruptionAnalysisTool::estimateDurationSeconds(
     const AnalysisContext& /*ctx*/) const {
   // Very fast - just generates a string
   return 1;
 }
 
 // Register the tool
-REGISTER_ANALYSIS_TOOL(FieldCorruptionAnalysisTool);
+REGISTER_ANALYSIS_TOOL(FrameCorruptionAnalysisTool);
 
 }  // namespace orc

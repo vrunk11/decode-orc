@@ -32,9 +32,9 @@
 
 namespace orc::presenters {
 class AnalysisPresenter;
-class FieldCorruptionPresenter;
+class FrameCorruptionPresenter;
 class DiscMapperPresenter;
-class FieldMapRangePresenter;
+class FrameMapRangePresenter;
 class SourceAlignmentPresenter;
 class MaskLinePresenter;
 class FFmpegPresetPresenter;
@@ -85,7 +85,7 @@ class GenericAnalysisDialog : public QDialog {
   void collectParameters();
   void closeEvent(QCloseEvent* event) override;
   void displayResults(const orc::AnalysisResult& result);
-  void setupFieldMapRangeWidgets();
+  void setupFrameMapRangeWidgets();
   void syncTimecodeFromPicture(bool is_start);
   void syncPictureFromTimecode(bool is_start);
   int timecodeFps() const;
@@ -93,12 +93,12 @@ class GenericAnalysisDialog : public QDialog {
   std::string tool_id_;
   orc::AnalysisToolInfo tool_info_;
   orc::presenters::AnalysisPresenter* presenter_;  // Not owned
-  orc::presenters::FieldCorruptionPresenter*
-      field_corruption_presenter_;  // Owned (if used)
+  orc::presenters::FrameCorruptionPresenter*
+      frame_corruption_presenter_;  // Owned (if used)
   orc::presenters::DiscMapperPresenter*
       disc_mapper_presenter_;  // Owned (if used)
-  orc::presenters::FieldMapRangePresenter*
-      field_map_range_presenter_;  // Owned (if used)
+  orc::presenters::FrameMapRangePresenter*
+      frame_map_range_presenter_;  // Owned (if used)
   orc::presenters::SourceAlignmentPresenter*
       source_alignment_presenter_;                           // Owned (if used)
   orc::presenters::MaskLinePresenter* mask_line_presenter_;  // Owned (if used)
@@ -111,9 +111,9 @@ class GenericAnalysisDialog : public QDialog {
   orc::AnalysisResult last_result_;
   std::vector<orc::ParameterDescriptor> parameter_descriptors_;
 
-  // Field map range custom controls
-  bool field_map_range_sync_in_progress_ = false;
-  int field_map_range_fps_ = 30;
+  // Frame map range custom controls
+  bool frame_map_range_sync_in_progress_ = false;
+  int frame_map_range_fps_ = 30;
   QSpinBox* picture_start_spin_ = nullptr;
   QSpinBox* picture_end_spin_ = nullptr;
   QSpinBox* tc_start_hours_ = nullptr;

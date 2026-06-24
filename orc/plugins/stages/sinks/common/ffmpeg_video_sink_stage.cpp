@@ -208,23 +208,21 @@ bool FFmpegVideoSinkStage::trigger(
 
         auto frame_range = vfr->frame_range();
         const size_t total_cc_frames = frame_range.count();
-        const size_t total_cc_fields = total_cc_frames * 2;
 
         if (progress_callback_) {
-          progress_callback_(0, total_cc_fields,
+          progress_callback_(0, total_cc_frames,
                              "Collecting closed caption data...");
         }
 
-        // Run observer on all frames (each frame covers both fields).
-        size_t cc_fields_processed = 0;
+        size_t cc_frames_processed = 0;
         for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
              ++frame_id) {
           if (vfr->has_frame(frame_id)) {
             cc_observer->process_frame(*vfr, frame_id, observation_context);
           }
-          cc_fields_processed += 2;
+          ++cc_frames_processed;
           if (progress_callback_) {
-            progress_callback_(cc_fields_processed, total_cc_fields,
+            progress_callback_(cc_frames_processed, total_cc_frames,
                                "Collecting closed caption data...");
           }
           if (cancel_requested_.load()) {
@@ -266,21 +264,20 @@ bool FFmpegVideoSinkStage::trigger(
         BiphaseObserver biphase_observer;
         auto frame_range = vfr->frame_range();
         const size_t total_frames = frame_range.count();
-        const size_t total_fields = total_frames * 2;
 
         if (progress_callback_) {
-          progress_callback_(0, total_fields, "Collecting VBI chapter data...");
+          progress_callback_(0, total_frames, "Collecting VBI chapter data...");
         }
 
-        size_t fields_processed = 0;
+        size_t frames_processed = 0;
         for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
              ++frame_id) {
           if (vfr->has_frame(frame_id)) {
             biphase_observer.process_frame(*vfr, frame_id, observation_context);
           }
-          fields_processed += 2;
+          ++frames_processed;
           if (progress_callback_) {
-            progress_callback_(fields_processed, total_fields,
+            progress_callback_(frames_processed, total_frames,
                                "Collecting VBI chapter data...");
           }
           if (cancel_requested_.load()) {

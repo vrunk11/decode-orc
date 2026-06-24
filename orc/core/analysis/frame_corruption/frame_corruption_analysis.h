@@ -1,29 +1,29 @@
 /*
- * File:        field_corruption_analysis.h
+ * File:        frame_corruption_analysis.h
  * Module:      analysis
- * Purpose:     Field corruption pattern generator for testing disc mapper
+ * Purpose:     Frame corruption pattern generator for testing disc mapper
  * algorithms
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#ifndef ORC_CORE_ANALYSIS_FIELD_CORRUPTION_ANALYSIS_H
-#define ORC_CORE_ANALYSIS_FIELD_CORRUPTION_ANALYSIS_H
+#ifndef ORC_CORE_ANALYSIS_FRAME_CORRUPTION_ANALYSIS_H
+#define ORC_CORE_ANALYSIS_FRAME_CORRUPTION_ANALYSIS_H
 
 #include "../analysis_tool.h"
 
 namespace orc {
 
 /**
- * @brief Field corruption analysis tool
+ * @brief Frame corruption analysis tool
  *
- * Generates field mapping corruption patterns for testing disc mapper
- * and field correction algorithms. This tool creates range specifications
+ * Generates frame mapping corruption patterns for testing disc mapper
+ * and frame correction algorithms. This tool creates range specifications
  * that simulate laserdisc player issues (skips, repeats, gaps) which can
  * be applied to FrameMapStage.
  */
-class FieldCorruptionAnalysisTool : public AnalysisTool {
+class FrameCorruptionAnalysisTool : public AnalysisTool {
  public:
   std::string id() const override;
   std::string name() const override;
@@ -49,4 +49,4 @@ class FieldCorruptionAnalysisTool : public AnalysisTool {
 
 }  // namespace orc
 
-#endif  // ORC_CORE_ANALYSIS_FIELD_CORRUPTION_ANALYSIS_H
+#endif  // ORC_CORE_ANALYSIS_FRAME_CORRUPTION_ANALYSIS_H

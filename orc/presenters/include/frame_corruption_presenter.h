@@ -1,14 +1,14 @@
 /*
- * File:        field_corruption_presenter.h
+ * File:        frame_corruption_presenter.h
  * Module:      orc-presenters
- * Purpose:     Presenter for Field Corruption Generator analysis tool
+ * Purpose:     Presenter for Frame Corruption Generator analysis tool
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#ifndef ORC_PRESENTERS_FIELD_CORRUPTION_PRESENTER_H
-#define ORC_PRESENTERS_FIELD_CORRUPTION_PRESENTER_H
+#ifndef ORC_PRESENTERS_FRAME_CORRUPTION_PRESENTER_H
+#define ORC_PRESENTERS_FRAME_CORRUPTION_PRESENTER_H
 
 #include <functional>
 
@@ -17,7 +17,7 @@
 namespace orc::presenters {
 
 /**
- * @brief Presenter for Field Corruption Generator analysis tool
+ * @brief Presenter for Frame Corruption Generator analysis tool
  *
  * Handles:
  * - Preparing DAG context for the tool
@@ -25,26 +25,26 @@ namespace orc::presenters {
  * - Formatting results for display
  * - Applying generated pattern to frame_map stage
  *
- * This presenter encapsulates the business logic for running field corruption
+ * This presenter encapsulates the business logic for running frame corruption
  * analysis, keeping the core tool focused on the algorithm and the GUI focused
  * on UI concerns.
  */
-class FieldCorruptionPresenter : public AnalysisToolPresenter {
+class FrameCorruptionPresenter : public AnalysisToolPresenter {
  public:
   /**
-   * @brief Construct a Field Corruption presenter
+   * @brief Construct a Frame Corruption presenter
    * @param project_handle Opaque handle to project
    */
-  explicit FieldCorruptionPresenter(void* project_handle);
+  explicit FrameCorruptionPresenter(void* project_handle);
 
   /**
-   * @brief Run field corruption analysis
+   * @brief Run frame corruption analysis
    *
    * This method:
    * 1. Validates the node is a frame_map stage
    * 2. Builds the DAG from the project
    * 3. Executes the input node to get frame count
-   * 4. Calls the core field corruption tool with prepared context
+   * 4. Calls the core frame corruption tool with prepared context
    * 5. Formats results for display
    *
    * @param node_id The frame_map node to analyze
@@ -81,4 +81,4 @@ class FieldCorruptionPresenter : public AnalysisToolPresenter {
 
 }  // namespace orc::presenters
 
-#endif  // ORC_PRESENTERS_FIELD_CORRUPTION_PRESENTER_H
+#endif  // ORC_PRESENTERS_FRAME_CORRUPTION_PRESENTER_H

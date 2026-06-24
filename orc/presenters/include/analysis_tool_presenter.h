@@ -41,7 +41,7 @@ namespace orc::presenters {
  * - Progress reporting
  * - Result application to graph
  *
- * Each specialized presenter (e.g., FieldCorruptionPresenter) extends this base
+ * Each specialized presenter (e.g., FrameCorruptionPresenter) extends this base
  * class and implements tool-specific logic in its runAnalysis() method.
  *
  * **MVP Architecture:**
@@ -52,9 +52,9 @@ namespace orc::presenters {
  *
  * **Example Usage:**
  * ```cpp
- * class FieldCorruptionPresenter : public AnalysisToolPresenter {
+ * class FrameCorruptionPresenter : public AnalysisToolPresenter {
  * public:
- *     explicit FieldCorruptionPresenter(void* project_handle)
+ *     explicit FrameCorruptionPresenter(void* project_handle)
  *         : AnalysisToolPresenter(project_handle) {}
  *
  *     orc::AnalysisResult runAnalysis(
@@ -109,13 +109,13 @@ class AnalysisToolPresenter {
 
   /**
    * @brief Get the unique identifier for this tool
-   * @return Tool ID (e.g., "field_corruption")
+   * @return Tool ID (e.g., "frame_corruption")
    */
   virtual std::string toolId() const = 0;
 
   /**
    * @brief Get the human-readable name for this tool
-   * @return Tool name (e.g., "Field Corruption Generator")
+   * @return Tool name (e.g., "Frame Corruption Generator")
    */
   virtual std::string toolName() const = 0;
 

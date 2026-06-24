@@ -3826,7 +3826,7 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
   }
 
   // Default path: Generic analysis dialog for all other tools
-  // This handles tools like Field Corruption Generator using auto-generated UI
+  // This handles tools like Frame Corruption Generator using auto-generated UI
 
   // Create an AnalysisPresenter to get tool parameters and run the analysis
   auto* analysis_presenter = new orc::presenters::AnalysisPresenter(

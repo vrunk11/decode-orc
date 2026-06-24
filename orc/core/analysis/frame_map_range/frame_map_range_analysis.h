@@ -1,28 +1,28 @@
 /*
- * File:        field_map_range_analysis.h
+ * File:        frame_map_range_analysis.h
  * Module:      analysis
- * Purpose:     Field map range locator: finds fields by picture number or CLV
+ * Purpose:     Frame map range locator: finds frames by picture number or CLV
  * timecode
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#ifndef ORC_CORE_ANALYSIS_FIELD_MAP_RANGE_ANALYSIS_H
-#define ORC_CORE_ANALYSIS_FIELD_MAP_RANGE_ANALYSIS_H
+#ifndef ORC_CORE_ANALYSIS_FRAME_MAP_RANGE_ANALYSIS_H
+#define ORC_CORE_ANALYSIS_FRAME_MAP_RANGE_ANALYSIS_H
 
 #include "../analysis_tool.h"
 
 namespace orc {
 
 /**
- * @brief Field map range analysis tool
+ * @brief Frame map range analysis tool
  *
- * Locates a field range based on user-specified start/end addresses
- * (picture number or CLV timecode) and prepares a FieldMapStage
+ * Locates a frame range based on user-specified start/end addresses
+ * (picture number or CLV timecode) and prepares a FrameMapStage
  * range specification.
  */
-class FieldMapRangeAnalysisTool : public AnalysisTool {
+class FrameMapRangeAnalysisTool : public AnalysisTool {
  public:
   std::string id() const override;
   std::string name() const override;
@@ -46,4 +46,4 @@ class FieldMapRangeAnalysisTool : public AnalysisTool {
 
 }  // namespace orc
 
-#endif  // ORC_CORE_ANALYSIS_FIELD_MAP_RANGE_ANALYSIS_H
+#endif  // ORC_CORE_ANALYSIS_FRAME_MAP_RANGE_ANALYSIS_H

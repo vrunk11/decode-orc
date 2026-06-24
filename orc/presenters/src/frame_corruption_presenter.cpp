@@ -1,13 +1,13 @@
 /*
- * File:        field_corruption_presenter.cpp
+ * File:        frame_corruption_presenter.cpp
  * Module:      orc-presenters
- * Purpose:     Presenter for Field Corruption Generator analysis tool
+ * Purpose:     Presenter for Frame Corruption Generator analysis tool
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include "../include/field_corruption_presenter.h"
+#include "../include/frame_corruption_presenter.h"
 
 #include <algorithm>
 
@@ -21,35 +21,35 @@
 
 namespace orc::presenters {
 
-FieldCorruptionPresenter::FieldCorruptionPresenter(void* project_handle)
+FrameCorruptionPresenter::FrameCorruptionPresenter(void* project_handle)
     : AnalysisToolPresenter(project_handle) {}
 
-std::string FieldCorruptionPresenter::toolId() const {
-  return "field_corruption";
+std::string FrameCorruptionPresenter::toolId() const {
+  return "frame_corruption";
 }
 
-std::string FieldCorruptionPresenter::toolName() const {
-  return "Field Corruption Generator";
+std::string FrameCorruptionPresenter::toolName() const {
+  return "Frame Corruption Generator";
 }
 
-uint64_t FieldCorruptionPresenter::getInputFrameCount(NodeID node_id) {
+uint64_t FrameCorruptionPresenter::getInputFrameCount(NodeID node_id) {
   // Get the DAG
   auto dag = getOrBuildDAG();
   if (!dag) {
-    ORC_LOG_WARN("Field Corruption Presenter: Cannot build DAG");
+    ORC_LOG_WARN("Frame Corruption Presenter: Cannot build DAG");
     return 0;
   }
 
   // Check if node has input
   if (!hasNodeInput(node_id)) {
-    ORC_LOG_WARN("Field Corruption Presenter: Node has no input");
+    ORC_LOG_WARN("Frame Corruption Presenter: Node has no input");
     return 0;
   }
 
   // Get the first input node ID
   auto input_node_id = getFirstInputNodeId(node_id);
   if (!input_node_id.is_valid()) {
-    ORC_LOG_WARN("Field Corruption Presenter: Invalid input node ID");
+    ORC_LOG_WARN("Frame Corruption Presenter: Invalid input node ID");
     return 0;
   }
 
@@ -64,18 +64,18 @@ uint64_t FieldCorruptionPresenter::getInputFrameCount(NodeID node_id) {
         artifact_base);
     if (vfr) {
       uint64_t frame_count = vfr->frame_count();
-      ORC_LOG_DEBUG("Field Corruption Presenter: Got frame count {} from input",
+      ORC_LOG_DEBUG("Frame Corruption Presenter: Got frame count {} from input",
                     frame_count);
       return frame_count;
     }
   }
 
   ORC_LOG_WARN(
-      "Field Corruption Presenter: No VideoFrameRepresentation artifact found");
+      "Frame Corruption Presenter: No VideoFrameRepresentation artifact found");
   return 0;
 }
 
-int32_t FieldCorruptionPresenter::getExistingSeed(NodeID node_id) {
+int32_t FrameCorruptionPresenter::getExistingSeed(NodeID node_id) {
   auto dag_void = getOrBuildDAG();
   if (!dag_void) {
     return 0;
@@ -99,7 +99,7 @@ int32_t FieldCorruptionPresenter::getExistingSeed(NodeID node_id) {
   return 0;
 }
 
-orc::AnalysisResult FieldCorruptionPresenter::runAnalysis(
+orc::AnalysisResult FrameCorruptionPresenter::runAnalysis(
     NodeID node_id,
     const std::map<std::string, orc::ParameterValue>& parameters,
     std::function<void(int, const std::string&)> progress_callback) {
@@ -114,7 +114,7 @@ orc::AnalysisResult FieldCorruptionPresenter::runAnalysis(
   // Get the analysis tool from registry
   auto tool = orc::AnalysisRegistry::instance().findById(toolId());
   if (!tool) {
-    result.summary = "Field Corruption Generator tool not found in registry";
+    result.summary = "Frame Corruption Generator tool not found in registry";
     ORC_LOG_ERROR("{}", result.summary);
     return result;
   }
@@ -128,7 +128,7 @@ orc::AnalysisResult FieldCorruptionPresenter::runAnalysis(
   }
   auto dag = std::static_pointer_cast<orc::DAG>(dag_void);
 
-  // Validate the node exists and is a field_map stage
+  // Validate the node exists and is a frame_map stage
   const auto& dag_nodes = dag->nodes();
   auto node_it = std::find_if(
       dag_nodes.begin(), dag_nodes.end(),
@@ -143,7 +143,7 @@ orc::AnalysisResult FieldCorruptionPresenter::runAnalysis(
   if (!node_it->stage ||
       node_it->stage->get_node_type_info().stage_name != "frame_map") {
     result.summary =
-        "Field Corruption Generator only applies to frame_map stages";
+        "Frame Corruption Generator only applies to frame_map stages";
     ORC_LOG_ERROR("{}", result.summary);
     return result;
   }
@@ -157,7 +157,7 @@ orc::AnalysisResult FieldCorruptionPresenter::runAnalysis(
   if (frame_count == 0) {
     result.summary =
         "Cannot determine input frame count.\n\n"
-        "Field Corruption Generator requires a VideoFrameRepresentation "
+        "Frame Corruption Generator requires a VideoFrameRepresentation "
         "input.\n"
         "Ensure this frame_map stage has an input connection.";
     ORC_LOG_ERROR("{}", result.summary);
@@ -170,6 +170,7 @@ orc::AnalysisResult FieldCorruptionPresenter::runAnalysis(
 
   // Get existing seed (if any)
   int32_t existing_seed = getExistingSeed(node_id);
+  (void)existing_seed;
 
   // Prepare analysis context
   orc::AnalysisContext ctx;
@@ -179,7 +180,7 @@ orc::AnalysisResult FieldCorruptionPresenter::runAnalysis(
   ctx.parameters = parameters;
 
   if (progress_callback) {
-    progress_callback(30, "Running field corruption analysis...");
+    progress_callback(30, "Running frame corruption analysis...");
   }
 
   // Create progress wrapper

@@ -13,8 +13,8 @@
 #include "presenters/include/disc_mapper_presenter.h"
 #include "presenters/include/dropout_editor_presenter.h"
 #include "presenters/include/ffmpeg_preset_presenter.h"
-#include "presenters/include/field_corruption_presenter.h"
-#include "presenters/include/field_map_range_presenter.h"
+#include "presenters/include/frame_corruption_presenter.h"
+#include "presenters/include/frame_map_range_presenter.h"
 #include "presenters/include/mask_line_presenter.h"
 #include "presenters/include/project_presenter.h"
 #include "presenters/include/source_alignment_presenter.h"
@@ -46,9 +46,9 @@ class GenericAnalysisDialog::AnalysisWorker : public QThread {
   AnalysisWorker(
       const std::string& tool_id, orc::NodeID node_id,
       std::map<std::string, orc::ParameterValue> parameters,
-      orc::presenters::FieldCorruptionPresenter* field_corruption_presenter,
+      orc::presenters::FrameCorruptionPresenter* frame_corruption_presenter,
       orc::presenters::DiscMapperPresenter* disc_mapper_presenter,
-      orc::presenters::FieldMapRangePresenter* field_map_range_presenter,
+      orc::presenters::FrameMapRangePresenter* frame_map_range_presenter,
       orc::presenters::SourceAlignmentPresenter* source_alignment_presenter,
       orc::presenters::MaskLinePresenter* mask_line_presenter,
       orc::presenters::FFmpegPresetPresenter* ffmpeg_preset_presenter,
@@ -56,9 +56,9 @@ class GenericAnalysisDialog::AnalysisWorker : public QThread {
       : tool_id_(tool_id),
         node_id_(node_id),
         parameters_(std::move(parameters)),
-        field_corruption_presenter_(field_corruption_presenter),
+        frame_corruption_presenter_(frame_corruption_presenter),
         disc_mapper_presenter_(disc_mapper_presenter),
-        field_map_range_presenter_(field_map_range_presenter),
+        frame_map_range_presenter_(frame_map_range_presenter),
         source_alignment_presenter_(source_alignment_presenter),
         mask_line_presenter_(mask_line_presenter),
         ffmpeg_preset_presenter_(ffmpeg_preset_presenter),
@@ -80,11 +80,11 @@ class GenericAnalysisDialog::AnalysisWorker : public QThread {
     if (disc_mapper_presenter_) {
       result_ = disc_mapper_presenter_->runAnalysis(node_id_, parameters_,
                                                     progress_callback);
-    } else if (field_map_range_presenter_) {
-      result_ = field_map_range_presenter_->runAnalysis(node_id_, parameters_,
+    } else if (frame_map_range_presenter_) {
+      result_ = frame_map_range_presenter_->runAnalysis(node_id_, parameters_,
                                                         progress_callback);
-    } else if (field_corruption_presenter_) {
-      result_ = field_corruption_presenter_->runAnalysis(node_id_, parameters_,
+    } else if (frame_corruption_presenter_) {
+      result_ = frame_corruption_presenter_->runAnalysis(node_id_, parameters_,
                                                          progress_callback);
     } else if (source_alignment_presenter_) {
       result_ = source_alignment_presenter_->runAnalysis(node_id_, parameters_,
@@ -110,9 +110,9 @@ class GenericAnalysisDialog::AnalysisWorker : public QThread {
   std::string tool_id_;
   orc::NodeID node_id_;
   std::map<std::string, orc::ParameterValue> parameters_;
-  orc::presenters::FieldCorruptionPresenter* field_corruption_presenter_;
+  orc::presenters::FrameCorruptionPresenter* frame_corruption_presenter_;
   orc::presenters::DiscMapperPresenter* disc_mapper_presenter_;
-  orc::presenters::FieldMapRangePresenter* field_map_range_presenter_;
+  orc::presenters::FrameMapRangePresenter* frame_map_range_presenter_;
   orc::presenters::SourceAlignmentPresenter* source_alignment_presenter_;
   orc::presenters::MaskLinePresenter* mask_line_presenter_;
   orc::presenters::FFmpegPresetPresenter* ffmpeg_preset_presenter_;
@@ -128,9 +128,9 @@ GenericAnalysisDialog::GenericAnalysisDialog(
       tool_id_(tool_id),
       tool_info_(tool_info),
       presenter_(presenter),
-      field_corruption_presenter_(nullptr),
+      frame_corruption_presenter_(nullptr),
       disc_mapper_presenter_(nullptr),
-      field_map_range_presenter_(nullptr),
+      frame_map_range_presenter_(nullptr),
       source_alignment_presenter_(nullptr),
       mask_line_presenter_(nullptr),
       ffmpeg_preset_presenter_(nullptr),
@@ -138,14 +138,14 @@ GenericAnalysisDialog::GenericAnalysisDialog(
       project_(project),
       node_id_(node_id) {
   // Create specialized presenters when needed
-  if (tool_id_ == "field_corruption") {
-    field_corruption_presenter_ = new orc::presenters::FieldCorruptionPresenter(
+  if (tool_id_ == "frame_corruption") {
+    frame_corruption_presenter_ = new orc::presenters::FrameCorruptionPresenter(
         static_cast<orc::Project*>(project_));
   } else if (tool_id_ == "field_mapping" || tool_id_ == "disc_mapper") {
     disc_mapper_presenter_ = new orc::presenters::DiscMapperPresenter(
         static_cast<orc::Project*>(project_));
-  } else if (tool_id_ == "field_map_range") {
-    field_map_range_presenter_ = new orc::presenters::FieldMapRangePresenter(
+  } else if (tool_id_ == "frame_map_range") {
+    frame_map_range_presenter_ = new orc::presenters::FrameMapRangePresenter(
         static_cast<orc::Project*>(project_));
   } else if (tool_id_ == "source_alignment") {
     source_alignment_presenter_ = new orc::presenters::SourceAlignmentPresenter(
@@ -175,9 +175,9 @@ GenericAnalysisDialog::~GenericAnalysisDialog() {
   }
 
   delete presenter_;
-  delete field_corruption_presenter_;
+  delete frame_corruption_presenter_;
   delete disc_mapper_presenter_;
-  delete field_map_range_presenter_;
+  delete frame_map_range_presenter_;
   delete source_alignment_presenter_;
   delete mask_line_presenter_;
   delete ffmpeg_preset_presenter_;
@@ -251,8 +251,8 @@ void GenericAnalysisDialog::setupUI() {
 }
 
 void GenericAnalysisDialog::populateParameters() {
-  if (tool_id_ == "field_map_range") {
-    setupFieldMapRangeWidgets();
+  if (tool_id_ == "frame_map_range") {
+    setupFrameMapRangeWidgets();
     return;
   }
 
@@ -396,7 +396,7 @@ void GenericAnalysisDialog::runAnalysis() {
 
   // Prepare parameters
   std::map<std::string, orc::ParameterValue> parameters;
-  if (tool_id_ == "field_map_range") {
+  if (tool_id_ == "frame_map_range") {
     if (picture_start_spin_ && picture_end_spin_) {
       parameters["startAddress"] = std::to_string(picture_start_spin_->value());
       parameters["endAddress"] = std::to_string(picture_end_spin_->value());
@@ -444,8 +444,8 @@ void GenericAnalysisDialog::runAnalysis() {
 
   // Create and start worker thread
   worker_ = new AnalysisWorker(
-      tool_id_, node_id_, parameters, field_corruption_presenter_,
-      disc_mapper_presenter_, field_map_range_presenter_,
+      tool_id_, node_id_, parameters, frame_corruption_presenter_,
+      disc_mapper_presenter_, frame_map_range_presenter_,
       source_alignment_presenter_, mask_line_presenter_,
       ffmpeg_preset_presenter_, dropout_editor_presenter_);
 
@@ -573,15 +573,15 @@ void GenericAnalysisDialog::applyResults() {
   // This ensures the core tool's applyToGraph logic is executed
   bool applied = false;
 
-  if (field_corruption_presenter_) {
+  if (frame_corruption_presenter_) {
     applied =
-        field_corruption_presenter_->applyResultToGraph(last_result_, node_id_);
+        frame_corruption_presenter_->applyResultToGraph(last_result_, node_id_);
   } else if (disc_mapper_presenter_) {
     applied =
         disc_mapper_presenter_->applyResultToGraph(last_result_, node_id_);
-  } else if (field_map_range_presenter_) {
+  } else if (frame_map_range_presenter_) {
     applied =
-        field_map_range_presenter_->applyResultToGraph(last_result_, node_id_);
+        frame_map_range_presenter_->applyResultToGraph(last_result_, node_id_);
   } else if (source_alignment_presenter_) {
     applied =
         source_alignment_presenter_->applyResultToGraph(last_result_, node_id_);
@@ -603,7 +603,7 @@ void GenericAnalysisDialog::applyResults() {
 }
 
 void GenericAnalysisDialog::updateParameterDependencies() {
-  if (tool_id_ == "field_map_range") {
+  if (tool_id_ == "frame_map_range") {
     return;
   }
   // Get current values of all parameters
@@ -677,23 +677,23 @@ void GenericAnalysisDialog::updateParameterDependencies() {
 }
 
 int GenericAnalysisDialog::timecodeFps() const {
-  return field_map_range_fps_ > 0 ? field_map_range_fps_ : 30;
+  return frame_map_range_fps_ > 0 ? frame_map_range_fps_ : 30;
 }
 
-void GenericAnalysisDialog::setupFieldMapRangeWidgets() {
+void GenericAnalysisDialog::setupFrameMapRangeWidgets() {
   parametersLayout_->setContentsMargins(0, 0, 0, 0);
   parametersLayout_->setHorizontalSpacing(12);
   parametersLayout_->setVerticalSpacing(8);
 
   // Determine FPS from project format
-  field_map_range_fps_ = 30;
+  frame_map_range_fps_ = 30;
   if (project_) {
     orc::presenters::ProjectPresenter project_presenter(project_);
     auto format = project_presenter.getVideoFormat();
     if (format == orc::presenters::VideoFormat::PAL) {
-      field_map_range_fps_ = 25;
+      frame_map_range_fps_ = 25;
     } else if (format == orc::presenters::VideoFormat::NTSC) {
-      field_map_range_fps_ = 30;
+      frame_map_range_fps_ = 30;
     }
   }
 
@@ -796,10 +796,10 @@ void GenericAnalysisDialog::setupFieldMapRangeWidgets() {
 }
 
 void GenericAnalysisDialog::syncTimecodeFromPicture(bool is_start) {
-  if (field_map_range_sync_in_progress_) {
+  if (frame_map_range_sync_in_progress_) {
     return;
   }
-  field_map_range_sync_in_progress_ = true;
+  frame_map_range_sync_in_progress_ = true;
 
   QSpinBox* pic_spin = is_start ? picture_start_spin_ : picture_end_spin_;
   QSpinBox* hours = is_start ? tc_start_hours_ : tc_end_hours_;
@@ -827,14 +827,14 @@ void GenericAnalysisDialog::syncTimecodeFromPicture(bool is_start) {
     pictures->setValue(static_cast<int>(p));
   }
 
-  field_map_range_sync_in_progress_ = false;
+  frame_map_range_sync_in_progress_ = false;
 }
 
 void GenericAnalysisDialog::syncPictureFromTimecode(bool is_start) {
-  if (field_map_range_sync_in_progress_) {
+  if (frame_map_range_sync_in_progress_) {
     return;
   }
-  field_map_range_sync_in_progress_ = true;
+  frame_map_range_sync_in_progress_ = true;
 
   QSpinBox* pic_spin = is_start ? picture_start_spin_ : picture_end_spin_;
   QSpinBox* hours = is_start ? tc_start_hours_ : tc_end_hours_;
@@ -856,7 +856,7 @@ void GenericAnalysisDialog::syncPictureFromTimecode(bool is_start) {
     pic_spin->setValue(static_cast<int>(pn));
   }
 
-  field_map_range_sync_in_progress_ = false;
+  frame_map_range_sync_in_progress_ = false;
 }
 
 }  // namespace gui

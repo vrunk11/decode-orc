@@ -1,13 +1,13 @@
 /*
- * File:        field_corruption_analyzer.cpp
+ * File:        frame_corruption_analyzer.cpp
  * Module:      orc-core/analysis
- * Purpose:     Field corruption pattern generator implementation
+ * Purpose:     Frame corruption pattern generator implementation
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "field_corruption_analyzer.h"
+#include "frame_corruption_analyzer.h"
 
 #include <algorithm>
 #include <sstream>
@@ -15,19 +15,19 @@
 namespace orc {
 
 // Pattern configurations
-FieldCorruptionAnalyzer::PatternConfig
-FieldCorruptionAnalyzer::get_pattern_config(Pattern pattern) {
+FrameCorruptionAnalyzer::PatternConfig
+FrameCorruptionAnalyzer::get_pattern_config(Pattern pattern) {
   switch (pattern) {
     case Pattern::SIMPLE_SKIP:
-      return {"simple-skip", "Skip 5 fields every 100 fields", 5, 0, 0, 0.01};
+      return {"simple-skip", "Skip 5 frames every 100 frames", 5, 0, 0, 0.01};
 
     case Pattern::SIMPLE_REPEAT:
       return {
-          "simple-repeat", "Repeat 3 fields every 50 fields", 0, 3, 0, 0.02};
+          "simple-repeat", "Repeat 3 frames every 50 frames", 0, 3, 0, 0.02};
 
     case Pattern::SKIP_WITH_GAP:
       return {"skip-with-gap",
-              "Skip 10 fields and insert 5 gap markers every 200 fields",
+              "Skip 10 frames and insert 5 gap markers every 200 frames",
               10,
               0,
               5,
@@ -35,7 +35,7 @@ FieldCorruptionAnalyzer::get_pattern_config(Pattern pattern) {
 
     case Pattern::HEAVY_SKIP:
       return {"heavy-skip",
-              "Skip 15 fields every 100 fields (severe damage)",
+              "Skip 15 frames every 100 frames (severe damage)",
               15,
               0,
               0,
@@ -43,7 +43,7 @@ FieldCorruptionAnalyzer::get_pattern_config(Pattern pattern) {
 
     case Pattern::HEAVY_REPEAT:
       return {"heavy-repeat",
-              "Repeat 5 fields every 30 fields (severe sticking)",
+              "Repeat 5 frames every 30 frames (severe sticking)",
               0,
               5,
               0,
@@ -64,8 +64,8 @@ FieldCorruptionAnalyzer::get_pattern_config(Pattern pattern) {
   return {"unknown", "Unknown pattern", 0, 0, 0, 0.0};
 }
 
-std::vector<FieldCorruptionAnalyzer::PatternConfig>
-FieldCorruptionAnalyzer::get_all_patterns() {
+std::vector<FrameCorruptionAnalyzer::PatternConfig>
+FrameCorruptionAnalyzer::get_all_patterns() {
   return {get_pattern_config(Pattern::SIMPLE_SKIP),
           get_pattern_config(Pattern::SIMPLE_REPEAT),
           get_pattern_config(Pattern::SKIP_WITH_GAP),
@@ -76,21 +76,21 @@ FieldCorruptionAnalyzer::get_all_patterns() {
 }
 
 // Constructor implementations
-FieldCorruptionAnalyzer::FieldCorruptionAnalyzer(uint64_t total_fields,
+FrameCorruptionAnalyzer::FrameCorruptionAnalyzer(uint64_t total_frames,
                                                  Pattern pattern, uint32_t seed)
-    : total_fields_(total_fields),
+    : total_frames_(total_frames),
       config_(get_pattern_config(pattern)),
       rng_(seed == 0 ? std::random_device{}() : seed) {}
 
-FieldCorruptionAnalyzer::FieldCorruptionAnalyzer(uint64_t total_fields,
+FrameCorruptionAnalyzer::FrameCorruptionAnalyzer(uint64_t total_frames,
                                                  const PatternConfig& config,
                                                  uint32_t seed)
-    : total_fields_(total_fields),
+    : total_frames_(total_frames),
       config_(config),
       rng_(seed == 0 ? std::random_device{}() : seed) {}
 
 // Analyze and generate corruption
-FieldCorruptionAnalyzer::Result FieldCorruptionAnalyzer::analyze() {
+FrameCorruptionAnalyzer::Result FrameCorruptionAnalyzer::analyze() {
   Result result;
 
   // Clear previous state
@@ -110,40 +110,40 @@ FieldCorruptionAnalyzer::Result FieldCorruptionAnalyzer::analyze() {
   return result;
 }
 
-// Build field mapping with corruption
-std::vector<uint64_t> FieldCorruptionAnalyzer::build_mapping() {
+// Build frame mapping with corruption
+std::vector<uint64_t> FrameCorruptionAnalyzer::build_mapping() {
   std::vector<uint64_t> mapping;
-  mapping.reserve(total_fields_ * 2);  // Reserve extra space for repeats
+  mapping.reserve(total_frames_ * 2);  // Reserve extra space for repeats
 
   std::uniform_real_distribution<double> dist(0.0, 1.0);
 
-  for (uint64_t i = 0; i < total_fields_; ++i) {
-    // Check if we should corrupt this field
+  for (uint64_t i = 0; i < total_frames_; ++i) {
+    // Check if we should corrupt this frame
     bool should_corrupt = (dist(rng_) < config_.corruption_rate);
 
     if (should_corrupt) {
-      // Skip fields
-      if (config_.skip_fields > 0 && i + config_.skip_fields < total_fields_) {
-        uint64_t skip_end = i + config_.skip_fields - 1;
+      // Skip frames
+      if (config_.skip_frames > 0 && i + config_.skip_frames < total_frames_) {
+        uint64_t skip_end = i + config_.skip_frames - 1;
         events_.push_back(
-            {CorruptionEvent::SKIP, i, skip_end, config_.skip_fields});
-        stats_.skipped_fields += config_.skip_fields;
+            {CorruptionEvent::SKIP, i, skip_end, config_.skip_frames});
+        stats_.skipped_frames += config_.skip_frames;
 
-        // Advance past skipped fields
+        // Advance past skipped frames
         i = skip_end;
         continue;
       }
-      // Repeat field
-      else if (config_.repeat_fields > 0) {
+      // Repeat frame
+      else if (config_.repeat_frames > 0) {
         events_.push_back(
-            {CorruptionEvent::REPEAT, i, i, config_.repeat_fields});
+            {CorruptionEvent::REPEAT, i, i, config_.repeat_frames});
 
-        // Add field multiple times
-        for (uint32_t r = 0; r < config_.repeat_fields; ++r) {
+        // Add frame multiple times
+        for (uint32_t r = 0; r < config_.repeat_frames; ++r) {
           mapping.push_back(i);
         }
-        stats_.repeated_fields += config_.repeat_fields;
-        continue;  // Don't add normal field below
+        stats_.repeated_frames += config_.repeat_frames;
+        continue;  // Don't add normal frame below
       }
       // Gap markers
       else if (config_.gap_marker_count > 0) {
@@ -155,21 +155,21 @@ std::vector<uint64_t> FieldCorruptionAnalyzer::build_mapping() {
           mapping.push_back(0xFFFFFFFFULL);
         }
         stats_.gap_markers += config_.gap_marker_count;
-        // Fall through to add normal field
+        // Fall through to add normal frame
       }
     }
 
-    // Add normal field
+    // Add normal frame
     mapping.push_back(i);
-    stats_.normal_fields++;
+    stats_.normal_frames++;
   }
 
-  stats_.total_output_fields = mapping.size();
+  stats_.total_output_frames = mapping.size();
   return mapping;
 }
 
 // Convert mapping to range specification
-std::string FieldCorruptionAnalyzer::mapping_to_ranges(
+std::string FrameCorruptionAnalyzer::mapping_to_ranges(
     const std::vector<uint64_t>& mapping) {
   if (mapping.empty()) {
     return "";
@@ -218,27 +218,27 @@ std::string FieldCorruptionAnalyzer::mapping_to_ranges(
 }
 
 // Event to string
-std::string FieldCorruptionAnalyzer::CorruptionEvent::to_string() const {
+std::string FrameCorruptionAnalyzer::CorruptionEvent::to_string() const {
   std::ostringstream oss;
 
   switch (type) {
     case SKIP:
-      if (start_field == end_field) {
-        oss << "SKIP: Field " << start_field << " (" << count << " field"
+      if (start_frame == end_frame) {
+        oss << "SKIP: Frame " << start_frame << " (" << count << " frame"
             << (count > 1 ? "s)" : ")");
       } else {
-        oss << "SKIP: Fields " << start_field << "-" << end_field << " ("
-            << count << " fields)";
+        oss << "SKIP: Frames " << start_frame << "-" << end_frame << " ("
+            << count << " frames)";
       }
       break;
 
     case REPEAT:
-      oss << "REPEAT: Field " << start_field << " (" << count << " times)";
+      oss << "REPEAT: Frame " << start_frame << " (" << count << " times)";
       break;
 
     case GAP:
       oss << "GAP: " << count << " gap marker" << (count > 1 ? "s" : "")
-          << " at field " << start_field;
+          << " at frame " << start_frame;
       break;
   }
 

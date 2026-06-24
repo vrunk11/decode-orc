@@ -1,14 +1,14 @@
 /*
- * File:        field_map_range_presenter.h
+ * File:        frame_map_range_presenter.h
  * Module:      orc-presenters
- * Purpose:     Presenter for Field Map Range Finder analysis tool
+ * Purpose:     Presenter for Frame Map Range Finder analysis tool
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#ifndef ORC_PRESENTERS_FIELD_MAP_RANGE_PRESENTER_H
-#define ORC_PRESENTERS_FIELD_MAP_RANGE_PRESENTER_H
+#ifndef ORC_PRESENTERS_FRAME_MAP_RANGE_PRESENTER_H
+#define ORC_PRESENTERS_FRAME_MAP_RANGE_PRESENTER_H
 
 #include <functional>
 
@@ -17,13 +17,13 @@
 namespace orc::presenters {
 
 /**
- * @brief Presenter for Field Map Range Finder analysis tool
+ * @brief Presenter for Frame Map Range Finder analysis tool
  *
  * Prepares DAG/project context and maps progress/results for the GUI.
  */
-class FieldMapRangePresenter : public AnalysisToolPresenter {
+class FrameMapRangePresenter : public AnalysisToolPresenter {
  public:
-  explicit FieldMapRangePresenter(void* project_handle);
+  explicit FrameMapRangePresenter(void* project_handle);
 
   orc::AnalysisResult runAnalysis(
       NodeID node_id,
@@ -37,4 +37,4 @@ class FieldMapRangePresenter : public AnalysisToolPresenter {
 
 }  // namespace orc::presenters
 
-#endif  // ORC_PRESENTERS_FIELD_MAP_RANGE_PRESENTER_H
+#endif  // ORC_PRESENTERS_FRAME_MAP_RANGE_PRESENTER_H
