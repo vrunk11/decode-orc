@@ -58,6 +58,12 @@ struct SourceParameters {
   int32_t white_level = -1;     // White / 100 IRE (e.g., kPalWhite = 844)
   int32_t peak_level = -1;      // Peak white (e.g., kPalPeak = 1019)
 
+  // CVBS_U10_4FSC DC level of the chroma signal for YC sources.
+  // Raw .tbcc chroma is centred at 32768 (uint16 midpoint); this is that value
+  // converted to CVBS domain via tbc_to_cvbs(32768, blanking_16b, white_16b).
+  // -1 when not applicable (composite sources).
+  int32_t chroma_dc_offset = -1;
+
   // True when black_level or white_level differs from the spec-defined
   // constant for this system (e.g., NTSC-J, or a video_params override).
   bool has_nonstandard_values = false;

@@ -397,12 +397,19 @@ void FrameScopeDialog::updatePlotData() {
 
   if (is_yc_source_ && channel_mode == 3 && !current_y_samples_.empty() &&
       !current_c_samples_.empty()) {
-    // Y+C combined: add chroma AC to luma
+    // Y+C combined: raw .tbcc chroma is centred at 32768 (uint16 midpoint),
+    // which maps to chroma_dc_offset in CVBS domain — subtract it before
+    // adding to luma so the result sits at the correct blanking level.
+    const int32_t chroma_dc = (current_video_params_.has_value() &&
+                               current_video_params_->chroma_dc_offset >= 0)
+                                  ? current_video_params_->chroma_dc_offset
+                                  : 0;
     std::vector<int16_t> combined;
     combined.reserve(current_y_samples_.size());
     for (size_t i = 0; i < current_y_samples_.size(); ++i) {
       const int32_t val = static_cast<int32_t>(current_y_samples_[i]) +
-                          static_cast<int32_t>(current_c_samples_[i]);
+                          static_cast<int32_t>(current_c_samples_[i]) -
+                          chroma_dc;
       combined.push_back(static_cast<int16_t>(std::clamp(val, -32768, 32767)));
     }
     plot_widget_->setLegendEnabled(false);

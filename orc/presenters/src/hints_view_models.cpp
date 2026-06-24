@@ -52,6 +52,7 @@ VideoParametersView toVideoParametersView(const orc::SourceParameters& params) {
   v.black_level = params.black_level;
   v.white_level = params.white_level;
   v.peak_level = params.peak_level;
+  v.chroma_dc_offset = params.chroma_dc_offset;
 
   return v;
 }

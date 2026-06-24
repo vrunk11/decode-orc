@@ -125,6 +125,19 @@ SourceParameters build_source_params(const TBCVideoParams& tvp,
       break;
   }
 
+  // Compute chroma DC offset in CVBS domain: the raw .tbcc chroma is centred
+  // at 32768 (uint16 midpoint); map that to CVBS using the same formula as
+  // tbc_to_cvbs so the Y+C combined view can remove the DC before summing.
+  if (tvp.blanking_16b > 0 && tvp.white_16b > tvp.blanking_16b &&
+      sp.blanking_level >= 0 && sp.white_level > sp.blanking_level) {
+    const double n = (32768.0 - static_cast<double>(tvp.blanking_16b)) /
+                     static_cast<double>(tvp.white_16b - tvp.blanking_16b);
+    const double cvbs =
+        n * static_cast<double>(sp.white_level - sp.blanking_level) +
+        static_cast<double>(sp.blanking_level);
+    sp.chroma_dc_offset = static_cast<int32_t>(std::lround(cvbs));
+  }
+
   return sp;
 }
 
@@ -265,6 +278,22 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     ensure_frame_cached(id);
     const CachedFrame* cf = frame_cache_.get_ptr(id);
     return (cf && !cf->chroma.empty()) ? cf->chroma.data() : nullptr;
+  }
+
+  const sample_type* get_line_luma(FrameID id, size_t line) const override {
+    const auto* ptr = get_frame_luma(id);
+    if (!ptr) return nullptr;
+    const auto params = get_video_parameters();
+    if (!params) return nullptr;
+    return ptr + line * static_cast<size_t>(params->frame_width_nominal);
+  }
+
+  const sample_type* get_line_chroma(FrameID id, size_t line) const override {
+    const auto* ptr = get_frame_chroma(id);
+    if (!ptr) return nullptr;
+    const auto params = get_video_parameters();
+    if (!params) return nullptr;
+    return ptr + line * static_cast<size_t>(params->frame_width_nominal);
   }
 
   // --------------------------------------------------------------------------
@@ -1155,10 +1184,24 @@ TBCSourceStage::SidecarPaths TBCSourceStage::resolve_sidecars(
     return {};
   };
 
+  // For YC sources tbc_path is the .tbcy file, but metadata lives next to the
+  // base .tbc file.  Strip the Y/C extension and restore ".tbc" so that the
+  // derived db_path resolves to e.g. "foo.tbc.db".
+  std::string meta_base = tbc_path;
+  if (meta_base.size() > 5) {
+    std::string ext = meta_base.substr(meta_base.size() - 5);
+    for (auto& c : ext) {
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (ext == ".tbcy" || ext == ".tbcc") {
+      meta_base = meta_base.substr(0, meta_base.size() - 5) + ".tbc";
+    }
+  }
+
   SidecarPaths sp;
   sp.db_path = get_str("db_path");
   if (sp.db_path.empty()) {
-    sp.db_path = tbc_path + ".db";
+    sp.db_path = meta_base + ".db";
   }
 
   sp.pcm_path = get_str("pcm_path");
@@ -1413,8 +1456,9 @@ bool TBCSourceStage::set_parameters(
   }
 
   const std::string explicit_db = get_str("db_path");
-  const std::string db_path =
-      explicit_db.empty() ? tbc_path + ".db" : explicit_db;
+  const std::string db_path = explicit_db.empty()
+                                  ? resolve_sidecars(tbc_path, params).db_path
+                                  : explicit_db;
 
   std::string meta_err;
   const auto tvp_opt = deps_->load_video_params(db_path, meta_err);

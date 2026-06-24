@@ -37,9 +37,9 @@ static orc::VideoSystem toOrcVideoSystem(orc::presenters::VideoSystem sys) {
 }
 
 namespace {
-std::vector<int16_t> buildCombinedYPlusC(
-    const std::vector<int16_t>& y_samples,
-    const std::vector<int16_t>& c_samples) {
+std::vector<int16_t> buildCombinedYPlusC(const std::vector<int16_t>& y_samples,
+                                         const std::vector<int16_t>& c_samples,
+                                         int32_t chroma_dc_offset) {
   if (y_samples.empty() || c_samples.empty()) {
     return {};
   }
@@ -49,8 +49,9 @@ std::vector<int16_t> buildCombinedYPlusC(
   combined_samples.reserve(sample_count);
 
   for (size_t i = 0; i < sample_count; ++i) {
-    const int32_t combined =
-        static_cast<int32_t>(y_samples[i]) + static_cast<int32_t>(c_samples[i]);
+    const int32_t combined = static_cast<int32_t>(y_samples[i]) +
+                             static_cast<int32_t>(c_samples[i]) -
+                             chroma_dc_offset;
     combined_samples.push_back(static_cast<int16_t>(
         std::clamp(combined, static_cast<int32_t>(INT16_MIN),
                    static_cast<int32_t>(INT16_MAX))));
@@ -707,10 +708,14 @@ void FrameTimingWidget::drawGraph(QPainter& painter, const QRect& graph_area) {
         break;
 
       case ChannelMode::YPlusC: {
+        const int32_t chroma_dc =
+            (video_params_.has_value() && video_params_->chroma_dc_offset >= 0)
+                ? video_params_->chroma_dc_offset
+                : 0;
         const std::vector<int16_t> combined_1 =
-            buildCombinedYPlusC(y1_samples_, c1_samples_);
+            buildCombinedYPlusC(y1_samples_, c1_samples_, chroma_dc);
         const std::vector<int16_t> combined_2 =
-            buildCombinedYPlusC(y2_samples_, c2_samples_);
+            buildCombinedYPlusC(y2_samples_, c2_samples_, chroma_dc);
 
         if (!combined_1.empty()) {
           drawSamples(painter, graph_area, combined_1, composite1_color, 0);

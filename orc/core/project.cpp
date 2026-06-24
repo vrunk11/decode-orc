@@ -952,8 +952,11 @@ NodeID add_node(Project& project, const std::string& stage_name,
 
   // Validate source stage compatibility with project's video and source format
   if (type_info->type == NodeType::SOURCE) {
-    // Check source_format if set
-    if (project.source_format_ != SourceType::Unknown) {
+    // Check source_format if set.
+    // tbc_source is dual-mode: composite or YC is determined by parameters,
+    // not by stage name, so it is valid for any source format.
+    const bool is_dual_mode_source = (stage_name == "tbc_source");
+    if (!is_dual_mode_source && project.source_format_ != SourceType::Unknown) {
       bool is_yc_stage = (stage_name.find("YC") != std::string::npos);
       SourceType stage_type =
           is_yc_stage ? SourceType::YC : SourceType::Composite;
@@ -1175,13 +1178,28 @@ void set_node_parameters(
 
     // Prefer an explicit db_path parameter if provided.
     std::string db_path = get_str_param("db_path");
+
+    // For YC sources the metadata lives next to the base .tbc file, not the
+    // .tbcy/.tbcc file.  Strip the Y/C extension and restore ".tbc" so that
+    // derived paths resolve to e.g. "foo.tbc.db" / "foo.tbc.json".
+    std::string meta_base = tbc_path;
+    if (meta_base.size() > 5) {
+      std::string ext = meta_base.substr(meta_base.size() - 5);
+      for (auto& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+      }
+      if (ext == ".tbcy" || ext == ".tbcc") {
+        meta_base = meta_base.substr(0, meta_base.size() - 5) + ".tbc";
+      }
+    }
+
     if (db_path.empty() && !tbc_path.empty()) {
-      db_path = tbc_path + ".db";
+      db_path = meta_base + ".db";
     }
 
     if (!tbc_path.empty()) {
       // Existence check: metadata file must be present (legacy: .json).
-      std::string legacy_json = tbc_path + ".json";
+      std::string legacy_json = meta_base + ".json";
       bool metadata_exists =
           (!db_path.empty() && std::filesystem::exists(db_path)) ||
           std::filesystem::exists(legacy_json);

@@ -87,6 +87,9 @@ struct VideoParametersView {
   int32_t black_level = -1;
   int32_t white_level = -1;
   int32_t peak_level = -1;
+
+  // CVBS_U10_4FSC DC level of the chroma signal for YC sources (-1 = N/A).
+  int32_t chroma_dc_offset = -1;
 };
 
 }  // namespace orc::presenters

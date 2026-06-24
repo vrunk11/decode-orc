@@ -28,10 +28,13 @@ StagePreviewCapability make_signal_preview_capability(
   auto params = vfr->get_video_parameters();
   if (!params || !params->is_valid()) return {};
 
-  VideoDataType data_type = VideoDataType::CompositePAL;
+  const bool is_yc = vfr->has_separate_channels();
+  VideoDataType data_type;
   if (params->system == VideoSystem::NTSC ||
       params->system == VideoSystem::PAL_M) {
-    data_type = VideoDataType::CompositeNTSC;
+    data_type = is_yc ? VideoDataType::YC_NTSC : VideoDataType::CompositeNTSC;
+  } else {
+    data_type = is_yc ? VideoDataType::YC_PAL : VideoDataType::CompositePAL;
   }
 
   uint32_t active_width =
@@ -165,16 +168,51 @@ PreviewImage render_standard_preview(
     return result;
   }
 
-  const bool apply_level_scaling =
-      (option_id == "sequential_clamped" || option_id == "interlaced_clamped");
-  const bool do_interlace =
-      (option_id == "interlaced_clamped" || option_id == "interlaced_raw");
+  // Strip YC channel suffix appended by the GUI for YC sources.
+  // "_yc" = luma+chroma combined (display luma), "_y" = luma, "_c" = chroma.
+  // Check "_yc" before "_y"/"_c" to avoid partial matches.
+  enum class YCChannel { Composite, Luma, Chroma };
+  YCChannel yc_channel = YCChannel::Composite;
+  std::string base_option_id = option_id;
+  if (representation->has_separate_channels()) {
+    auto ends_with = [](const std::string& s, const std::string& suffix) {
+      return s.size() >= suffix.size() &&
+             s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+    if (ends_with(base_option_id, "_yc")) {
+      base_option_id.resize(base_option_id.size() - 3);
+      yc_channel = YCChannel::Luma;
+    } else if (ends_with(base_option_id, "_y")) {
+      base_option_id.resize(base_option_id.size() - 2);
+      yc_channel = YCChannel::Luma;
+    } else if (ends_with(base_option_id, "_c")) {
+      base_option_id.resize(base_option_id.size() - 2);
+      yc_channel = YCChannel::Chroma;
+    }
+  }
 
-  if (option_id != "sequential_clamped" && option_id != "sequential_raw" &&
-      option_id != "interlaced_clamped" && option_id != "interlaced_raw") {
+  const bool apply_level_scaling = (base_option_id == "sequential_clamped" ||
+                                    base_option_id == "interlaced_clamped");
+  const bool do_interlace = (base_option_id == "interlaced_clamped" ||
+                             base_option_id == "interlaced_raw");
+
+  if (base_option_id != "sequential_clamped" &&
+      base_option_id != "sequential_raw" &&
+      base_option_id != "interlaced_clamped" &&
+      base_option_id != "interlaced_raw") {
     ORC_LOG_WARN("PreviewHelpers (frame): Unknown preview option '{}'",
                  option_id);
     return result;
+  }
+
+  // For YC sources, get a pointer to the frame buffer for the selected channel.
+  // Indexing is identical to the composite path: buf_line * width gives the
+  // start of that (frame-flat) line within the buffer.
+  const VideoFrameRepresentation::sample_type* yc_frame_ptr = nullptr;
+  if (yc_channel == YCChannel::Luma) {
+    yc_frame_ptr = representation->get_frame_luma(frame_id);
+  } else if (yc_channel == YCChannel::Chroma) {
+    yc_frame_ptr = representation->get_frame_chroma(frame_id);
   }
 
   uint32_t width = static_cast<uint32_t>(descriptor->samples_per_line_nominal);
@@ -229,7 +267,8 @@ PreviewImage render_standard_preview(
     }
 
     const VideoFrameRepresentation::sample_type* line =
-        representation->get_line(frame_id, buf_line);
+        yc_frame_ptr ? yc_frame_ptr + buf_line * width
+                     : representation->get_line(frame_id, buf_line);
     if (!line) continue;
 
     for (uint32_t x = 0; x < width; ++x) {
