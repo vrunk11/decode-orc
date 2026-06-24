@@ -16,7 +16,6 @@ Decode-Orc 2.0 introduces a new frame-based internal representation (CVBS_U10_4F
 | `ntsc_yc_source` | `tbc_source` | |
 | `pal_m_tbc_comp_source` | `tbc_source` | |
 | `field_map` | `frame_map` | New parameters: `remove_duplicates`, `pad_gaps`, `pad_strategy` |
-| `field_invert` | `frame_field_swap` | Renamed; same behaviour |
 
 **Removed stages**: The following stage was removed in v2.0 with no replacement:
 
@@ -37,7 +36,6 @@ Decode-Orc 2.0 introduces a new frame-based internal representation (CVBS_U10_4F
 |----------|-------------|
 | `cvbs_source` | Load CVBS captures in the CVBS file-format family |
 | `cvbs_sink` | Write CVBS_U10_4FSC output to the CVBS file-format family |
-| `frame_phase_corrector` | Detect and correct field-swap artefacts; verify colour-frame sequence |
 
 **Signal level domain**: All internal signal levels in v2.0 are in the CVBS_U10_4FSC 10-bit domain (blanking = 256, white = 844 for PAL; blanking = 240, white = 800 for NTSC). The 16-bit IRE-based domain used in v1.x is gone. The `video_params` stage parameters for level overrides now use 10-bit values.
 

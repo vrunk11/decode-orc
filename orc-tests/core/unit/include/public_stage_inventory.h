@@ -60,17 +60,8 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
        }},
       {"stacker", PublicStageFamily::Transform, true,
        [] { return orc::StageRegistry::instance().create_stage("stacker"); }},
-      {"frame_field_swap", PublicStageFamily::Transform, true,
-       [] {
-         return orc::StageRegistry::instance().create_stage("frame_field_swap");
-       }},
       {"frame_map", PublicStageFamily::Transform, true,
        [] { return orc::StageRegistry::instance().create_stage("frame_map"); }},
-      {"frame_phase_corrector", PublicStageFamily::Transform, true,
-       [] {
-         return orc::StageRegistry::instance().create_stage(
-             "frame_phase_corrector");
-       }},
       {"video_params", PublicStageFamily::Transform, true,
        [] {
          return orc::StageRegistry::instance().create_stage("video_params");

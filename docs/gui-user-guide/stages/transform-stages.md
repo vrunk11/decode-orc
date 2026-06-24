@@ -58,50 +58,6 @@ Frame Map parses a comma-separated list of frame ranges (e.g. `0-10,20-30,11-19`
 
 ---
 
-## Frame Phase Corrector
-
-| | |
-|-|-|
-| **Stage id** | `frame_phase_corrector` |
-| **Stage name** | Frame Phase Corrector |
-| **Connections** | 1 input → 1 output (fan-out supported) |
-| **Purpose** | Detect and correct field-swap artefacts; verify colour-frame sequence continuity |
-
-**Use this stage when:**
-
-* Your capture may contain frames where the two field blocks are in the wrong temporal order (field swap).
-* You want to verify that the colour-frame sequence (PAL 4-frame or NTSC 2-frame) is unbroken and mark breaks for downstream handling.
-
-**What it does**
-
-This stage measures the colour burst phase of both field blocks within each frame. When the phases indicate that field 2 is temporally earlier than field 1, the stage presents the frame with the field blocks exchanged (index redirect — no sample data is copied). It also walks the colour-frame index sequence and marks any break with `colour_frame_index = -1`.
-
-**Parameters**
-
-* `correct_field_swap` (bool)
-    - When enabled, swaps field blocks whenever burst-phase evidence indicates the fields are in the wrong order.
-    - Default: `true`.
-
-* `verify_phase_sequence` (bool)
-    - When enabled, walks the `colour_frame_index` sequence and marks breaks with `colour_frame_index = -1`. Emits an observation for each break detected.
-    - Default: `true`.
-
-**Observations emitted**
-
-* `frame_phase_corrector.field_swaps_corrected` — number of frames where a field swap was corrected.
-* `frame_phase_corrector.phase_breaks_detected` — number of sequence breaks detected.
-* `frame_phase_corrector.phase_breaks_marked` — number of frames marked with `colour_frame_index = -1`.
-
-**Recommended pipeline position**
-
-Place `frame_phase_corrector` immediately after the source stage, before `source_align` or `stacker`, so that alignment and stacking operate on correctly sequenced frames.
-
-**Analysis / preview tools**
-
-* Supports standard GUI previews (via `PreviewableStage`).
-
----
-
 ## Source Align
 
 | | |
@@ -329,36 +285,6 @@ Mask Line overwrites selected frame lines with a constant level defined in IRE u
     - IRE level to write (0 = black, 100 = white).
     - Range: 0.0–100.0.
     - Default: 0.0.
-
-**Analysis / preview tools**
-
-* Supports standard GUI previews (via `PreviewableStage`).
-
----
-
-## Frame Field Swap
-
-| | |
-|-|-|
-| **Stage id** | `frame_field_swap` |
-| **Stage name** | Frame Field Swap |
-| **Connections** | 1 input → 1 output (fan-out supported) |
-| **Purpose** | Swap the two field blocks within each frame (intra-frame field reorder) |
-
-**Use this stage when:**
-
-* Field order detection is incorrect and you need to flip it within the frame.
-* You want to test the effect of swapped field order on later processing or rendering.
-
-**What it does**
-
-This stage does not copy or modify sample data. It presents the output frame with field line blocks in reverse order (field 2 block first, field 1 block second) via an index redirect inside the frame representation wrapper.
-
-> **Renamed in v2.0:** This stage was called `field_invert` in Decode-Orc 1.x. Existing project files that reference `field_invert` must be recreated using Decode-Orc 2.0.
-
-**Parameters**
-
-* None.
 
 **Analysis / preview tools**
 

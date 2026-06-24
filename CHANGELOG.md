@@ -37,7 +37,6 @@ Plugins built against Decode-Orc 1.x (ABI version 3, API version 1) will not loa
 | Old stage ID | New stage ID |
 |-------------|--------------|
 | `field_map` | `frame_map` |
-| `field_invert` | `frame_field_swap` |
 
 **Renamed GUI dialogues**
 
@@ -61,10 +60,6 @@ Reads CVBS composite payloads from `.composite` files. Normalises `CVBS_U10_4FSC
 **`cvbs_sink` — CVBS file sink stage**
 
 Writes CVBS_U10_4FSC frame data to the CVBS file-format family. Always writes `signal_state_preset = 'STANDARD_TBC_LOCKED'` and `sample_encoding_preset = 'CVBS_U10_4FSC'`. Round-trips cleanly with `cvbs_source`. Writes dropout, audio, EFM, and AC3 sidecars when the upstream source provides them.
-
-**`frame_phase_corrector` — new transform stage**
-
-Detects and corrects intra-frame field-swap artefacts by measuring colour burst phase in each field block. Also verifies PAL 4-frame / NTSC 2-frame colour-frame sequence continuity and marks breaks with `colour_frame_index = -1`. No sample data is copied during correction.
 
 **`frame_map` enhancements**
 

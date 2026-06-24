@@ -62,7 +62,6 @@ The dialogue visualises the colour-frame index progression across time, making i
 
 * Phase breaks introduced by capture errors or player skips
 * Incorrect sequence after re-mapping
-* Effects of the `frame_phase_corrector` stage
 
 ---
 
@@ -99,18 +98,6 @@ After `frame_map`, the dialogue shows:
 * Frames removed by duplicate detection
 
 This allows immediate verification that range specifications behave as intended.
-
----
-
-### Frame Phase Corrector
-
-After `frame_phase_corrector`, the dialogue shows:
-
-* Corrected colour-frame indices (after field swap correction)
-* Frames marked with `colour_frame_index = −1` at sequence break points
-* Observations for each corrected swap or detected break
-
-This is the primary tool for confirming that phase correction behaved as expected.
 
 ---
 
