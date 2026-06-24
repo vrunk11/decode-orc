@@ -1269,6 +1269,20 @@ bool ProjectPresenter::validateDAG() {
   }
 }
 
+std::string ProjectPresenter::getStageInstructions(
+    const std::string& stage_name) const {
+  try {
+    auto& registry = orc::StageRegistry::instance();
+    if (!registry.has_stage(stage_name)) {
+      return {};
+    }
+    auto stage = registry.create_stage(stage_name);
+    return stage->get_instructions();
+  } catch (const std::exception&) {
+    return {};
+  }
+}
+
 std::vector<ParameterDescriptor> ProjectPresenter::getStageParameters(
     const std::string& stage_name) {
   try {

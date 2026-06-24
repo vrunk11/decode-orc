@@ -109,6 +109,10 @@ class IProjectPresenter {
   virtual std::shared_ptr<void> buildDAG() = 0;
   virtual bool validateDAG() = 0;
 
+  // === Stage Help ===
+  virtual std::string getStageInstructions(
+      const std::string& stage_name) const = 0;
+
   // === Parameter Operations ===
   virtual std::vector<ParameterDescriptor> getStageParameters(
       const std::string& stage_name) = 0;

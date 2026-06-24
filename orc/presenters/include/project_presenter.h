@@ -535,6 +535,14 @@ class ProjectPresenter : public IProjectPresenter {
   // === Parameter Operations ===
 
   /**
+   * @brief Get the help text (Markdown) for a stage type
+   * @param stage_name Internal stage name
+   * @return Markdown string, or empty string if no documentation is available
+   */
+  std::string getStageInstructions(
+      const std::string& stage_name) const override;
+
+  /**
    * @brief Get parameter descriptors for a stage type
    * @param stage_name Internal stage name
    * @return Vector of parameter descriptors

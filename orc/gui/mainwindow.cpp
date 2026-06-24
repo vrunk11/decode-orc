@@ -41,6 +41,7 @@
 #include "qualitymetricsdialog.h"
 #include "render_coordinator.h"
 #include "snranalysisdialog.h"
+#include "stage_help_dialog.h"
 #include "stageparameterdialog.h"
 #include "vbidialog.h"
 #include "version.h"
@@ -786,6 +787,18 @@ void MainWindow::setupMenus() {
 
   // Help menu
   auto* help_menu = menuBar()->addMenu("&Help");
+
+  auto* user_guide_action = help_menu->addAction("&User Guide...");
+  connect(user_guide_action, &QAction::triggered, this, [this]() {
+    QFile f(":/orc-gui/docs/main_window.md");
+    const QString md = f.open(QIODevice::ReadOnly)
+                           ? QString::fromUtf8(f.readAll())
+                           : QString{};
+    auto* dlg = new StageHelpDialog("Main Window", md, this);
+    dlg->show();
+  });
+
+  help_menu->addSeparator();
 
   auto* about_action = help_menu->addAction("&About Orc GUI...");
   connect(about_action, &QAction::triggered, this, &MainWindow::onAbout);

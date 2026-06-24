@@ -132,6 +132,20 @@ class DAGStage {
     return configuration_status_;
   }
 
+  /**
+   * @brief Return stage help text in Markdown format.
+   *
+   * Override in each stage implementation to provide user-visible documentation
+   * rendered by the GUI help dialog. The content should explain what the stage
+   * does, when to use it, its parameters, and any tools it exposes.
+   *
+   * Third-party plugins implement this method to supply their own documentation
+   * without depending on host-side resource files.
+   *
+   * @return Markdown string, or empty string if no documentation is available.
+   */
+  virtual std::string get_instructions() const { return ""; }
+
  protected:
   /**
    * @brief Set the configuration status.  Call this in the constructor and

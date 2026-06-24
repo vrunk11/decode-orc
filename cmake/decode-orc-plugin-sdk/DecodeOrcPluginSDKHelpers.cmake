@@ -81,6 +81,11 @@ function(orc_add_stage_plugin target)
 
     target_link_libraries(${target} PRIVATE ${_orc_sdk_target} ${ORCSP_LINK_LIBRARIES})
 
+    # ORC_STAGE_INSTRUCTIONS_MD uses dladdr() on Linux to locate the plugin .so.
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(${target} PRIVATE dl)
+    endif()
+
     # Always expose the plugin directory itself for local stage headers.
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -114,6 +119,41 @@ function(orc_add_stage_plugin target)
         RUNTIME DESTINATION "${ORC_STAGE_PLUGIN_INSTALL_DIR}" COMPONENT Runtime
         BUNDLE  DESTINATION "${ORC_STAGE_PLUGIN_INSTALL_DIR}" COMPONENT Runtime
     )
+
+    # If instructions.md exists, copy it alongside the plugin .so at build time
+    # and install it so ORC_STAGE_INSTRUCTIONS_MD can find it at runtime.
+    # Uses add_custom_command(OUTPUT/DEPENDS) so a change to instructions.md
+    # triggers the copy even when the stage .so does not need to be rebuilt.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/instructions.md")
+        if(ORCSP_OUTPUT_NAME)
+            set(_orc_md_base "${ORCSP_OUTPUT_NAME}")
+        else()
+            set(_orc_md_base "${target}")
+        endif()
+        if(WIN32)
+            set(_orc_md_filename "${_orc_md_base}.md")
+        else()
+            set(_orc_md_filename "lib${_orc_md_base}.md")
+        endif()
+
+        set(_orc_md_src "${CMAKE_CURRENT_SOURCE_DIR}/instructions.md")
+        set(_orc_md_dst "${ORC_STAGE_PLUGIN_BUILD_DIR}/${_orc_md_filename}")
+
+        add_custom_command(
+            OUTPUT "${_orc_md_dst}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_orc_md_src}" "${_orc_md_dst}"
+            DEPENDS "${_orc_md_src}"
+            COMMENT "Copying instructions.md for ${target}"
+            VERBATIM
+        )
+        add_custom_target(${target}-instructions ALL DEPENDS "${_orc_md_dst}")
+
+        install(FILES "${_orc_md_src}"
+            RENAME "${_orc_md_filename}"
+            DESTINATION "${ORC_STAGE_PLUGIN_INSTALL_DIR}"
+            COMPONENT Runtime
+        )
+    endif()
 
     if(ORCSP_RUNTIME_DEPENDENCIES)
         foreach(_dep IN LISTS ORCSP_RUNTIME_DEPENDENCIES)

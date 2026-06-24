@@ -137,6 +137,10 @@ set(ORC_GUI_LIB_SOURCES
     pluginmanagerdialog.cpp
     pluginmanagerdialog.h
 
+    # Stage help dialog
+    stage_help_dialog.cpp
+    stage_help_dialog.h
+
     # Resources
     orc_gui_resources.qrc
 )

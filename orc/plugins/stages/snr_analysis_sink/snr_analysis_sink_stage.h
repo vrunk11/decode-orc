@@ -53,6 +53,7 @@ class SNRAnalysisSinkStage : public DAGStage,
 
   // DAGStage interface
   std::string version() const override { return "1.0"; }
+  ORC_STAGE_INSTRUCTIONS_MD
   NodeTypeInfo get_node_type_info() const override;
 
   std::vector<ArtifactPtr> execute(

@@ -16,6 +16,7 @@
 #include "orcnodepainter.h"
 #include "presenters/include/analysis_presenter.h"
 #include "presenters/include/project_presenter.h"
+#include "stage_help_dialog.h"
 // Removed: #include "analysis_registry.h"  // Phase 2.4: Now using
 // AnalysisPresenter
 #include <QGraphicsView>
@@ -378,6 +379,30 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
                       });
                 });
         // NOLINTEND(bugprone-exception-escape)
+      }
+    }
+
+    menu->addSeparator();
+
+    // Help action — shows stage instructions (Markdown) rendered in a dialog.
+    auto* help_action = menu->addAction("Help...");
+    {
+      std::string instructions =
+          graph_model_.presenter().getStageInstructions(node_info.stage_name);
+      help_action->setEnabled(!instructions.empty());
+      if (!instructions.empty()) {
+        QString stage_label = QString::fromStdString(
+            node_info.label.empty() ? node_info.stage_name : node_info.label);
+        connect(help_action, &QAction::triggered,
+                [this, stage_label, instructions]() {
+                  QTimer::singleShot(
+                      0, this, [this, stage_label, instructions]() {
+                        auto* dlg = new StageHelpDialog(
+                            stage_label, QString::fromStdString(instructions),
+                            views().isEmpty() ? nullptr : views().first());
+                        dlg->exec();
+                      });
+                });
       }
     }
 

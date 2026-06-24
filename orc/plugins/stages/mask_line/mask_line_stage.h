@@ -78,6 +78,7 @@ class MaskLineStage : public DAGStage,
   MaskLineStage();
 
   std::string version() const override { return "1.0"; }
+  ORC_STAGE_INSTRUCTIONS_MD
   NodeTypeInfo get_node_type_info() const override {
     return NodeTypeInfo{NodeType::TRANSFORM,
                         "mask_line",

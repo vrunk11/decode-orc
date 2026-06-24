@@ -15,3 +15,5 @@
 #include <dag_executor.h>
 #include <observation_context.h>
 #include <triggerable_stage.h>
+
+#include "orc_stage_tooling.h"

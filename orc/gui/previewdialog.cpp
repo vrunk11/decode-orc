@@ -10,6 +10,7 @@
 #include "previewdialog.h"
 
 #include <QCloseEvent>
+#include <QFile>
 #include <QFontMetrics>
 #include <QGuiApplication>
 #include <QHBoxLayout>
@@ -31,6 +32,7 @@
 #include "frametimingdialog.h"
 #include "logging.h"
 #include "preview/vectorscope_dialog.h"
+#include "stage_help_dialog.h"
 #include "waveformmonitordialog.h"
 
 namespace {
@@ -193,6 +195,17 @@ void PreviewDialog::setupUI() {
   show_component_vectorscope_action_->setEnabled(false);
   connect(show_component_vectorscope_action_, &QAction::triggered, this,
           &PreviewDialog::onComponentVectorscopeActionTriggered);
+
+  auto* helpMenu = menu_bar_->addMenu("&Help");
+  auto* user_guide_action = helpMenu->addAction("&User Guide...");
+  connect(user_guide_action, &QAction::triggered, this, [this]() {
+    QFile f(":/orc-gui/docs/preview_window.md");
+    const QString md = f.open(QIODevice::ReadOnly)
+                           ? QString::fromUtf8(f.readAll())
+                           : QString{};
+    auto* dlg = new StageHelpDialog("Preview Window", md, this);
+    dlg->show();
+  });
 
   mainLayout->setMenuBar(menu_bar_);
 

@@ -60,6 +60,7 @@ namespace orc {
  */
 class FFmpegVideoSinkStage : public ChromaSinkStage, public StageToolProvider {
  public:
+  ORC_STAGE_INSTRUCTIONS_MD
   FFmpegVideoSinkStage();
   ~FFmpegVideoSinkStage() override = default;
 
@@ -89,6 +90,8 @@ class FFmpegVideoSinkStage : public ChromaSinkStage, public StageToolProvider {
                                 StageToolKind::ConfigDialog, false,
                                 "decode-orc.stage-tools.ffmpeg-preset.v1"}};
   }
+
+ private:
 };
 
 }  // namespace orc

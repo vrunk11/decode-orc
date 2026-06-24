@@ -60,6 +60,7 @@ class LDSinkStage : public DAGStage,
 
   // DAGStage interface
   std::string version() const override { return "1.0"; }
+  ORC_STAGE_INSTRUCTIONS_MD
   NodeTypeInfo get_node_type_info() const override;
   std::vector<ObservationKey> get_provided_observations() const override {
     return {ObservationKey{"export", "seq_no", ObservationType::INT64,

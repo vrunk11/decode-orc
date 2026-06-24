@@ -48,8 +48,9 @@ OrcGraphicsView::OrcGraphicsView(QWidget* parent)
           "file pairs ending in .tbcy and .tbcc will be treated as Y/C "
           "sources. NTSC, NTSC-J, PAL and PAL-M are currently supported for "
           "both LaserDisc, tape and other capture sources.\n\n"
-          "Please see the decode-orc documentation for a detailed user-guide "
-          "and reference.")) {
+          "For a full user guide open Help > User Guide from the menu bar. "
+          "Every stage node also has built-in help: right-click any node and "
+          "choose Help....")) {
   // Find and disconnect the default delete action
   for (QAction* action : actions()) {
     if (action->shortcut() == QKeySequence::Delete) {
