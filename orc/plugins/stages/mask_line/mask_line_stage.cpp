@@ -80,8 +80,9 @@ MaskedFrameRepresentation::get_line(FrameID id, size_t line) const {
 
   auto params = source_ ? source_->get_video_parameters() : std::nullopt;
   if (!params.has_value()) return nullptr;
-  const size_t width = frame_line_sample_count(
-      params->system, static_cast<size_t>(params->frame_width_nominal), line);
+  const size_t spl =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
+  const size_t width = frame_line_sample_count(params->system, spl, line);
 
   const int16_t val =
       static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
@@ -98,9 +99,10 @@ MaskedFrameRepresentation::get_frame_copy(FrameID id) const {
 
   std::vector<sample_type> result;
   result.reserve(desc->samples_total);
+  const size_t spl =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
   for (size_t line = 0; line < desc->height; ++line) {
-    const size_t w = frame_line_sample_count(
-        params->system, static_cast<size_t>(params->frame_width_nominal), line);
+    const size_t w = frame_line_sample_count(params->system, spl, line);
     const sample_type* ptr = get_line(id, line);
     if (ptr) {
       result.insert(result.end(), ptr, ptr + w);
@@ -118,9 +120,10 @@ MaskedFrameRepresentation::get_line_luma(FrameID id, size_t line) const {
 
   auto params_luma = source_ ? source_->get_video_parameters() : std::nullopt;
   if (!params_luma.has_value()) return nullptr;
-  const size_t width = frame_line_sample_count(
-      params_luma->system,
-      static_cast<size_t>(params_luma->frame_width_nominal), line);
+  const size_t spl_luma =
+      static_cast<size_t>(samples_per_line_from_system(params_luma->system));
+  const size_t width =
+      frame_line_sample_count(params_luma->system, spl_luma, line);
   const int16_t val =
       static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
   masked_luma_buffer_.assign(width, val);
@@ -134,13 +137,132 @@ MaskedFrameRepresentation::get_line_chroma(FrameID id, size_t line) const {
 
   auto params_chroma = source_ ? source_->get_video_parameters() : std::nullopt;
   if (!params_chroma.has_value()) return nullptr;
-  const size_t width = frame_line_sample_count(
-      params_chroma->system,
-      static_cast<size_t>(params_chroma->frame_width_nominal), line);
+  const size_t spl_chroma =
+      static_cast<size_t>(samples_per_line_from_system(params_chroma->system));
+  const size_t width =
+      frame_line_sample_count(params_chroma->system, spl_chroma, line);
   const int16_t val =
       static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
   masked_chroma_buffer_.assign(width, val);
   return masked_chroma_buffer_.data();
+}
+
+const MaskedFrameRepresentation::sample_type*
+MaskedFrameRepresentation::get_frame(FrameID id) const {
+  if (!source_) return nullptr;
+  if (line_ranges_.empty()) return source_->get_frame(id);
+
+  {
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    auto it = masked_frame_cache_.find(id);
+    if (it != masked_frame_cache_.end()) return it->second.data();
+  }
+
+  auto desc = source_->get_frame_descriptor(id);
+  auto params = source_->get_video_parameters();
+  const sample_type* src = source_->get_frame(id);
+  if (!desc || !params || !src) return src;
+
+  const int16_t val =
+      static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
+  const size_t spl =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
+  std::vector<sample_type> result;
+  result.reserve(desc->samples_total);
+  size_t offset = 0;
+  for (size_t line = 0; line < desc->height; ++line) {
+    const size_t w = frame_line_sample_count(params->system, spl, line);
+    if (should_mask_line(line)) {
+      result.insert(result.end(), w, val);
+    } else {
+      result.insert(result.end(), src + offset, src + offset + w);
+    }
+    offset += w;
+  }
+
+  std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+  auto [it, inserted] = masked_frame_cache_.emplace(id, std::move(result));
+  (void)inserted;
+  return it->second.data();
+}
+
+const MaskedFrameRepresentation::sample_type*
+MaskedFrameRepresentation::get_frame_luma(FrameID id) const {
+  if (!source_ || !source_->has_separate_channels()) return nullptr;
+  if (line_ranges_.empty()) return source_->get_frame_luma(id);
+
+  {
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    auto it = masked_luma_frame_cache_.find(id);
+    if (it != masked_luma_frame_cache_.end()) return it->second.data();
+  }
+
+  auto desc = source_->get_frame_descriptor(id);
+  auto params = source_->get_video_parameters();
+  const sample_type* src = source_->get_frame_luma(id);
+  if (!desc || !params || !src) return src;
+
+  const int16_t val =
+      static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
+  const size_t spl_luma =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
+  std::vector<sample_type> result;
+  result.reserve(desc->samples_total);
+  size_t offset = 0;
+  for (size_t line = 0; line < desc->height; ++line) {
+    const size_t w = frame_line_sample_count(params->system, spl_luma, line);
+    if (should_mask_line(line)) {
+      result.insert(result.end(), w, val);
+    } else {
+      result.insert(result.end(), src + offset, src + offset + w);
+    }
+    offset += w;
+  }
+
+  std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+  auto [it, inserted] = masked_luma_frame_cache_.emplace(id, std::move(result));
+  (void)inserted;
+  return it->second.data();
+}
+
+const MaskedFrameRepresentation::sample_type*
+MaskedFrameRepresentation::get_frame_chroma(FrameID id) const {
+  if (!source_ || !source_->has_separate_channels()) return nullptr;
+  if (line_ranges_.empty()) return source_->get_frame_chroma(id);
+
+  {
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    auto it = masked_chroma_frame_cache_.find(id);
+    if (it != masked_chroma_frame_cache_.end()) return it->second.data();
+  }
+
+  auto desc = source_->get_frame_descriptor(id);
+  auto params = source_->get_video_parameters();
+  const sample_type* src = source_->get_frame_chroma(id);
+  if (!desc || !params || !src) return src;
+
+  const int16_t val =
+      static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
+  const size_t spl_chroma =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
+  std::vector<sample_type> result;
+  result.reserve(desc->samples_total);
+  size_t offset = 0;
+  for (size_t line = 0; line < desc->height; ++line) {
+    const size_t w = frame_line_sample_count(params->system, spl_chroma, line);
+    if (should_mask_line(line)) {
+      result.insert(result.end(), w, val);
+    } else {
+      result.insert(result.end(), src + offset, src + offset + w);
+    }
+    offset += w;
+  }
+
+  std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+  auto [it, inserted] =
+      masked_chroma_frame_cache_.emplace(id, std::move(result));
+  (void)inserted;
+  return it->second.data();
 }
 
 // ============================================================================
@@ -178,8 +300,8 @@ std::vector<ArtifactPtr> MaskLineStage::execute(
   cached_output_ = output;
 
   std::vector<ArtifactPtr> outputs;
-  outputs.push_back(std::const_pointer_cast<MaskedFrameRepresentation>(
-      std::dynamic_pointer_cast<const MaskedFrameRepresentation>(output)));
+  outputs.push_back(std::dynamic_pointer_cast<Artifact>(
+      std::const_pointer_cast<VideoFrameRepresentation>(output)));
   return outputs;
 }
 

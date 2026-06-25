@@ -1,7 +1,7 @@
 /*
  * File:        masklineconfigdialog.h
  * Module:      orc-gui
- * Purpose:     Configuration dialog for mask line stage
+ * Purpose:     Configuration dialog for mask line stage (broadcast line entry)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
@@ -13,9 +13,10 @@
 #include <amplitude_conversion.h>
 #include <common_types.h>
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QGroupBox>
+#include <QListWidget>
+#include <QPushButton>
 #include <QSpinBox>
 #include <optional>
 
@@ -25,17 +26,13 @@
 /**
  * @brief Configuration dialog for the mask line stage
  *
- * This dialog provides a user-friendly interface for configuring line masking
- * without requiring users to understand the raw line specification format.
+ * Lets the user specify lines to mask using broadcast interlaced line numbering
+ * (PAL: 1–625, NTSC/PAL-M: 1–525).  Field 1 occupies the lower half of that
+ * range and field 2 the upper half; entering lines from either or both halves
+ * masks the corresponding frame-flat lines in the CVBS frame buffer.
  *
- * Features:
- * - Common presets (NTSC closed captions, PAL teletext, etc.)
- * - Quick checkboxes for common masking scenarios
- * - Visual field/line selection
- * - 10-bit sample level control with presets (blanking, white)
- *
- * The dialog translates user-friendly selections into the lineSpec parameter
- * format expected by MaskLineStage.
+ * Line numbers are converted from 1-based broadcast to 0-based frame-flat on
+ * apply: broadcast line N → frame-flat line N-1.
  */
 class MaskLineConfigDialog : public ConfigDialogBase {
   Q_OBJECT
@@ -44,7 +41,11 @@ class MaskLineConfigDialog : public ConfigDialogBase {
   explicit MaskLineConfigDialog(QWidget* parent = nullptr);
   ~MaskLineConfigDialog() override = default;
 
+  // Called from mainwindow to adapt mask-level display labels.
   void setAmplitudeUnit(orc::AmplitudeDisplayUnit unit);
+
+  // Called from mainwindow; sets the valid line-number range and mask-level
+  // presets for the detected video system.
   void setVideoParameters(
       const std::optional<orc::presenters::VideoParametersView>& params);
 
@@ -54,40 +55,30 @@ class MaskLineConfigDialog : public ConfigDialogBase {
       const std::map<std::string, orc::ParameterValue>& params) override;
 
  private slots:
-  void on_preset_changed(int index);
-  void on_ntsc_cc_changed(Qt::CheckState state);
-  void on_custom_enabled_changed(Qt::CheckState state);
+  void on_add_range();
+  void on_remove_selected();
+  void on_clear_all();
   void on_mask_level_preset_changed(int index);
 
  private:
-  void update_ui_state();
-  void parse_line_spec_to_ui(const std::string& line_spec);
+  int field1_line_count() const;
+  int max_frame_lines() const;
+  void update_spinbox_limits();
+  void update_mask_level_labels();
+  void resolve_video_levels(int32_t& blanking, int32_t& white) const;
   std::string build_line_spec_from_ui() const;
-  void updatePresetLabels();
-  void resolveVideoLevels(int32_t& blanking, int32_t& white,
-                          orc::VideoSystem& sys) const;
+  void parse_line_spec_to_ui(const std::string& line_spec);
 
-  // Preset configuration group
-  QComboBox* preset_combo_;
-
-  // Quick options group
-  QCheckBox* ntsc_cc_checkbox_;  // F:20 (NTSC closed captions, first field)
-  QCheckBox*
-      ntsc_vbi_checkbox_;  // F:10-20,S:10-20 (NTSC VBI area, both fields)
-
-  // Custom configuration group
-  QCheckBox* custom_enabled_checkbox_;
-  QComboBox* field_selection_combo_;  // First/Second/Both fields
+  // Line entry
   QSpinBox* start_line_spinbox_;
   QSpinBox* end_line_spinbox_;
+  QPushButton* add_button_;
+  QListWidget* ranges_list_;
 
-  // Mask level group
-  QComboBox* mask_level_preset_combo_;  // Blanking/White/Custom
+  // Mask level
+  QComboBox* mask_level_preset_combo_;
   QSpinBox* mask_level_spinbox_;
 
-  // State tracking
-  bool updating_ui_;  // Flag to prevent recursive updates
-  orc::AmplitudeDisplayUnit amplitude_unit_ = orc::AmplitudeDisplayUnit::IRE;
   std::optional<orc::presenters::VideoParametersView> cached_video_params_;
 };
 

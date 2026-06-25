@@ -10,7 +10,9 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
@@ -44,6 +46,9 @@ class MaskedFrameRepresentation : public VideoFrameRepresentationWrapper,
     return "masked_frame_representation";
   }
 
+  const sample_type* get_frame(FrameID id) const override;
+  const sample_type* get_frame_luma(FrameID id) const override;
+  const sample_type* get_frame_chroma(FrameID id) const override;
   const sample_type* get_line(FrameID id, size_t line) const override;
   std::vector<sample_type> get_frame_copy(FrameID id) const override;
 
@@ -65,6 +70,16 @@ class MaskedFrameRepresentation : public VideoFrameRepresentationWrapper,
   mutable std::vector<int16_t> masked_line_buffer_;
   mutable std::vector<int16_t> masked_luma_buffer_;
   mutable std::vector<int16_t> masked_chroma_buffer_;
+
+  // Frame-level caches for get_frame() / get_frame_luma() / get_frame_chroma().
+  // The chroma sink reads flat frame buffers via these pointer-returning
+  // methods, so the masking must be applied here as well as in the line-level
+  // accessors.
+  mutable std::mutex frame_cache_mutex_;
+  mutable std::map<FrameID, std::vector<sample_type>> masked_frame_cache_;
+  mutable std::map<FrameID, std::vector<sample_type>> masked_luma_frame_cache_;
+  mutable std::map<FrameID, std::vector<sample_type>>
+      masked_chroma_frame_cache_;
 };
 
 // ============================================================================
