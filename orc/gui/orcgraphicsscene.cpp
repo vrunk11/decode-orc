@@ -163,14 +163,21 @@ QMenu* OrcGraphicsScene::createSceneMenu(QPointF const scenePos) {
       switch (stage.node_type) {
         case NodeType::SOURCE: {
           // Filter source stages by source type when the project source is
-          // constrained.
+          // constrained. Dual-mode stages (tbc_source and CVBS sources) are
+          // compatible with any source format and are never filtered out.
           if (project_source_type != SourceType::Unknown) {
-            bool is_yc_stage = (stage.name.find("YC") != std::string::npos);
-            SourceType stage_type =
-                is_yc_stage ? SourceType::YC : SourceType::Composite;
+            bool is_dual_mode = (stage.name == "tbc_source" ||
+                                 stage.name == "NTSC_CVBS_Source" ||
+                                 stage.name == "PAL_CVBS_Source" ||
+                                 stage.name == "PALM_CVBS_Source");
+            if (!is_dual_mode) {
+              bool is_yc_stage = (stage.name.find("YC") != std::string::npos);
+              SourceType stage_type =
+                  is_yc_stage ? SourceType::YC : SourceType::Composite;
 
-            if (stage_type != project_source_type) {
-              continue;
+              if (stage_type != project_source_type) {
+                continue;
+              }
             }
           }
           break;

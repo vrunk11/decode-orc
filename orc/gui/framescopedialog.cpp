@@ -397,9 +397,10 @@ void FrameScopeDialog::updatePlotData() {
 
   if (is_yc_source_ && channel_mode == 3 && !current_y_samples_.empty() &&
       !current_c_samples_.empty()) {
-    // Y+C combined: raw .tbcc chroma is centred at 32768 (uint16 midpoint),
-    // which maps to chroma_dc_offset in CVBS domain — subtract it before
-    // adding to luma so the result sits at the correct blanking level.
+    // Y+C combined: raw chroma is centred at its DC offset in CVBS domain
+    // (512 for CVBS YC sources; TBC YC sources compute it from 32768 uint16
+    // midpoint). Subtract chroma_dc_offset before adding luma and chroma so
+    // the result sits at the correct blanking level.
     const int32_t chroma_dc = (current_video_params_.has_value() &&
                                current_video_params_->chroma_dc_offset >= 0)
                                   ? current_video_params_->chroma_dc_offset

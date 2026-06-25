@@ -1400,11 +1400,11 @@ std::vector<ParameterDescriptor> TBCSourceStage::get_parameter_descriptors(
       "use y_path/c_path instead)",
       ".tbc"));
   descs.push_back(make_path("y_path", "Luma TBC File Path (YC)",
-                            "Path to the luma .tbc file for YC sources",
-                            ".tbc"));
+                            "Path to the luma .tbcy file for YC sources",
+                            ".tbcy"));
   descs.push_back(make_path("c_path", "Chroma TBC File Path (YC)",
-                            "Path to the chroma .tbc file for YC sources",
-                            ".tbc"));
+                            "Path to the chroma .tbcc file for YC sources",
+                            ".tbcc"));
   descs.push_back(make_path(
       "pcm_path", "PCM Audio File Path",
       "Path to the analogue audio .pcm sidecar (raw 16-bit stereo PCM at "

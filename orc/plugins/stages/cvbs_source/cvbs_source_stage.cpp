@@ -1010,8 +1010,16 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
 
   // --- Build SourceParameters from spec constants ---
   const int32_t ntsc_j = meta.ntsc_j_black_level.value_or(-1);
-  const SourceParameters src_params =
+  SourceParameters src_params =
       build_source_parameters(system_, frame_count, ntsc_j);
+  if (is_yc) {
+    // CVBS file format spec §3.1: for all YC encoding presets, after
+    // normalize_to_cvbs_u10(), chroma zero (DC) maps to 512 in the
+    // CVBS_U10_4FSC 10-bit domain.  The Y+C composite view subtracts this
+    // offset before adding luma and chroma so the result sits at the
+    // correct blanking level.
+    src_params.chroma_dc_offset = 512;
+  }
 
   // --- Load sidecars ---
 

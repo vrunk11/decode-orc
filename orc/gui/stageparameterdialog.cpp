@@ -373,11 +373,23 @@ void StageParameterDialog::build_ui(
                 QString current_path = edit->text();
                 if (current_path.isEmpty()) return;
 
-                // Get base path (remove .tbcy or .tbcc extension if present)
+                // Determine the extension pair and strip it to get the base
+                // path. tbc_source uses .tbcy/.tbcc; CVBS source uses .y/.c.
                 QString base_path = current_path;
+                QString y_ext, c_ext;
                 if (base_path.endsWith(".tbcy", Qt::CaseInsensitive) ||
                     base_path.endsWith(".tbcc", Qt::CaseInsensitive)) {
                   base_path = base_path.left(base_path.length() - 5);
+                  y_ext = ".tbcy";
+                  c_ext = ".tbcc";
+                } else if (base_path.endsWith(".y", Qt::CaseInsensitive) ||
+                           base_path.endsWith(".c", Qt::CaseInsensitive)) {
+                  base_path = base_path.left(base_path.length() - 2);
+                  y_ext = ".y";
+                  c_ext = ".c";
+                } else {
+                  y_ext = ".tbcy";
+                  c_ext = ".tbcc";
                 }
 
                 // Auto-populate the complementary YC file if it exists
@@ -389,7 +401,7 @@ void StageParameterDialog::build_ui(
                     QLineEdit* c_edit =
                         c_container->findChild<QLineEdit*>("file_path_edit");
                     if (c_edit && c_edit->text().isEmpty()) {
-                      QString c_path = base_path + ".tbcc";
+                      QString c_path = base_path + c_ext;
                       if (QFileInfo::exists(c_path)) {
                         c_edit->setText(c_path);
                       }
@@ -403,7 +415,7 @@ void StageParameterDialog::build_ui(
                     QLineEdit* y_edit =
                         y_container->findChild<QLineEdit*>("file_path_edit");
                     if (y_edit && y_edit->text().isEmpty()) {
-                      QString y_path = base_path + ".tbcy";
+                      QString y_path = base_path + y_ext;
                       if (QFileInfo::exists(y_path)) {
                         y_edit->setText(y_path);
                       }
