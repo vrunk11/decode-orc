@@ -63,7 +63,7 @@ inline std::string video_system_to_string(VideoSystem system) {
 inline VideoSystem video_system_from_string(const std::string& name) {
   if (name == "PAL") return VideoSystem::PAL;
   if (name == "NTSC") return VideoSystem::NTSC;
-  if (name == "PAL_M") return VideoSystem::PAL_M;
+  if (name == "PAL_M" || name == "PAL-M") return VideoSystem::PAL_M;
   return VideoSystem::Unknown;
 }
 

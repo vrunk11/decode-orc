@@ -1459,7 +1459,7 @@ void MainWindow::quickProject(const QString& filename) {
 
     const std::string fmt_name =
         (video_format == orc::VideoSystem::NTSC    ? "NTSC"
-         : video_format == orc::VideoSystem::PAL_M ? "PAL_M"
+         : video_format == orc::VideoSystem::PAL_M ? "PAL-M"
                                                    : "PAL");
     ORC_LOG_INFO(
         "Detected format: {}, Source type: {}", fmt_name,

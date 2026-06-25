@@ -904,8 +904,9 @@ bool ChromaSinkStage::trigger(
   std::unique_ptr<Comb> ntscDecoder;
 
   const bool is_yc_source = vfr->has_separate_channels();
-  const bool isPal = (videoParams.system == orc::VideoSystem::PAL ||
-                      videoParams.system == orc::VideoSystem::PAL_M);
+  // PAL_M has NTSC-like frame geometry (525 lines, 909 samples/line); only
+  // pure PAL uses the 625-line non-uniform layout.
+  const bool isPal = (videoParams.system == orc::VideoSystem::PAL);
 
   bool useMonoDecoder = (decoder_type_ == "mono");
   bool usePalDecoder =
@@ -1675,8 +1676,9 @@ SourceField ChromaSinkStage::convertToSourceField(
                   *phase_hint);
   }
 
-  const bool is_pal = (videoParams.system == orc::VideoSystem::PAL ||
-                       videoParams.system == orc::VideoSystem::PAL_M);
+  // PAL_M has NTSC-like frame geometry (525 lines, 909 samples/line); only
+  // pure PAL uses the 625-line non-uniform layout.
+  const bool is_pal = (videoParams.system == orc::VideoSystem::PAL);
 
   // EBU Tech. 3280-E §1.3.1: frame-flat offset of the start of field 2.
   const size_t kPalField1Samples = frame_line_sample_offset(
@@ -2003,9 +2005,9 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
       static_cast<int64_t>(frame_a_index) + num_lookahead_frames;
 
   const bool is_yc_source = local_input->has_separate_channels();
-  const bool preview_is_pal =
-      (safeVideoParams.system == orc::VideoSystem::PAL ||
-       safeVideoParams.system == orc::VideoSystem::PAL_M);
+  // PAL_M has NTSC-like frame geometry (525 lines, 909 samples/line); only
+  // pure PAL uses the 625-line non-uniform layout.
+  const bool preview_is_pal = (safeVideoParams.system == orc::VideoSystem::PAL);
   const int16_t preview_blanking =
       preview_is_pal ? static_cast<int16_t>(orc::kPalBlanking)
                      : static_cast<int16_t>(orc::kNtscBlanking);
