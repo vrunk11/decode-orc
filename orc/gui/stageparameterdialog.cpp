@@ -392,33 +392,32 @@ void StageParameterDialog::build_ui(
                   c_ext = ".tbcc";
                 }
 
-                // Auto-populate the complementary YC file if it exists
+                // Always sync the complementary YC file to match the new base
+                // name
                 if (param_name == "y_path") {
-                  // We're setting the Y (luma) file, try to populate C (chroma)
+                  // Changing y_path: keep c_path in sync with the same base
+                  // name
                   auto c_it = parameter_widgets_.find("c_path");
                   if (c_it != parameter_widgets_.end()) {
                     QWidget* c_container = c_it->second.widget;
                     QLineEdit* c_edit =
                         c_container->findChild<QLineEdit*>("file_path_edit");
-                    if (c_edit && c_edit->text().isEmpty()) {
-                      QString c_path = base_path + c_ext;
-                      if (QFileInfo::exists(c_path)) {
-                        c_edit->setText(c_path);
-                      }
+                    if (c_edit) {
+                      QSignalBlocker blocker(c_edit);
+                      c_edit->setText(base_path + c_ext);
                     }
                   }
                 } else if (param_name == "c_path") {
-                  // We're setting the C (chroma) file, try to populate Y (luma)
+                  // Changing c_path: keep y_path in sync with the same base
+                  // name
                   auto y_it = parameter_widgets_.find("y_path");
                   if (y_it != parameter_widgets_.end()) {
                     QWidget* y_container = y_it->second.widget;
                     QLineEdit* y_edit =
                         y_container->findChild<QLineEdit*>("file_path_edit");
-                    if (y_edit && y_edit->text().isEmpty()) {
-                      QString y_path = base_path + y_ext;
-                      if (QFileInfo::exists(y_path)) {
-                        y_edit->setText(y_path);
-                      }
+                    if (y_edit) {
+                      QSignalBlocker blocker(y_edit);
+                      y_edit->setText(base_path + y_ext);
                     }
                   }
                 }

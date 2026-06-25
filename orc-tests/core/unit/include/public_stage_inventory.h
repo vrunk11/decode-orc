@@ -54,9 +54,10 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
        [] {
          return orc::StageRegistry::instance().create_stage("NTSC_CVBS_Source");
        }},
-      {"PALM_CVBS_Source", PublicStageFamily::Source, true,
+      {"PAL_M_CVBS_Source", PublicStageFamily::Source, true,
        [] {
-         return orc::StageRegistry::instance().create_stage("PALM_CVBS_Source");
+         return orc::StageRegistry::instance().create_stage(
+             "PAL_M_CVBS_Source");
        }},
       {"stacker", PublicStageFamily::Transform, true,
        [] { return orc::StageRegistry::instance().create_stage("stacker"); }},

@@ -60,6 +60,8 @@ static VideoSystem toVideoSystem(VideoFormat format) {
       return VideoSystem::NTSC;
     case VideoFormat::PAL:
       return VideoSystem::PAL;
+    case VideoFormat::PAL_M:
+      return VideoSystem::PAL_M;
     case VideoFormat::Unknown:
       return VideoSystem::Unknown;
   }
@@ -71,8 +73,9 @@ static VideoFormat fromVideoSystem(VideoSystem system) {
     case VideoSystem::NTSC:
       return VideoFormat::NTSC;
     case VideoSystem::PAL:
-    case VideoSystem::PAL_M:
       return VideoFormat::PAL;
+    case VideoSystem::PAL_M:
+      return VideoFormat::PAL_M;
     case VideoSystem::Unknown:
       return VideoFormat::Unknown;
   }
@@ -612,6 +615,12 @@ std::vector<StageInfo> ProjectPresenter::getAvailableStages(
           case VideoFormat::PAL:
             compatible = (node_type_info.compatible_formats ==
                               orc::VideoFormatCompatibility::PAL_ONLY ||
+                          node_type_info.compatible_formats ==
+                              orc::VideoFormatCompatibility::ALL);
+            break;
+          case VideoFormat::PAL_M:
+            compatible = (node_type_info.compatible_formats ==
+                              orc::VideoFormatCompatibility::PAL_M_ONLY ||
                           node_type_info.compatible_formats ==
                               orc::VideoFormatCompatibility::ALL);
             break;

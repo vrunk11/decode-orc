@@ -106,8 +106,9 @@ orc::presenters::VideoFormat toPresenterVideoFormat(orc::VideoSystem system) {
     case orc::VideoSystem::NTSC:
       return orc::presenters::VideoFormat::NTSC;
     case orc::VideoSystem::PAL:
-    case orc::VideoSystem::PAL_M:
       return orc::presenters::VideoFormat::PAL;
+    case orc::VideoSystem::PAL_M:
+      return orc::presenters::VideoFormat::PAL_M;
     case orc::VideoSystem::Unknown:
       return orc::presenters::VideoFormat::Unknown;
   }
@@ -1067,8 +1068,8 @@ void MainWindow::newProject(orc::VideoSystem video_format,
     name_edit->selectAll();
 
     QComboBox* type_combo = new QComboBox(&dialog);
-    type_combo->addItems(
-        {"NTSC Composite", "NTSC YC", "PAL Composite", "PAL YC"});
+    type_combo->addItems({"NTSC Composite", "NTSC YC", "PAL Composite",
+                          "PAL YC", "PAL-M Composite", "PAL-M YC"});
 
     QComboBox* unit_combo = new QComboBox(&dialog);
     unit_combo->addItem("IRE",
@@ -1115,6 +1116,12 @@ void MainWindow::newProject(orc::VideoSystem video_format,
       source_format = orc::SourceType::Composite;
     } else if (item == "PAL YC") {
       video_format = orc::VideoSystem::PAL;
+      source_format = orc::SourceType::YC;
+    } else if (item == "PAL-M Composite") {
+      video_format = orc::VideoSystem::PAL_M;
+      source_format = orc::SourceType::Composite;
+    } else if (item == "PAL-M YC") {
+      video_format = orc::VideoSystem::PAL_M;
       source_format = orc::SourceType::YC;
     }
 
@@ -1461,7 +1468,7 @@ void MainWindow::quickProject(const QString& filename) {
     if (video_format == orc::VideoSystem::NTSC) {
       source_stage_name = "NTSC_CVBS_Source";
     } else if (video_format == orc::VideoSystem::PAL_M) {
-      source_stage_name = "PALM_CVBS_Source";
+      source_stage_name = "PAL_M_CVBS_Source";
     } else {
       source_stage_name = "PAL_CVBS_Source";
     }
@@ -1993,6 +2000,26 @@ void MainWindow::updateWindowTitle() {
   if (!project_name.isEmpty()) {
     title = project_name;
 
+    // Append video format label when known.
+    const auto fmt = project_.presenter()->getVideoFormat();
+    QString fmt_label;
+    switch (fmt) {
+      case orc::presenters::VideoFormat::PAL:
+        fmt_label = "PAL";
+        break;
+      case orc::presenters::VideoFormat::NTSC:
+        fmt_label = "NTSC";
+        break;
+      case orc::presenters::VideoFormat::PAL_M:
+        fmt_label = "PAL-M";
+        break;
+      default:
+        break;
+    }
+    if (!fmt_label.isEmpty()) {
+      title += " [" + fmt_label + "]";
+    }
+
     // Add source name if available
     if (project_.hasSource()) {
       QString source_name = project_.getSourceName();
@@ -2074,8 +2101,11 @@ void MainWindow::updatePreviewInfo() {
   preview_dialog_->ntscObserverAction()->setEnabled(is_ntsc);
 
   // ITU-R BT.470-6 §5.1 (PAL 25 fps) / SMPTE 170M-2004 §2 (NTSC ~29.97 fps).
+  // ITU-R BT.1700-1 Annex 1 Part B (PAL-M 29.97 fps, same rate as NTSC).
   // Keep playback timer interval in sync with the detected video standard.
-  preview_dialog_->setPlaybackFrameRateMs(is_ntsc ? 33 : 40);
+  const bool is_palm =
+      (video_format_presenter == orc::presenters::VideoFormat::PAL_M);
+  preview_dialog_->setPlaybackFrameRateMs((is_ntsc || is_palm) ? 33 : 40);
 
   // Get detailed display info from core
   int current_index = preview_dialog_->previewSlider()->value();
@@ -2743,9 +2773,13 @@ void MainWindow::updatePreview() {
 }
 
 orc::VideoDataType MainWindow::inferCurrentVideoDataType() const {
-  const bool is_pal =
-      project_.presenter() && project_.presenter()->getVideoFormat() ==
-                                  orc::presenters::VideoFormat::PAL;
+  // PAL-M uses PAL colour encoding, so it maps to the PAL data types.
+  // ITU-R BT.1700-1 Annex 1 Part B.
+  const auto infer_fmt = project_.presenter()
+                             ? project_.presenter()->getVideoFormat()
+                             : orc::presenters::VideoFormat::Unknown;
+  const bool is_pal = (infer_fmt == orc::presenters::VideoFormat::PAL ||
+                       infer_fmt == orc::presenters::VideoFormat::PAL_M);
 
   if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
       current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||

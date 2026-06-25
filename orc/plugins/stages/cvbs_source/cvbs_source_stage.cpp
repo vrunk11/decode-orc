@@ -82,23 +82,6 @@ inline int16_t normalize_to_cvbs_u10(uint16_t raw, const std::string& encoding,
 // SourceParameters population from spec constants
 // ---------------------------------------------------------------------------
 
-// Active video geometry constants (BT.601-5 §2 / EBU Tech. 3280-E §1.2 /
-// SMPTE 170M §6.4).  These are the spec-defined values; they do not come from
-// the .meta file.
-constexpr int32_t kPalActiveVideoStart = 157;
-constexpr int32_t kPalActiveVideoEnd = 157 + 948;  // = 1105
-constexpr int32_t kPalFirstActiveFrameLine = 44;
-// EBU Tech. 3280-E / ITU-R BT.1700 Table 1 item 1a: 576 active lines for
-// 625-line PAL.  620 - 44 = 576.
-constexpr int32_t kPalLastActiveFrameLine = 620;
-
-constexpr int32_t kNtscActiveVideoStart = 126;
-constexpr int32_t kNtscActiveVideoEnd = 126 + 768;  // = 894
-constexpr int32_t kNtscFirstActiveFrameLine = 40;
-// ITU-R BT.1700 Table 1 item 1a: 483 active lines for 525-line systems.
-// 40 + 483 = 523.
-constexpr int32_t kNtscLastActiveFrameLine = 523;
-
 SourceParameters build_source_parameters(VideoSystem system,
                                          int32_t frame_count,
                                          int32_t ntsc_j_black_level = -1) {
@@ -810,7 +793,7 @@ struct CVBSStageStaticInfo {
 
 constexpr CVBSStageStaticInfo kPALInfo{
     "PAL_CVBS_Source",
-    "PAL CVBS Source",
+    "CVBS Source",
     "PAL CVBS source - loads PAL 4FSC CVBS files",
     VideoFormatCompatibility::PAL_ONLY,
     VideoSystem::PAL,
@@ -818,19 +801,17 @@ constexpr CVBSStageStaticInfo kPALInfo{
 
 constexpr CVBSStageStaticInfo kNTSCInfo{
     "NTSC_CVBS_Source",
-    "NTSC CVBS Source",
+    "CVBS Source",
     "NTSC CVBS source - loads NTSC 4FSC CVBS files",
     VideoFormatCompatibility::NTSC_ONLY,
     VideoSystem::NTSC,
 };
 
-// PAL_M uses PAL_ONLY compatibility: the VideoFormatCompatibility enum covers
-// both PAL and PAL-M under the PAL_ONLY value per the enum definition.
 constexpr CVBSStageStaticInfo kPALMInfo{
-    "PALM_CVBS_Source",
-    "PALM CVBS Source",
+    "PAL_M_CVBS_Source",
+    "CVBS Source",
     "PAL-M CVBS source - loads PAL-M 4FSC CVBS files",
-    VideoFormatCompatibility::PAL_ONLY,
+    VideoFormatCompatibility::PAL_M_ONLY,
     VideoSystem::PAL_M,
 };
 
@@ -938,7 +919,7 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   if (meta.preset != std::string(system_name(system_))) {
     throw UserDataError("CVBS metadata preset '" + meta.preset + "' in '" +
                         meta_path + "' does not match this stage's system (" +
-                        system_name(system_) + ")");
+                        video_system_to_string(system_) + ")");
   }
 
   // Accept all four declared sample encodings.
@@ -950,18 +931,7 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   }
 
   // --- Determine frame geometry ---
-  const int32_t frame_samples = [&]() -> int32_t {
-    switch (system_) {
-      case VideoSystem::PAL:
-        return kPalFrameSamples;
-      case VideoSystem::NTSC:
-        return kNtscFrameSamples;
-      case VideoSystem::PAL_M:
-        return kPalMFrameSamples;
-      default:
-        return 0;
-    }
-  }();
+  const int32_t frame_samples = frame_samples_from_system(system_);
 
   if (frame_samples == 0) {
     throw std::runtime_error(std::string(stage_name_) +
@@ -998,7 +968,7 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   if (frame_count == 0) {
     throw UserDataError("CVBS payload '" + input_path +
                         "' is too short for one complete " +
-                        system_name(system_) + " frame");
+                        video_system_to_string(system_) + " frame");
   }
 
   const size_t trailing = total_words - static_cast<size_t>(frame_count) *
@@ -1067,27 +1037,17 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   const std::string signal_type_display =
       (meta.signal_type == "yc") ? "YC" : "Composite";
   display_name_ =
-      std::string(system_name(system_)) + " CVBS " + signal_type_display;
+      video_system_to_string(system_) + " CVBS " + signal_type_display;
 
   ORC_LOG_INFO(
       "{}: loaded '{}' — {} {} frames, encoding {}, audio {}, "
       "EFM {}, AC3 {}",
-      stage_name_, input_path, frame_count, system_name(system_), encoding,
-      has_audio ? "yes" : "no", has_efm ? "yes" : "no", has_ac3 ? "yes" : "no");
+      stage_name_, input_path, frame_count, video_system_to_string(system_),
+      encoding, has_audio ? "yes" : "no", has_efm ? "yes" : "no",
+      has_ac3 ? "yes" : "no");
 
   // --- Frame geometry parameters ---
-  const int32_t frame_height_lines = [&]() -> int32_t {
-    switch (system_) {
-      case VideoSystem::PAL:
-        return kPalFrameLines;
-      case VideoSystem::NTSC:
-        return kNtscFrameLines;
-      case VideoSystem::PAL_M:
-        return kPalMFrameLines;
-      default:
-        return 525;
-    }
-  }();
+  const int32_t frame_height_lines = frame_lines_from_system(system_);
 
   // --- Provenance ---
   Provenance prov;

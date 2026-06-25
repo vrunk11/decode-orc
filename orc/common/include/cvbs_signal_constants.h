@@ -191,6 +191,77 @@ constexpr int32_t kTbcNtscBlack = 18048;
 constexpr int32_t kTbcNtscWhite = 51200;
 
 // ---------------------------------------------------------------------------
+// Active video geometry constants
+// ---------------------------------------------------------------------------
+// Normative sample and line positions for the active picture area.
+// BT.601-5 §2 / EBU Tech. 3280-E §1.2 / SMPTE 170M §6.4 / ITU-R BT.1700-1.
+//
+// PAL (625-line, EBU Tech. 3280-E §1.2):
+constexpr int32_t kPalActiveVideoStart = 157;
+constexpr int32_t kPalActiveVideoEnd = 157 + 948;  // = 1105
+constexpr int32_t kPalFirstActiveFrameLine = 44;
+// ITU-R BT.1700 Table 1 item 1a: 576 active lines for 625-line PAL.
+// 44 + 576 = 620.
+constexpr int32_t kPalLastActiveFrameLine = 620;
+
+// NTSC (525-line, SMPTE 170M §6.4):
+constexpr int32_t kNtscActiveVideoStart = 126;
+constexpr int32_t kNtscActiveVideoEnd = 126 + 768;  // = 894
+constexpr int32_t kNtscFirstActiveFrameLine = 40;
+// ITU-R BT.1700 Table 1 item 1a: 483 active lines for 525-line systems.
+// 40 + 483 = 523.
+constexpr int32_t kNtscLastActiveFrameLine = 523;
+
+// PAL_M shares NTSC active video geometry (ITU-R BT.1700-1 Annex 1 Part B).
+
+// ---------------------------------------------------------------------------
+// Per-system total-sample and frame-line helpers
+// ---------------------------------------------------------------------------
+
+// Return the total number of samples in a complete frame for the given system.
+// EBU Tech. 3280-E (PAL) / SMPTE 244M-2003 (NTSC) / ITU-R BT.1700-1 (PAL_M).
+inline int32_t frame_samples_from_system(VideoSystem sys) {
+  switch (sys) {
+    case VideoSystem::PAL:
+      return kPalFrameSamples;
+    case VideoSystem::NTSC:
+      return kNtscFrameSamples;
+    case VideoSystem::PAL_M:
+      return kPalMFrameSamples;
+    default:
+      return 0;
+  }
+}
+
+// Return the total number of lines in a complete frame for the given system.
+inline int32_t frame_lines_from_system(VideoSystem sys) {
+  switch (sys) {
+    case VideoSystem::PAL:
+      return kPalFrameLines;
+    case VideoSystem::NTSC:
+      return kNtscFrameLines;
+    case VideoSystem::PAL_M:
+      return kPalMFrameLines;
+    default:
+      return 0;
+  }
+}
+
+// Return the nominal samples-per-line for the given system.
+inline int32_t samples_per_line_from_system(VideoSystem sys) {
+  switch (sys) {
+    case VideoSystem::PAL:
+      return kPalSamplesPerLineNominal;
+    case VideoSystem::NTSC:
+      return kNtscSamplesPerLine;
+    case VideoSystem::PAL_M:
+      return kPalMSamplesPerLine;
+    default:
+      return 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Colour burst sample range constants
 // ---------------------------------------------------------------------------
 // Sample offsets within a source line that locate the colour burst window.

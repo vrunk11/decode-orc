@@ -20,7 +20,7 @@ namespace orc::presenters {
 /**
  * @brief Video format enumeration for GUI use
  */
-enum class VideoFormat { NTSC, PAL, Unknown };
+enum class VideoFormat { NTSC, PAL, PAL_M, Unknown };
 
 /**
  * @brief Source type enumeration for GUI use

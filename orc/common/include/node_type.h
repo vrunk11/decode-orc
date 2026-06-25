@@ -25,9 +25,10 @@ enum class VideoSystem;
  * Defines which video formats (NTSC/PAL) a stage supports.
  */
 enum class VideoFormatCompatibility {
-  ALL,        // Works with any format (NTSC, PAL, PAL-M, etc.)
-  NTSC_ONLY,  // Only works with NTSC
-  PAL_ONLY,   // Only works with PAL or PAL-M
+  ALL,         // Works with any format (NTSC, PAL, PAL-M, etc.)
+  NTSC_ONLY,   // Only works with NTSC
+  PAL_ONLY,    // Only works with PAL (625-line)
+  PAL_M_ONLY,  // Only works with PAL-M (525-line Brazilian PAL variant)
 };
 
 /**

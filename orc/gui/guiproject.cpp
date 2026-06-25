@@ -79,6 +79,9 @@ bool GUIProject::newEmptyProject(const QString& project_name,
       case orc::presenters::VideoFormat::PAL:
         sys = orc::VideoSystem::PAL;
         break;
+      case orc::presenters::VideoFormat::PAL_M:
+        sys = orc::VideoSystem::PAL_M;
+        break;
       default:
         break;
     }

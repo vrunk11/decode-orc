@@ -321,6 +321,59 @@ std::optional<ProjectPluginRequirement> parse_required_plugin_node(
   return requirement;
 }
 
+// Returns true for source stages whose signal type (composite vs Y/C) is
+// determined by their file-path parameters rather than by the stage name.
+bool is_dual_mode_source(const std::string& stage_name) {
+  return stage_name == "tbc_source" || stage_name == "NTSC_CVBS_Source" ||
+         stage_name == "PAL_CVBS_Source" || stage_name == "PAL_M_CVBS_Source";
+}
+
+// Determine the signal type of a source node from its stored parameters.
+// For dual-mode sources the type depends on which file-path parameters are set:
+//   y_path + c_path → Y/C;  input_path → Composite;  neither → Unknown.
+// For non-dual-mode sources the type is inferred from the stage name.
+SourceType get_node_signal_type(const ProjectDAGNode& node) {
+  auto has_nonempty_str = [&](const std::string& key) {
+    const auto it = node.parameters.find(key);
+    return it != node.parameters.end() &&
+           std::holds_alternative<std::string>(it->second) &&
+           !std::get<std::string>(it->second).empty();
+  };
+  if (is_dual_mode_source(node.stage_name)) {
+    if (has_nonempty_str("y_path") && has_nonempty_str("c_path")) {
+      return SourceType::YC;
+    }
+    if (has_nonempty_str("input_path")) {
+      return SourceType::Composite;
+    }
+    return SourceType::Unknown;
+  }
+  if (node.stage_name.find("YC") != std::string::npos ||
+      node.stage_name.find("Yc") != std::string::npos ||
+      node.stage_name.find("yc") != std::string::npos) {
+    return SourceType::YC;
+  }
+  return SourceType::Composite;
+}
+
+// Determine the video format of a source node from its stage name.
+// PALM must be checked before PAL to avoid a substring false-match.
+// Returns Unknown for tbc_source (format is determined by the .db metadata
+// file, not the stage name itself).
+VideoSystem get_node_video_format(const ProjectDAGNode& node) {
+  const auto& name = node.stage_name;
+  if (name.find("NTSC") != std::string::npos) {
+    return VideoSystem::NTSC;
+  }
+  if (name.find("PALM") != std::string::npos) {
+    return VideoSystem::PAL_M;
+  }
+  if (name.find("PAL") != std::string::npos) {
+    return VideoSystem::PAL;
+  }
+  return VideoSystem::Unknown;
+}
+
 }  // namespace
 
 // Project class method implementations
@@ -334,19 +387,10 @@ bool Project::has_source() const {
 }
 
 SourceType Project::get_source_type() const {
-  // Check all source nodes to determine the type
   for (const auto& node : nodes_) {
     if (node.node_type == NodeType::SOURCE) {
-      // YC sources have "YC" in their stage name
-      if (node.stage_name.find("YC") != std::string::npos ||
-          node.stage_name.find("Yc") != std::string::npos ||
-          node.stage_name.find("yc") != std::string::npos) {
-        return SourceType::YC;
-      }
-      // Composite source
-      else if (node.stage_name.find("Source") != std::string::npos) {
-        return SourceType::Composite;
-      }
+      const SourceType t = get_node_signal_type(node);
+      if (t != SourceType::Unknown) return t;
     }
   }
   return SourceType::Unknown;
@@ -648,7 +692,7 @@ Project load_project_from_yaml(const std::string& yaml_text,
       const bool is_dual_mode = (node.stage_name == "tbc_source" ||
                                  node.stage_name == "NTSC_CVBS_Source" ||
                                  node.stage_name == "PAL_CVBS_Source" ||
-                                 node.stage_name == "PALM_CVBS_Source");
+                                 node.stage_name == "PAL_M_CVBS_Source");
       if (!is_dual_mode) {
         bool is_yc_stage = (node.stage_name.find("YC") != std::string::npos ||
                             node.stage_name.find("Yc") != std::string::npos ||
@@ -660,6 +704,59 @@ Project load_project_from_yaml(const std::string& yaml_text,
               node.stage_name + "' (node " + node.node_id.to_string() +
               ") is a YC source.");
         }
+      }
+    }
+  }
+
+  // Validate that all configured source nodes use a consistent signal type.
+  // Mixing composite and Y/C sources within a project is not permitted.
+  {
+    SourceType reference_type = SourceType::Unknown;
+    std::string reference_desc;
+    for (const auto& node : project.nodes_) {
+      if (node.node_type != NodeType::SOURCE) continue;
+      const SourceType node_type = get_node_signal_type(node);
+      if (node_type == SourceType::Unknown) continue;
+      if (reference_type == SourceType::Unknown) {
+        reference_type = node_type;
+        reference_desc = "'" + node.display_name + "' (node " +
+                         node.node_id.to_string() + ")";
+      } else if (node_type != reference_type) {
+        const std::string type_name =
+            (node_type == SourceType::YC) ? "Y/C" : "composite";
+        const std::string ref_name =
+            (reference_type == SourceType::YC) ? "Y/C" : "composite";
+        throw std::runtime_error(
+            "Source signal type mismatch: source node '" + node.display_name +
+            "' (node " + node.node_id.to_string() + ") is a " + type_name +
+            " source, but " + reference_desc + " is a " + ref_name +
+            " source. All sources in a project must use the same signal type.");
+      }
+    }
+  }
+
+  // Validate that all configured source nodes use a consistent video format.
+  // PAL-M is distinct from PAL and NTSC; mixing formats within a project is
+  // not permitted.
+  {
+    VideoSystem reference_fmt = VideoSystem::Unknown;
+    std::string reference_desc;
+    for (const auto& node : project.nodes_) {
+      if (node.node_type != NodeType::SOURCE) continue;
+      const VideoSystem fmt = get_node_video_format(node);
+      if (fmt == VideoSystem::Unknown) continue;
+      if (reference_fmt == VideoSystem::Unknown) {
+        reference_fmt = fmt;
+        reference_desc = "'" + node.display_name + "' (node " +
+                         node.node_id.to_string() + ")";
+      } else if (fmt != reference_fmt) {
+        throw std::runtime_error(
+            "Source video format mismatch: source node '" + node.display_name +
+            "' (node " + node.node_id.to_string() + ") is a " +
+            video_system_to_string(fmt) + " source, but " + reference_desc +
+            " is a " + video_system_to_string(reference_fmt) +
+            " source. All sources in a project must use the same video "
+            "format.");
       }
     }
   }
@@ -965,7 +1062,7 @@ NodeID add_node(Project& project, const std::string& stage_name,
     // by the stage name, so they are valid for any source format.
     const bool is_dual_mode_source =
         (stage_name == "tbc_source" || stage_name == "NTSC_CVBS_Source" ||
-         stage_name == "PAL_CVBS_Source" || stage_name == "PALM_CVBS_Source");
+         stage_name == "PAL_CVBS_Source" || stage_name == "PAL_M_CVBS_Source");
     if (!is_dual_mode_source && project.source_format_ != SourceType::Unknown) {
       bool is_yc_stage = (stage_name.find("YC") != std::string::npos);
       SourceType stage_type =
@@ -1135,13 +1232,79 @@ void set_node_parameters(
     throw std::runtime_error("Node not found: " + node_id.to_string());
   }
 
+  // For source nodes, ensure the signal type implied by the incoming parameters
+  // is consistent with all other configured source nodes. All sources in a
+  // project must use the same signal type (all composite or all Y/C).
+  if (node_it->node_type == NodeType::SOURCE) {
+    const SourceType incoming_type = [&]() -> SourceType {
+      auto has_str = [&](const std::string& key) {
+        const auto it = parameters.find(key);
+        return it != parameters.end() &&
+               std::holds_alternative<std::string>(it->second) &&
+               !std::get<std::string>(it->second).empty();
+      };
+      if (is_dual_mode_source(node_it->stage_name)) {
+        if (has_str("y_path") && has_str("c_path")) return SourceType::YC;
+        if (has_str("input_path")) return SourceType::Composite;
+        return SourceType::Unknown;
+      }
+      if (node_it->stage_name.find("YC") != std::string::npos ||
+          node_it->stage_name.find("Yc") != std::string::npos ||
+          node_it->stage_name.find("yc") != std::string::npos) {
+        return SourceType::YC;
+      }
+      return SourceType::Composite;
+    }();
+
+    if (incoming_type != SourceType::Unknown) {
+      for (const auto& other : project.nodes_) {
+        if (other.node_type != NodeType::SOURCE) continue;
+        if (other.node_id == node_id) continue;
+        const SourceType other_type = get_node_signal_type(other);
+        if (other_type != SourceType::Unknown && other_type != incoming_type) {
+          const std::string type_name =
+              (incoming_type == SourceType::YC) ? "Y/C" : "composite";
+          const std::string conflict_name =
+              (other_type == SourceType::YC) ? "Y/C" : "composite";
+          throw std::runtime_error(
+              "Cannot configure '" + node_it->display_name + "' as a " +
+              type_name + " source: source '" + other.display_name +
+              "' is already configured as " + conflict_name +
+              ". All sources in a project must use the same signal type.");
+        }
+      }
+    }
+  }
+
+  // For source nodes with a stage-name-determined video format (CVBS sources),
+  // validate that the format is consistent with all other configured source
+  // nodes. PAL-M is distinct from PAL and NTSC and cannot be mixed.
+  if (node_it->node_type == NodeType::SOURCE) {
+    const VideoSystem incoming_fmt = get_node_video_format(*node_it);
+    if (incoming_fmt != VideoSystem::Unknown) {
+      for (const auto& other : project.nodes_) {
+        if (other.node_type != NodeType::SOURCE) continue;
+        if (other.node_id == node_id) continue;
+        const VideoSystem other_fmt = get_node_video_format(other);
+        if (other_fmt != VideoSystem::Unknown && other_fmt != incoming_fmt) {
+          throw std::runtime_error(
+              "Cannot configure '" + node_it->display_name + "' as a " +
+              video_system_to_string(incoming_fmt) + " source: source '" +
+              other.display_name + "' is already configured as " +
+              video_system_to_string(other_fmt) +
+              ". All sources in a project must use the same video format.");
+        }
+      }
+    }
+  }
+
   // CVBS source: validate that the source file's format matches the stage's
   // fixed system. Throws if the .meta sidecar is accessible and reports a
   // format mismatch.
   static const std::array<std::pair<std::string, std::string>, 3>
       kCvbsStageExpectedSystem = {{{"PAL_CVBS_Source", "PAL"},
                                    {"NTSC_CVBS_Source", "NTSC"},
-                                   {"PALM_CVBS_Source", "PAL_M"}}};
+                                   {"PAL_M_CVBS_Source", "PAL_M"}}};
   for (const auto& [stage, expected_system] : kCvbsStageExpectedSystem) {
     if (node_it->stage_name == stage) {
       auto it = parameters.find("input_path");
@@ -1234,6 +1397,25 @@ void set_node_parameters(
                 "The selected " + video_system_to_string(file_system) +
                 " source file cannot be used with a " +
                 video_system_to_string(project_system) + " project");
+          }
+          // Cross-check against other configured source nodes. PAL-M is
+          // distinct from PAL and NTSC and cannot be mixed.
+          if (file_system != VideoSystem::Unknown) {
+            for (const auto& other : project.nodes_) {
+              if (other.node_type != NodeType::SOURCE) continue;
+              if (other.node_id == node_id) continue;
+              const VideoSystem other_fmt = get_node_video_format(other);
+              if (other_fmt != VideoSystem::Unknown &&
+                  other_fmt != file_system) {
+                throw std::runtime_error(
+                    "Cannot use this " + video_system_to_string(file_system) +
+                    " TBC source: source '" + other.display_name +
+                    "' is already configured as " +
+                    video_system_to_string(other_fmt) +
+                    ". All sources in a project must use the same video "
+                    "format.");
+              }
+            }
           }
         }
       }

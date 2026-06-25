@@ -29,6 +29,7 @@
 #include "ntsc_tbc_converter.h"
 #include "ntsc_tbc_yc_converter.h"
 #include "pal_m_tbc_converter.h"
+#include "pal_m_tbc_yc_converter.h"
 #include "pal_tbc_converter.h"
 #include "pal_tbc_yc_converter.h"
 #include "preview_helpers.h"
@@ -44,20 +45,6 @@ namespace {
 // Build SourceParameters from TBCVideoParams using spec-defined CVBS levels.
 SourceParameters build_source_params(const TBCVideoParams& tvp,
                                      int32_t frame_count) {
-  // Active video geometry (BT.601-5 §2 / EBU Tech. 3280-E §1.2 /
-  // SMPTE 170M §6.4).  These are the spec-defined values.
-  constexpr int32_t kPalActiveVideoStart = 157;
-  constexpr int32_t kPalActiveVideoEnd = 157 + 948;
-  constexpr int32_t kPalFirstActiveFrameLine = 44;
-  // ITU-R BT.1700 Table 1 item 1a: 576 active lines for 625-line PAL.
-  constexpr int32_t kPalLastActiveFrameLine = 620;
-  constexpr int32_t kNtscActiveVideoStart = 126;
-  constexpr int32_t kNtscActiveVideoEnd = 126 + 768;
-  constexpr int32_t kNtscFirstActiveFrameLine = 40;
-  // ITU-R BT.1700 Table 1 item 1a: 483 active lines for 525-line systems.
-  // 40 + 483 = 523.
-  constexpr int32_t kNtscLastActiveFrameLine = 523;
-
   SourceParameters sp;
   sp.system = tvp.system;
   sp.number_of_sequential_frames = frame_count;
@@ -143,22 +130,9 @@ SourceParameters build_source_params(const TBCVideoParams& tvp,
 
 // Resolve display name: "<System> TBC <Composite|YC>"
 std::string make_display_name(VideoSystem system, bool is_yc) {
-  std::string sys_str;
-  switch (system) {
-    case VideoSystem::PAL:
-      sys_str = "PAL";
-      break;
-    case VideoSystem::NTSC:
-      sys_str = "NTSC";
-      break;
-    case VideoSystem::PAL_M:
-      sys_str = "PAL-M";
-      break;
-    default:
-      sys_str = "TBC";
-      break;
-  }
-  return sys_str + " TBC " + (is_yc ? "YC" : "Composite");
+  const std::string sys =
+      (system == VideoSystem::Unknown) ? "TBC" : video_system_to_string(system);
+  return sys + " TBC " + (is_yc ? "YC" : "Composite");
 }
 
 // ---------------------------------------------------------------------------
@@ -479,24 +453,13 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
         stored_field_size = kF1Lines * kLineW;
         break;
       }
-      case VideoSystem::NTSC: {
-        constexpr int32_t kF1Lines = kNtscField1Lines;   // 263
-        constexpr int32_t kLineW = kNtscSamplesPerLine;  // 910
-        if (line < static_cast<size_t>(kF1Lines)) {
-          tbc_field_idx = frame_idx * 2;
-          field_line = static_cast<int32_t>(line);
-        } else {
-          tbc_field_idx = frame_idx * 2 + 1;
-          field_line = static_cast<int32_t>(line) - kF1Lines;
-        }
-        stored_spl = kLineW;
-        stored_field_size =
-            kF1Lines * kLineW;  // both fields stored at 263 lines
-        break;
-      }
+      case VideoSystem::NTSC:
       case VideoSystem::PAL_M: {
-        constexpr int32_t kF1Lines = kPalMField1Lines;   // 263
-        constexpr int32_t kLineW = kPalMSamplesPerLine;  // 909
+        // Both 525-line systems store fields at 263 lines; only SPL differs.
+        const int32_t kF1Lines =
+            static_cast<int32_t>(field1_lines(video_params_.system));
+        const int32_t kLineW =
+            samples_per_line_from_system(video_params_.system);
         if (line < static_cast<size_t>(kF1Lines)) {
           tbc_field_idx = frame_idx * 2;
           field_line = static_cast<int32_t>(line);
@@ -505,8 +468,7 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
           field_line = static_cast<int32_t>(line) - kF1Lines;
         }
         stored_spl = kLineW;
-        stored_field_size =
-            kF1Lines * kLineW;  // both fields stored at 263 lines
+        stored_field_size = kF1Lines * kLineW;
         break;
       }
       default:
@@ -569,17 +531,7 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   };
 
   size_t frame_samples_total() const {
-    // PAL: kPalFrameSamples; NTSC: kNtscFrameSamples; PAL_M: kPalMFrameSamples
-    switch (video_params_.system) {
-      case VideoSystem::PAL:
-        return static_cast<size_t>(kPalFrameSamples);
-      case VideoSystem::NTSC:
-        return static_cast<size_t>(kNtscFrameSamples);
-      case VideoSystem::PAL_M:
-        return static_cast<size_t>(kPalMFrameSamples);
-      default:
-        return 0;
-    }
+    return static_cast<size_t>(frame_samples_from_system(video_params_.system));
   }
 
   // Compute the colour_frame_index for a frame from its field metadata.
@@ -746,14 +698,14 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     const std::vector<uint16_t> raw_f1 = deps_->read_field_samples(
         tbc_path_, tbc_f1_idx, stored_field_size, kF1Lines * kLineW, err);
     if (raw_f1.empty()) {
-      throw std::runtime_error("PAL_M TBC: failed to read field 1 for frame " +
+      throw std::runtime_error("PAL-M TBC: failed to read field 1 for frame " +
                                std::to_string(id) + ": " + err);
     }
     // TBC field 2 (262 real lines, even-scan, VFR bottom); discard padding.
     const std::vector<uint16_t> raw_f2 = deps_->read_field_samples(
         tbc_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
     if (raw_f2.empty()) {
-      throw std::runtime_error("PAL_M TBC: failed to read field 2 for frame " +
+      throw std::runtime_error("PAL-M TBC: failed to read field 2 for frame " +
                                std::to_string(id) + ": " + err);
     }
 
@@ -770,7 +722,7 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
           c_path_, tbc_f2_idx, stored_field_size, kF2Lines * kLineW, err);
       if (raw_c1.empty() || raw_c2.empty()) {
         throw std::runtime_error(
-            "PAL_M TBC YC: failed to read chroma field for frame " +
+            "PAL-M TBC YC: failed to read chroma field for frame " +
             std::to_string(id) + ": " + err);
       }
       result.luma = result.samples;
@@ -1322,12 +1274,10 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
               field_meta[0].field_phase_id);
           chroma_cfi = PalMTBCConverter::map_field_phase_to_colour_frame_index(
               c_meta[0].field_phase_id);
-          // PAL_M YC: reuse the PAL alignment checker (same logic, 4-frame
-          // cycle).
-          if (!PalTBCYCConverter::check_yc_phase_alignment(luma_cfi,
-                                                           chroma_cfi)) {
+          if (!PalMTBCYCConverter::check_yc_phase_alignment(luma_cfi,
+                                                            chroma_cfi)) {
             throw UserDataError(
-                PalTBCYCConverter::yc_alignment_error(luma_cfi, chroma_cfi));
+                PalMTBCYCConverter::yc_alignment_error(luma_cfi, chroma_cfi));
           }
           break;
         default:

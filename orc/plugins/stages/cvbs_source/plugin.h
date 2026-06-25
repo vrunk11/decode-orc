@@ -32,7 +32,7 @@ struct StageRegistrationMetadata {
 
 inline constexpr StageRegistrationMetadata kPALStage{
     "PAL_CVBS_Source",
-    "PAL CVBS Source",
+    "CVBS Source",
     "Source",
     NodeType::SOURCE,
     0,
@@ -45,7 +45,7 @@ inline constexpr StageRegistrationMetadata kPALStage{
 
 inline constexpr StageRegistrationMetadata kNTSCStage{
     "NTSC_CVBS_Source",
-    "NTSC CVBS Source",
+    "CVBS Source",
     "Source",
     NodeType::SOURCE,
     0,
@@ -56,18 +56,16 @@ inline constexpr StageRegistrationMetadata kNTSCStage{
     SinkCategory::CORE,
 };
 
-// PAL_M uses PAL_ONLY compatibility because VideoFormatCompatibility::PAL_ONLY
-// covers both PAL and PAL-M systems per the enum definition.
 inline constexpr StageRegistrationMetadata kPALMStage{
-    "PALM_CVBS_Source",
-    "PALM CVBS Source",
+    "PAL_M_CVBS_Source",
+    "CVBS Source",
     "Source",
     NodeType::SOURCE,
     0,
     0,
     1,
     UINT32_MAX,
-    VideoFormatCompatibility::PAL_ONLY,
+    VideoFormatCompatibility::PAL_M_ONLY,
     SinkCategory::CORE,
 };
 

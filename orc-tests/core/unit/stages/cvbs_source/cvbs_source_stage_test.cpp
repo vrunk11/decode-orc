@@ -251,7 +251,7 @@ TEST(CVBSSourceStageIdentityTest, NTSC_HasCorrectStageName) {
 
 TEST(CVBSSourceStageIdentityTest, PALM_HasCorrectStageName) {
   PALMCVBSSourceStage stage;
-  EXPECT_EQ(stage.get_node_type_info().stage_name, "PALM_CVBS_Source");
+  EXPECT_EQ(stage.get_node_type_info().stage_name, "PAL_M_CVBS_Source");
 }
 
 TEST(CVBSSourceStageIdentityTest, PAL_NodeTypeIsSource) {

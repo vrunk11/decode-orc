@@ -1,0 +1,116 @@
+# ORC Project File
+# Version: 2.0
+
+project:
+  name: PAL YC Stacking Test 1
+  version: 2.0
+  video_format: PAL
+  source_format: YC
+  amplitude_unit: 10bit
+dag:
+  nodes:
+    - id: 1
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL CVBS Source
+      user_label: PAL CVBS Source
+      x: 50
+      y: 50
+      parameters:
+        c_path:
+          type: string
+          value: /home/sdi/Coding/videosynth/tests/projects/output-stacking/yc/videosynth_pal_discsim_A.c
+        input_path:
+          type: string
+          value: ""
+        y_path:
+          type: string
+          value: /home/sdi/Coding/videosynth/tests/projects/output-stacking/yc/videosynth_pal_discsim_A.y
+    - id: 2
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL CVBS Source
+      user_label: PAL CVBS Source
+      x: 50
+      y: 175
+      parameters:
+        c_path:
+          type: string
+          value: /home/sdi/Coding/videosynth/tests/projects/output-stacking/yc/videosynth_pal_discsim_B.c
+        input_path:
+          type: string
+          value: ""
+        y_path:
+          type: string
+          value: /home/sdi/Coding/videosynth/tests/projects/output-stacking/yc/videosynth_pal_discsim_B.y
+    - id: 3
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL CVBS Source
+      user_label: PAL CVBS Source
+      x: 50
+      y: 300
+      parameters:
+        c_path:
+          type: string
+          value: /home/sdi/Coding/videosynth/tests/projects/output-stacking/yc/videosynth_pal_discsim_C.c
+        input_path:
+          type: string
+          value: ""
+        y_path:
+          type: string
+          value: /home/sdi/Coding/videosynth/tests/projects/output-stacking/yc/videosynth_pal_discsim_C.y
+    - id: 4
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL CVBS Source
+      user_label: PAL CVBS Source
+      x: 50
+      y: 425
+      parameters:
+        c_path:
+          type: string
+          value: /home/sdi/Coding/videosynth/tests/projects/output-stacking/yc/videosynth_pal_discsim_D.c
+        input_path:
+          type: string
+          value: ""
+        y_path:
+          type: string
+          value: /home/sdi/Coding/videosynth/tests/projects/output-stacking/yc/videosynth_pal_discsim_D.y
+    - id: 5
+      stage: frame_map
+      node_type: TRANSFORM
+      display_name: Frame Map
+      user_label: Frame Map
+      x: 275
+      y: 50
+    - id: 6
+      stage: frame_map
+      node_type: TRANSFORM
+      display_name: Frame Map
+      user_label: Frame Map
+      x: 275
+      y: 175
+    - id: 7
+      stage: frame_map
+      node_type: TRANSFORM
+      display_name: Frame Map
+      user_label: Frame Map
+      x: 275
+      y: 300
+    - id: 8
+      stage: frame_map
+      node_type: TRANSFORM
+      display_name: Frame Map
+      user_label: Frame Map
+      x: 275
+      y: 425
+  edges:
+    - from: 1
+      to: 5
+    - from: 2
+      to: 6
+    - from: 3
+      to: 7
+    - from: 4
+      to: 8

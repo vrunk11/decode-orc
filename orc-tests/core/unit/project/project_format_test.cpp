@@ -369,4 +369,524 @@ TEST(ProjectFormatTest, AmplitudeUnit_SerializeReload_PreservesNonDefaultUnit) {
             orc::AmplitudeDisplayUnit::Samples10Bit);
 }
 
+// ---------------------------------------------------------------------------
+// Cross-source signal type consistency
+// ---------------------------------------------------------------------------
+
+// TBC Y/C source and CVBS Y/C source: both Y/C → allowed.
+TEST(ProjectFormatTest,
+     CrossSourceConsistency_TbcYC_And_CvbsYC_Loads_Successfully) {
+  const std::string yaml = R"yaml(
+project:
+  name: yc-yc-project
+  version: "2.0"
+  video_format: PAL
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: tbc_source
+      node_type: SOURCE
+      display_name: TBC source
+      x: 0
+      y: 0
+      parameters:
+        y_path:
+          type: string
+          value: "/path/to/file.tbcy"
+        c_path:
+          type: string
+          value: "/path/to/file.tbcc"
+    - id: 2
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: CVBS source
+      x: 100
+      y: 0
+      parameters:
+        y_path:
+          type: string
+          value: "/path/to/file.y"
+        c_path:
+          type: string
+          value: "/path/to/file.c"
+  edges: []
+)yaml";
+
+  EXPECT_NO_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/yc-yc.orcprj"));
+}
+
+// TBC composite source and CVBS composite source: both composite → allowed.
+TEST(ProjectFormatTest,
+     CrossSourceConsistency_TbcComposite_And_CvbsComposite_Loads_Successfully) {
+  const std::string yaml = R"yaml(
+project:
+  name: comp-comp-project
+  version: "2.0"
+  video_format: PAL
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: tbc_source
+      node_type: SOURCE
+      display_name: TBC source
+      x: 0
+      y: 0
+      parameters:
+        input_path:
+          type: string
+          value: "/path/to/file.tbc"
+    - id: 2
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: CVBS source
+      x: 100
+      y: 0
+      parameters:
+        input_path:
+          type: string
+          value: "/path/to/file.composite"
+  edges: []
+)yaml";
+
+  EXPECT_NO_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/comp-comp.orcprj"));
+}
+
+// TBC Y/C source and CVBS composite source: mixed types → must be rejected.
+TEST(ProjectFormatTest, CrossSourceConsistency_TbcYC_And_CvbsComposite_Throws) {
+  const std::string yaml = R"yaml(
+project:
+  name: yc-composite-conflict
+  version: "2.0"
+  video_format: PAL
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: tbc_source
+      node_type: SOURCE
+      display_name: TBC source
+      x: 0
+      y: 0
+      parameters:
+        y_path:
+          type: string
+          value: "/path/to/file.tbcy"
+        c_path:
+          type: string
+          value: "/path/to/file.tbcc"
+    - id: 2
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: CVBS source
+      x: 100
+      y: 0
+      parameters:
+        input_path:
+          type: string
+          value: "/path/to/file.composite"
+  edges: []
+)yaml";
+
+  EXPECT_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/yc-comp.orcprj"),
+      std::runtime_error);
+}
+
+// TBC composite source and CVBS Y/C source: mixed types → must be rejected.
+TEST(ProjectFormatTest, CrossSourceConsistency_TbcComposite_And_CvbsYC_Throws) {
+  const std::string yaml = R"yaml(
+project:
+  name: composite-yc-conflict
+  version: "2.0"
+  video_format: PAL
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: tbc_source
+      node_type: SOURCE
+      display_name: TBC source
+      x: 0
+      y: 0
+      parameters:
+        input_path:
+          type: string
+          value: "/path/to/file.tbc"
+    - id: 2
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: CVBS source
+      x: 100
+      y: 0
+      parameters:
+        y_path:
+          type: string
+          value: "/path/to/file.y"
+        c_path:
+          type: string
+          value: "/path/to/file.c"
+  edges: []
+)yaml";
+
+  EXPECT_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/comp-yc.orcprj"),
+      std::runtime_error);
+}
+
+// Two TBC sources: one Y/C, one composite → must be rejected.
+TEST(ProjectFormatTest, CrossSourceConsistency_TwoTbc_Mixed_Throws) {
+  const std::string yaml = R"yaml(
+project:
+  name: tbc-tbc-conflict
+  version: "2.0"
+  video_format: PAL
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: tbc_source
+      node_type: SOURCE
+      display_name: TBC source 1
+      x: 0
+      y: 0
+      parameters:
+        y_path:
+          type: string
+          value: "/path/to/file.tbcy"
+        c_path:
+          type: string
+          value: "/path/to/file.tbcc"
+    - id: 2
+      stage: tbc_source
+      node_type: SOURCE
+      display_name: TBC source 2
+      x: 100
+      y: 0
+      parameters:
+        input_path:
+          type: string
+          value: "/path/to/file.tbc"
+  edges: []
+)yaml";
+
+  EXPECT_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/tbc-tbc.orcprj"),
+      std::runtime_error);
+}
+
+// A single source with no paths set: type is Unknown → no conflict, allowed.
+TEST(ProjectFormatTest,
+     CrossSourceConsistency_UnconfiguredSource_Loads_Successfully) {
+  const std::string yaml = R"yaml(
+project:
+  name: unconfigured-project
+  version: "2.0"
+  video_format: PAL
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: tbc_source
+      node_type: SOURCE
+      display_name: TBC source
+      x: 0
+      y: 0
+  edges: []
+)yaml";
+
+  EXPECT_NO_THROW(orc::project_io::load_project_from_yaml(
+      yaml, "/tmp/unconfigured.orcprj"));
+}
+
+// Error message for a type conflict must mention signal types.
+TEST(ProjectFormatTest,
+     CrossSourceConsistency_ErrorMessage_MentionsSignalTypes) {
+  const std::string yaml = R"yaml(
+project:
+  name: msg-check-project
+  version: "2.0"
+  video_format: PAL
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: tbc_source
+      node_type: SOURCE
+      display_name: TBC source
+      x: 0
+      y: 0
+      parameters:
+        y_path:
+          type: string
+          value: "/path/to/file.tbcy"
+        c_path:
+          type: string
+          value: "/path/to/file.tbcc"
+    - id: 2
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: CVBS source
+      x: 100
+      y: 0
+      parameters:
+        input_path:
+          type: string
+          value: "/path/to/file.composite"
+  edges: []
+)yaml";
+
+  try {
+    orc::project_io::load_project_from_yaml(yaml, "/tmp/msg-check.orcprj");
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    const std::string msg(e.what());
+    EXPECT_NE(msg.find("Y/C"), std::string::npos)
+        << "Error must mention Y/C: " << msg;
+    EXPECT_NE(msg.find("composite"), std::string::npos)
+        << "Error must mention composite: " << msg;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cross-source video format consistency (PAL-M isolation)
+// ---------------------------------------------------------------------------
+
+// PAL_CVBS_Source and PAL_M_CVBS_Source in the same project → must be rejected.
+TEST(ProjectFormatTest, CrossVideoFormat_PalAndPalM_Throws) {
+  const std::string yaml = R"yaml(
+project:
+  name: pal-palm-conflict
+  version: "2.0"
+  video_format: Unknown
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL source
+      x: 0
+      y: 0
+    - id: 2
+      stage: PAL_M_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL-M source
+      x: 100
+      y: 0
+  edges: []
+)yaml";
+
+  EXPECT_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/pal-palm.orcprj"),
+      std::runtime_error);
+}
+
+// PAL_M_CVBS_Source and NTSC_CVBS_Source in the same project → must be
+// rejected.
+TEST(ProjectFormatTest, CrossVideoFormat_PalMAndNtsc_Throws) {
+  const std::string yaml = R"yaml(
+project:
+  name: palm-ntsc-conflict
+  version: "2.0"
+  video_format: Unknown
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: PAL_M_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL-M source
+      x: 0
+      y: 0
+    - id: 2
+      stage: NTSC_CVBS_Source
+      node_type: SOURCE
+      display_name: NTSC source
+      x: 100
+      y: 0
+  edges: []
+)yaml";
+
+  EXPECT_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/palm-ntsc.orcprj"),
+      std::runtime_error);
+}
+
+// PAL_CVBS_Source and NTSC_CVBS_Source in the same project → must be rejected.
+TEST(ProjectFormatTest, CrossVideoFormat_PalAndNtsc_Throws) {
+  const std::string yaml = R"yaml(
+project:
+  name: pal-ntsc-conflict
+  version: "2.0"
+  video_format: Unknown
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL source
+      x: 0
+      y: 0
+    - id: 2
+      stage: NTSC_CVBS_Source
+      node_type: SOURCE
+      display_name: NTSC source
+      x: 100
+      y: 0
+  edges: []
+)yaml";
+
+  EXPECT_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/pal-ntsc.orcprj"),
+      std::runtime_error);
+}
+
+// Two PAL-M sources in the same project → allowed.
+TEST(ProjectFormatTest, CrossVideoFormat_TwoPalM_Loads_Successfully) {
+  const std::string yaml = R"yaml(
+project:
+  name: palm-palm-project
+  version: "2.0"
+  video_format: Unknown
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: PAL_M_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL-M source 1
+      x: 0
+      y: 0
+    - id: 2
+      stage: PAL_M_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL-M source 2
+      x: 100
+      y: 0
+  edges: []
+)yaml";
+
+  EXPECT_NO_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/palm-palm.orcprj"));
+}
+
+// Two PAL sources → allowed.
+TEST(ProjectFormatTest, CrossVideoFormat_TwoPal_Loads_Successfully) {
+  const std::string yaml = R"yaml(
+project:
+  name: pal-pal-project
+  version: "2.0"
+  video_format: Unknown
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL source 1
+      x: 0
+      y: 0
+    - id: 2
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL source 2
+      x: 100
+      y: 0
+  edges: []
+)yaml";
+
+  EXPECT_NO_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/pal-pal.orcprj"));
+}
+
+// tbc_source (video format Unknown at load time) with a PAL-M CVBS source →
+// allowed at load time (TBC format is checked at set_node_parameters() time).
+TEST(ProjectFormatTest,
+     CrossVideoFormat_TbcSource_WithPalM_Loads_Successfully) {
+  const std::string yaml = R"yaml(
+project:
+  name: tbc-palm-project
+  version: "2.0"
+  video_format: Unknown
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: tbc_source
+      node_type: SOURCE
+      display_name: TBC source
+      x: 0
+      y: 0
+    - id: 2
+      stage: PAL_M_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL-M source
+      x: 100
+      y: 0
+  edges: []
+)yaml";
+
+  EXPECT_NO_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/tbc-palm.orcprj"));
+}
+
+// Error message for a video format conflict must mention the conflicting
+// formats.
+TEST(ProjectFormatTest,
+     CrossVideoFormat_ErrorMessage_MentionsConflictingFormats) {
+  const std::string yaml = R"yaml(
+project:
+  name: fmt-msg-project
+  version: "2.0"
+  video_format: Unknown
+  source_format: Unknown
+  amplitude_unit: mV
+dag:
+  nodes:
+    - id: 1
+      stage: PAL_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL source
+      x: 0
+      y: 0
+    - id: 2
+      stage: PAL_M_CVBS_Source
+      node_type: SOURCE
+      display_name: PAL-M source
+      x: 100
+      y: 0
+  edges: []
+)yaml";
+
+  try {
+    orc::project_io::load_project_from_yaml(yaml, "/tmp/fmt-msg.orcprj");
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    const std::string msg(e.what());
+    EXPECT_NE(msg.find("PAL"), std::string::npos)
+        << "Error must mention PAL: " << msg;
+    // video_system_to_string() uses the hyphenated form "PAL-M"
+    EXPECT_NE(msg.find("PAL-M"), std::string::npos)
+        << "Error must mention PAL-M: " << msg;
+  }
+}
+
 }  // namespace orc_unit_test
