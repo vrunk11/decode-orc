@@ -9,16 +9,15 @@
 
 #include "colour_frame_phase_observer.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cmath>
 #include <utility>
-
-#include "../include/field_id.h"
-#include "../include/frame_line_util.h"
-#include "../include/logging.h"
-#include "../include/observation_context.h"
-#include "../include/video_frame_representation.h"
 
 namespace orc {
 

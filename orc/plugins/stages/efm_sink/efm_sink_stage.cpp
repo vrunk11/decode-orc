@@ -10,13 +10,13 @@
 
 #include "efm_sink_stage.h"
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/logging.h>
 
 #include <stdexcept>
 
 #include "efm_sink_stage_deps.h"
 #include "efm_sink_stage_deps_interface.h"
-#include "logging.h"
 
 namespace orc {
 

@@ -10,11 +10,11 @@
 #ifndef CVBS_SOURCE_STAGE_H
 #define CVBS_SOURCE_STAGE_H
 
-#include <dropout_run.h>
 #include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
-#include <stage_parameter.h>
-#include <video_frame_representation.h>
+#include <orc/stage/dropout_run.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cstdint>
 #include <map>

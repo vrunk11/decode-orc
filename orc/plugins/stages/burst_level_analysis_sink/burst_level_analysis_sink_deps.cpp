@@ -9,13 +9,13 @@
 
 #include "burst_level_analysis_sink_deps.h"
 
+#include <orc/stage/field_id.h>
+#include <orc/stage/logging.h>
+
 #include <cmath>
 #include <fstream>
 #include <utility>
 #include <variant>
-
-#include "field_id.h"
-#include "logging.h"
 
 namespace orc {
 void BurstLevelAnalysisSinkStageDeps::init(

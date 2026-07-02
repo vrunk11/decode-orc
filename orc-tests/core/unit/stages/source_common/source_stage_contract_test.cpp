@@ -9,12 +9,12 @@
  */
 
 #include <gtest/gtest.h>
+#include <orc/stage/stage.h>
 
 #include <functional>
 #include <memory>
 #include <string>
 
-#include "../../../../orc/core/stages/stage.h"
 #include "../../../../orc/plugins/stages/tbc_source/tbc_source_stage.h"
 
 namespace orc_unit_test {

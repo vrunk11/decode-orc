@@ -9,16 +9,16 @@
 
 #pragma once
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_preview_types.h>
+#include <orc/stage/orc_rendering.h>
+#include <orc/stage/orc_vectorscope.h>
 
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "orc_histogram.h"
-#include "orc_preview_types.h"
-#include "orc_rendering.h"
-#include "orc_vectorscope.h"
 
 namespace orc {
 

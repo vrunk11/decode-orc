@@ -10,10 +10,10 @@
 #include "ffmpeg_video_sink_stage.h"
 
 #include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observers/biphase_observer.h>
+#include <orc/stage/observers/closed_caption_observer.h>
 
-#include "biphase_observer.h"
-#include "closed_caption_observer.h"
-#include "logging.h"
 #include "output_backend.h"
 
 namespace orc {

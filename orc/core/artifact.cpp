@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "artifact.h"
+#include <orc/stage/artifact.h>
 
 namespace orc {
 

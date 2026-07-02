@@ -44,14 +44,28 @@ class IFileWriterUint16 {
   virtual void close() = 0;
 };
 
+class IFileWriterInt16 {
+ public:
+  virtual ~IFileWriterInt16() = default;
+  virtual bool open(const std::string& filepath) = 0;
+  virtual void write(const int16_t* data, size_t count) = 0;
+  virtual void write(const std::vector<int16_t>& data) = 0;
+  virtual void flush() = 0;
+  virtual void close() = 0;
+};
+
 class IStageServices {
  public:
   virtual ~IStageServices() = default;
 
   // Canonical sink/file output factory entry points.
+  // New factories are appended after the existing entries (append-only
+  // convention; see orc_plugin_abi.h).
   virtual std::shared_ptr<IFileWriterUint8> create_buffered_file_writer_uint8(
       size_t buffer_size) = 0;
   virtual std::shared_ptr<IFileWriterUint16> create_buffered_file_writer_uint16(
+      size_t buffer_size) = 0;
+  virtual std::shared_ptr<IFileWriterInt16> create_buffered_file_writer_int16(
       size_t buffer_size) = 0;
 };
 

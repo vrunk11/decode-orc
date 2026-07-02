@@ -12,10 +12,14 @@
 // Stage and plugin implementations may use this header for preview rendering.
 // GUI/CLI code must NOT include this directly; use RenderPresenter instead.
 
-#include <common_types.h>  // For PreviewOutputType, AspectRatioMode
-#include <frame_id.h>
-#include <node_id.h>
-#include <orc_rendering.h>  // For public API types (DropoutRegion, PreviewImage)
+#include <orc/stage/common_types.h>  // For PreviewOutputType, AspectRatioMode
+#include <orc/stage/frame_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_rendering.h>  // For public API types (DropoutRegion, PreviewImage)
+#include <orc/stage/preview_stage_types.h>
+#include <orc/stage/stage_custom_preview_renderer.h>
+#include <orc/stage/stage_preview_capability.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cstdint>
 #include <map>
@@ -26,10 +30,6 @@
 
 #include "../analysis/vectorscope/vectorscope_data.h"
 #include "dag_frame_renderer.h"
-#include "preview_stage_types.h"
-#include "stage_custom_preview_renderer.h"
-#include "stage_preview_capability.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 

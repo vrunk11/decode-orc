@@ -7,21 +7,20 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "biphase_observer.h"
-
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/observers/biphase_observer.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cstdio>
 #include <cstring>
 #include <optional>
 #include <string>
 
-#include "../include/field_id.h"
-#include "../include/logging.h"
-#include "../include/observation_context.h"
 #include "../include/vbi_types.h"
 #include "../include/vbi_utilities.h"
-#include "../include/video_frame_representation.h"
 
 namespace orc {
 

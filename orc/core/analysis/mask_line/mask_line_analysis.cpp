@@ -9,13 +9,14 @@
 
 #include "mask_line_analysis.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 #include <sstream>
 
 #include "../../include/dag_executor.h"
 #include "../../include/project.h"
 #include "../analysis_registry.h"
-#include "logging.h"
 
 namespace orc {
 

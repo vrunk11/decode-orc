@@ -10,6 +10,10 @@
 
 #include "frame_map_range_analysis.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/observers/biphase_observer.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -21,10 +25,7 @@
 
 #include "../../include/dag_executor.h"
 #include "../../include/project.h"
-#include "../../include/video_frame_representation.h"
-#include "../../observers/biphase_observer.h"
 #include "../analysis_registry.h"
-#include "logging.h"
 
 namespace orc {
 

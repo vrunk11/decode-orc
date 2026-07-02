@@ -16,8 +16,10 @@ function(orc_add_core_unit_tests target labels)
 
     add_executable(${target} ${ARGN})
         target_include_directories(${target} PRIVATE
+                ${CMAKE_SOURCE_DIR}/orc/plugins/stages/audio_sink
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/daphne_vbi_sink
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/ld_sink
+                ${CMAKE_SOURCE_DIR}/orc/plugins/stages/raw_efm_sink
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/tbc_source
                 ${CMAKE_SOURCE_DIR}/orc/sdk/include
         )
@@ -123,12 +125,14 @@ orc_add_core_unit_tests(
         stages/daphne_vbi_sink/daphne_vbi_sink_stage_deps_test.cpp
         stages/daphne_vbi_sink/daphne_vbi_sink_stage_test.cpp
         stages/audio_sink/audio_sink_stage_test.cpp
+        stages/audio_sink/audio_sink_stage_deps_test.cpp
         stages/ac3rf_sink/ac3rf_sink_stage_test.cpp
         stages/cc_sink/cc_sink_stage_test.cpp
         stages/ld_sink/ld_sink_stage_test.cpp
         stages/ld_sink/ld_sink_stage_deps_test.cpp
         stages/efm_sink/efm_sink_stage_test.cpp
         stages/raw_efm_sink/raw_efm_sink_stage_test.cpp
+        stages/raw_efm_sink/raw_efm_sink_stage_deps_test.cpp
         stages/cvbs_sink/cvbs_sink_stage_test.cpp
         stages/dropout_analysis_sink/dropout_analysis_sink_stage_test.cpp
         stages/snr_analysis_sink/snr_analysis_sink_stage_test.cpp

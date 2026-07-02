@@ -9,12 +9,12 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/triggerable_stage.h>
 
 #include <set>
 #include <string>
 
-#include "../../../orc/core/include/observation_context.h"
-#include "../../../orc/core/stages/triggerable_stage.h"
 #include "../include/observation_context_interface_mock.h"
 #include "../include/public_stage_inventory.h"
 

@@ -10,7 +10,7 @@
 #ifndef ORC_GUI_GENERIC_ANALYSIS_DIALOG_H
 #define ORC_GUI_GENERIC_ANALYSIS_DIALOG_H
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
 #include <orc_analysis.h>
 
 #include <QCheckBox>

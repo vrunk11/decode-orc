@@ -11,7 +11,7 @@
 #ifndef FRAMECANVAS_H
 #define FRAMECANVAS_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <cstdint>
 #include <vector>

@@ -8,9 +8,8 @@
 
 #include "efm_processor.h"
 
+#include <orc/stage/logging.h>
 #include <spdlog/sinks/basic_file_sink.h>
-
-#include "logging.h"
 
 EfmProcessor::EfmProcessor()
     : m_audioMode(true),

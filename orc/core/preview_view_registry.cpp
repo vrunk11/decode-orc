@@ -9,6 +9,8 @@
 
 #include "preview_view_registry.h"
 
+#include <orc/stage/colour_preview_provider.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -16,7 +18,6 @@
 #include <utility>
 
 #include "analysis/vectorscope/vectorscope_analysis.h"
-#include "colour_preview_provider.h"
 #include "orc_histogram.h"
 #include "preview_renderer.h"
 

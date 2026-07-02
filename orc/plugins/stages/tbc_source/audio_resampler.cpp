@@ -9,13 +9,12 @@
 
 #include "audio_resampler.h"
 
+#include <orc/stage/logging.h>
 #include <soxr.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-
-#include "logging.h"
 
 namespace orc {
 

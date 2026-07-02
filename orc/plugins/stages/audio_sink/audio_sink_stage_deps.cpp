@@ -9,13 +9,12 @@
 
 #include "audio_sink_stage_deps.h"
 
+#include <orc/stage/logging.h>
+
 #include <cstddef>
-#include <ios>
+#include <cstring>
 #include <limits>
 #include <utility>
-
-#include "buffered_file_io.h"
-#include "logging.h"
 
 namespace orc {
 void AudioSinkStageDeps::init(TriggerProgressCallback progress_callback,
@@ -26,36 +25,41 @@ void AudioSinkStageDeps::init(TriggerProgressCallback progress_callback,
   cancel_requested_ = cancel_requested;
 }
 
-bool AudioSinkStageDeps::write_wav_header(std::ofstream& out,
-                                          uint32_t num_samples,
-                                          uint32_t sample_rate,
-                                          uint16_t num_channels,
-                                          uint16_t bits_per_sample) const {
+std::vector<uint8_t> AudioSinkStageDeps::build_wav_header(
+    uint32_t num_samples, uint32_t sample_rate, uint16_t num_channels,
+    uint16_t bits_per_sample) const {
   uint32_t byte_rate = sample_rate * num_channels * (bits_per_sample / 8);
   uint16_t block_align = num_channels * (bits_per_sample / 8);
   uint32_t data_size = num_samples * num_channels * (bits_per_sample / 8);
   uint32_t file_size = 36 + data_size;
 
-  out.write("RIFF", 4);
-  out.write(reinterpret_cast<const char*>(&file_size), 4);
-  out.write("WAVE", 4);
+  std::vector<uint8_t> header;
+  header.reserve(44);
+  auto append = [&header](const void* data, size_t size) {
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    header.insert(header.end(), bytes, bytes + size);
+  };
 
-  out.write("fmt ", 4);
+  append("RIFF", 4);
+  append(&file_size, 4);
+  append("WAVE", 4);
+
+  append("fmt ", 4);
   uint32_t fmt_size = 16;
-  out.write(reinterpret_cast<const char*>(&fmt_size), 4);
+  append(&fmt_size, 4);
 
   uint16_t audio_format = 1;
-  out.write(reinterpret_cast<const char*>(&audio_format), 2);
-  out.write(reinterpret_cast<const char*>(&num_channels), 2);
-  out.write(reinterpret_cast<const char*>(&sample_rate), 4);
-  out.write(reinterpret_cast<const char*>(&byte_rate), 4);
-  out.write(reinterpret_cast<const char*>(&block_align), 2);
-  out.write(reinterpret_cast<const char*>(&bits_per_sample), 2);
+  append(&audio_format, 2);
+  append(&num_channels, 2);
+  append(&sample_rate, 4);
+  append(&byte_rate, 4);
+  append(&block_align, 2);
+  append(&bits_per_sample, 2);
 
-  out.write("data", 4);
-  out.write(reinterpret_cast<const char*>(&data_size), 4);
+  append("data", 4);
+  append(&data_size, 4);
 
-  return out.good();
+  return header;
 }
 
 AudioSinkWriteResult AudioSinkStageDeps::write_audio_wav(
@@ -81,13 +85,19 @@ AudioSinkWriteResult AudioSinkStageDeps::write_audio_wav(
     return {false, 0, "No audio samples found in frame range"};
   }
 
-  BufferedFileWriter<int16_t> writer(static_cast<size_t>(4 * 1024 * 1024));
-  if (!writer.open(output_path)) {
+  std::shared_ptr<IFileWriterInt16> writer;
+  if (stage_services_) {
+    writer = stage_services_->create_buffered_file_writer_int16(
+        static_cast<size_t>(4 * 1024 * 1024));
+  }
+  if (!writer) {
+    return {false, 0, "File writer service unavailable"};
+  }
+  if (!writer->open(output_path)) {
     return {false, 0, "Failed to open output file: " + output_path};
   }
 
   {
-    std::ofstream header_out(output_path, std::ios::binary);
     const uint32_t sample_rate = 44100;
     const uint16_t num_channels = 2;
     const uint16_t bits_per_sample = 16;
@@ -97,23 +107,21 @@ AudioSinkWriteResult AudioSinkStageDeps::write_audio_wav(
             ? std::numeric_limits<uint32_t>::max()
             : static_cast<uint32_t>(total_samples);
 
-    if (!write_wav_header(header_out, wav_samples, sample_rate, num_channels,
-                          bits_per_sample)) {
-      return {false, 0, "Failed to write WAV header"};
-    }
-    header_out.close();
-  }
-
-  if (!writer.open(output_path, std::ios::binary | std::ios::app)) {
-    return {false, 0,
-            "Failed to reopen output file for audio data: " + output_path};
+    // The RIFF header is 44 bytes (an even count), so it can be streamed
+    // through the int16 sample writer without padding; WAV headers and
+    // 16-bit PCM payloads are both little-endian byte sequences.
+    const std::vector<uint8_t> header = build_wav_header(
+        wav_samples, sample_rate, num_channels, bits_per_sample);
+    std::vector<int16_t> header_words(header.size() / 2);
+    std::memcpy(header_words.data(), header.data(), header.size());
+    writer->write(header_words);
   }
 
   uint64_t frames_written = 0;
   uint64_t current_frame = 0;
   for (FrameID fid = start_frame; fid <= end_frame; ++fid) {
     if (cancel_requested_ && cancel_requested_->load()) {
-      writer.close();
+      writer->close();
       if (is_processing_) {
         is_processing_->store(false);
       }
@@ -122,7 +130,7 @@ AudioSinkWriteResult AudioSinkStageDeps::write_audio_wav(
 
     auto samples = representation->get_audio_samples(fid);
     if (!samples.empty()) {
-      writer.write(samples);
+      writer->write(samples);
       frames_written += samples.size() / 2;
     }
 
@@ -135,7 +143,7 @@ AudioSinkWriteResult AudioSinkStageDeps::write_audio_wav(
     }
   }
 
-  writer.close();
+  writer->close();
   ORC_LOG_DEBUG("AudioSinkDeps: Wrote {} audio frames", frames_written);
   return {true, frames_written, ""};
 }

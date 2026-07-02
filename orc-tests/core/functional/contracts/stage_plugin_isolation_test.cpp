@@ -15,15 +15,15 @@
 
 #include <gtest/gtest.h>
 #include <orc/plugin/orc_stage_tooling.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/stage_preview_capability.h>
+#include <orc/stage/triggerable_stage.h>
 
 #include <filesystem>
 #include <string>
 #include <utility>
 
-#include "../../../orc/core/include/stage_parameter.h"
 #include "../../../orc/core/include/stage_plugin_loader.h"
-#include "../../../orc/core/include/stage_preview_capability.h"
-#include "../../../orc/core/stages/triggerable_stage.h"
 
 namespace orc_unit_test {
 namespace {

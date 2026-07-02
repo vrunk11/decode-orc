@@ -9,13 +9,14 @@
 
 #include "efm_sink_stage.h"
 
-#include <common_types.h>
+#include <orc/plugin/orc_plugin_services.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/logging.h>
 
 #include <stdexcept>
 
 #include "efm_sink_stage_deps.h"
 #include "efm_sink_stage_deps_interface.h"
-#include "logging.h"
 
 namespace orc {
 
@@ -128,7 +129,8 @@ bool RawEFMSinkStage::trigger(
 
     std::shared_ptr<IRawEFMSinkStageDeps> deps = deps_override_;
     if (!deps) {
-      auto deps_impl = std::make_shared<RawEFMSinkStageDeps>();
+      auto deps_impl = std::make_shared<RawEFMSinkStageDeps>(
+          orc::plugin::get_stage_services());
       deps_impl->init(progress_callback_, &cancel_requested_);
       deps = deps_impl;
     }

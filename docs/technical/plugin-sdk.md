@@ -34,10 +34,18 @@ This pulls in all stable contracts:
 | `<orc/plugin/orc_stage_api.h>` | `ParameterizedStage`, `TriggerableStage`, `NodeTypeInfo`, `ParameterValue`, `ParameterDescriptor`, `VideoSystem`, `SourceType` |
 | `<orc/plugin/orc_stage_runtime.h>` | Stage runtime include surface for stage implementations (observation context, triggerable stage) |
 | `<orc/plugin/orc_stage_preview.h>` | Preview capability and carrier contracts for preview-capable stages |
-| `<orc/plugin/orc_stage_services.h>` | `IStageServices`, `IFileWriterUint8`, `IFileWriterUint16` — host-provided buffered file-output factories for sink stages |
+| `<orc/plugin/orc_stage_services.h>` | `IStageServices`, `IFileWriterUint8`, `IFileWriterUint16`, `IFileWriterInt16` — host-provided buffered file-output factories for sink stages |
 | `<orc/plugin/orc_stage_tooling.h>` | `StageToolDescriptor`, `StageToolProvider`, `AnalysisToolDescriptor`, `AnalysisToolProvider`, `ORC_STAGE_INSTRUCTIONS_MD` — optional tool contracts and stage self-documentation |
 | `<orc/plugin/orc_plugin_services.h>` | `OrcPluginServices` host service table, `OrcPluginLogLevel`, `orc::plugin::set_services()`, `orc::plugin::get_stage_services()` |
 | `<orc/plugin/orc_plugin_services_helpers.h>` | `ORC_PLUGIN_LOG_*` logging macros |
+
+In addition to the `<orc/plugin/...>` family, the SDK ships the stage
+contract tree `<orc/stage/...>` (DAGStage, artifact and frame representation
+types, parameter and observation contracts, preview DTOs, signal constants,
+logging macros, and utility interfaces). Stage implementation code may
+include these headers directly; the umbrella headers above pull in the core
+subset automatically. The complete allowlisted set is inventoried in
+`docs-tech/plugin-sdk-header-inventory.md`.
 
 ### Stability Guarantees
 
@@ -53,7 +61,8 @@ The following are **not** part of the public SDK and will change without notice:
 
 | Forbidden header path | Reason |
 |-----------------------|--------|
-| `orc/core/include/*.h` | Internal host implementation headers |
+| `orc/core/include/*.h` | Internal host implementation headers (e.g. `dag_executor.h`, `preview_renderer.h`, `stage_registry.h`, `buffered_file_io.h`) |
+| `orc/core/analysis/*.h`, `orc/core/observers/*.h` | Host analysis/observer internals (the observer headers plugins may use live under `<orc/stage/observers/...>`) |
 | `orc/presenters/*.h` | Presenter layer — GUI/CLI internal |
 | `orc/gui/*.h` | GUI internal |
 | `orc/cli/*.h` | CLI internal |
@@ -275,13 +284,20 @@ before registering any stage. The table provides:
   with `orc::plugin::get_stage_services()` (no arguments), which returns
   `nullptr` if the services table is absent or predates the field.
 
-`IStageServices` currently exposes exactly two factory methods, used by sink
+`IStageServices` currently exposes exactly three factory methods, used by sink
 stages for buffered file output:
 
 - `create_buffered_file_writer_uint8(size_t buffer_size)` — returns a
   `std::shared_ptr<IFileWriterUint8>`
 - `create_buffered_file_writer_uint16(size_t buffer_size)` — returns a
   `std::shared_ptr<IFileWriterUint16>`
+- `create_buffered_file_writer_int16(size_t buffer_size)` — returns a
+  `std::shared_ptr<IFileWriterInt16>` (16-bit signed PCM output, e.g. WAV
+  audio)
+
+New `IStageServices` methods are appended after existing entries (append-only
+convention), so plugins built against an older SDK keep working with a newer
+host within the same version pair.
 
 Progress reporting and artifact-delivery callbacks are **not** part of the
 current services contract. If your stage needs a host capability that is

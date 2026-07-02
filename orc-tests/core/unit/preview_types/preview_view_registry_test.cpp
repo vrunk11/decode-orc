@@ -10,12 +10,11 @@
 #include "../../../orc/core/include/preview_view_registry.h"
 
 #include <gtest/gtest.h>
+#include <orc/stage/colour_preview_provider.h>
+#include <orc/stage/stage.h>
 
 #include <memory>
 #include <unordered_set>
-
-#include "../../../orc/core/include/colour_preview_provider.h"
-#include "../../../orc/core/stages/stage.h"
 
 namespace orc_unit_test {
 

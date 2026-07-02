@@ -9,12 +9,12 @@
 
 #include "snr_analysis_sink_deps.h"
 
+#include <orc/stage/field_id.h>
+
 #include <cmath>
 #include <fstream>
 #include <utility>
 #include <variant>
-
-#include "field_id.h"
 
 namespace orc {
 void SNRAnalysisSinkStageDeps::init(TriggerProgressCallback progress_callback,

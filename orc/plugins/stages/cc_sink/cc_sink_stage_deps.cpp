@@ -9,7 +9,7 @@
 
 #include "cc_sink_stage_deps.h"
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 #include <fstream>
 #include <iomanip>

@@ -15,19 +15,19 @@
     "GUI code cannot include core/stages/chroma_sink/chroma_sink_stage.h. Use VectorscopePresenter or RenderPresenter instead."
 #endif
 
-#include <frame_id.h>
-#include <node_type.h>
 #include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
-#include <orc_source_parameters.h>
-#include <video_frame_representation.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/orc_rendering.h>  // For PreviewImage definition
+#include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <atomic>
+#include <mutex>
 #include <optional>
 #include <thread>
-
-#include "preview_renderer.h"  // For PreviewImage definition
-#include "stage_parameter.h"
 
 // Forward declarations for decoder classes
 struct SourceField;

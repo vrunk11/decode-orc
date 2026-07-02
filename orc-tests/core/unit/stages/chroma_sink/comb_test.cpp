@@ -9,8 +9,8 @@
 
 #include "../../../../orc/plugins/stages/sinks/common/decoders/comb.h"
 
-#include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <cmath>
 

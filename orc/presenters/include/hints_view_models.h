@@ -59,7 +59,7 @@ struct VideoParametersView {
 }  // namespace orc::presenters
 
 // Include public API types that are used
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 namespace orc::presenters {
 

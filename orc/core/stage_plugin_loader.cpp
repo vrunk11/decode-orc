@@ -10,16 +10,18 @@
 #include "include/stage_plugin_loader.h"
 
 #include <fmt/format.h>
+#include <orc/stage/colour_preview_conversion.h>
+#include <orc/stage/file_io_interface.h>
+// Application logging (get_app_logger): plugin log messages are routed to
+// the host application logger, not the core pipeline logger.
+#include <logging.h>
 
 #include <cstring>
 #include <utility>
 
 #include "../../sdk/include/orc/plugin/orc_plugin_services.h"
 #include "../../sdk/include/orc/plugin/orc_stage_services.h"
-#include "../common/include/logging.h"
 #include "factories.h"
-#include "include/colour_preview_conversion.h"
-#include "include/file_io_interface.h"
 #include "include/plugin_safe_call.h"
 
 #if defined(_WIN32)
@@ -110,6 +112,44 @@ class FileWriterUint16ServiceAdapter final : public IFileWriterUint16 {
   std::shared_ptr<IFileWriter<uint16_t>> writer_;
 };
 
+class FileWriterInt16ServiceAdapter final : public IFileWriterInt16 {
+ public:
+  explicit FileWriterInt16ServiceAdapter(
+      std::shared_ptr<IFileWriter<int16_t>> writer)
+      : writer_(std::move(writer)) {}
+
+  bool open(const std::string& filepath) override {
+    return writer_ && writer_->open(filepath);
+  }
+
+  void write(const int16_t* data, size_t count) override {
+    if (writer_) {
+      writer_->write(data, count);
+    }
+  }
+
+  void write(const std::vector<int16_t>& data) override {
+    if (writer_) {
+      writer_->write(data);
+    }
+  }
+
+  void flush() override {
+    if (writer_) {
+      writer_->flush();
+    }
+  }
+
+  void close() override {
+    if (writer_) {
+      writer_->close();
+    }
+  }
+
+ private:
+  std::shared_ptr<IFileWriter<int16_t>> writer_;
+};
+
 class CoreStageServicesAdapter final : public IStageServices {
  public:
   std::shared_ptr<IFileWriterUint8> create_buffered_file_writer_uint8(
@@ -138,6 +178,20 @@ class CoreStageServicesAdapter final : public IStageServices {
       return nullptr;
     }
     return std::make_shared<FileWriterUint16ServiceAdapter>(std::move(writer));
+  }
+
+  std::shared_ptr<IFileWriterInt16> create_buffered_file_writer_int16(
+      size_t buffer_size) override {
+    auto factories = Factories::instance();
+    if (!factories) {
+      return nullptr;
+    }
+    auto writer =
+        factories->create_instance_buffered_file_writer_int16(buffer_size);
+    if (!writer) {
+      return nullptr;
+    }
+    return std::make_shared<FileWriterInt16ServiceAdapter>(std::move(writer));
   }
 };
 

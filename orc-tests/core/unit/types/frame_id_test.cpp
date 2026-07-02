@@ -7,8 +7,8 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include <frame_id.h>
 #include <gtest/gtest.h>
+#include <orc/stage/frame_id.h>
 
 #include <unordered_map>
 #include <unordered_set>

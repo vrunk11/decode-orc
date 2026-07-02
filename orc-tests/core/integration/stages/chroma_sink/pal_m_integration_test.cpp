@@ -10,9 +10,9 @@
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#include <cvbs_signal_constants.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <memory>
 #include <vector>

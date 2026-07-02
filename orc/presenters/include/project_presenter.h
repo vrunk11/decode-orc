@@ -9,10 +9,10 @@
 
 #pragma once
 
-#include <field_id.h>
-#include <node_id.h>
-#include <orc_source_parameters.h>  // For public_api::SourceParameters
-#include <parameter_types.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_source_parameters.h>  // For public_api::SourceParameters
+#include <orc/stage/parameter_types.h>
 
 #include <map>
 #include <memory>

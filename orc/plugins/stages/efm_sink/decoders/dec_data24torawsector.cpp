@@ -8,9 +8,9 @@
 
 #include "dec_data24torawsector.h"
 
-#include <algorithm>
+#include <orc/stage/logging.h>
 
-#include "logging.h"
+#include <algorithm>
 
 // See https://www.domesday86.com/?page_id=2678#CD_Sector_descrambling
 // for the code used to generate this look-up table

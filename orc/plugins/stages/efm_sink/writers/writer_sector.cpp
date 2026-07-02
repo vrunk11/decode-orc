@@ -8,9 +8,9 @@
 
 #include "writer_sector.h"
 
-#include <iostream>
+#include <orc/stage/logging.h>
 
-#include "logging.h"
+#include <iostream>
 
 // This writer class writes raw data to a file directly from the Data24 sections
 // This is (generally) used when the output is not stereo audio data

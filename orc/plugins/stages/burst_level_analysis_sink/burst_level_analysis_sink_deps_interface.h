@@ -10,6 +10,10 @@
 #ifndef ORC_CORE_BURST_LEVEL_ANALYSIS_SINK_DEPS_INTERFACE_H
 #define ORC_CORE_BURST_LEVEL_ANALYSIS_SINK_DEPS_INTERFACE_H
 
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -17,9 +21,6 @@
 #include <vector>
 
 #include "burst_level_analysis_types.h"
-#include "observation_context_interface.h"
-#include "triggerable_stage.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 struct BurstAnalysisComputeOptions {

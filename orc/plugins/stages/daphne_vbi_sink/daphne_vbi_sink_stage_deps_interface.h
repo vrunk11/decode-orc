@@ -10,8 +10,8 @@
 #ifndef DECODE_ORC_ROOT_DAPHNE_VBI_SINK_STAGE_DEPS_INTERFACE_H
 #define DECODE_ORC_ROOT_DAPHNE_VBI_SINK_STAGE_DEPS_INTERFACE_H
 
-#include "observation_context_interface.h"
-#include "video_frame_representation.h"
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/video_frame_representation.h>
 
 namespace orc {
 class IDaphneVBISinkStageDeps {

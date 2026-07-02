@@ -15,14 +15,13 @@
     "GUI code cannot include core/analysis/analysis_context.h. Use AnalysisPresenter instead."
 #endif
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/stage_parameter.h>
 #include <orc_analysis.h>  // For AnalysisSourceType
 
 #include <map>
 #include <memory>
 #include <string>
-
-#include "../include/stage_parameter.h"
 
 namespace orc {
 

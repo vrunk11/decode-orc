@@ -10,8 +10,9 @@
 
 #include "ntscdecoder.h"
 
+#include <orc/stage/logging.h>
+
 #include "../video_parameter_safety.h"
-#include "logging.h"
 
 NtscDecoder::NtscDecoder(const Comb::Configuration& combConfig) {
   config.combConfig = combConfig;

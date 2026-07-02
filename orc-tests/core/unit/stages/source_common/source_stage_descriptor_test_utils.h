@@ -10,11 +10,10 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <orc/stage/stage_parameter.h>
 
 #include <algorithm>
 #include <string>
-
-#include "../../../../orc/core/include/stage_parameter.h"
 
 namespace orc_unit_test {
 inline const orc::ParameterDescriptor* find_descriptor_by_name(

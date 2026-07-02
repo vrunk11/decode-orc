@@ -12,7 +12,7 @@
 
 #include "comb.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <algorithm>
 #include <cmath>
@@ -25,13 +25,14 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include <orc/stage/logging.h>
+
 #include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "../video_parameter_safety.h"
-#include "logging.h"
 
 // Indexes for the candidates considered in 3D adaptive mode
 enum CandidateIndex : int32_t {

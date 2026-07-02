@@ -10,7 +10,7 @@
 
 #include "monodecoder.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <cstddef>
 

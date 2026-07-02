@@ -9,6 +9,9 @@
 
 #include "disc_mapper_analyzer.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -16,8 +19,6 @@
 #include <set>
 #include <sstream>
 
-#include "../../include/logging.h"
-#include "../../include/observation_context.h"
 #include "../analysis_progress.h"
 
 namespace orc {

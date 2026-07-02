@@ -10,7 +10,7 @@
 
 #include "render_coordinator.h"
 
-#include <common_types.h>  // For analysis result types
+#include <orc/stage/common_types.h>  // For analysis result types
 
 #include "logging.h"
 #include "render_presenter.h"

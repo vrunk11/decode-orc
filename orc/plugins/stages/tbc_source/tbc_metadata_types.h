@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include <orc_source_parameters.h>
-#include <video_metadata_types.h>
+#include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/video_metadata_types.h>
 
 #include <array>
 #include <cstdint>

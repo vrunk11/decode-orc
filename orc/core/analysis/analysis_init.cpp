@@ -7,6 +7,8 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
+#include <orc/stage/logging.h>
+
 #include <memory>
 
 #include "disc_mapper/disc_mapper_analysis.h"
@@ -14,7 +16,6 @@
 #include "ffmpeg_preset/ffmpeg_preset_analysis.h"
 #include "frame_corruption/frame_corruption_analysis.h"
 #include "frame_map_range/frame_map_range_analysis.h"
-#include "logging.h"
 #include "mask_line/mask_line_analysis.h"
 #include "source_alignment/source_alignment_analysis.h"
 #include "vectorscope/vectorscope_analysis.h"

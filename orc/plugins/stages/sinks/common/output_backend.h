@@ -10,7 +10,7 @@
 #ifndef ORC_CORE_OUTPUT_BACKEND_H
 #define ORC_CORE_OUTPUT_BACKEND_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <map>
 #include <memory>

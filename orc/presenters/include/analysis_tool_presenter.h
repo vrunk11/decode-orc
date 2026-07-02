@@ -10,9 +10,9 @@
 #ifndef ORC_PRESENTERS_ANALYSIS_TOOL_PRESENTER_H
 #define ORC_PRESENTERS_ANALYSIS_TOOL_PRESENTER_H
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/parameter_types.h>
 #include <orc_analysis.h>
-#include <parameter_types.h>
 
 #include <functional>
 #include <map>

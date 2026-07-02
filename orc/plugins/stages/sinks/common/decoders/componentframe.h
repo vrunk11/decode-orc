@@ -11,13 +11,12 @@
 #ifndef COMPONENTFRAME_H
 #define COMPONENTFRAME_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <cassert>
 #include <cstdint>
 #include <vector>
-
-#include "logging.h"
 
 // Two complete, interlaced fields' worth of decoded luma and chroma
 // information.

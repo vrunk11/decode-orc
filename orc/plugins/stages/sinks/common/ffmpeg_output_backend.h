@@ -10,11 +10,11 @@
 #ifndef ORC_CORE_FFMPEG_OUTPUT_BACKEND_H
 #define ORC_CORE_FFMPEG_OUTPUT_BACKEND_H
 
-#include <field_id.h>
+#include <orc/stage/eia608_decoder.h>
+#include <orc/stage/field_id.h>
 
 #include <memory>
 
-#include "eia608_decoder.h"
 #include "output_backend.h"
 
 #ifdef HAVE_FFMPEG

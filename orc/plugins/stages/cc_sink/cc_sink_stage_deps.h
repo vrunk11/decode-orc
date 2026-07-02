@@ -10,15 +10,16 @@
 #ifndef ORC_CORE_CC_SINK_STAGE_DEPS_H
 #define ORC_CORE_CC_SINK_STAGE_DEPS_H
 
+#include <orc/stage/eia608_decoder.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observers/closed_caption_observer.h>
+
 #include <atomic>
 #include <cstdint>
 #include <string>
 #include <utility>
 
 #include "cc_sink_stage_deps_interface.h"
-#include "closed_caption_observer.h"
-#include "eia608_decoder.h"
-#include "logging.h"
 
 namespace orc {
 class CCSinkStageDeps : public ICCSinkStageDeps {

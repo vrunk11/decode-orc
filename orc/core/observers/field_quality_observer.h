@@ -9,10 +9,10 @@
 
 #pragma once
 
+#include <orc/stage/observers/observer.h>
+
 #include <array>
 #include <cstdint>
-
-#include "observer.h"
 
 namespace orc {
 

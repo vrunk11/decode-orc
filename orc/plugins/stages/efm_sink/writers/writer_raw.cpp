@@ -8,9 +8,9 @@
 
 #include "writer_raw.h"
 
-#include <iostream>
+#include <orc/stage/logging.h>
 
-#include "logging.h"
+#include <iostream>
 
 // This writer class writes audio data to a file in raw format (no header)
 // This is used when the output is stereo audio data without WAV header

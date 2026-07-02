@@ -13,13 +13,13 @@
  */
 
 #include <gtest/gtest.h>
+#include <orc/stage/orc_preview_types.h>
+#include <orc/stage/orc_vectorscope.h>
+#include <orc/stage/stage_preview_capability.h>
 
 #include <climits>
 
-#include "../../../orc/core/include/stage_preview_capability.h"
-#include "../../../orc/view-types/orc_preview_types.h"
 #include "../../../orc/view-types/orc_preview_views.h"
-#include "../../../orc/view-types/orc_vectorscope.h"
 
 namespace orc_unit_test {
 

@@ -9,9 +9,9 @@
 
 #pragma once
 
-#include <vector>
+#include <orc/stage/observers/observer.h>
 
-#include "observer.h"
+#include <vector>
 
 namespace orc {
 

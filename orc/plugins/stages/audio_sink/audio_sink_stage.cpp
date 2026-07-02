@@ -9,13 +9,14 @@
 
 #include "audio_sink_stage.h"
 
-#include <common_types.h>
+#include <orc/plugin/orc_plugin_services.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/logging.h>
 
 #include <stdexcept>
 
 #include "audio_sink_stage_deps.h"
 #include "audio_sink_stage_deps_interface.h"
-#include "logging.h"
 
 namespace orc {
 
@@ -133,7 +134,8 @@ bool AudioSinkStage::trigger(
 
     std::shared_ptr<IAudioSinkStageDeps> deps = deps_override_;
     if (!deps) {
-      auto deps_impl = std::make_shared<AudioSinkStageDeps>();
+      auto deps_impl = std::make_shared<AudioSinkStageDeps>(
+          orc::plugin::get_stage_services());
       deps_impl->init(progress_callback_, &is_processing_, &cancel_requested_);
       deps = deps_impl;
     }

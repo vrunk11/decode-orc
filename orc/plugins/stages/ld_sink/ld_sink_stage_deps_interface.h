@@ -10,10 +10,10 @@
 #ifndef ORC_CORE_LD_SINK_STAGE_DEPS_INTERFACE_H
 #define ORC_CORE_LD_SINK_STAGE_DEPS_INTERFACE_H
 
-#include <string>
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/video_frame_representation.h>
 
-#include "observation_context_interface.h"
-#include "video_frame_representation.h"
+#include <string>
 
 namespace orc {
 class ILDSinkStageDeps {

@@ -9,14 +9,14 @@
 
 #pragma once
 
+#include <orc/stage/file_io_interface.h>
+
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include "file_io_interface.h"
 
 namespace orc {
 

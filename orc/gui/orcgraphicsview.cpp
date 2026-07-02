@@ -9,7 +9,7 @@
 
 #include "orcgraphicsview.h"
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
 
 #include <QAction>
 #include <QContextMenuEvent>

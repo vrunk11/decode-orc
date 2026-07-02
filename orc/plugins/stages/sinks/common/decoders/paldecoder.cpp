@@ -10,8 +10,9 @@
 
 #include "paldecoder.h"
 
+#include <orc/stage/logging.h>
+
 #include "../video_parameter_safety.h"
-#include "logging.h"
 
 PalDecoder::PalDecoder(const PalColour::Configuration& palConfig) {
   config.pal = palConfig;

@@ -10,7 +10,7 @@
 #pragma once
 
 #include <gmock/gmock.h>
-#include <video_frame_representation.h>
+#include <orc/stage/video_frame_representation.h>
 
 // Using a distinct namespace to allow test files to use the same type names as
 // the module under test without collision.

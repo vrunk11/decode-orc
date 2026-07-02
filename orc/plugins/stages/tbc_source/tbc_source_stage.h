@@ -10,14 +10,14 @@
 #ifndef TBC_SOURCE_STAGE_H
 #define TBC_SOURCE_STAGE_H
 
-#include <dropout_run.h>
-#include <frame_descriptor.h>
-#include <frame_id.h>
 #include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
-#include <orc_source_parameters.h>
-#include <stage_parameter.h>
-#include <video_frame_representation.h>
+#include <orc/stage/dropout_run.h>
+#include <orc/stage/frame_descriptor.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cstdint>
 #include <map>

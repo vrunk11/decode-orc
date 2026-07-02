@@ -9,6 +9,9 @@
 
 #include "../include/frame_map_range_presenter.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/stage.h>
+
 #include <algorithm>
 #include <memory>
 #include <utility>
@@ -17,9 +20,7 @@
 #include "../../core/analysis/analysis_registry.h"
 #include "../../core/analysis/analysis_tool.h"
 #include "../../core/include/dag_executor.h"
-#include "../../core/include/logging.h"
 #include "../../core/include/project.h"
-#include "../../core/stages/stage.h"
 
 namespace orc::presenters {
 

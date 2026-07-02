@@ -8,11 +8,12 @@
 
 #include "subcode.h"
 
+#include <orc/stage/logging.h>
+
 #include <cstdio>
 #include <cstdlib>
 
 #include "hex_utils.h"
-#include "logging.h"
 
 // Takes 98 bytes of subcode data and returns a FrameMetadata object
 SectionMetadata Subcode::fromData(const std::vector<uint8_t>& data) {

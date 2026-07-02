@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 #include <algorithm>
 #include <cmath>

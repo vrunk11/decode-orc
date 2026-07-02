@@ -10,7 +10,7 @@
 #ifndef ORC_PUBLIC_ORC_HISTOGRAM_H
 #define ORC_PUBLIC_ORC_HISTOGRAM_H
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 #include <array>
 #include <cstdint>

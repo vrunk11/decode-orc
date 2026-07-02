@@ -14,7 +14,7 @@
 
 #include "palcolour.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <array>
 #include <cassert>
@@ -31,8 +31,9 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include <orc/stage/logging.h>  // ORC logging
+
 #include "../video_parameter_safety.h"
-#include "logging.h"  // ORC logging
 
 /*!
     \class PalColour

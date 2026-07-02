@@ -13,20 +13,19 @@
 
 #include "../../../../orc/core/observers/colour_frame_phase_observer.h"
 
-#include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/frame_descriptor.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cmath>
 #include <cstdint>
 #include <optional>
 #include <vector>
-
-#include "../../../../orc/common/include/common_types.h"
-#include "../../../../orc/core/include/field_id.h"
-#include "../../../../orc/core/include/frame_descriptor.h"
-#include "../../../../orc/core/include/frame_line_util.h"
-#include "../../../../orc/core/include/observation_context.h"
-#include "../../../../orc/core/include/video_frame_representation.h"
 
 namespace orc {
 namespace tests {

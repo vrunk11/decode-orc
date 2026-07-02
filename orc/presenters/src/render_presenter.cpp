@@ -9,7 +9,13 @@
 
 #include "render_presenter.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/analysis_sink_results.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/stage.h>
+#include <orc/stage/stage_preview_capability.h>
+#include <orc/stage/triggerable_stage.h>
 
 #include <atomic>
 #include <cstdio>
@@ -18,18 +24,12 @@
 
 #include "../core/include/dag_executor.h"
 #include "../core/include/dag_frame_renderer.h"
-#include "../core/include/logging.h"
 #include "../core/include/observation_cache.h"
-#include "../core/include/observation_context.h"
 #include "../core/include/preview_renderer.h"
 #include "../core/include/preview_view_registry.h"
 #include "../core/include/project.h"
 #include "../core/include/project_to_dag.h"
-#include "../core/include/stage_preview_capability.h"
 #include "../core/include/vbi_decoder.h"
-#include "../core/stages/stage.h"
-#include "../core/stages/triggerable_stage.h"
-#include "analysis_sink_results.h"
 #include "metrics_presenter.h"
 #include "vbi_presenter.h"
 

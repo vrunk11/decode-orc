@@ -9,8 +9,8 @@
 
 #include "mainwindow.h"
 
-#include <common_types.h>
-#include <node_type.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/node_type.h>
 
 #include "burstlevelanalysisdialog.h"
 #include "dropout_editor_dialog.h"

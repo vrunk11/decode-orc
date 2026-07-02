@@ -11,10 +11,10 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <orc/stage/observation_context.h>
 
 #include <algorithm>
 
-#include "../../../../orc/core/include/observation_context.h"
 #include "../../mocks/mock_video_frame_representation.h"
 
 using ::testing::Return;

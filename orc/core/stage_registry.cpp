@@ -9,6 +9,8 @@
 
 #include "stage_registry.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -17,7 +19,6 @@
 #include <set>
 
 #include "include/plugin_safe_call.h"
-#include "logging.h"
 
 #if defined(_WIN32)
 #include <windows.h>

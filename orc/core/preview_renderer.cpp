@@ -9,7 +9,12 @@
 
 #include "preview_renderer.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/colour_preview_conversion.h>
+#include <orc/stage/colour_preview_provider.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
+#include <orc/stage/stage_custom_preview_renderer.h>
 #include <png.h>
 
 #include <algorithm>
@@ -20,13 +25,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "colour_preview_conversion.h"
-#include "colour_preview_provider.h"
 #include "dag_executor.h"
-#include "logging.h"
 #include "plugin_safe_call.h"
-#include "preview_helpers.h"
-#include "stage_custom_preview_renderer.h"
 
 namespace orc {
 

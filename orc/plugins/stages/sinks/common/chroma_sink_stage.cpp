@@ -9,20 +9,19 @@
 
 #include "chroma_sink_stage.h"
 
-#include <cvbs_signal_constants.h>
-#include <vectorscope/vectorscope_analysis.h>
+#include <orc/stage/colour_preview_conversion.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
 
-#include "colour_preview_conversion.h"
 #include "decoders/comb.h"
 #include "decoders/componentframe.h"
 #include "decoders/monodecoder.h"
 #include "decoders/outputwriter.h"
 #include "decoders/palcolour.h"
 #include "decoders/sourcefield.h"
-#include "frame_line_util.h"
-#include "logging.h"
-#include "preview_helpers.h"
-#include "preview_renderer.h"
+#include "decoders/vectorscope_extract.h"
 #include "video_parameter_safety.h"
 
 // Output backend includes
@@ -2275,7 +2274,7 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
   carrier.cvbs_black = videoParams.black_level;
   carrier.cvbs_white = videoParams.white_level;
 
-  carrier.vectorscope_data = VectorscopeAnalysisTool::extractFromComponentFrame(
+  carrier.vectorscope_data = extract_vectorscope_from_component_frame(
       frame, videoParams, frame_a_index * 2, 4);
   if (carrier.vectorscope_data.has_value()) {
     carrier.vectorscope_data->system = videoParams.system;

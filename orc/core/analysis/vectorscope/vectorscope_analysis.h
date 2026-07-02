@@ -10,18 +10,15 @@
 #ifndef ORC_CORE_ANALYSIS_VECTORSCOPE_ANALYSIS_H
 #define ORC_CORE_ANALYSIS_VECTORSCOPE_ANALYSIS_H
 
-#include <frame_id.h>
-#include <orc_preview_carriers.h>
-#include <orc_source_parameters.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/orc_preview_carriers.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <memory>
 #include <optional>
 
 #include "../analysis_tool.h"
 #include "vectorscope_data.h"
-
-// Forward declaration (ComponentFrame is in global namespace, not orc::)
-class ComponentFrame;
 
 namespace orc {
 
@@ -50,17 +47,6 @@ class VectorscopeAnalysisTool : public AnalysisTool {
                     NodeID node_id) override;
 
   int estimateDurationSeconds(const AnalysisContext& ctx) const override;
-
-  /**
-   * @brief Extract vectorscope data directly from ComponentFrame U/V channels.
-   *
-   * Uses the native U/V chroma values written by the comb decoder into
-   * ComponentFrame, normalised to ±32767 by the blanking-to-white range.
-   */
-  static VectorscopeData extractFromComponentFrame(
-      const ::ComponentFrame& frame,
-      const ::orc::SourceParameters& video_parameters, uint64_t field_number,
-      uint32_t subsample = 1);
 
   /**
    * @brief Extract vectorscope data from a colour preview carrier.

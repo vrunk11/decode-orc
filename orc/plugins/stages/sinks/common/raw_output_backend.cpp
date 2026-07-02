@@ -9,8 +9,9 @@
 
 #include "raw_output_backend.h"
 
+#include <orc/stage/logging.h>
+
 #include "componentframe.h"
-#include "logging.h"
 
 namespace orc {
 

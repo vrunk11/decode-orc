@@ -27,8 +27,8 @@
 
 #include "../../../../orc/plugins/stages/tbc_source/ntsc_tbc_converter.h"
 
-#include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <cstdint>
 #include <optional>

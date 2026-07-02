@@ -10,13 +10,14 @@
 #ifndef DECODE_ORC_ROOT_DAPHNE_VBI_SINK_STAGE_DEPS_H
 #define DECODE_ORC_ROOT_DAPHNE_VBI_SINK_STAGE_DEPS_H
 
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/triggerable_stage.h>
+
 #include <atomic>
 #include <utility>
 
 #include "daphne_vbi_sink_stage_deps_interface.h"
 #include "daphne_vbi_writer_util_interface.h"
-#include "observation_context_interface.h"
-#include "triggerable_stage.h"
 
 namespace orc {
 class IStageServices;

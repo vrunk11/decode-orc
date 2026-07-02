@@ -17,8 +17,15 @@
 
 #include "../../../../orc/plugins/stages/cvbs_source/cvbs_source_stage.h"
 
-#include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/dropout_run.h>
+#include <orc/stage/error_types.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/parameter_types.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cstdint>
 #include <map>
@@ -28,14 +35,6 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include "../../../../orc/common/include/common_types.h"
-#include "../../../../orc/common/include/error_types.h"
-#include "../../../../orc/common/include/node_type.h"
-#include "../../../../orc/common/include/parameter_types.h"
-#include "../../../../orc/core/include/dropout_run.h"
-#include "../../../../orc/core/include/observation_context.h"
-#include "../../../../orc/core/include/video_frame_representation.h"
 
 namespace orc {
 namespace tests {

@@ -11,11 +11,14 @@
 
 #ifdef HAVE_FFMPEG
 
-#include <common_types.h>
-#include <cvbs_signal_constants.h>
-#include <field_id.h>
-#include <frame_id.h>
-#include <video_frame_representation.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/eia608_decoder.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observers/closed_caption_observer.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <algorithm>
 #include <cmath>
@@ -23,10 +26,7 @@
 #include <limits>
 #include <thread>
 
-#include "closed_caption_observer.h"
 #include "componentframe.h"
-#include "eia608_decoder.h"
-#include "logging.h"
 
 namespace orc {
 

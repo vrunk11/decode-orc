@@ -9,6 +9,11 @@
 
 #include "source_alignment_analysis.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/observers/biphase_observer.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <map>
@@ -17,11 +22,7 @@
 
 #include "../../../plugins/stages/source_align/source_align_stage.h"
 #include "../../include/dag_executor.h"
-#include "../../include/logging.h"
-#include "../../include/observation_context.h"
 #include "../../include/project.h"
-#include "../../include/video_frame_representation.h"
-#include "../../observers/biphase_observer.h"
 #include "../analysis_registry.h"
 
 namespace orc {

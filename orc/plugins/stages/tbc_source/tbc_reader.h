@@ -9,8 +9,8 @@
 
 #pragma once
 
-#include <field_id.h>
-#include <lru_cache.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/lru_cache.h>
 
 #include <memory>
 #include <string>

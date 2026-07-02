@@ -9,19 +9,20 @@
 
 #include "dag_frame_renderer.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/observers/biphase_observer.h>
+#include <orc/stage/observers/black_psnr_observer.h>
+#include <orc/stage/observers/burst_level_observer.h>
+#include <orc/stage/observers/closed_caption_observer.h>
+#include <orc/stage/observers/white_snr_observer.h>
+
 #include <algorithm>
 #include <sstream>
 
-#include "logging.h"
-#include "observers/biphase_observer.h"
-#include "observers/black_psnr_observer.h"
-#include "observers/burst_level_observer.h"
-#include "observers/closed_caption_observer.h"
 #include "observers/colour_frame_phase_observer.h"
 #include "observers/field_quality_observer.h"
 #include "observers/fm_code_observer.h"
 #include "observers/white_flag_observer.h"
-#include "observers/white_snr_observer.h"
 
 namespace orc {
 

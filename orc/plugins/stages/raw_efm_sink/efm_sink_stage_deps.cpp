@@ -9,10 +9,9 @@
 
 #include "efm_sink_stage_deps.h"
 
-#include <cstddef>
+#include <orc/stage/logging.h>
 
-#include "buffered_file_io.h"
-#include "logging.h"
+#include <cstddef>
 
 namespace orc {
 void RawEFMSinkStageDeps::init(TriggerProgressCallback progress_callback,
@@ -42,8 +41,15 @@ RawEFMSinkWriteResult RawEFMSinkStageDeps::write_raw_efm(
     return {false, 0, "Error: No EFM t-values found in frame range"};
   }
 
-  BufferedFileWriter<uint8_t> writer(static_cast<size_t>(4 * 1024 * 1024));
-  if (!writer.open(output_path)) {
+  std::shared_ptr<IFileWriterUint8> writer;
+  if (stage_services_) {
+    writer = stage_services_->create_buffered_file_writer_uint8(
+        static_cast<size_t>(4 * 1024 * 1024));
+  }
+  if (!writer) {
+    return {false, 0, "Error: File writer service unavailable"};
+  }
+  if (!writer->open(output_path)) {
     return {false, 0, "Error: Failed to open output file: " + output_path};
   }
 
@@ -52,7 +58,7 @@ RawEFMSinkWriteResult RawEFMSinkStageDeps::write_raw_efm(
 
   for (FrameID fid = start_frame; fid <= end_frame; ++fid) {
     if (cancel_requested_ && cancel_requested_->load()) {
-      writer.close();
+      writer->close();
       return {false, 0, "Cancelled by user"};
     }
 
@@ -64,7 +70,7 @@ RawEFMSinkWriteResult RawEFMSinkStageDeps::write_raw_efm(
         }
       }
 
-      writer.write(tvalues);
+      writer->write(tvalues);
       tvalues_written += tvalues.size();
     }
 
@@ -76,7 +82,7 @@ RawEFMSinkWriteResult RawEFMSinkStageDeps::write_raw_efm(
     }
   }
 
-  writer.close();
+  writer->close();
 
   ORC_LOG_INFO("RawEFMSinkDeps: Successfully wrote {} t-values to {}",
                tvalues_written, output_path);

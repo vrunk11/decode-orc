@@ -9,8 +9,7 @@
 #include "writer_sector_metadata.h"
 
 #include <fmt/format.h>
-
-#include "logging.h"
+#include <orc/stage/logging.h>
 
 // This writer class writes metadata about sector data to a file
 

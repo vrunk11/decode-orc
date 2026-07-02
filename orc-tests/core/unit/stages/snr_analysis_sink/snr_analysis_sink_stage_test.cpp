@@ -12,12 +12,12 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <orc/stage/observation_context.h>
 
 #include <algorithm>
 #include <atomic>
 #include <vector>
 
-#include "../../../../orc/core/include/observation_context.h"
 #include "../../../../orc/plugins/stages/snr_analysis_sink/snr_analysis_sink_deps_interface.h"
 #include "../../include/observation_context_interface_mock.h"
 #include "../../include/video_frame_representation_artifact_mock.h"

@@ -9,7 +9,8 @@
 
 #include "tbc_metadata_reader.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/logging.h>
 #include <sqlite3.h>
 
 #include <cstring>
@@ -17,8 +18,6 @@
 #include <map>
 #include <mutex>
 #include <stdexcept>
-
-#include "logging.h"
 
 // Windows compatibility for strcasecmp
 #ifdef _WIN32

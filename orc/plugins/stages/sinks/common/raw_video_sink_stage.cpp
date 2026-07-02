@@ -9,7 +9,7 @@
 
 #include "raw_video_sink_stage.h"
 
-#include "logging.h"
+#include <orc/stage/logging.h>
 
 namespace orc {
 

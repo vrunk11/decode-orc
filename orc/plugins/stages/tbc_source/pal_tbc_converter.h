@@ -9,8 +9,8 @@
 
 #pragma once
 
-#include <cvbs_signal_constants.h>
-#include <frame_descriptor.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/frame_descriptor.h>
 
 #include <cstdint>
 #include <vector>

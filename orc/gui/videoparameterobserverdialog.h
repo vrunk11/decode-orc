@@ -10,8 +10,8 @@
 #ifndef VIDEOPARAMETEROBSERVERDIALOG_H
 #define VIDEOPARAMETEROBSERVERDIALOG_H
 
-#include <common_types.h>
-#include <field_id.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/field_id.h>
 
 #include <QDialog>
 #include <QGroupBox>

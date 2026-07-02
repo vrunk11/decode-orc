@@ -10,7 +10,7 @@
 #ifndef ORC_GUI_PREVIEW_VECTORSCOPE_GEOMETRY_H
 #define ORC_GUI_PREVIEW_VECTORSCOPE_GEOMETRY_H
 
-#include <orc_vectorscope.h>
+#include <orc/stage/orc_vectorscope.h>
 
 #include <QPointF>
 #include <QRectF>

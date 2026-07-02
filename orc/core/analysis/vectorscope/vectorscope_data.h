@@ -16,7 +16,7 @@
 #endif
 
 // Core uses public API types
-#include <orc_vectorscope.h>
+#include <orc/stage/orc_vectorscope.h>
 
 namespace orc {
 

@@ -11,8 +11,8 @@
 #ifndef PALCOLOUR_H
 #define PALCOLOUR_H
 
-#include <cvbs_signal_constants.h>
-#include <orc_source_parameters.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <cmath>
 #include <cstdint>

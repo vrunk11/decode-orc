@@ -10,7 +10,7 @@
 #pragma once
 
 #include <amplitude_conversion.h>
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <QString>
 

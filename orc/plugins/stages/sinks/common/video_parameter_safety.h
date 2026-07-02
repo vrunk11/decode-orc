@@ -10,8 +10,8 @@
 #ifndef ORC_CORE_CHROMA_SINK_VIDEO_PARAMETER_SAFETY_H
 #define ORC_CORE_CHROMA_SINK_VIDEO_PARAMETER_SAFETY_H
 
-#include <cvbs_signal_constants.h>
-#include <orc_source_parameters.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <algorithm>
 #include <cmath>

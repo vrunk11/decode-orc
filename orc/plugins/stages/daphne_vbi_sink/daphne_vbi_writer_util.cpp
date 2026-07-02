@@ -9,7 +9,7 @@
 
 #include "daphne_vbi_writer_util.h"
 
-#include "video_metadata_types.h"
+#include <orc/stage/video_metadata_types.h>
 
 namespace orc {
 

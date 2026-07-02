@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include <parameter_types.h>
+#include <orc/stage/parameter_types.h>
 
 #include <iomanip>
 #include <sstream>

@@ -7,15 +7,14 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include <common_types.h>
-#include <cvbs_signal_constants.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/logging.h>
 #include <sqlite3.h>
 #include <tbc_metadata_writer.h>
 
 #include <filesystem>
 #include <stdexcept>
-
-#include "logging.h"
 
 namespace orc {
 

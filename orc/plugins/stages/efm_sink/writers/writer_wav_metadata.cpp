@@ -9,12 +9,11 @@
 #include "writer_wav_metadata.h"
 
 #include <fmt/format.h>
+#include <orc/stage/logging.h>
 
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
-
-#include "logging.h"
 
 // This writer class writes metadata about audio data to a file
 // This is used when the output is stereo audio data

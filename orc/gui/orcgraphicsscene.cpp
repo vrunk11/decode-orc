@@ -9,8 +9,8 @@
 
 #include "orcgraphicsscene.h"
 
-#include <common_types.h>  // For VideoSystem, SourceType
-#include <node_type.h>
+#include <orc/stage/common_types.h>  // For VideoSystem, SourceType
+#include <orc/stage/node_type.h>
 
 #include "logging.h"
 #include "orcnodepainter.h"

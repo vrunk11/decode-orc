@@ -10,13 +10,13 @@
 #include "daphne_vbi_sink_stage_deps.h"
 
 #include <orc/plugin/orc_stage_services.h>
+#include <orc/stage/file_io_interface.h>
+#include <orc/stage/logging.h>
 
 #include <cstddef>
 #include <utility>
 
 #include "daphne_vbi_writer_util.h"
-#include "file_io_interface.h"
-#include "logging.h"
 
 namespace orc {
 void DaphneVBISinkStageDeps::init(TriggerProgressCallback progress_callback,

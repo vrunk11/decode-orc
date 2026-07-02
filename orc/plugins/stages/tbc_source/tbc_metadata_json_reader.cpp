@@ -9,12 +9,12 @@
 
 #include "tbc_metadata_json_reader.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/logging.h>
 
 #include <cmath>
 
 #include "lddecodemetadata.h"
-#include "logging.h"
 
 namespace orc {
 

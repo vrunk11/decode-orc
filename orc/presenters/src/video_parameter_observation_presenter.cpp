@@ -9,11 +9,10 @@
 
 #include "../include/video_parameter_observation_presenter.h"
 
-#include <orc_source_parameters.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <variant>
-
-#include "../../core/include/observation_context.h"
 
 namespace orc::presenters {
 

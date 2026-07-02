@@ -10,7 +10,7 @@
 #ifndef PROJECTPROPERTIESDIALOG_H
 #define PROJECTPROPERTIESDIALOG_H
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 #include <QComboBox>
 #include <QDialog>

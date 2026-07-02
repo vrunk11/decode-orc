@@ -10,7 +10,7 @@
 #ifndef FRAMETIMINGDIALOG_H
 #define FRAMETIMINGDIALOG_H
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 #include <QDialog>
 #include <QString>

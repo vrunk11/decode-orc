@@ -7,13 +7,12 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include <cvbs_signal_constants.h>
-#include <dropout_util.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/dropout_util.h>
+#include <orc/stage/frame_line_util.h>
 
 #include <algorithm>
 #include <stdexcept>
-
-#include "frame_line_util.h"
 
 namespace orc {
 namespace dropout_util {

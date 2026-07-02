@@ -11,11 +11,11 @@
 #define DECODE_ORC_ROOT_VBI_WRITER_UTIL_H
 
 #include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/file_io_interface.h>
+#include <orc/stage/logging.h>
 
-#include "buffered_file_io.h"
 #include "daphne_vbi_writer_util_interface.h"
-#include "field_id.h"
-#include "logging.h"
 
 namespace orc {
 

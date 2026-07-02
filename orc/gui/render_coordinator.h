@@ -15,13 +15,13 @@
 #ifndef RENDER_COORDINATOR_H
 #define RENDER_COORDINATOR_H
 
-#include <common_types.h>
-#include <field_id.h>
-#include <node_id.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_rendering.h>  // Public API rendering types (includes mapping result types)
+#include <orc/stage/orc_source_parameters.h>  // Public API VideoParameters
+#include <orc/stage/parameter_types.h>        // ParameterValue
 #include <orc_preview_views.h>
-#include <orc_rendering.h>  // Public API rendering types (includes mapping result types)
-#include <orc_source_parameters.h>  // Public API VideoParameters
-#include <parameter_types.h>        // ParameterValue
 
 #include <QObject>
 #include <QString>

@@ -14,6 +14,7 @@ set(DECODER_SOURCES
     componentframe.cpp
     framecanvas.cpp
     outputwriter.cpp
+    vectorscope_extract.cpp
 )
 
 # Create static library

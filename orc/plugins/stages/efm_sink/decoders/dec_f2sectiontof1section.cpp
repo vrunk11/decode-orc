@@ -9,11 +9,10 @@
 #include "dec_f2sectiontof1section.h"
 
 #include <fmt/core.h>
+#include <orc/stage/logging.h>
 
 #include <algorithm>
 #include <cstdlib>
-
-#include "logging.h"
 
 F2SectionToF1Section::F2SectionToF1Section()
     : m_delayLine1({0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,

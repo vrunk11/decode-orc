@@ -10,9 +10,10 @@
 #include "../../../../orc/core/analysis/vectorscope/vectorscope_analysis.h"
 
 #include <gtest/gtest.h>
+#include <orc/stage/orc_preview_carriers.h>
 
 #include "../../../../orc/plugins/stages/sinks/common/decoders/componentframe.h"
-#include "../../../../orc/view-types/orc_preview_carriers.h"
+#include "../../../../orc/plugins/stages/sinks/common/decoders/vectorscope_extract.h"
 
 namespace orc_unit_test {
 TEST(VectorscopeAnalysisTest,
@@ -56,7 +57,7 @@ TEST(VectorscopeAnalysisTest,
     }
   }
 
-  const auto data = orc::VectorscopeAnalysisTool::extractFromComponentFrame(
+  const auto data = orc::extract_vectorscope_from_component_frame(
       frame, source_parameters, 42, 1);
 
   EXPECT_EQ(data.field_number, 42u);
@@ -89,9 +90,9 @@ TEST(VectorscopeAnalysisTest,
      ExtractFromComponentFrame_UsesRelativeIndexing_WhenCroppingApplied) {
   // When active_area_cropping_applied=true the comb decoder writes U/V at
   // 0-based offsets: row 0 = first_active_frame_line, col 0 =
-  // active_video_start. extractFromComponentFrame must read the same 0-based
-  // range so that the vectorscope samples match the decoded chroma, not the
-  // empty frame margin.
+  // active_video_start. extract_vectorscope_from_component_frame must read the
+  // same 0-based range so that the vectorscope samples match the decoded
+  // chroma, not the empty frame margin.
   orc::SourceParameters sp;
   sp.system = orc::VideoSystem::NTSC;
   sp.frame_width_nominal = 10;
@@ -132,7 +133,7 @@ TEST(VectorscopeAnalysisTest,
   }
 
   const auto data =
-      orc::VectorscopeAnalysisTool::extractFromComponentFrame(frame, sp, 7, 1);
+      orc::extract_vectorscope_from_component_frame(frame, sp, 7, 1);
 
   EXPECT_EQ(data.field_number, 7u);
   EXPECT_EQ(data.width, static_cast<uint32_t>(active_w));

@@ -10,11 +10,11 @@
 #ifndef PREVIEWDIALOG_H
 #define PREVIEWDIALOG_H
 
-#include <common_types.h>
-#include <node_id.h>
-#include <orc_preview_types.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_preview_types.h>
+#include <orc/stage/orc_vectorscope.h>
 #include <orc_preview_views.h>
-#include <orc_vectorscope.h>
 
 #include <QComboBox>
 #include <QDialog>

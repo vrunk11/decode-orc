@@ -11,9 +11,12 @@
 
 #include "../../../../orc/plugins/stages/tbc_source/tbc_source_stage.h"
 
-#include <cvbs_signal_constants.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/error_types.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/observation_context.h>
 
 #include <cstdint>
 #include <map>
@@ -22,9 +25,6 @@
 #include <string>
 #include <vector>
 
-#include "../../../../orc/common/include/error_types.h"
-#include "../../../../orc/common/include/node_type.h"
-#include "../../../../orc/core/include/observation_context.h"
 #include "../source_common/source_stage_descriptor_test_utils.h"
 
 using testing::_;  // NOLINT(bugprone-reserved-identifier)

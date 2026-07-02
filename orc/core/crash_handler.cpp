@@ -38,6 +38,8 @@
 
 #include "crash_handler.h"
 
+#include <orc/stage/logging.h>
+
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
@@ -49,8 +51,6 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-
-#include "logging.h"
 
 #ifdef _WIN32
 #define NOMINMAX

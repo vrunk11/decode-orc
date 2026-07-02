@@ -12,6 +12,6 @@
 
 // All dropout analysis types now defined in common_types.h
 // This header exists for backward compatibility with core code
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 #endif  // ORC_CORE_DROPOUT_ANALYSIS_TYPES_H

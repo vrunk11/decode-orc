@@ -10,13 +10,13 @@
 #ifndef ORC_CORE_CC_SINK_STAGE_DEPS_INTERFACE_H
 #define ORC_CORE_CC_SINK_STAGE_DEPS_INTERFACE_H
 
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <cstdint>
 #include <string>
-
-#include "observation_context_interface.h"
-#include "triggerable_stage.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 /**

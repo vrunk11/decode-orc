@@ -9,6 +9,8 @@
 
 #include "waveformmonitordialog.h"
 
+#include <orc/stage/cvbs_signal_constants.h>
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QHBoxLayout>
@@ -19,7 +21,6 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "common/include/cvbs_signal_constants.h"
 #include "waveformmonitorwidget.h"
 
 // Intensity slider: range 1–100 maps to gain 0.1–10.0 (divide by 10).

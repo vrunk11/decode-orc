@@ -8,11 +8,11 @@
 
 #include "dec_channeltof3frame.h"
 
+#include <orc/stage/logging.h>
+
 #include <cmath>
 #include <queue>
 #include <stdexcept>
-
-#include "logging.h"
 
 ChannelToF3Frame::ChannelToF3Frame() {
   // Statistics

@@ -11,7 +11,7 @@
 #define FRAMESCOPEDIALOG_H
 
 #include <amplitude_conversion.h>
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 #include <QComboBox>
 #include <QDialog>

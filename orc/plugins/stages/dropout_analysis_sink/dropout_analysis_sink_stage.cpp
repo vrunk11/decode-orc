@@ -9,13 +9,14 @@
 
 #include "dropout_analysis_sink_stage.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
+
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
 
 #include "dropout_analysis_sink_deps.h"
-#include "logging.h"
-#include "preview_helpers.h"
 
 namespace orc {
 

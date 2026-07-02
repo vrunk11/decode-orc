@@ -9,8 +9,8 @@
 
 #pragma once
 
-#include <node_id.h>
-#include <node_type.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/node_type.h>
 
 #include <functional>
 #include <string>

@@ -9,11 +9,11 @@
 
 #include "cvbs_sink_stage_deps.h"
 
+#include <orc/stage/frame_descriptor.h>
+#include <orc/stage/logging.h>
+
 #include <fstream>
 #include <utility>
-
-#include "frame_descriptor.h"
-#include "logging.h"
 
 namespace orc {
 

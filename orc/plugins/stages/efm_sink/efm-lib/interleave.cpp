@@ -8,9 +8,9 @@
 
 #include "interleave.h"
 
-#include <cstdlib>
+#include <orc/stage/logging.h>
 
-#include "logging.h"
+#include <cstdlib>
 
 Interleave::Interleave() {}
 

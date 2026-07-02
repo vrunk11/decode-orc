@@ -9,12 +9,12 @@
 
 #include "fm_code_observer.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/video_frame_representation.h>
 
-#include "../include/field_id.h"
-#include "logging.h"
 #include "vbi_utilities.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 

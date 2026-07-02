@@ -9,19 +9,18 @@
 
 #include "ld_sink_stage_deps.h"
 
-#include <common_types.h>
-#include <cvbs_signal_constants.h>
 #include <orc/plugin/orc_stage_services.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/dropout_util.h>
+#include <orc/stage/file_io_interface.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/logging.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <utility>
-
-#include "dropout_util.h"
-#include "file_io_interface.h"
-#include "frame_line_util.h"
-#include "logging.h"
 
 namespace orc {
 

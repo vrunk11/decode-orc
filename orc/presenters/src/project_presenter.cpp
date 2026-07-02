@@ -9,8 +9,11 @@
 
 #include "project_presenter.h"
 
-#include <common_types.h>
-#include <orc_source_parameters.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/triggerable_stage.h>
 #include <sqlite3.h>
 
 #include <algorithm>
@@ -19,14 +22,11 @@
 #include <set>
 #include <stdexcept>
 
-#include "../core/include/logging.h"
 #include "../core/include/plugin_remote_loader.h"
 #include "../core/include/project.h"
 #include "../core/include/project_to_dag.h"
-#include "../core/include/stage_parameter.h"
 #include "../core/include/stage_plugin_registry.h"
 #include "../core/include/stage_registry.h"
-#include "../core/stages/triggerable_stage.h"
 
 namespace orc::presenters {
 

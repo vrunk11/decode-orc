@@ -10,15 +10,16 @@
 #ifndef ORC_CORE_SNR_ANALYSIS_SINK_DEPS_INTERFACE_H
 #define ORC_CORE_SNR_ANALYSIS_SINK_DEPS_INTERFACE_H
 
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include "observation_context_interface.h"
 #include "snr_analysis_types.h"
-#include "triggerable_stage.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 struct SNRAnalysisComputeOptions {

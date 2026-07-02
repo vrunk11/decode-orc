@@ -30,7 +30,10 @@
 
 #include "project.h"
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/triggerable_stage.h>
 #include <sqlite3.h>
 #include <yaml-cpp/yaml.h>
 
@@ -47,11 +50,8 @@
 
 #include "dag_executor.h"
 #include "include/stage_plugin_registry.h"
-#include "logging.h"
-#include "observation_context.h"
 #include "project_to_dag.h"
 #include "stage_registry.h"
-#include "stages/triggerable_stage.h"
 
 namespace orc {
 

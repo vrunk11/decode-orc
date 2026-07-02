@@ -9,10 +9,10 @@
 
 #include "metrics_presenter.h"
 
+#include <orc/stage/observation_context.h>
+
 #include <cmath>
 #include <variant>
-
-#include "../core/include/observation_context.h"
 
 namespace orc::presenters {
 

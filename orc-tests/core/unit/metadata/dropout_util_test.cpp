@@ -7,9 +7,9 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include <cvbs_signal_constants.h>
-#include <dropout_util.h>
 #include <gtest/gtest.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/dropout_util.h>
 
 using namespace orc;
 using namespace orc::dropout_util;

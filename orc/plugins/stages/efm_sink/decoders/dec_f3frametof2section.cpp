@@ -8,11 +8,11 @@
 
 #include "dec_f3frametof2section.h"
 
+#include <orc/stage/logging.h>
+
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
-
-#include "logging.h"
 
 F3FrameToF2Section::F3FrameToF2Section()
     : m_badSyncCounter(0),

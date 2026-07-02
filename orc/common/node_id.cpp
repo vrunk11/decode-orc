@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
 
 namespace orc {
 

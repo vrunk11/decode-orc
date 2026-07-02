@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <cstdint>
 #include <optional>

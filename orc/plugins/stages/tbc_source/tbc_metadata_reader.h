@@ -13,8 +13,8 @@
 // do not need to include <sqlite3.h>.
 struct sqlite3;
 
-#include <field_id.h>
-#include <orc_source_parameters.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <map>
 #include <memory>

@@ -8,10 +8,10 @@
 
 #include "delay_lines.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 #include <cstdlib>
-
-#include "logging.h"
 
 DelayLines::DelayLines(std::vector<int32_t> delayLengths) {
   m_delayLines.reserve(delayLengths.size());

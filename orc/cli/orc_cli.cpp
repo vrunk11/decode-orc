@@ -7,6 +7,8 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
+#include <orc/stage/error_types.h>
+
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -17,7 +19,6 @@
 #include "command_plugins.h"
 #include "command_process.h"
 #include "crash_handler.h"
-#include "error_types.h"
 #include "logging.h"
 #include "project_presenter.h"
 #include "version.h"

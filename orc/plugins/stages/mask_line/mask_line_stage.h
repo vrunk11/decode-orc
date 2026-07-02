@@ -9,19 +9,18 @@
 
 #pragma once
 
+#include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
 #include <orc/plugin/orc_stage_tooling.h>
+#include <orc/stage/artifact.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <vector>
-
-#include "artifact.h"
-#include "preview_renderer.h"
-#include "stage_parameter.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 

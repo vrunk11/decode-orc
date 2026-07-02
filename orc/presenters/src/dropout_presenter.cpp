@@ -9,16 +9,17 @@
 
 #include "dropout_presenter.h"
 
+#include <orc/stage/artifact.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <algorithm>
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
 
-#include "../core/include/artifact.h"
-#include "../core/include/frame_line_util.h"
-#include "../core/include/logging.h"
 #include "../core/include/project.h"
-#include "../core/include/video_frame_representation.h"
 #include "i_project_presenter.h"
 
 namespace orc::presenters {

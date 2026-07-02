@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <common_types.h>  // VideoSystem
+#include <orc/stage/common_types.h>  // VideoSystem
 
 #include <cstddef>
 #include <stdexcept>

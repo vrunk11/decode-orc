@@ -10,8 +10,8 @@
 #ifndef DROPOUT_EDITOR_DIALOG_H
 #define DROPOUT_EDITOR_DIALOG_H
 
-#include <frame_id.h>
-#include <node_id.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/node_id.h>
 
 #include <QDialog>
 #include <QGroupBox>

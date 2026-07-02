@@ -9,12 +9,12 @@
 
 #include "frame_map_stage.h"
 
+#include <orc/stage/error_types.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
+
 #include <algorithm>
 #include <sstream>
-
-#include "error_types.h"
-#include "logging.h"
-#include "preview_helpers.h"
 
 namespace orc {
 

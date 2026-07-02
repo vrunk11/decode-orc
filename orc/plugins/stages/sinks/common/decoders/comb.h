@@ -12,7 +12,7 @@
 #ifndef COMB_H
 #define COMB_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <cmath>
 #include <fstream>

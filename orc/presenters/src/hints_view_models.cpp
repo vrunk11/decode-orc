@@ -9,9 +9,9 @@
 
 #include "../include/hints_view_models.h"
 
-#include <common_types.h>  // For VideoSystem enum
-#include <cvbs_signal_constants.h>
-#include <orc_source_parameters.h>
+#include <orc/stage/common_types.h>  // For VideoSystem enum
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/orc_source_parameters.h>
 
 namespace orc::presenters {
 

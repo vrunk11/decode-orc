@@ -10,17 +10,16 @@
 #ifndef ORC_CORE_AUDIO_SINK_STAGE_H
 #define ORC_CORE_AUDIO_SINK_STAGE_H
 
-#include <node_type.h>
 #include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
-
-#include "stage_parameter.h"
-#include "triggerable_stage.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 

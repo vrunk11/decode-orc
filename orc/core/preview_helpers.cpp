@@ -7,17 +7,15 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "preview_helpers.h"
-
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
 
 #include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "logging.h"
 
 namespace orc {
 namespace PreviewHelpers {

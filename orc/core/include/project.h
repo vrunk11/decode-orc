@@ -25,16 +25,15 @@
     "CLI code cannot include core/include/project.h. Use ProjectPresenter instead."
 #endif
 
-#include <node_id.h>
-#include <node_type.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/stage_parameter.h>
 
 #include <future>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "stage_parameter.h"
 
 namespace orc {
 

@@ -9,14 +9,13 @@
 #include "dec_f2sectioncorrection.h"
 
 #include <fmt/format.h>
+#include <orc/stage/logging.h>
 
 #include <algorithm>
 #include <cmath>
 #include <deque>
 #include <queue>
 #include <stdexcept>
-
-#include "logging.h"
 
 F2SectionCorrection::F2SectionCorrection()
     : m_leadinComplete(false),

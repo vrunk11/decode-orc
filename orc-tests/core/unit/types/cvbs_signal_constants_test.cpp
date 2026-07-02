@@ -7,8 +7,8 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include <cvbs_signal_constants.h>
 #include <gtest/gtest.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <cmath>
 

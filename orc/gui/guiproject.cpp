@@ -9,7 +9,7 @@
 
 #include "guiproject.h"
 
-#include <common_types.h>  // For VideoSystem, SourceType
+#include <orc/stage/common_types.h>  // For VideoSystem, SourceType
 
 #include <QFileInfo>
 #include <algorithm>

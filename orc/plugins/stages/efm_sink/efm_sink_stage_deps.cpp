@@ -9,10 +9,11 @@
 
 #include "efm_sink_stage_deps.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 
 #include "efm_processor.h"
-#include "logging.h"
 
 namespace orc {
 void EFMSinkStageDeps::init(TriggerProgressCallback progress_callback,

@@ -8,8 +8,8 @@
  */
 
 #include <amplitude_conversion.h>
-#include <common_types.h>
 #include <gtest/gtest.h>
+#include <orc/stage/common_types.h>
 
 #include <cmath>
 

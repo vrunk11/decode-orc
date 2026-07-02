@@ -8,13 +8,13 @@
 
 #include "dec_tvaluestochannel.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <queue>
 #include <stdexcept>
-
-#include "logging.h"
 
 TvaluesToChannel::TvaluesToChannel() {
   // Statistics

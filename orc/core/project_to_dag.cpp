@@ -11,12 +11,13 @@
 
 #include "project_to_dag.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+
 #include <algorithm>
 #include <filesystem>
 #include <sstream>
 
-#include "logging.h"
-#include "observation_context.h"
 #include "stage_registry.h"
 
 namespace orc {

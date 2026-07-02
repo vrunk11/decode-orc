@@ -10,11 +10,11 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <common_types.h>  // For VideoSystem, SourceType
-#include <node_id.h>
-#include <orc_analysis.h>  // For AnalysisToolInfo
-#include <orc_preview_types.h>
-#include <orc_rendering.h>  // Public API rendering types
+#include <orc/stage/common_types.h>  // For VideoSystem, SourceType
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_preview_types.h>
+#include <orc/stage/orc_rendering.h>  // Public API rendering types
+#include <orc_analysis.h>             // For AnalysisToolInfo
 
 #include <QMainWindow>
 #include <QPointer>

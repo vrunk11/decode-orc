@@ -10,12 +10,12 @@
 #include "cc_sink_stage.h"
 
 #include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/logging.h>
 
 #include <memory>
 #include <stdexcept>
 
 #include "cc_sink_stage_deps.h"
-#include "logging.h"
 
 namespace orc {
 

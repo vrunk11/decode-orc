@@ -9,9 +9,9 @@
 
 #pragma once
 
-#include <node_type.h>
-#include <orc_source_parameters.h>
-#include <parameter_types.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/parameter_types.h>
 
 #include <map>
 #include <memory>

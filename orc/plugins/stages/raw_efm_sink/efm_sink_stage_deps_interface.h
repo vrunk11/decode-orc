@@ -10,12 +10,12 @@
 #ifndef ORC_CORE_RAW_EFM_SINK_STAGE_DEPS_INTERFACE_H
 #define ORC_CORE_RAW_EFM_SINK_STAGE_DEPS_INTERFACE_H
 
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <cstdint>
 #include <string>
-
-#include "triggerable_stage.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 struct RawEFMSinkWriteResult {

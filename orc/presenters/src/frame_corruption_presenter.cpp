@@ -9,15 +9,16 @@
 
 #include "../include/frame_corruption_presenter.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <algorithm>
 
 #include "../../core/analysis/analysis_progress.h"
 #include "../../core/analysis/analysis_registry.h"
 #include "../../core/include/dag_executor.h"
-#include "../../core/include/logging.h"
 #include "../../core/include/project.h"
-#include "../../core/include/video_frame_representation.h"
-#include "../../core/stages/stage.h"
 
 namespace orc::presenters {
 

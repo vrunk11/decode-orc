@@ -10,7 +10,7 @@
 
 #include "orcnodepainter.h"
 
-#include <node_type.h>
+#include <orc/stage/node_type.h>
 
 #include <QJsonDocument>
 #include <QtNodes/NodeData>

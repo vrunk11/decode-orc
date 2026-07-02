@@ -10,7 +10,7 @@
 #ifndef NTSCOBSERVERDIALOG_H
 #define NTSCOBSERVERDIALOG_H
 
-#include <field_id.h>
+#include <orc/stage/field_id.h>
 
 #include <QDialog>
 #include <QGroupBox>

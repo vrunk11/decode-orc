@@ -9,7 +9,7 @@
 
 #include "linescopedialog.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <QHBoxLayout>
 #include <QHideEvent>

@@ -10,10 +10,11 @@
 #ifndef ORC_CORE_AC3RF_SINK_STAGE_DEPS_H
 #define ORC_CORE_AC3RF_SINK_STAGE_DEPS_H
 
+#include <orc/stage/triggerable_stage.h>
+
 #include <atomic>
 
 #include "ac3rf_sink_stage_deps_interface.h"
-#include "triggerable_stage.h"
 
 namespace orc {
 class AC3RFSinkStageDeps : public IAC3RFSinkStageDeps {

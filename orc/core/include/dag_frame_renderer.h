@@ -9,8 +9,11 @@
 
 #pragma once
 
-#include <frame_id.h>
-#include <node_id.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/lru_cache.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <functional>
 #include <map>
@@ -21,9 +24,6 @@
 #include <vector>
 
 #include "dag_executor.h"
-#include "lru_cache.h"
-#include "observation_context.h"
-#include "video_frame_representation.h"
 
 namespace orc {
 

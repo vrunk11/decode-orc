@@ -8,10 +8,11 @@
 
 #include "reedsolomon.h"
 
+#include <orc/stage/logging.h>
+
 #include <cstdlib>
 
 #include "ezpwd_compat.h"
-#include "logging.h"
 
 // ezpwd C1 ECMA-130 CIRC configuration
 template <size_t SYMBOLS, size_t PAYLOAD>

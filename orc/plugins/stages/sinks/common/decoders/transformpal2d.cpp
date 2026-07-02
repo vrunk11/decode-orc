@@ -9,7 +9,7 @@
 
 #include "transformpal2d.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <algorithm>
 #include <cassert>

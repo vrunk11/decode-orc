@@ -7,6 +7,7 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
+#include <orc/stage/error_types.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
@@ -27,7 +28,6 @@
 #include <sstream>
 
 #include "crash_handler.h"
-#include "error_types.h"
 #include "logging.h"
 #include "mainwindow.h"
 #include "plotwidget.h"

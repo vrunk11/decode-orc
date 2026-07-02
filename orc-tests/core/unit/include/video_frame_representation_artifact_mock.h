@@ -10,9 +10,9 @@
 #ifndef DECODE_ORC_ROOT_VIDEO_FRAME_REPRESENTATION_ARTIFACT_MOCK_H
 #define DECODE_ORC_ROOT_VIDEO_FRAME_REPRESENTATION_ARTIFACT_MOCK_H
 
-#include <artifact.h>
 #include <gmock/gmock.h>
-#include <video_frame_representation.h>
+#include <orc/stage/artifact.h>
+#include <orc/stage/video_frame_representation.h>
 
 // Combines VideoFrameRepresentation with Artifact so the mock can be passed as
 // ArtifactPtr while the ChromaSinkStage dynamic_pointer_cast succeeds.
@@ -47,6 +47,19 @@ class MockVideoFrameRepresentationArtifact
 
   // Hints
   MOCK_METHOD((std::optional<orc::SourceParameters>), get_video_parameters, (),
+              (const, override));
+
+  // Audio
+  MOCK_METHOD(bool, audio_locked, (), (const, override));
+  MOCK_METHOD(uint32_t, get_audio_sample_count, (orc::FrameID),
+              (const, override));
+  MOCK_METHOD((std::vector<int16_t>), get_audio_samples, (orc::FrameID),
+              (const, override));
+
+  // EFM
+  MOCK_METHOD(uint32_t, get_efm_sample_count, (orc::FrameID),
+              (const, override));
+  MOCK_METHOD((std::vector<uint8_t>), get_efm_samples, (orc::FrameID),
               (const, override));
 };
 

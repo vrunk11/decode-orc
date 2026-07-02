@@ -7,9 +7,9 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include <frame_line_util.h>
-#include <logging.h>
-#include <preview_helpers.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
 #include <stacker_stage.h>
 
 #include <algorithm>

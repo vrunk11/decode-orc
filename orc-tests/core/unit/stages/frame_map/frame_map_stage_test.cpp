@@ -10,10 +10,9 @@
 #include "../../../../orc/plugins/stages/frame_map/frame_map_stage.h"
 
 #include <gtest/gtest.h>
+#include <orc/stage/observation_context.h>
 
 #include <algorithm>
-
-#include "../../../../orc/core/include/observation_context.h"
 
 namespace orc_unit_test {
 

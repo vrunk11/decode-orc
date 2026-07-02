@@ -10,10 +10,10 @@
 #ifndef ORC_CORE_AUDIO_SINK_STAGE_DEPS_INTERFACE_H
 #define ORC_CORE_AUDIO_SINK_STAGE_DEPS_INTERFACE_H
 
+#include <orc/stage/video_frame_representation.h>
+
 #include <cstdint>
 #include <string>
-
-#include "video_frame_representation.h"
 
 namespace orc {
 struct AudioSinkWriteResult {

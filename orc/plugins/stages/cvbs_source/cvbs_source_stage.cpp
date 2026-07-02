@@ -9,8 +9,12 @@
 
 #include "cvbs_source_stage.h"
 
-#include <cvbs_signal_constants.h>
-#include <lru_cache.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/error_types.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/lru_cache.h>
+#include <orc/stage/preview_helpers.h>
 #include <sqlite3.h>
 
 #include <algorithm>
@@ -23,11 +27,6 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
-
-#include "error_types.h"
-#include "frame_line_util.h"
-#include "logging.h"
-#include "preview_helpers.h"
 
 namespace orc {
 

@@ -10,13 +10,14 @@
 #ifndef ORC_CORE_SNR_ANALYSIS_SINK_DEPS_H
 #define ORC_CORE_SNR_ANALYSIS_SINK_DEPS_H
 
+#include <orc/stage/logging.h>
+#include <orc/stage/observers/black_psnr_observer.h>
+#include <orc/stage/observers/white_snr_observer.h>
+
 #include <atomic>
 #include <utility>
 
-#include "black_psnr_observer.h"
-#include "logging.h"
 #include "snr_analysis_sink_deps_interface.h"
-#include "white_snr_observer.h"
 
 namespace orc {
 class SNRAnalysisSinkStageDeps : public ISNRAnalysisSinkStageDeps {

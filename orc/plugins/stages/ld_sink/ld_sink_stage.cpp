@@ -9,13 +9,13 @@
 
 #include "ld_sink_stage.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
+
 #include <memory>
 
 #include "ld_sink_stage_deps.h"
 #include "ld_sink_stage_deps_interface.h"
-#include "logging.h"
-#include "preview_helpers.h"
-#include "preview_renderer.h"
 #include "tbc_metadata_writer.h"
 
 namespace orc {

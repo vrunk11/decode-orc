@@ -10,14 +10,13 @@
 #ifndef ORC_CORE_OBSERVATION_CACHE_H
 #define ORC_CORE_OBSERVATION_CACHE_H
 
-#include <field_id.h>
-#include <frame_id.h>
-#include <node_id.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/lru_cache.h>
+#include <orc/stage/node_id.h>
 
 #include <memory>
 #include <string>
-
-#include "lru_cache.h"
 
 namespace orc {
 

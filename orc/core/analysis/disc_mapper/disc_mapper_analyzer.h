@@ -9,11 +9,11 @@
 
 #pragma once
 
+#include <orc/stage/field_id.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <string>
 #include <vector>
-
-#include "../../include/field_id.h"
-#include "../../include/video_frame_representation.h"
 
 namespace orc {
 

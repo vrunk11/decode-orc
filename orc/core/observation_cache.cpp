@@ -9,10 +9,11 @@
 
 #include "include/observation_cache.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 
 #include "include/dag_frame_renderer.h"
-#include "logging.h"
 
 namespace orc {
 

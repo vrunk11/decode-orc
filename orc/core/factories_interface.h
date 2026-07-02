@@ -11,9 +11,10 @@
 
 #ifndef DECODE_ORC_ROOT_FACTORIES_INTERFACE_H
 #define DECODE_ORC_ROOT_FACTORIES_INTERFACE_H
+#include <orc/stage/file_io_interface.h>
+
 #include <memory>
 
-#include "include/file_io_interface.h"
 #include "stages/stage_factories_interface.h"
 
 namespace orc {
@@ -49,6 +50,8 @@ class IFactories {
   create_instance_buffered_file_writer_uint8(size_t buffer_size) = 0;
   virtual std::shared_ptr<IFileWriter<uint16_t>>
   create_instance_buffered_file_writer_uint16(size_t buffer_size) = 0;
+  virtual std::shared_ptr<IFileWriter<int16_t>>
+  create_instance_buffered_file_writer_int16(size_t buffer_size) = 0;
 };
 }  // namespace orc
 

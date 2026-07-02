@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
 #include <orc_analysis.h>  // For AnalysisToolInfo
 
 #include <QMenu>

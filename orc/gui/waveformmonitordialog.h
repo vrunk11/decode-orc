@@ -10,7 +10,7 @@
 #ifndef WAVEFORMMONITORDIALOG_H
 #define WAVEFORMMONITORDIALOG_H
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 #include <QDialog>
 #include <cstdint>

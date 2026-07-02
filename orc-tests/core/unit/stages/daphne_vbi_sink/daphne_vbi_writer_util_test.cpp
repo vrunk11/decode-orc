@@ -10,10 +10,10 @@
 #include "daphne_vbi_writer_util.h"
 
 #include <gtest/gtest.h>
+#include <orc/stage/field_id.h>
 
 #include "../../include/file_io_interface_mock.h"
 #include "../../include/observation_context_interface_mock.h"
-#include "field_id.h"
 
 using testing::Invoke;
 using testing::Mock;

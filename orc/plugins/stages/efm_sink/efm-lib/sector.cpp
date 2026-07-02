@@ -8,12 +8,12 @@
 
 #include "sector.h"
 
+#include <orc/stage/logging.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <iomanip>
 #include <sstream>
-
-#include "logging.h"
 
 // Sector address class
 // ---------------------------------------------------------------------------------------------------

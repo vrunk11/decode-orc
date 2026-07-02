@@ -9,15 +9,16 @@
 
 #include "frame_corruption_analysis.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <ctime>
 #include <sstream>
 
 #include "../../include/dag_executor.h"
-#include "../../include/logging.h"
 #include "../../include/project.h"
-#include "../../include/video_frame_representation.h"
 #include "../analysis_registry.h"
 #include "frame_corruption_analyzer.h"
 

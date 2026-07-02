@@ -7,14 +7,14 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include <node_type.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/node_type.h>
 
 #include <limits>
 #include <unordered_map>
 #include <vector>
 
 #include "include/stage_registry.h"
-#include "logging.h"
 
 namespace orc {
 

@@ -10,7 +10,8 @@
 
 #include "outputwriter.h"
 
-#include <cvbs_signal_constants.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/logging.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -19,7 +20,6 @@
 #include <sstream>
 
 #include "componentframe.h"
-#include "logging.h"
 
 // Limits, zero points and scaling factors (from 0-1) for Y'CbCr colour
 // representations [Poynton ch25 p305] [BT.601-7 sec 2.5.3]

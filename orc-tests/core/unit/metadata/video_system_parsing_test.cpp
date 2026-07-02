@@ -8,8 +8,8 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include <common_types.h>
 #include <gtest/gtest.h>
+#include <orc/stage/common_types.h>
 
 // Note: lddecodemetadata.h is internal/private and not exported via public
 // headers. parseVideoSystemName() is declared in lddecodemetadata.h but cannot

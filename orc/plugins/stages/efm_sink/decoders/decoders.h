@@ -9,6 +9,8 @@
 #ifndef DECODERS_H
 #define DECODERS_H
 
+#include <orc/stage/logging.h>
+
 #include <cstdint>
 #include <deque>
 #include <queue>
@@ -16,7 +18,6 @@
 #include <vector>
 
 #include "frame.h"
-#include "logging.h"
 #include "section.h"
 #include "sector.h"
 
