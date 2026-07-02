@@ -13,9 +13,15 @@ orc_add_stage_plugin(
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/plugin.cpp
         ${CHROMA_DECODER_SHARED_SOURCES}
+    # FFmpeg is used by the shared output backends (ffmpeg_output_backend.cpp);
+    # declared here because the SDK no longer propagates host third-party
+    # dependencies to plugins.
     LINK_LIBRARIES
         orc_chroma_decoders
+        PkgConfig::FFMPEG
 )
+
+target_compile_definitions(orc-stage-plugin-raw-video-sink PRIVATE HAVE_FFMPEG)
 
 target_include_directories(orc-stage-plugin-raw-video-sink PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/../common

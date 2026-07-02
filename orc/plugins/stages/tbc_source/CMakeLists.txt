@@ -41,5 +41,7 @@ orc_add_stage_plugin(
     OUTPUT_NAME orc-stage-plugin-tbc-source
     PLUGIN_VERSION "${ORC_VERSION}"
     SOURCES ${STAGE_PLUGIN_SOURCES}
-    LINK_LIBRARIES ${_SOXR_LINK_TARGET}
+    # SQLite is used by tbc_metadata_reader.cpp; declared here because the
+    # SDK no longer propagates host third-party dependencies to plugins.
+    LINK_LIBRARIES ${_SOXR_LINK_TARGET} SQLite::SQLite3
 )

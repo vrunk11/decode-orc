@@ -174,8 +174,11 @@ elseif(UNIX AND NOT WIN32)
     )
 endif()
 
-# Find and link SQLite3
+# Find and link SQLite3. Promoted to a global target so stage plugins
+# (sibling directory scope) can declare it in their own LINK_LIBRARIES:
+# the SDK no longer propagates orc-core's third-party dependencies.
 find_package(SQLite3 REQUIRED)
+set_target_properties(SQLite::SQLite3 PROPERTIES IMPORTED_GLOBAL TRUE)
 target_link_libraries(orc-core PUBLIC SQLite::SQLite3)
 
 # Find and link yaml-cpp
@@ -202,9 +205,12 @@ endif()
 find_package(PNG REQUIRED)
 target_link_libraries(orc-core PUBLIC PNG::PNG)
 
-# Find and link FFmpeg libraries (for MP4 output)
+# Find and link FFmpeg libraries (for MP4 output). GLOBAL so the video sink
+# stage plugins (sibling directory scope) can declare PkgConfig::FFMPEG in
+# their own LINK_LIBRARIES: the SDK no longer propagates orc-core's
+# third-party dependencies.
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET GLOBAL
     libavcodec
     libavformat
     libavutil
@@ -214,7 +220,7 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
 # Create aggregate PkgConfig::FFMPEG target if it doesn't exist
 # (pkg_check_modules may create individual targets like PkgConfig::libavcodec)
 if(NOT TARGET PkgConfig::FFMPEG)
-    add_library(PkgConfig::FFMPEG INTERFACE IMPORTED)
+    add_library(PkgConfig::FFMPEG INTERFACE IMPORTED GLOBAL)
     set(_ffmpeg_pc_libs "")
     foreach(_ffmpeg_pc_target libavcodec libavformat libavutil libswscale)
         if(TARGET PkgConfig::${_ffmpeg_pc_target})

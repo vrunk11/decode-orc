@@ -4,7 +4,9 @@ Deliverable for Phase 4 of the
 [plugin SDK hardening plan](./plugin-sdk-hardening-plan.md) (Tasks 4.1 and
 4.2). This document inventories every non-SDK header included by code under
 `orc/plugins/stages/`, assigns each a disposition, and defines the allowlisted
-SDK contract surface that the Phase 5 enforcement gate will implement.
+SDK contract surface enforced by the Phase 5 gate
+(`cmake/check_plugin_private_includes.sh`) and by compile-time include
+scoping on the `orc-plugin-sdk` target.
 
 Method: every `#include` in `orc/plugins/stages/**/*.{h,cpp}` was resolved the
 way the compiler resolves it (quoted includes against the including file's
@@ -150,7 +152,7 @@ allowlist:
 
 ## 2. Allowlisted SDK contract surface (Task 4.2)
 
-Plugins may include, and the Phase 5 gate will permit, exactly:
+Plugins may include, and the enforcement gate permits, exactly:
 
 1. **`<orc/plugin/...>`** — the plugin ABI/services surface (unchanged):
    `orc_plugin_sdk.h`, `orc_plugin_abi.h`, `orc_stage_api.h`,

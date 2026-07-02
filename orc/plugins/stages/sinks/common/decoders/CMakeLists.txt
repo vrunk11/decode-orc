@@ -22,13 +22,12 @@ add_library(orc_chroma_decoders STATIC
     ${DECODER_SOURCES}
 )
 
-# Include directories
+# Include directories: only the decoder tree itself. Contract types
+# (<orc/stage/...>) come from the plugin SDK; private host include trees
+# must not be visible to plugin-side code.
 target_include_directories(orc_chroma_decoders
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/orc/core/include  # For ORC logging and tbc_metadata
-        ${CMAKE_SOURCE_DIR}/orc/view-types  # For VideoParameters and other view types
-        ${CMAKE_SOURCE_DIR}/orc/common/include  # For common types
 )
 
 # Set C++ standard
@@ -57,9 +56,6 @@ else()
     target_link_libraries(orc_chroma_decoders PUBLIC FFTW3::fftw3)
 endif()
 
-# Link spdlog (required by logging.h)
-find_package(spdlog REQUIRED)
-target_link_libraries(orc_chroma_decoders PUBLIC spdlog::spdlog)
-
-# Link orc-common (for shared types)
-target_link_libraries(orc_chroma_decoders PUBLIC orc-common)
+# The plugin SDK provides the <orc/stage/...> contract headers and the
+# spdlog/fmt usage requirements needed by <orc/stage/logging.h>.
+target_link_libraries(orc_chroma_decoders PUBLIC orc-plugin-sdk)

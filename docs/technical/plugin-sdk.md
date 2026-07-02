@@ -40,11 +40,25 @@ This pulls in all stable contracts:
 | `<orc/plugin/orc_plugin_services_helpers.h>` | `ORC_PLUGIN_LOG_*` logging macros |
 
 In addition to the `<orc/plugin/...>` family, the SDK ships the stage
-contract tree `<orc/stage/...>` (DAGStage, artifact and frame representation
-types, parameter and observation contracts, preview DTOs, signal constants,
-logging macros, and utility interfaces). Stage implementation code may
-include these headers directly; the umbrella headers above pull in the core
-subset automatically. The complete allowlisted set is inventoried in
+contract tree `<orc/stage/...>`. Stage implementation code may include these
+headers directly; the umbrella headers above pull in the core subset
+automatically. The complete allowlisted `<orc/stage/...>` set is:
+
+| Group | Headers |
+|-------|---------|
+| Stage model | `stage.h`, `triggerable_stage.h`, `stage_parameter.h`, `parameter_types.h`, `node_type.h`, `node_id.h`, `artifact.h`, `analysis_sink_results.h` |
+| Frame / signal model | `video_frame_representation.h`, `video_metadata_types.h`, `frame_descriptor.h`, `frame_id.h`, `field_id.h`, `frame_line_util.h`, `common_types.h`, `cvbs_signal_constants.h`, `orc_source_parameters.h`, `dropout_run.h`, `dropout_util.h`, `dropout_decision.h` |
+| Observation model | `observation_context.h`, `observation_context_interface.h`, `observation_schema.h`, `observers/observer.h`, `observers/biphase_observer.h`, `observers/black_psnr_observer.h`, `observers/burst_level_observer.h`, `observers/closed_caption_observer.h`, `observers/white_snr_observer.h` |
+| Preview contract | `stage_preview_capability.h`, `stage_custom_preview_renderer.h`, `colour_preview_provider.h`, `colour_preview_conversion.h`, `preview_helpers.h`, `preview_stage_types.h`, `orc_preview_types.h`, `orc_preview_carriers.h`, `orc_rendering.h`, `orc_vectorscope.h` |
+| Utilities | `logging.h`, `lru_cache.h`, `file_io_interface.h`, `eia608_decoder.h`, `error_types.h` |
+
+This list, together with the `<orc/plugin/...>` family above, is the
+**enforced include allowlist**: the gate script
+(`cmake/check_plugin_private_includes.sh`) fails the build on any plugin
+include outside it, other than plugin-local headers, standard-library and
+platform headers, and permitted third-party headers (`fmt`/`spdlog`
+unconditionally; other libraries when declared by the plugin's own CMake
+target). The design rationale for each header is recorded in
 `docs-tech/plugin-sdk-header-inventory.md`.
 
 ### Stability Guarantees
@@ -57,7 +71,10 @@ Headers in the public SDK carry an explicit stability commitment:
 
 ## What Plugins Must Not Include
 
-The following are **not** part of the public SDK and will change without notice:
+The SDK boundary is an **allowlist**: anything not listed in the SDK Headers
+section above (or covered by the plugin-local / standard-library /
+third-party allowances) is private and will change without notice. Typical
+private surfaces plugins must never reach into:
 
 | Forbidden header path | Reason |
 |-----------------------|--------|
@@ -67,8 +84,20 @@ The following are **not** part of the public SDK and will change without notice:
 | `orc/gui/*.h` | GUI internal |
 | `orc/cli/*.h` | CLI internal |
 
+The boundary is enforced twice:
+
+1. **At compile time** — the `orc::plugin-sdk` target exposes only the SDK
+   include tree (plus spdlog/fmt). Plugins link `orc-core` for symbols only
+   (`$<LINK_ONLY:...>`), so a plugin translation unit that includes a private
+   host header fails to compile.
+2. **By the allowlist scan** — `check_plugin_private_includes.sh` (a hard CI
+   gate, `ctest -L sdk`) fails on any include outside the allowlist even if
+   it would compile.
+
 Do not link directly against `orc-core`, `orc-presenters`, `orc-gui`, or
-`orc-cli`. Link only against `orc::plugin-sdk`.
+`orc-cli`. Link only against `orc::plugin-sdk`. Third-party libraries a
+plugin needs (FFmpeg, SQLite, FFTW, ...) must be declared by the plugin's
+own CMake target — they are no longer inherited from the host.
 
 If a capability you need is missing from the SDK, open an issue in the
 decode-orc repository. Missing capability is never a reason to include private
@@ -106,7 +135,7 @@ scripts bundled with the installed SDK package (located at
 `<install-prefix>/lib/cmake/decode-orc-plugin-sdk/`):
 
 ```bash
-# Check for forbidden private-header includes in your plugin tree
+# Check every include in your plugin tree against the SDK allowlist
 bash <sdk-install>/check_plugin_private_includes.sh /path/to/your-plugin-repo
 
 # Check for forbidden private-link dependencies in your plugin target

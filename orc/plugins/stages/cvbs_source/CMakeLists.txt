@@ -15,6 +15,9 @@ orc_add_stage_plugin(
     OUTPUT_NAME orc-stage-plugin-cvbs-source
     PLUGIN_VERSION "${ORC_VERSION}"
     SOURCES ${STAGE_PLUGIN_SOURCES}
+    # SQLite is used by cvbs_source_stage.cpp; declared here because the
+    # SDK no longer propagates host third-party dependencies to plugins.
+    LINK_LIBRARIES SQLite::SQLite3
 )
 
 # Install plugin

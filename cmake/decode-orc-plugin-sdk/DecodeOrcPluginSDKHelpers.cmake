@@ -36,7 +36,10 @@ endif()
 # can link stage classes directly; the host loads plugins via dlopen):
 #
 #   - Links to orc::plugin-sdk (or orc-plugin-sdk for in-tree builds) which
-#     provides all SDK include paths and orc-core.
+#     provides the SDK include paths (<orc/plugin/...>, <orc/stage/...>),
+#     spdlog/fmt, and orc-core as a link-only dependency. Private host
+#     include trees are not propagated; declare any other third-party
+#     dependency the plugin uses via LINK_LIBRARIES.
 #   - Sets ORC_STAGE_PLUGIN_VERSION compile definition.
 #   - Places the output in the standard plugin directory.
 #   - Installs to the platform-appropriate plugin location.

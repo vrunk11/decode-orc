@@ -1,10 +1,16 @@
 # orc-plugin-sdk: Public stable plugin SDK for decode-orc stage plugins.
 #
 # This INTERFACE library provides:
-#   - The public SDK include directory (orc/plugin/orc_plugin_sdk.h umbrella).
-#   - Access to the orc-core and orc-common include paths required to compile
-#     against the stable stage API (ParameterizedStage, TriggerableStage, etc.).
-#   - The orc-core link target so plugins can link the host runtime library.
+#   - The public SDK include directory only: <orc/plugin/...> (ABI/services)
+#     and <orc/stage/...> (stage contract headers). Private host include
+#     trees (orc/core, orc/common, orc/view-types) are deliberately NOT
+#     propagated: a plugin TU that includes a private host header must fail
+#     to compile, matching the allowlist enforced by
+#     cmake/check_plugin_private_includes.sh.
+#   - The orc-core link target (link-only) so plugins can resolve DAGStage,
+#     ArtifactPtr, and the other contract symbols at link time.
+#   - spdlog/fmt usage requirements for the SDK logging surface
+#     (<orc/stage/logging.h>, <orc/plugin/orc_plugin_services_helpers.h>).
 #
 # In-tree usage (plugins built inside this repository):
 #   target_link_libraries(my-plugin PRIVATE orc-plugin-sdk)
@@ -17,21 +23,22 @@
 add_library(orc-plugin-sdk INTERFACE)
 
 target_include_directories(orc-plugin-sdk INTERFACE
-    # SDK headers: <orc/plugin/orc_plugin_sdk.h>, etc.
+    # SDK headers: <orc/plugin/...> and <orc/stage/...>.
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/decode-orc-plugin-sdk>
 )
 
-# Expose orc/core/stages/ so that <triggerable_stage.h> (used by orc_stage_api.h)
-# is resolvable for plugin builds without requiring knowledge of the internal tree.
-target_include_directories(orc-plugin-sdk INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/orc/core/stages>
-)
+# Plugins link orc-core for symbols only. $<LINK_ONLY:...> strips orc-core's
+# usage requirements (include directories, compile definitions), so private
+# host headers are not reachable from plugin TUs; third-party dependencies a
+# plugin needs beyond the SDK surface must be declared by the plugin's own
+# CMakeLists.txt.
+target_link_libraries(orc-plugin-sdk INTERFACE $<LINK_ONLY:orc-core>)
 
-# Plugins must link against orc-core to resolve DAGStage, ArtifactPtr, etc.
-# This also transitively exposes orc-common include paths (parameter_types.h,
-# node_type.h, common_types.h) and orc-core/include (stage_parameter.h, etc.).
-target_link_libraries(orc-plugin-sdk INTERFACE orc-core)
+# The SDK headers themselves use spdlog (<orc/stage/logging.h>) and fmt
+# (<orc/plugin/orc_plugin_services_helpers.h>), so their usage requirements
+# are part of the SDK contract.
+target_link_libraries(orc-plugin-sdk INTERFACE spdlog::spdlog fmt::fmt)
 
 # =============================================================================
 # Install rules

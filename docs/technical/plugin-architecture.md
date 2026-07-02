@@ -254,9 +254,9 @@ argument to `orc_register_stage_plugin()`. The table provides:
 
 The `IStageServices` contract (declared in `<orc/plugin/orc_stage_services.h>`)
 currently exposes buffered file-output factories used by sink stages:
-`create_buffered_file_writer_uint8()` and `create_buffered_file_writer_uint16()`.
-It does not currently provide artifact delivery, logging, or progress
-reporting.
+`create_buffered_file_writer_uint8()`, `create_buffered_file_writer_uint16()`,
+and `create_buffered_file_writer_int16()`. It does not currently provide
+artifact delivery, logging, or progress reporting.
 
 Plugins store the table with `orc::plugin::set_services()` at the start of
 `orc_register_stage_plugin`, and obtain the `IStageServices` pointer later via
@@ -273,6 +273,33 @@ exist in host tool dispatch.
 
 Analysis tools (dropout analysis, SNR analysis, burst-level analysis) follow the
 same pattern via `AnalysisToolDescriptor` and `AnalysisToolProvider`.
+
+## SDK Boundary Enforcement
+
+The source-level plugin boundary is an **allowlist** of SDK contract
+headers: the `<orc/plugin/...>` family (ABI, entrypoints, services) and the
+`<orc/stage/...>` family (stage, frame, observation, preview, and utility
+contracts). The complete permitted set is listed in the
+[Plugin SDK Developer Guide](plugin-sdk.md) (SDK Headers section); anything
+else in the host tree is private.
+
+Enforcement happens at two levels:
+
+1. **Compile time** — the `orc-plugin-sdk` / `orc::plugin-sdk` target
+   propagates only the SDK include tree plus the spdlog/fmt usage
+   requirements the SDK headers themselves need. `orc-core` is linked
+   symbols-only (`$<LINK_ONLY:...>`), so its private include directories and
+   third-party dependencies are not visible to plugin translation units;
+   including a private host header fails the plugin's compile. Third-party
+   libraries a plugin uses directly must be declared by the plugin's own
+   CMake target.
+2. **Scan gates** — two hard-fail CI gates (`ctest -L sdk`) run on
+   `orc/plugins/stages/` and `3rd-party-plugins/`:
+   `check_plugin_private_includes.sh` fails on any include that is not an
+   allowlisted SDK header, a plugin-local header, a standard-library or
+   platform header, or a permitted third-party header;
+   `check_plugin_private_links.sh` fails on plugin build files that link
+   private host targets directly.
 
 ## Third-Party Plugin Repositories
 
