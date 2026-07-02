@@ -1,9 +1,10 @@
 /*
- * File:        bad_abi_version_plugin.cpp
+ * File:        abi_v4_plugin.cpp
  * Module:      orc-core-tests / test fixtures
- * Purpose:     Minimal plugin that declares a wrong host_abi_version.
+ * Purpose:     Minimal plugin that declares the previous host ABI version (4).
  *              Used by stage_plugin_loader_version_rejection_test.cpp to verify
- *              that the loader rejects plugins with a mismatched host ABI.
+ *              that plugins built against the pre-toolchain-tag ABI are
+ *              rejected with a version mismatch diagnostic.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -13,14 +14,17 @@
 
 namespace {
 
+// A real ABI-4 descriptor ends at is_core_plugin (no toolchain_tag field).
+// The loader must reject on the version number alone, before ever reading
+// the appended v5 field.
 constexpr orc::StagePluginDescriptor kDescriptor{
-    "test.bad-abi-version",  // plugin_id
-    "0.0.1",                 // plugin_version
-    9999u,                   // host_abi_version — intentionally wrong
+    "test.abi-v4",  // plugin_id
+    "0.0.1",        // plugin_version
+    4u,             // host_abi_version — previous ABI revision
     orc::kStagePluginApiVersion,
-    "GPL-3.0-or-later",     // license_spdx
-    false,                  // is_core_plugin
-    ORC_SDK_TOOLCHAIN_TAG,  // toolchain_tag
+    "GPL-3.0-or-later",  // license_spdx
+    false,               // is_core_plugin
+    nullptr,             // toolchain_tag — absent in a genuine ABI-4 binary
 };
 
 }  // namespace

@@ -361,6 +361,20 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
     return result;
   }
 
+  // Toolchain tag (ABI v5): reject plugins built with an incompatible
+  // compiler family/major version, C++ standard library, or (Windows) CRT
+  // flavour. Reading the appended descriptor field is safe here because the
+  // exact-match ABI check above guarantees the v5 descriptor layout.
+  const std::string plugin_toolchain =
+      sanitize_c_string(descriptor->toolchain_tag);
+  if (plugin_toolchain != ORC_SDK_TOOLCHAIN_TAG) {
+    result.error_message = "Plugin '" + path + "' toolchain mismatch: plugin=" +
+                           (plugin_toolchain.empty() ? std::string("(missing)")
+                                                     : plugin_toolchain) +
+                           ", host=" ORC_SDK_TOOLCHAIN_TAG;
+    return result;
+  }
+
   // The service table lives inside LoadedLibrary so the plugin's stored
   // pointer stays valid for as long as any of its stages can still run.
   library->services = std::make_shared<OrcPluginServices>();

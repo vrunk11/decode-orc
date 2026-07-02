@@ -39,7 +39,7 @@ Host startup
    │      ├─ Resolve entrypoints:
    │      │      orc_get_stage_plugin_descriptor
    │      │      orc_register_stage_plugin
-   │      ├─ Validate host_abi_version and plugin_api_version
+   │      ├─ Validate host_abi_version, plugin_api_version, toolchain_tag
    │      └─ Call orc_register_stage_plugin → StageRegistry::register_stage
    │
   ├─ Merge registry paths, default search paths, and ORC_STAGE_PLUGIN_PATHS
@@ -73,7 +73,8 @@ Each plugin must export two C-linkage entrypoints (C++ types cross the
 boundary — see Binary Compatibility Model below):
 
 ```cpp
-// Returns the plugin descriptor (ABI version, API version, metadata).
+// Returns the plugin descriptor (ABI version, API version, toolchain tag,
+// metadata).
 // All descriptor pointer fields must reference static storage.
 const orc::StagePluginDescriptor* orc_get_stage_plugin_descriptor();
 
@@ -101,6 +102,14 @@ family, the same C++ standard library, and a compatible build configuration
 as the host. On Windows this includes the CRT flavour — a Debug-CRT plugin
 cannot be loaded by a Release-CRT host.
 
+Since ABI v5 the toolchain requirement is enforced at load time: the
+descriptor's `toolchain_tag` field (populated by the `ORC_SDK_TOOLCHAIN_TAG`
+macro) encodes the compiler family and major version, the C++ standard
+library, and — on Windows — the CRT flavour, e.g. `gcc14/libstdc++`,
+`clang17/libc++`, `msvc19/msvc-stl/release-crt`. The host requires the
+plugin's tag to equal its own tag exactly and rejects the plugin with a
+diagnostic naming both tags otherwise.
+
 The host requires **exact equality** for both `host_abi_version` and
 `plugin_api_version`; a mismatch in either causes the plugin to be rejected
 with a logged diagnostic. The `services_size` field in `OrcPluginServices`
@@ -110,15 +119,16 @@ compatibility mechanism.
 
 ## Compatibility Gating
 
-Two version numbers govern compatibility. Both are checked before a plugin is
-accepted; a mismatch causes the plugin to be skipped with a logged diagnostic.
+Two version numbers plus the toolchain tag govern compatibility. All three
+are checked before a plugin is accepted; a mismatch causes the plugin to be
+skipped with a logged diagnostic.
 
 ### `host_abi_version`
 
 Controls the binary ABI: the layout of `StagePluginDescriptor`, the entrypoint
 signatures, and the `register_stage` callback contract.
 
-**Current value:** `4`
+**Current value:** `5`
 
 Bumped when any of the following change:
 - `StagePluginDescriptor` field order or alignment
@@ -140,6 +150,12 @@ Bumped when any of the following change:
 - `NodeTypeInfo` struct layout changes
 - `execute()` or `trigger()` lifecycle semantics change incompatibly
 - The primary frame-data type changes (e.g. field → frame representation)
+
+### `toolchain_tag`
+
+Identifies the build environment the plugin binary was produced with (ABI
+v5+). Compared as an exact string against the host's own tag; see the
+Binary Compatibility Model above for the encoding.
 
 ## Plugin Registry
 

@@ -154,11 +154,13 @@ allowlist:
 
 Plugins may include, and the enforcement gate permits, exactly:
 
-1. **`<orc/plugin/...>`** — the plugin ABI/services surface (unchanged):
+1. **`<orc/plugin/...>`** — the plugin ABI/services surface:
    `orc_plugin_sdk.h`, `orc_plugin_abi.h`, `orc_stage_api.h`,
    `orc_stage_runtime.h`, `orc_stage_preview.h`, `orc_stage_services.h`,
    `orc_stage_tooling.h`, `orc_plugin_services.h`,
-   `orc_plugin_services_helpers.h`.
+   `orc_plugin_services_helpers.h`, `orc_plugin_registration.h` (added in
+   Phase 6: `ORC_STAGE_PLUGIN_DESCRIPTOR` / `ORC_DEFINE_STAGE_PLUGIN`
+   entrypoint boilerplate helpers).
 2. **`<orc/stage/...>`** — the re-homed contract tree:
    - Stage model: `stage.h`, `triggerable_stage.h`, `stage_parameter.h`,
      `parameter_types.h`, `node_type.h`, `node_id.h`, `artifact.h`,

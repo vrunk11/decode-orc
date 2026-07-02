@@ -1,10 +1,11 @@
 /*
- * File:        bad_api_version_plugin.cpp
+ * File:        bad_toolchain_tag_plugin.cpp
  * Module:      orc-core-tests / test fixtures
- * Purpose:     Minimal plugin that declares a wrong plugin_api_version.
- *              Used by stage_plugin_loader_version_rejection_test.cpp to verify
- *              that the loader rejects plugins with a mismatched plugin API
- * version.
+ * Purpose:     Minimal plugin with matching version numbers but a mismatched
+ *              toolchain tag. Used by
+ *              stage_plugin_loader_version_rejection_test.cpp to verify that
+ *              the loader rejects plugins built with an incompatible
+ *              toolchain and names both tags in the diagnostic.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -15,13 +16,13 @@
 namespace {
 
 constexpr orc::StagePluginDescriptor kDescriptor{
-    "test.bad-api-version",  // plugin_id
-    "0.0.1",                 // plugin_version
+    "test.bad-toolchain-tag",  // plugin_id
+    "0.0.1",                   // plugin_version
     orc::kStagePluginHostAbiVersion,
-    9999u,                  // plugin_api_version — intentionally wrong
-    "GPL-3.0-or-later",     // license_spdx
-    false,                  // is_core_plugin
-    ORC_SDK_TOOLCHAIN_TAG,  // toolchain_tag
+    orc::kStagePluginApiVersion,
+    "GPL-3.0-or-later",               // license_spdx
+    false,                            // is_core_plugin
+    "test-mismatched-toolchain-tag",  // toolchain_tag — intentionally wrong
 };
 
 }  // namespace

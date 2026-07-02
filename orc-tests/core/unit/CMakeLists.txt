@@ -154,7 +154,8 @@ orc_add_core_unit_tests(
 # ---------------------------------------------------------------------------
 set(ORC_TEST_FIXTURE_PLUGIN_BUILD_DIR "${CMAKE_BINARY_DIR}/lib/orc-test-fixture-plugins")
 
-foreach(_fixture_name bad_abi_version bad_api_version)
+foreach(_fixture_name bad_abi_version bad_api_version abi_v4 bad_toolchain_tag
+        compatible)
         set(_target "orc-test-fixture-${_fixture_name}")
         add_library(${_target} SHARED
                 contracts/test_fixtures/${_fixture_name}_plugin.cpp)
@@ -176,7 +177,10 @@ target_compile_definitions(orc-core-unit-tests-loader-rejection PRIVATE
         ORC_TEST_FIXTURE_PLUGIN_BUILD_DIR="${ORC_TEST_FIXTURE_PLUGIN_BUILD_DIR}")
 add_dependencies(orc-core-unit-tests-loader-rejection
         orc-test-fixture-bad_abi_version
-        orc-test-fixture-bad_api_version)
+        orc-test-fixture-bad_api_version
+        orc-test-fixture-abi_v4
+        orc-test-fixture-bad_toolchain_tag
+        orc-test-fixture-compatible)
 gtest_discover_tests(orc-core-unit-tests-loader-rejection
         DISCOVERY_MODE POST_BUILD
         DISCOVERY_TIMEOUT 30

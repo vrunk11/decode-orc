@@ -28,6 +28,7 @@ THIRD_PARTY_DIR="${REPO_ROOT}/3rd-party-plugins"
 SDK_ALLOWLIST=(
     # Plugin ABI / services surface
     "orc/plugin/orc_plugin_abi.h"
+    "orc/plugin/orc_plugin_registration.h"
     "orc/plugin/orc_plugin_sdk.h"
     "orc/plugin/orc_plugin_services.h"
     "orc/plugin/orc_plugin_services_helpers.h"

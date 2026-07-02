@@ -30,7 +30,7 @@ This pulls in all stable contracts:
 
 | Header | Provides |
 |--------|----------|
-| `<orc/plugin/orc_plugin_abi.h>` | `StagePluginDescriptor`, `OrcStageFactoryFn`, `ORC_STAGE_PLUGIN_EXPORT`, `kStagePluginHostAbiVersion`, `kStagePluginApiVersion`, entrypoint symbol names |
+| `<orc/plugin/orc_plugin_abi.h>` | `StagePluginDescriptor`, `OrcStageFactoryFn`, `ORC_STAGE_PLUGIN_EXPORT`, `kStagePluginHostAbiVersion`, `kStagePluginApiVersion`, `ORC_SDK_TOOLCHAIN_TAG`, entrypoint symbol names |
 | `<orc/plugin/orc_stage_api.h>` | `ParameterizedStage`, `TriggerableStage`, `NodeTypeInfo`, `ParameterValue`, `ParameterDescriptor`, `VideoSystem`, `SourceType` |
 | `<orc/plugin/orc_stage_runtime.h>` | Stage runtime include surface for stage implementations (observation context, triggerable stage) |
 | `<orc/plugin/orc_stage_preview.h>` | Preview capability and carrier contracts for preview-capable stages |
@@ -38,6 +38,7 @@ This pulls in all stable contracts:
 | `<orc/plugin/orc_stage_tooling.h>` | `StageToolDescriptor`, `StageToolProvider`, `AnalysisToolDescriptor`, `AnalysisToolProvider`, `ORC_STAGE_INSTRUCTIONS_MD` — optional tool contracts and stage self-documentation |
 | `<orc/plugin/orc_plugin_services.h>` | `OrcPluginServices` host service table, `OrcPluginLogLevel`, `orc::plugin::set_services()`, `orc::plugin::get_stage_services()` |
 | `<orc/plugin/orc_plugin_services_helpers.h>` | `ORC_PLUGIN_LOG_*` logging macros |
+| `<orc/plugin/orc_plugin_registration.h>` | `ORC_STAGE_PLUGIN_DESCRIPTOR`, `ORC_DEFINE_STAGE_PLUGIN` — descriptor and entrypoint boilerplate helpers |
 
 In addition to the `<orc/plugin/...>` family, the SDK ships the stage
 contract tree `<orc/stage/...>`. Stage implementation code may include these
@@ -158,10 +159,56 @@ orc-plugin_<stage-name>_<platform>.<ext>
 
 ### Minimal plugin structure
 
+The registration helpers in `<orc/plugin/orc_plugin_registration.h>` (pulled
+in by the umbrella header) expand the entire plugin boilerplate — descriptor
+version/toolchain fields, both entrypoints, service-table storage, and stage
+registration — from two statements:
+
 ```cpp
 #include <orc/plugin/orc_plugin_sdk.h>
 
 #include "my_stage.h"  // Your DAGStage subclass
+
+namespace {
+
+// The ABI version, API version, and toolchain tag are filled in from the SDK
+// the plugin is compiled against. All pointer fields point to static storage.
+constexpr orc::StagePluginDescriptor kDescriptor =
+    ORC_STAGE_PLUGIN_DESCRIPTOR("com.example.stage.my-filter",  // plugin_id
+                                "1.0.0",  // plugin_version
+                                "MIT",    // license_spdx
+                                false);   // is_core_plugin
+
+}  // namespace
+
+// Expands to both required entrypoints. MyStage is registered under the
+// stage name reported by its own get_node_type_info().stage_name — the stage
+// class is the single source of truth for registration metadata. List
+// additional stage types as further arguments to register several stages
+// from one plugin.
+ORC_DEFINE_STAGE_PLUGIN(kDescriptor, MyStage)
+```
+
+Stage types passed to `ORC_DEFINE_STAGE_PLUGIN` must be either
+default-constructible or constructible from `orc::IStageServices*`; in the
+latter case the host's consolidated stage services are injected automatically
+when the stage is created.
+
+The same pattern is used by every bundled stage plugin — see
+`orc/plugins/stages/mask_line/plugin.cpp` (single stage) or
+`orc/plugins/stages/cvbs_source/plugin.cpp` (multiple stages) in the
+Decode-Orc repository for complete real-world examples.
+
+### Raw entrypoints (custom registration logic)
+
+Plugins that need custom registration logic — stages with other constructor
+signatures, conditional registration, dynamic stage sets — can write the two
+exported entrypoints by hand instead:
+
+```cpp
+#include <orc/plugin/orc_plugin_sdk.h>
+
+#include "my_stage.h"
 
 namespace {
 
@@ -179,6 +226,7 @@ constexpr orc::StagePluginDescriptor kDescriptor{
     orc::kStagePluginApiVersion,      // plugin_api_version
     "MIT",                            // license_spdx
     false,                            // is_core_plugin
+    ORC_SDK_TOOLCHAIN_TAG,            // toolchain_tag
 };
 
 }  // namespace
@@ -214,10 +262,6 @@ ORC_STAGE_PLUGIN_EXPORT bool orc_register_stage_plugin(
   return true;
 }
 ```
-
-The same pattern is used by every bundled stage plugin — see
-`orc/plugins/stages/mask_line/plugin.cpp` in the Decode-Orc repository for a
-complete real-world example.
 
 ### Stage interfaces
 
@@ -383,7 +427,7 @@ Users register your plugin by adding an entry to their plugin registry YAML:
   release_tag:        v1.0.0
   release_asset_name: orc-plugin_my-stage_linux.so   # platform-specific
   target_platform:    linux
-  required_host_abi:  4
+  required_host_abi:  5
   enabled:            true
   trust_state:        untrusted
   license_spdx:       MIT
@@ -404,6 +448,16 @@ family, the same C++ standard library, and a compatible build configuration
 as the host. On Windows this includes the CRT flavour — a Debug-CRT plugin
 cannot be loaded by a Release-CRT host.
 
+Since ABI v5 this requirement is enforced at load time: the descriptor's
+`toolchain_tag` field (populated by the `ORC_SDK_TOOLCHAIN_TAG` macro, and
+automatically by `ORC_STAGE_PLUGIN_DESCRIPTOR`) encodes the compiler family
+and major version, the C++ standard library, and — on Windows — the CRT
+flavour, e.g. `gcc14/libstdc++`, `clang17/libc++`,
+`msvc19/msvc-stl/release-crt`. The host requires the plugin's tag to equal
+its own tag exactly and rejects the plugin with a diagnostic naming both
+tags otherwise. The policy is deliberately conservative, consistent with the
+exact-match rule for the version numbers.
+
 The host requires **exact equality** for both `host_abi_version` and
 `plugin_api_version`; a mismatch in either causes the plugin to be rejected
 with a logged diagnostic. The `services_size` field in `OrcPluginServices`
@@ -419,6 +473,7 @@ compatibility mechanism.
 | 2 | 1 | `plugin_api_version` added to `StagePluginDescriptor`; public SDK headers published |
 | 3 | 1 | `OrcPluginServices` table added; `orc_register_stage_plugin` now receives `const OrcPluginServices*` as its first parameter; plugins must use the services table for logging instead of resolving host symbols directly |
 | 4 | 2 | Decode-Orc 2.0: `VideoFrameRepresentation` replaces `VideoFieldRepresentation` as the primary frame-data contract; `DAGStage::execute()` operates on frame-based artifacts; `DropoutRun` replaces `DropoutRegion`; `FieldID`/`FieldIDRange` removed — use `FrameID`/`FrameIDRange`. All plugins must be rebuilt against the v2.0 SDK |
+| 5 | 2 | `StagePluginDescriptor` gains the appended `toolchain_tag` field (populate with `ORC_SDK_TOOLCHAIN_TAG`); the loader requires the plugin's tag to equal the host's exactly. Registration helpers (`ORC_STAGE_PLUGIN_DESCRIPTOR`, `ORC_DEFINE_STAGE_PLUGIN`) added in `<orc/plugin/orc_plugin_registration.h>` |
 
 ### When the host increments a version
 
