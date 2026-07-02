@@ -46,8 +46,6 @@ class MockVideoFrameRepresentationArtifact
               (const, override));
 
   // Hints
-  MOCK_METHOD((std::optional<orc::ActiveLineHint>), get_active_line_hint, (),
-              (const, override));
   MOCK_METHOD((std::optional<orc::SourceParameters>), get_video_parameters, (),
               (const, override));
 };

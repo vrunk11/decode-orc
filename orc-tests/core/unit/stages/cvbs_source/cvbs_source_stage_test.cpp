@@ -656,16 +656,6 @@ TEST(CVBSSourcePhaseContractTest, ColourFrameIndex_IsUnknown) {
   EXPECT_EQ(desc->colour_frame_index, -1);
 }
 
-TEST(CVBSSourcePhaseContractTest, FramePhaseHint_IsNullopt) {
-  // The source stage provides no phase hint; it is set by
-  // ColourFramePhaseObserver.
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
-  PALCVBSSourceStage stage(deps);
-  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
-  ASSERT_NE(vfr, nullptr);
-  EXPECT_FALSE(vfr->get_frame_phase_hint(0).has_value());
-}
-
 // ===========================================================================
 // VFR navigation contract
 // ===========================================================================
@@ -676,8 +666,9 @@ TEST(CVBSVFRTest, FrameRange_StartsAtZero) {
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
   ASSERT_NE(vfr, nullptr);
   const auto range = vfr->frame_range();
+  // frame_range() is a closed [first, last] range; one frame → last = 0.
   EXPECT_EQ(range.first, 0u);
-  EXPECT_EQ(range.last, 1u);
+  EXPECT_EQ(range.last, 0u);
 }
 
 TEST(CVBSVFRTest, HasFrame_TrueForValidFrameID) {

@@ -838,27 +838,6 @@ bool ChromaSinkStage::trigger(
       videoParams.first_active_frame_line, videoParams.last_active_frame_line,
       videoParams.last_active_frame_line - videoParams.first_active_frame_line);
 
-  // Apply line parameter overrides from hints
-  // Hints provide both frame-based and field-based values
-  // Use frame-based values for video output (matches decoder requirements)
-  auto active_line_hint = vfr->get_active_line_hint();
-  if (active_line_hint && active_line_hint->is_valid()) {
-    videoParams.first_active_frame_line =
-        active_line_hint->first_active_frame_line;
-    videoParams.last_active_frame_line =
-        active_line_hint->last_active_frame_line;
-    ORC_LOG_DEBUG(
-        "ChromaSink: Using active line hint: frame first={}, last={} (field "
-        "first={}, last={})",
-        active_line_hint->first_active_frame_line,
-        active_line_hint->last_active_frame_line,
-        active_line_hint->first_active_field_line,
-        active_line_hint->last_active_field_line);
-  } else {
-    ORC_LOG_DEBUG(
-        "ChromaSink: No active line hint available, using metadata defaults");
-  }
-
   // Apply padding adjustments to active video region BEFORE configuring decoder
   // This ensures the decoder processes the correct region that will be written
   // to output
@@ -1669,11 +1648,12 @@ SourceField ChromaSinkStage::convertToSourceField(
   sf.seq_no = static_cast<int32_t>(frame_id) + 1;
   sf.is_first_field = is_first_field;
 
-  auto phase_hint = vfr->get_frame_phase_hint(frame_id);
-  if (phase_hint.has_value()) {
-    sf.frame_phase_id = static_cast<int32_t>(*phase_hint);
-    ORC_LOG_TRACE("ChromaSink: Frame {} colour_frame_index={}", frame_id,
-                  *phase_hint);
+  if (auto desc = vfr->get_frame_descriptor(frame_id)) {
+    if (desc->colour_frame_index >= 0) {
+      sf.frame_phase_id = static_cast<int32_t>(desc->colour_frame_index);
+      ORC_LOG_TRACE("ChromaSink: Frame {} colour_frame_index={}", frame_id,
+                    desc->colour_frame_index);
+    }
   }
 
   // PAL_M has NTSC-like frame geometry (525 lines, 909 samples/line); only

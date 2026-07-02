@@ -27,7 +27,7 @@ namespace orc {
  *
  * Many-to-Many stage. Aligns multiple VFrameR inputs so that output
  * frame_id 0 represents the same content across all sources.
- * Auto-detects alignment from VBI data (get_vbi_hint) or accepts a manual
+ * Auto-detects alignment from VBI data or accepts a manual
  * alignment map ("1+2, 2+2, 3+1, 4+1" = input_id+frame_offset).
  */
 class SourceAlignStage : public DAGStage,

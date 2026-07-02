@@ -31,7 +31,6 @@
 #include "orcgraphicsscene.h"
 #include "orcgraphmodel.h"
 #include "presenters/include/dropout_presenter.h"
-#include "presenters/include/hints_presenter.h"
 #include "presenters/include/vbi_presenter.h"
 #include "presenters/include/vbi_view_models.h"
 #include "render_coordinator.h"
@@ -39,7 +38,7 @@
 class OrcGraphicsView;
 class PreviewDialog;
 class VBIDialog;
-class HintsDialog;
+class VideoParameterObserverDialog;
 class NtscObserverDialog;
 class DropoutAnalysisDialog;
 class SNRAnalysisDialog;
@@ -124,8 +123,8 @@ class MainWindow : public QMainWindow {
   void onQtNodeSelected(QtNodes::NodeId nodeId);
   void onShowVBIDialog();
   void updateVBIDialog();
-  void onShowHintsDialog();
-  void updateHintsDialog();
+  void onShowVideoParameterObserverDialog();
+  void updateVideoParameterObserverDialog();
   void onShowQualityMetricsDialog();
   void updateQualityMetricsDialog();
   void onShowNtscObserverDialog();
@@ -305,8 +304,7 @@ class MainWindow : public QMainWindow {
   PreviewDialog* preview_dialog_;
   QualityMetricsDialog* quality_metrics_dialog_;
   VBIDialog* vbi_dialog_;
-  HintsDialog* hints_dialog_;
-  std::unique_ptr<orc::presenters::HintsPresenter> hints_presenter_;
+  VideoParameterObserverDialog* video_parameter_observer_dialog_;
   std::unique_ptr<orc::presenters::DropoutPresenter> dropout_presenter_;
   std::unique_ptr<orc::presenters::VbiPresenter> vbi_presenter_;
   // Note: project_presenter_ removed - use project_.presenter() instead

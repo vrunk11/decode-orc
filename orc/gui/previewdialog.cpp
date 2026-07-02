@@ -161,12 +161,12 @@ void PreviewDialog::setupUI() {
   connect(show_ntsc_observer_action_, &QAction::triggered, this,
           &PreviewDialog::showNtscObserverDialogRequested);
 
-  auto* hintsMenu = menu_bar_->addMenu("&Hints");
-  show_hints_action_ = hintsMenu->addAction("&Video Parameter Hints");
-  show_hints_action_->setShortcut(
+  show_video_parameter_observer_action_ =
+      observersMenu->addAction("&Video Parameters");
+  show_video_parameter_observer_action_->setShortcut(
       QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H));
-  connect(show_hints_action_, &QAction::triggered, this,
-          &PreviewDialog::showHintsDialogRequested);
+  connect(show_video_parameter_observer_action_, &QAction::triggered, this,
+          &PreviewDialog::showVideoParameterObserverDialogRequested);
 
   auto* viewMenu = menu_bar_->addMenu("&View");
   show_frame_timing_action_ = viewMenu->addAction("&Frame Timing");

@@ -20,7 +20,6 @@
 #include <optional>
 #include <vector>
 
-#include "../hints/active_line_hint.h"
 #include "frame_line_util.h"
 #include "video_metadata_types.h"
 
@@ -143,25 +142,8 @@ class VideoFrameRepresentation {
     return {};
   }
 
-  // Colour-frame sequence index for the given frame (-1 when unknown).
-  // Equivalent to FrameDescriptor::colour_frame_index; exposed as a separate
-  // hint so transform stages can propagate phase without re-deriving it.
-  virtual std::optional<int> get_frame_phase_hint(FrameID /*id*/) const {
-    return std::nullopt;
-  }
-
-  // Active video line range (frame-flat, 0-based).
-  virtual std::optional<ActiveLineHint> get_active_line_hint() const {
-    return std::nullopt;
-  }
-
   // Video parameters describing the signal geometry and level domain.
   virtual std::optional<SourceParameters> get_video_parameters() const {
-    return std::nullopt;
-  }
-
-  // Raw VBI data for the given frame, if available.
-  virtual std::optional<VbiData> get_vbi_hint(FrameID /*id*/) const {
     return std::nullopt;
   }
 
@@ -280,19 +262,9 @@ class VideoFrameRepresentationWrapper : public VideoFrameRepresentation {
   std::vector<DropoutRun> get_dropout_hints(FrameID id) const override {
     return source_ ? source_->get_dropout_hints(id) : std::vector<DropoutRun>{};
   }
-  std::optional<int> get_frame_phase_hint(FrameID id) const override {
-    return source_ ? source_->get_frame_phase_hint(id) : std::nullopt;
-  }
-  std::optional<ActiveLineHint> get_active_line_hint() const override {
-    return source_ ? source_->get_active_line_hint() : std::nullopt;
-  }
   std::optional<SourceParameters> get_video_parameters() const override {
     return source_ ? source_->get_video_parameters() : std::nullopt;
   }
-  std::optional<VbiData> get_vbi_hint(FrameID id) const override {
-    return source_ ? source_->get_vbi_hint(id) : std::nullopt;
-  }
-
   // Audio
   bool has_audio() const override {
     return source_ ? source_->has_audio() : false;

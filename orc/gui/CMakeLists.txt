@@ -73,9 +73,11 @@ set(ORC_GUI_LIB_SOURCES
     # VBI dialog
     vbidialog.cpp
     vbidialog.h
-    hintsdialog.cpp
-    hintsdialog.h
-    
+
+    # Video parameter observer dialog
+    videoparameterobserverdialog.cpp
+    videoparameterobserverdialog.h
+
     # NTSC observer dialog
     ntscobserverdialog.cpp
     ntscobserverdialog.h

@@ -12,7 +12,6 @@
 #include <memory>
 
 #include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
-#include "../hints/active_line_hint.h"
 #include "artifact.h"
 #include "preview_renderer.h"
 #include "stage_parameter.h"
@@ -23,8 +22,8 @@ namespace orc {
 // ============================================================================
 // VideoParamsOverrideFrameRepresentation
 // ============================================================================
-// Wraps a VideoFrameRepresentation and returns overridden SourceParameters
-// (and a derived ActiveLineHint). All sample access is forwarded unchanged.
+// Wraps a VideoFrameRepresentation and returns overridden SourceParameters.
+// All sample access is forwarded unchanged.
 //
 // When black_level or white_level are overridden, sets has_nonstandard_values.
 // When active video geometry is overridden, sets active_area_cropping_applied.
@@ -52,21 +51,6 @@ class VideoParamsOverrideFrameRepresentation
     return cached_params_;
   }
 
-  std::optional<ActiveLineHint> get_active_line_hint() const override {
-    if (!cached_params_.has_value() || !cached_params_->is_valid())
-      return std::nullopt;
-    if (cached_params_->first_active_frame_line >= 0 &&
-        cached_params_->last_active_frame_line >= 0) {
-      ActiveLineHint hint;
-      hint.first_active_frame_line = cached_params_->first_active_frame_line;
-      hint.last_active_frame_line = cached_params_->last_active_frame_line;
-      hint.source = HintSource::USER_OVERRIDE;
-      hint.confidence_pct = HintTraits::USER_CONFIDENCE;
-      return hint;
-    }
-    return std::nullopt;
-  }
-
  private:
   std::optional<SourceParameters> cached_params_;
 };
@@ -86,7 +70,7 @@ class VideoParamsStage : public DAGStage,
     return NodeTypeInfo{NodeType::TRANSFORM,
                         "video_params",
                         "Video Parameters",
-                        "Override video parameter hints (dimensions, signal "
+                        "Override video parameters (dimensions, signal "
                         "levels, active area geometry)",
                         1,
                         1,

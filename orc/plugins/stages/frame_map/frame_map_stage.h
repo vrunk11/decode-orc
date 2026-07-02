@@ -82,7 +82,6 @@ class FrameMappedRepresentation : public VideoFrameRepresentationWrapper,
 
   // Hints
   std::vector<DropoutRun> get_dropout_hints(FrameID id) const override;
-  std::optional<int> get_frame_phase_hint(FrameID id) const override;
   std::optional<SourceParameters> get_video_parameters() const override {
     return source_ ? source_->get_video_parameters() : std::nullopt;
   }

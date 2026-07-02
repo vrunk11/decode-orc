@@ -22,7 +22,6 @@
 #include "frametimingdialog.h"
 #include "frametimingwidget.h"
 #include "generic_analysis_dialog.h"
-#include "hintsdialog.h"
 #include "line_navigation_mapper.h"
 #include "logging.h"
 #include "masklineconfigdialog.h"
@@ -30,12 +29,11 @@
 #include "orcgraphicsview.h"
 #include "pluginmanagerdialog.h"
 #include "presenters/include/analysis_presenter.h"
-#include "presenters/include/hints_presenter.h"
-#include "presenters/include/hints_view_models.h"
 #include "presenters/include/ntsc_observation_presenter.h"
 #include "presenters/include/project_presenter.h"
 #include "presenters/include/render_presenter.h"
 #include "presenters/include/vbi_presenter.h"
+#include "presenters/include/video_parameter_observation_presenter.h"
 #include "previewdialog.h"
 #include "projectpropertiesdialog.h"
 #include "qualitymetricsdialog.h"
@@ -45,6 +43,7 @@
 #include "stageparameterdialog.h"
 #include "vbidialog.h"
 #include "version.h"
+#include "videoparameterobserverdialog.h"
 #include "waveformmonitordialog.h"
 
 // Forward declarations for core types used via opaque pointers
@@ -290,12 +289,6 @@ MainWindow::MainWindow(QWidget* parent)
   // Create and start render coordinator
   render_coordinator_ = std::make_unique<RenderCoordinator>(this);
 
-  // Presenter for hint data (uses DAG provider to fetch hints via core
-  // renderer)
-  hints_presenter_ = std::make_unique<orc::presenters::HintsPresenter>(
-      std::function<std::shared_ptr<void>()>(
-          [this]() -> std::shared_ptr<void> { return project_.getDAG(); }));
-
   // Presenter for VBI observations
   vbi_presenter_ = std::make_unique<orc::presenters::VbiPresenter>(
       [this]() -> std::shared_ptr<void> { return project_.getDAG(); });
@@ -455,8 +448,8 @@ void MainWindow::setupUI() {
   // Create VBI dialog (initially hidden)
   vbi_dialog_ = new VBIDialog(this);
 
-  // Create hints dialog (initially hidden)
-  hints_dialog_ = new HintsDialog(this);
+  // Create video parameter observer dialog (initially hidden)
+  video_parameter_observer_dialog_ = new VideoParameterObserverDialog(this);
 
   // Create NTSC observer dialog (initially hidden)
   ntsc_observer_dialog_ = new NtscObserverDialog(this);
@@ -504,8 +497,9 @@ void MainWindow::setupUI() {
           });
   connect(preview_dialog_, &PreviewDialog::showVBIDialogRequested, this,
           &MainWindow::onShowVBIDialog);
-  connect(preview_dialog_, &PreviewDialog::showHintsDialogRequested, this,
-          &MainWindow::onShowHintsDialog);
+  connect(preview_dialog_,
+          &PreviewDialog::showVideoParameterObserverDialogRequested, this,
+          &MainWindow::onShowVideoParameterObserverDialog);
   connect(preview_dialog_, &PreviewDialog::showQualityMetricsDialogRequested,
           this, &MainWindow::onShowQualityMetricsDialog);
   connect(preview_dialog_, &PreviewDialog::showNtscObserverDialogRequested,
@@ -949,8 +943,9 @@ void MainWindow::closeAllDialogs() {
   if (vbi_dialog_ && vbi_dialog_->isVisible()) {
     vbi_dialog_->hide();
   }
-  if (hints_dialog_ && hints_dialog_->isVisible()) {
-    hints_dialog_->hide();
+  if (video_parameter_observer_dialog_ &&
+      video_parameter_observer_dialog_->isVisible()) {
+    video_parameter_observer_dialog_->hide();
   }
   if (ntsc_observer_dialog_ && ntsc_observer_dialog_->isVisible()) {
     ntsc_observer_dialog_->hide();
@@ -4026,18 +4021,16 @@ void MainWindow::onShowVBIDialog() {
   updateVBIDialog();
 }
 
-void MainWindow::onShowHintsDialog() {
-  if (!hints_dialog_) {
+void MainWindow::onShowVideoParameterObserverDialog() {
+  if (!video_parameter_observer_dialog_) {
     return;
   }
 
-  // Show the dialog first
-  hints_dialog_->show();
-  hints_dialog_->raise();
-  hints_dialog_->activateWindow();
+  video_parameter_observer_dialog_->show();
+  video_parameter_observer_dialog_->raise();
+  video_parameter_observer_dialog_->activateWindow();
 
-  // Update hints information after showing
-  updateHintsDialog();
+  updateVideoParameterObserverDialog();
 }
 
 void MainWindow::onShowQualityMetricsDialog() {
@@ -4511,7 +4504,7 @@ void MainWindow::updateAllPreviewComponents() {
   // 4. Frame changes - line scope updates via its own connection to
   // previewFrameChanged signal
   updateVBIDialog();
-  updateHintsDialog();
+  updateVideoParameterObserverDialog();
   updateQualityMetricsDialog();
   updateNtscObserverDialog();
 
@@ -4601,68 +4594,83 @@ void MainWindow::updateVBIDialog() {
   }
 }
 
-void MainWindow::updateHintsDialog() {
-  // Only update if hints dialog is visible
-  if (!hints_dialog_ || !hints_dialog_->isVisible()) {
+void MainWindow::updateVideoParameterObserverDialog() {
+  if (!video_parameter_observer_dialog_ ||
+      !video_parameter_observer_dialog_->isVisible()) {
     return;
   }
 
-  // Get current field being displayed
   if (!current_view_node_id_.is_valid()) {
-    hints_dialog_->clearHints();
+    video_parameter_observer_dialog_->clearObservations();
     return;
   }
 
-  // Get the current index from the preview slider
   int current_index = preview_dialog_->previewSlider()->value();
 
-  // Check if we're in frame mode (any mode that shows two fields)
   bool is_frame_mode =
       (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
        current_output_type_ == orc::PreviewOutputType::Split);
 
-  // Get field ID from core library (handles field ordering correctly)
-  orc::FieldID field_id;
-  orc::FieldID second_field_id;
+  orc::FieldID field1_id;
+  orc::FieldID field2_id;
   if (is_frame_mode) {
-    // Use core library to determine first field of frame
     auto frame_fields = render_coordinator_->getFrameFields(
         current_view_node_id_, current_index);
     if (!frame_fields.is_valid) {
-      hints_dialog_->clearHints();
+      video_parameter_observer_dialog_->clearObservations();
       return;
     }
-    field_id = orc::FieldID(frame_fields.first_field);
-    second_field_id = orc::FieldID(frame_fields.second_field);
+    field1_id = orc::FieldID(frame_fields.first_field);
+    field2_id = orc::FieldID(frame_fields.second_field);
   } else {
-    // Field mode - simple mapping
-    field_id = orc::FieldID(current_index);
+    field1_id = orc::FieldID(current_index);
+    field2_id = orc::FieldID(0);
   }
 
-  // Get hints from the current DAG/node
-  // Note: This is a synchronous access - we'll create a temporary renderer
-  if (!hints_presenter_) {
-    hints_dialog_->clearHints();
-    return;
+  try {
+    auto* core_project = project_.presenter()->getCoreProjectHandle();
+    if (!core_project) {
+      video_parameter_observer_dialog_->clearObservations();
+      return;
+    }
+
+    orc::presenters::RenderPresenter render_presenter(core_project);
+    render_presenter.setDAG(project_.getDAG());
+
+    auto video_params =
+        render_presenter.getVideoParameters(current_view_node_id_);
+
+    if (is_frame_mode) {
+      const auto* ctx1 = render_presenter.getObservationContext(
+          current_view_node_id_, field1_id);
+      const auto* ctx2 = render_presenter.getObservationContext(
+          current_view_node_id_, field2_id);
+      if (!ctx1 || !ctx2) {
+        video_parameter_observer_dialog_->clearObservations();
+        return;
+      }
+      auto obs1 = orc::presenters::VideoParameterObservationPresenter::
+          extractObservations(field1_id, ctx1, video_params);
+      auto obs2 = orc::presenters::VideoParameterObservationPresenter::
+          extractObservations(field2_id, ctx2, video_params);
+      video_parameter_observer_dialog_->updateObservationsForFrame(
+          field1_id, obs1, field2_id, obs2);
+    } else {
+      const auto* ctx = render_presenter.getObservationContext(
+          current_view_node_id_, field1_id);
+      if (!ctx) {
+        video_parameter_observer_dialog_->clearObservations();
+        return;
+      }
+      auto obs = orc::presenters::VideoParameterObservationPresenter::
+          extractObservations(field1_id, ctx, video_params);
+      video_parameter_observer_dialog_->updateObservations(field1_id, obs);
+    }
+  } catch (const std::exception& e) {
+    ORC_LOG_ERROR("Failed to get video parameter observations: {}", e.what());
+    video_parameter_observer_dialog_->clearObservations();
   }
-
-  auto hints =
-      hints_presenter_->getHintsForField(current_view_node_id_, field_id);
-  hints_dialog_->updateFieldParityHint(hints.parity);
-
-  // Update phase hint based on mode
-  if (is_frame_mode) {
-    auto second_hints = hints_presenter_->getHintsForField(
-        current_view_node_id_, second_field_id);
-    hints_dialog_->updateFieldPhaseHintForFrame(hints.phase,
-                                                second_hints.phase);
-  } else {
-    hints_dialog_->updateFieldPhaseHint(hints.phase);
-  }
-
-  hints_dialog_->updateActiveLineHint(hints.active_line);
-  hints_dialog_->updateVideoParameters(hints.video_params);
 }
 
 void MainWindow::updateNtscObserverDialog() {
@@ -5380,9 +5388,6 @@ void MainWindow::propagateAmplitudeUnit() {
       project_.presenter()->getAmplitudeUnit();
   if (quality_metrics_dialog_) {
     quality_metrics_dialog_->setAmplitudeUnit(unit);
-  }
-  if (hints_dialog_) {
-    hints_dialog_->setAmplitudeUnit(unit);
   }
   for (auto& [id, dlg] : burst_level_analysis_dialogs_) {
     if (dlg) dlg->setAmplitudeUnit(unit);

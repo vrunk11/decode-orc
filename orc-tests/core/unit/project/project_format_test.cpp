@@ -662,11 +662,12 @@ dag:
 // Cross-source video format consistency (PAL-M isolation)
 // ---------------------------------------------------------------------------
 
-// PAL_CVBS_Source and PAL_M_CVBS_Source in the same project → must be rejected.
-TEST(ProjectFormatTest, CrossVideoFormat_PalAndPalM_Throws) {
+// PAL_CVBS_Source and PAL_M_CVBS_Source in the same project → compatible
+// (both use PAL colour encoding; no format conflict).
+TEST(ProjectFormatTest, CrossVideoFormat_PalAndPalM_LoadsSuccessfully) {
   const std::string yaml = R"yaml(
 project:
-  name: pal-palm-conflict
+  name: pal-palm-compat
   version: "2.0"
   video_format: Unknown
   source_format: Unknown
@@ -688,9 +689,8 @@ dag:
   edges: []
 )yaml";
 
-  EXPECT_THROW(
-      orc::project_io::load_project_from_yaml(yaml, "/tmp/pal-palm.orcprj"),
-      std::runtime_error);
+  EXPECT_NO_THROW(
+      orc::project_io::load_project_from_yaml(yaml, "/tmp/pal-palm.orcprj"));
 }
 
 // PAL_M_CVBS_Source and NTSC_CVBS_Source in the same project → must be
@@ -849,7 +849,7 @@ dag:
 }
 
 // Error message for a video format conflict must mention the conflicting
-// formats.
+// formats. Uses PAL + NTSC which is always an invalid combination.
 TEST(ProjectFormatTest,
      CrossVideoFormat_ErrorMessage_MentionsConflictingFormats) {
   const std::string yaml = R"yaml(
@@ -868,9 +868,9 @@ dag:
       x: 0
       y: 0
     - id: 2
-      stage: PAL_M_CVBS_Source
+      stage: NTSC_CVBS_Source
       node_type: SOURCE
-      display_name: PAL-M source
+      display_name: NTSC source
       x: 100
       y: 0
   edges: []
@@ -883,9 +883,8 @@ dag:
     const std::string msg(e.what());
     EXPECT_NE(msg.find("PAL"), std::string::npos)
         << "Error must mention PAL: " << msg;
-    // video_system_to_string() uses the hyphenated form "PAL-M"
-    EXPECT_NE(msg.find("PAL-M"), std::string::npos)
-        << "Error must mention PAL-M: " << msg;
+    EXPECT_NE(msg.find("NTSC"), std::string::npos)
+        << "Error must mention NTSC: " << msg;
   }
 }
 

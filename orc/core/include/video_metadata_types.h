@@ -17,7 +17,6 @@ namespace orc {
 /**
  * @brief VBI (Vertical Blanking Interval) data
  *
- * This structure is exposed through the VFR interface via get_vbi_hint().
  * It contains VBI data that can be used for display or further processing.
  */
 struct VbiData {

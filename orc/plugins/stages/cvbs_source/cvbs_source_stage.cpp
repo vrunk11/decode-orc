@@ -270,18 +270,6 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
     return result;
   }
 
-  std::optional<ActiveLineHint> get_active_line_hint() const override {
-    if (video_params_.first_active_frame_line < 0) return std::nullopt;
-    ActiveLineHint hint;
-    hint.first_active_frame_line = video_params_.first_active_frame_line;
-    hint.last_active_frame_line = video_params_.last_active_frame_line;
-    // Field-level active lines: approximately half the frame-level range.
-    hint.first_active_field_line = video_params_.first_active_frame_line / 2;
-    hint.last_active_field_line = video_params_.last_active_frame_line / 2;
-    hint.source = HintSource::METADATA;
-    return hint;
-  }
-
   std::optional<SourceParameters> get_video_parameters() const override {
     return video_params_;
   }

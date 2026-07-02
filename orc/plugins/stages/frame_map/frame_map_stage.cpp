@@ -214,18 +214,6 @@ std::vector<DropoutRun> FrameMappedRepresentation::get_dropout_hints(
                  : std::vector<DropoutRun>{};
 }
 
-std::optional<int> FrameMappedRepresentation::get_frame_phase_hint(
-    FrameID id) const {
-  auto idx = resolve_index(id);
-  if (!idx) return std::nullopt;
-  if (is_padding(*idx)) {
-    const auto* pd = find_padding(id);
-    return pd ? std::optional<int>{pd->colour_frame_index} : std::nullopt;
-  }
-  return source_ ? source_->get_frame_phase_hint(frame_mapping_[*idx])
-                 : std::nullopt;
-}
-
 uint32_t FrameMappedRepresentation::get_audio_sample_count(FrameID id) const {
   auto idx = resolve_index(id);
   if (!idx || is_padding(*idx)) return 0;

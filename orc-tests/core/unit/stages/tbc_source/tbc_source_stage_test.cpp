@@ -141,13 +141,13 @@ TEST(TBCSourceStageTest, ParameterDescriptors_ContainsInputPath) {
 TEST(TBCSourceStageTest, ParameterDescriptors_ContainsYPath) {
   orc::TBCSourceStage stage;
   auto descs = stage.get_parameter_descriptors();
-  expect_file_path_descriptor(descs, "y_path", ".tbc");
+  expect_file_path_descriptor(descs, "y_path", ".tbcy");
 }
 
 TEST(TBCSourceStageTest, ParameterDescriptors_ContainsCPath) {
   orc::TBCSourceStage stage;
   auto descs = stage.get_parameter_descriptors();
-  expect_file_path_descriptor(descs, "c_path", ".tbc");
+  expect_file_path_descriptor(descs, "c_path", ".tbcc");
 }
 
 TEST(TBCSourceStageTest, ParameterDescriptors_ContainsPcmPath) {

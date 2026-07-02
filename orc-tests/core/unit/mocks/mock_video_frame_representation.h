@@ -48,13 +48,7 @@ class MockVideoFrameRepresentation : public orc::VideoFrameRepresentation {
   // Hints
   MOCK_METHOD((std::vector<orc::DropoutRun>), get_dropout_hints, (orc::FrameID),
               (const, override));
-  MOCK_METHOD((std::optional<int>), get_frame_phase_hint, (orc::FrameID),
-              (const, override));
-  MOCK_METHOD((std::optional<orc::ActiveLineHint>), get_active_line_hint, (),
-              (const, override));
   MOCK_METHOD((std::optional<orc::SourceParameters>), get_video_parameters, (),
-              (const, override));
-  MOCK_METHOD((std::optional<orc::VbiData>), get_vbi_hint, (orc::FrameID),
               (const, override));
 
   // Audio

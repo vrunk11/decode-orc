@@ -46,7 +46,6 @@ DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
   }
 
   const size_t total_frames_count = static_cast<size_t>(range.count());
-  const auto active_hint = representation->get_active_line_hint();
   const auto video_params = representation->get_video_parameters();
 
   // Nominal samples per line for line-position approximation in visible-area
@@ -94,9 +93,10 @@ DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
             run.sample_start % static_cast<uint64_t>(nominal_spl));
 
         // Filter by active frame line range.
-        if (active_hint) {
-          if (approx_line < active_hint->first_active_frame_line ||
-              approx_line > active_hint->last_active_frame_line) {
+        if (video_params && video_params->first_active_frame_line >= 0 &&
+            video_params->last_active_frame_line >= 0) {
+          if (approx_line < video_params->first_active_frame_line ||
+              approx_line > video_params->last_active_frame_line) {
             include = false;
           }
         }

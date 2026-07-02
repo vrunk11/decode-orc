@@ -46,8 +46,6 @@ TEST(ChromaSinkStageSafetyTest, RawSinkTrigger_RejectsInvalidNtscGeometry) {
 
   EXPECT_CALL(*vfr, get_video_parameters())
       .WillRepeatedly(Return(make_too_narrow_ntsc_params()));
-  EXPECT_CALL(*vfr, get_active_line_hint())
-      .WillRepeatedly(Return(std::nullopt));
 
   const bool result =
       stage.trigger({vfr},
@@ -69,8 +67,6 @@ TEST(ChromaSinkStageSafetyTest, FfmpegSinkTrigger_RejectsInvalidPalGeometry) {
 
   EXPECT_CALL(*vfr, get_video_parameters())
       .WillRepeatedly(Return(make_too_narrow_pal_params()));
-  EXPECT_CALL(*vfr, get_active_line_hint())
-      .WillRepeatedly(Return(std::nullopt));
 
   const bool result =
       stage.trigger({vfr},

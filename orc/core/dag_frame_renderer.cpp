@@ -17,6 +17,7 @@
 #include "observers/black_psnr_observer.h"
 #include "observers/burst_level_observer.h"
 #include "observers/closed_caption_observer.h"
+#include "observers/colour_frame_phase_observer.h"
 #include "observers/field_quality_observer.h"
 #include "observers/fm_code_observer.h"
 #include "observers/white_flag_observer.h"
@@ -230,6 +231,9 @@ FrameRenderResult DAGFrameRenderer::execute_to_node(NodeID node_id,
     // Run all observers to populate observation context for both fields of this
     // frame.
     auto& obs_ctx = executor_->get_observation_context();
+    ColourFramePhaseObserver colour_frame_phase_observer;
+    colour_frame_phase_observer.process_frame(*vfr, frame_id, obs_ctx);
+
     BiphaseObserver biphase_observer;
     biphase_observer.process_frame(*vfr, frame_id, obs_ctx);
 

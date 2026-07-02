@@ -324,11 +324,13 @@ class PreviewDialog : public QDialog {
   void aspectRatioModeChanged(int index);
   void exportPNGRequested();
   void showVBIDialogRequested();  // Emitted when VBI Decoder menu item selected
-  void showHintsDialogRequested();  // Emitted when Hints menu item selected
-  void showQualityMetricsDialogRequested();  // Emitted when Quality Metrics
-                                             // menu item selected
-  void showNtscObserverDialogRequested();    // Emitted when NTSC Observer menu
-                                             // item selected
+  void
+  showVideoParameterObserverDialogRequested();  // Emitted when Video Parameter
+                                                // Observer menu item selected
+  void showQualityMetricsDialogRequested();     // Emitted when Quality Metrics
+                                                // menu item selected
+  void showNtscObserverDialogRequested();  // Emitted when NTSC Observer menu
+                                           // item selected
   void showDropoutsChanged(
       bool show);  // Emitted when dropout visibility changes
   void lineScopeRequested(int image_x,
@@ -376,7 +378,7 @@ class PreviewDialog : public QDialog {
   QStatusBar* status_bar_;
   QAction* export_png_action_;
   QAction* show_vbi_action_;
-  QAction* show_hints_action_;
+  QAction* show_video_parameter_observer_action_;
   QAction* show_quality_metrics_action_;
   QAction* show_ntsc_observer_action_;
   QAction* show_frame_timing_action_;

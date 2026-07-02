@@ -14,12 +14,12 @@ add_library(orc-presenters STATIC
     src/mask_line_presenter.cpp
     src/ffmpeg_preset_presenter.cpp
     src/dropout_editor_presenter.cpp
-    src/hints_presenter.cpp
     src/hints_view_models.cpp
     src/dropout_presenter.cpp
     src/metrics_presenter.cpp
     src/vbi_presenter.cpp
     src/ntsc_observation_presenter.cpp
+    src/video_parameter_observation_presenter.cpp
     src/core_init.cpp
 )
 

@@ -273,27 +273,6 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   // --------------------------------------------------------------------------
   // Hints
   // --------------------------------------------------------------------------
-  std::optional<int> get_frame_phase_hint(FrameID id) const override {
-    if (!has_frame(id)) return std::nullopt;
-    ensure_frame_cached(id);
-    const CachedFrame* cf = frame_cache_.get_ptr(id);
-    if (!cf) return std::nullopt;
-    const int idx = cf->colour_frame_index;
-    return (idx == -1) ? std::optional<int>{std::nullopt}
-                       : std::optional<int>{idx};
-  }
-
-  std::optional<ActiveLineHint> get_active_line_hint() const override {
-    if (source_params_.first_active_frame_line < 0) return std::nullopt;
-    ActiveLineHint hint;
-    hint.first_active_frame_line = source_params_.first_active_frame_line;
-    hint.last_active_frame_line = source_params_.last_active_frame_line;
-    hint.first_active_field_line = source_params_.first_active_frame_line / 2;
-    hint.last_active_field_line = source_params_.last_active_frame_line / 2;
-    hint.source = HintSource::METADATA;
-    return hint;
-  }
-
   std::vector<DropoutRun> get_dropout_hints(FrameID id) const override {
     if (!has_frame(id)) return {};
 

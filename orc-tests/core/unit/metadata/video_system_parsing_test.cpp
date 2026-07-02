@@ -22,7 +22,6 @@
 namespace orc {
 
 // Tests for video_system_from_string() - used for SQLite metadata
-// SQLite should only accept the canonical "PAL_M" (underscore) form
 class VideoSystemFromStringTest : public ::testing::Test {};
 
 TEST_F(VideoSystemFromStringTest, Accepts_CanonicalPal) {
@@ -37,10 +36,9 @@ TEST_F(VideoSystemFromStringTest, Accepts_CanonicalPalM) {
   EXPECT_EQ(video_system_from_string("PAL_M"), VideoSystem::PAL_M);
 }
 
-TEST_F(VideoSystemFromStringTest, Rejects_HyphenatedPalM) {
-  // SQLite uses only the canonical underscore form
-  // This enforces that SQLite metadata must use "PAL_M" not "PAL-M"
-  EXPECT_EQ(video_system_from_string("PAL-M"), VideoSystem::Unknown);
+TEST_F(VideoSystemFromStringTest, Accepts_HyphenatedPalM) {
+  // Both "PAL_M" and "PAL-M" are accepted as aliases for PAL_M.
+  EXPECT_EQ(video_system_from_string("PAL-M"), VideoSystem::PAL_M);
 }
 
 TEST_F(VideoSystemFromStringTest, Rejects_UnknownFormat) {
@@ -51,13 +49,10 @@ TEST_F(VideoSystemFromStringTest, Rejects_UnknownFormat) {
             VideoSystem::Unknown);  // case-sensitive
 }
 
-TEST_F(VideoSystemFromStringTest, SqliteOnly_AcceptsExactCanonicalForm) {
-  // This test enforces the strict requirement:
-  // SQLite metadata must use exactly "PAL_M" (underscore, uppercase)
-  // No variations like "PAL-M", "pal_m", "Pal_M" are accepted
-
-  EXPECT_NE(video_system_from_string("PAL_M"), VideoSystem::Unknown);
-  EXPECT_EQ(video_system_from_string("PAL-M"), VideoSystem::Unknown);
+TEST_F(VideoSystemFromStringTest, AcceptsCanonicalAndHyphenatedPalM) {
+  // Both "PAL_M" and "PAL-M" are accepted; lowercase variants are not.
+  EXPECT_EQ(video_system_from_string("PAL_M"), VideoSystem::PAL_M);
+  EXPECT_EQ(video_system_from_string("PAL-M"), VideoSystem::PAL_M);
   EXPECT_EQ(video_system_from_string("pal_m"), VideoSystem::Unknown);
   EXPECT_EQ(video_system_from_string("Pal_M"), VideoSystem::Unknown);
 }

@@ -115,10 +115,6 @@ class AlignedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
     return runs;
   }
 
-  std::optional<VbiData> get_vbi_hint(FrameID id) const override {
-    return source_ ? source_->get_vbi_hint(id + offset_) : std::nullopt;
-  }
-
  private:
   FrameID offset_;
 };
@@ -234,11 +230,6 @@ class PaddedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
       run.frame_id = id;
     }
     return runs;
-  }
-
-  std::optional<VbiData> get_vbi_hint(FrameID id) const override {
-    if (id < pad_count_) return std::nullopt;
-    return source_ ? source_->get_vbi_hint(id - pad_count_) : std::nullopt;
   }
 
  private:
