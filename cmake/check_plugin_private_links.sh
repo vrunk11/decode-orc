@@ -3,6 +3,14 @@
 # Purpose:     Scan plugin build files for direct private host link-target coupling.
 #              This is a hard enforcement gate; violations fail the build.
 #
+# Usage:       check_plugin_private_links.sh [<root>]
+#              In-tree mode (<root> is a decode-orc checkout): scans
+#              <root>/orc/plugins/stages and <root>/3rd-party-plugins.
+#              Standalone mode (neither directory exists under <root>):
+#              scans every CMakeLists.txt under <root> itself — this is how
+#              third-party plugin authors run the gate against their own
+#              repository.
+#
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 set -e
@@ -55,13 +63,21 @@ scan_file() {
 echo "Scanning plugin build files for private host link targets..."
 echo
 
-while IFS= read -r cmake_file; do
-    scan_file "$cmake_file"
-done < <(find "$REPO_ROOT/orc/plugins/stages" -name CMakeLists.txt -type f | sort)
-
-while IFS= read -r cmake_file; do
-    scan_file "$cmake_file"
-done < <(find "$REPO_ROOT/3rd-party-plugins" -name CMakeLists.txt -type f | sort)
+if [[ -d "$REPO_ROOT/orc/plugins/stages" || -d "$REPO_ROOT/3rd-party-plugins" ]]; then
+    # In-tree mode: decode-orc checkout.
+    for scan_root in "$REPO_ROOT/orc/plugins/stages" "$REPO_ROOT/3rd-party-plugins"; do
+        [[ -d "$scan_root" ]] || continue
+        while IFS= read -r cmake_file; do
+            scan_file "$cmake_file"
+        done < <(find "$scan_root" -name CMakeLists.txt -type f | sort)
+    done
+else
+    # Standalone mode: <root> is a single external plugin tree.
+    while IFS= read -r cmake_file; do
+        scan_file "$cmake_file"
+    done < <(find "$REPO_ROOT" -name CMakeLists.txt -type f \
+        ! -path '*/build/*' ! -path '*/.git/*' | sort)
+fi
 
 echo
 if [[ "$VIOLATIONS" -eq 0 ]]; then

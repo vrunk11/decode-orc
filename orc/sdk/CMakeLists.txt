@@ -22,6 +22,10 @@
 
 add_library(orc-plugin-sdk INTERFACE)
 
+# Exported as orc::plugin-sdk from the installed package (the in-tree target
+# name keeps the orc- prefix; EXPORT_NAME controls only the imported name).
+set_target_properties(orc-plugin-sdk PROPERTIES EXPORT_NAME plugin-sdk)
+
 target_include_directories(orc-plugin-sdk INTERFACE
     # SDK headers: <orc/plugin/...> and <orc/stage/...>.
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -50,13 +54,27 @@ install(DIRECTORY include/
     FILES_MATCHING PATTERN "*.h"
 )
 
-# CMake package config files (see cmake/decode-orc-plugin-sdk/)
-# Note: full CMake package export (find_package support) requires orc-core to
-# also be installed and exported. The Config.cmake and Helpers.cmake are
-# installed here; the Targets.cmake is generated when orc-core is packaged.
-# Full out-of-tree package support is completed in Phase 7.
+# Exported targets for out-of-tree plugin builds. The export set collects
+# orc-plugin-sdk (this file), orc-core (orc/core/CMakeLists.txt), and
+# orc-common (orc/common/CMakeLists.txt); the generated Targets file defines
+# orc::plugin-sdk plus the orc::orc-core / orc::orc-common link targets it
+# references.
+install(TARGETS orc-plugin-sdk EXPORT decode-orc-plugin-sdkTargets)
+install(EXPORT decode-orc-plugin-sdkTargets
+    FILE decode-orc-plugin-sdkTargets.cmake
+    NAMESPACE orc::
+    DESTINATION lib/cmake/decode-orc-plugin-sdk
+)
+
+# CMake package config files (see cmake/decode-orc-plugin-sdk/). The Config
+# file is installed under the exact name find_package(decode-orc-plugin-sdk)
+# looks for on case-sensitive filesystems: <package-name>Config.cmake.
 install(FILES
     ${CMAKE_SOURCE_DIR}/cmake/decode-orc-plugin-sdk/DecodeOrcPluginSDKConfig.cmake
+    DESTINATION lib/cmake/decode-orc-plugin-sdk
+    RENAME decode-orc-plugin-sdkConfig.cmake
+)
+install(FILES
     ${CMAKE_SOURCE_DIR}/cmake/decode-orc-plugin-sdk/DecodeOrcPluginSDKHelpers.cmake
     DESTINATION lib/cmake/decode-orc-plugin-sdk
 )

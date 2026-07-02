@@ -75,6 +75,24 @@ jobs:
             ctest --test-dir build -L sdk -R 'PluginPrivate' --parallel \"\$BUILD_JOBS\" --output-on-failure --output-junit \${PWD}/build/ctest-results-sdk.xml
             ctest --test-dir build -L format --output-on-failure --output-junit \${PWD}/build/ctest-results-format.xml
 
+            # --- Installed-package validation (out-of-tree plugin SDK) ---
+            # Install to a scratch prefix, build the fixture plugin against the
+            # exported decode-orc-plugin-sdk package exactly as a third-party
+            # author would, load it into the installed orc-cli, and run the
+            # installed enforcement gates against the fixture tree.
+            cmake --install build --prefix \"\$PWD/build/sdk-prefix\" > build/install-sdk-prefix.log
+            cmake -S orc-tests/fixtures/external-stage-plugin -B build/external-plugin \
+              -DCMAKE_BUILD_TYPE=Debug \
+              -DCMAKE_PREFIX_PATH=\"\$PWD/build/sdk-prefix\"
+            cmake --build build/external-plugin --parallel \"\$BUILD_JOBS\"
+            ORC_STAGE_PLUGIN_PATHS=\"\$PWD/build/external-plugin/lib/orc-stage-plugins\" \
+              ./build/sdk-prefix/bin/orc-cli plugins list \
+              | grep -F 'decode-orc.fixture.external_passthrough' \
+              || { echo 'Fixture plugin did not load into installed orc-cli'; exit 1; }
+            bash build/sdk-prefix/lib/cmake/decode-orc-plugin-sdk/check_plugin_private_includes.sh orc-tests/fixtures/external-stage-plugin
+            bash build/sdk-prefix/lib/cmake/decode-orc-plugin-sdk/check_plugin_private_links.sh orc-tests/fixtures/external-stage-plugin
+            echo 'Installed-package validation passed'
+
             # --- CTest timing summary ---
             python3 cmake/summarize_ctest_junit.py --input build/ctest-results-unit.xml --output build/ctest-results-unit-summary.md --top 25
 

@@ -37,3 +37,12 @@ install(DIRECTORY include/
     DESTINATION include/orc/common
     FILES_MATCHING PATTERN "*.h"
 )
+
+# orc-common sits in orc-core's PUBLIC link interface, so it must ship in the
+# decode-orc-plugin-sdk export set for out-of-tree plugin linking (the export
+# is installed by orc/sdk/CMakeLists.txt).
+install(TARGETS orc-common EXPORT decode-orc-plugin-sdkTargets
+    ARCHIVE DESTINATION lib COMPONENT Runtime
+    LIBRARY DESTINATION lib COMPONENT Runtime
+    RUNTIME DESTINATION bin COMPONENT Runtime
+)

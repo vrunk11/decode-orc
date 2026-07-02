@@ -6,17 +6,27 @@ the Decode-Orc source repository are required.
 
 ## Quick Start
 
-Clone the official skeleton template to get a working scaffold immediately:
+First install the SDK package from a decode-orc checkout (see
+[Obtaining the SDK](#obtaining-the-sdk) below), then build a plugin against
+it. The smallest complete, in-repo example is the CI fixture plugin at
+`orc-tests/fixtures/external-stage-plugin/` — three files (CMakeLists.txt,
+plugin.cpp, one stage header) that configure, build, and load exactly as an
+external plugin:
+
+```bash
+cmake -S my-orc-plugin -B my-orc-plugin/build \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_PREFIX_PATH=/path/to/sdk-prefix
+cmake --build my-orc-plugin/build -j
+```
+
+Alternatively, clone the official skeleton template for a scaffold with unit
+tests and CI workflows (note: the skeleton repository may lag the SDK — the
+in-repo fixture above is always in sync with the installed package):
 
 ```bash
 git clone https://github.com/simoninns/orc-plugin_skeleton my-orc-plugin
-cd my-orc-plugin
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j
 ```
-
-The skeleton includes a sample passthrough stage, unit tests, and
-Linux/macOS/Windows CI workflows.
 
 ## SDK Headers
 
@@ -106,12 +116,29 @@ headers or link private internals.
 
 ## CMake Integration
 
+### Obtaining the SDK
+
+The SDK is installed as part of a decode-orc install tree. From a decode-orc
+checkout:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
+cmake --install build --prefix /path/to/sdk-prefix
+```
+
+The prefix then contains the CMake package
+(`lib/cmake/decode-orc-plugin-sdk/`), the public SDK headers
+(`include/decode-orc-plugin-sdk/`), the host libraries plugins link against,
+and the `orc-cli`/`orc-gui` binaries used to load and test your plugin.
+
 ### Out-of-tree plugin project
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
-project(my-orc-stage CXX)
+project(my-orc-stage VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(decode-orc-plugin-sdk REQUIRED)
 
@@ -123,11 +150,32 @@ orc_add_stage_plugin(
 )
 ```
 
+Configure with the SDK prefix on `CMAKE_PREFIX_PATH`:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_PREFIX_PATH=/path/to/sdk-prefix
+cmake --build build -j
+```
+
+The built plugin lands in `<build-dir>/lib/orc-stage-plugins/`. Load it into
+the host with the plugin search path environment variable:
+
+```bash
+ORC_STAGE_PLUGIN_PATHS=<build-dir>/lib/orc-stage-plugins orc-cli plugins list
+```
+
 The installed `decode-orc-plugin-sdk` CMake package provides:
-- `orc::plugin-sdk` — imported INTERFACE target with all SDK include paths
+- `orc::plugin-sdk` — imported INTERFACE target with the SDK include paths,
+  spdlog/fmt, and the host link targets (`orc::orc-core`, `orc::orc-common`)
+  as link-only dependencies — never link those two directly
 - `orc_add_stage_plugin()` — plugin target helper macro
-- The public SDK headers
+- The public SDK headers (`<orc/plugin/...>`, `<orc/stage/...>`)
 - `check_plugin_private_includes.sh` / `check_plugin_private_links.sh` — SDK enforcement gate scripts
+
+This exact flow is validated in decode-orc CI on every push: the fixture
+plugin `orc-tests/fixtures/external-stage-plugin/` is built against a
+freshly installed prefix and loaded into the installed `orc-cli`.
 
 ### Validating SDK-only compliance locally
 
@@ -143,8 +191,11 @@ bash <sdk-install>/check_plugin_private_includes.sh /path/to/your-plugin-repo
 bash <sdk-install>/check_plugin_private_links.sh /path/to/your-plugin-repo
 ```
 
-Both scripts exit with code 1 and print a diagnostic on violations.  Run them
-before opening a pull request or tagging a release.
+When pointed at a tree that is not a decode-orc checkout, both scripts run in
+standalone mode: the whole tree is scanned as a single plugin (includes may
+resolve anywhere within it). Both scripts exit with code 1 and print a
+diagnostic on violations. Run them before opening a pull request or tagging a
+release.
 
 ### Output naming
 

@@ -66,7 +66,7 @@ message(STATUS "Decode Orc Version: ${ORC_VERSION}")
 # orc/sdk/include/orc/plugin/orc_plugin_abi.h.  CI/CD and packaging scripts
 # can compare against this CMake variable without parsing C++ headers.
 # ---------------------------------------------------------------------------
-set(ORC_STAGE_PLUGIN_HOST_ABI_VERSION 4 CACHE INTERNAL
+set(ORC_STAGE_PLUGIN_HOST_ABI_VERSION 5 CACHE INTERNAL
     "Host ABI version exposed to plugins (must match kStagePluginHostAbiVersion in orc_plugin_abi.h)")
 message(STATUS "Stage Plugin Host ABI version: ${ORC_STAGE_PLUGIN_HOST_ABI_VERSION}")
 

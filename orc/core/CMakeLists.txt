@@ -100,18 +100,23 @@ add_library(orc-core SHARED
     project_to_dag.cpp
 )
 
-# the scope needs to be PUBLIC so the unit test project can share these include directory rules
+# the scope needs to be PUBLIC so the unit test project can share these include
+# directory rules. All entries are BUILD_INTERFACE-only: orc-core is exported
+# in the decode-orc-plugin-sdk package as a link-only target (plugins compile
+# against the SDK headers, never against core's private headers), so its
+# installed interface deliberately carries no include directories.
 target_include_directories(orc-core PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/stages
-    ${CMAKE_CURRENT_SOURCE_DIR}/../view-types  # Access to view types (MVP architecture allows core -> view dependency)
-    ${CMAKE_CURRENT_SOURCE_DIR}/observers
-    ${CMAKE_CURRENT_SOURCE_DIR}/analysis
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/stages>
+    # Access to view types (MVP architecture allows core -> view dependency)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../view-types>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/observers>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/analysis>
     # Plugin SDK headers (<orc/plugin/...>): stage plugin headers include them
     # by angle path, and core (stage_factories.cpp) and the test tree compile
     # against plugin stage headers directly.
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../sdk/include>
-    ${EZPWD_INCLUDE_DIR}
+    $<BUILD_INTERFACE:${EZPWD_INCLUDE_DIR}>
 )
 
 # =============================================================================
@@ -246,18 +251,22 @@ if(NOT TARGET PkgConfig::FFMPEG)
     unset(_ffmpeg_pc_libs)
 endif()
 
+# orc-core is part of the decode-orc-plugin-sdk export set: out-of-tree
+# plugins link it (via orc::plugin-sdk's $<LINK_ONLY:...>) to resolve stage
+# contract symbols. The export set is installed by orc/sdk/CMakeLists.txt.
 if(APPLE)
-    install(TARGETS orc-core
+    install(TARGETS orc-core EXPORT decode-orc-plugin-sdkTargets
         LIBRARY DESTINATION "orc-gui.app/Contents/Frameworks" COMPONENT Runtime
         RUNTIME DESTINATION "orc-gui.app/Contents/MacOS" COMPONENT Runtime
     )
 elseif(WIN32)
-    install(TARGETS orc-core
+    install(TARGETS orc-core EXPORT decode-orc-plugin-sdkTargets
         RUNTIME DESTINATION bin COMPONENT Runtime
         LIBRARY DESTINATION lib COMPONENT Runtime
+        ARCHIVE DESTINATION lib COMPONENT Runtime
     )
 else()
-    install(TARGETS orc-core
+    install(TARGETS orc-core EXPORT decode-orc-plugin-sdkTargets
         LIBRARY DESTINATION lib COMPONENT Runtime
         RUNTIME DESTINATION bin COMPONENT Runtime
     )

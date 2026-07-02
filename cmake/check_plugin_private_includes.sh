@@ -5,9 +5,13 @@
 #              standard-library/platform header, or a permitted third-party
 #              header. Anything else fails the build (hard enforcement gate).
 #
-# Usage:       check_plugin_private_includes.sh [<repo_root>]
-#              Scans <repo_root>/orc/plugins/stages and
-#              <repo_root>/3rd-party-plugins.
+# Usage:       check_plugin_private_includes.sh [<root>]
+#              In-tree mode (<root> is a decode-orc checkout): scans
+#              <root>/orc/plugins/stages and <root>/3rd-party-plugins.
+#              Standalone mode (neither directory exists under <root>):
+#              scans <root> itself as a single external plugin tree — this
+#              is how third-party plugin authors run the gate against their
+#              own repository.
 #
 # The SDK header allowlist below is the contract surface defined in
 # docs-tech/plugin-sdk-header-inventory.md (§2). Adding a header to the SDK
@@ -21,6 +25,13 @@ set -u
 REPO_ROOT="${1:-.}"
 PLUGIN_STAGES_DIR="${REPO_ROOT}/orc/plugins/stages"
 THIRD_PARTY_DIR="${REPO_ROOT}/3rd-party-plugins"
+
+# Standalone mode: <root> is a single external plugin tree, not a decode-orc
+# checkout. The whole tree is one plugin owner.
+STANDALONE_TREE=0
+if [ ! -d "$PLUGIN_STAGES_DIR" ] && [ ! -d "$THIRD_PARTY_DIR" ]; then
+    STANDALONE_TREE=1
+fi
 
 # ---------------------------------------------------------------------------
 # Allowlisted SDK contract headers (<orc/plugin/...> and <orc/stage/...>)
@@ -151,6 +162,11 @@ matches_pattern_list() {
 owner_dir_for() {
     local src_file="$1"
     local root_dir="$2"
+    # Standalone external plugin tree: the whole tree is one owner.
+    if [ "$STANDALONE_TREE" = "1" ]; then
+        printf '%s' "$root_dir"
+        return
+    fi
     local rel="${src_file#"$root_dir"/}"
     local first="${rel%%/*}"
     if [ "$first" = "sources" ] || [ "$first" = "sinks" ]; then
@@ -280,6 +296,10 @@ scan_tree() {
         local owner_dir
         owner_dir="$(owner_dir_for "$src_file" "$root_dir")"
         local owner="${owner_dir#"$root_dir"/}"
+        if [ "$owner" = "$owner_dir" ]; then
+            # Standalone tree: owner is the root itself; report its basename.
+            owner="$(basename "$owner_dir")"
+        fi
 
         while IFS= read -r include_path; do
             [ -n "$include_path" ] || continue
@@ -305,14 +325,20 @@ scan_tree() {
         ! -path '*/.git/*')
 }
 
-echo "Scanning in-tree plugin code against the SDK include allowlist..."
-echo
-scan_tree "$PLUGIN_STAGES_DIR" ""
+if [ "$STANDALONE_TREE" = "1" ]; then
+    echo "Scanning standalone plugin tree against the SDK include allowlist..."
+    echo
+    scan_tree "$REPO_ROOT" " (standalone)"
+else
+    echo "Scanning in-tree plugin code against the SDK include allowlist..."
+    echo
+    scan_tree "$PLUGIN_STAGES_DIR" ""
 
-echo
-echo "Scanning third-party plugin code against the SDK include allowlist..."
-echo
-scan_tree "$THIRD_PARTY_DIR" " (3rd-party)"
+    echo
+    echo "Scanning third-party plugin code against the SDK include allowlist..."
+    echo
+    scan_tree "$THIRD_PARTY_DIR" " (3rd-party)"
+fi
 
 echo
 if [ "$VIOLATIONS" -eq 0 ]; then
