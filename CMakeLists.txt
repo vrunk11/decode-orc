@@ -26,12 +26,16 @@ if(DEFINED PROJECT_VERSION_OVERRIDE)
     message(STATUS "Using global version override: ${PROJECT_VERSION_OVERRIDE}")
 endif()
 
-# windows.h defines min()/max() function-style macros by default, which break
-# std::min / std::max and std::numeric_limits<T>::max() in any translation
-# unit that transitively includes it. Define NOMINMAX globally so the macros
-# never appear, for every target (core, gui, cli, plugins, tests).
+# MSVC portability defines, applied globally so every target (core, gui, cli,
+# plugins, tests) gets them:
+# - NOMINMAX: windows.h defines min()/max() function-style macros by default,
+#   which break std::min / std::max and std::numeric_limits<T>::max() in any
+#   translation unit that transitively includes it.
+# - _USE_MATH_DEFINES: MSVC's <cmath> only exposes M_PI and friends when this
+#   is defined before the first <cmath>/<math.h> include; a compile-line
+#   define guarantees that ordering.
 if(WIN32)
-    add_compile_definitions(NOMINMAX)
+    add_compile_definitions(NOMINMAX _USE_MATH_DEFINES)
 endif()
 
 # Enable testing so we can register architecture checks with CTest
