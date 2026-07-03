@@ -53,7 +53,9 @@
 #include <vector>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 // clang-format off
 // windows.h must precede dbghelp.h: dbghelp.h uses Win32 types (HANDLE,
 // BOOLEAN, ...) without including their definitions itself.

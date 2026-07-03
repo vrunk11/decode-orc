@@ -26,6 +26,14 @@ if(DEFINED PROJECT_VERSION_OVERRIDE)
     message(STATUS "Using global version override: ${PROJECT_VERSION_OVERRIDE}")
 endif()
 
+# windows.h defines min()/max() function-style macros by default, which break
+# std::min / std::max and std::numeric_limits<T>::max() in any translation
+# unit that transitively includes it. Define NOMINMAX globally so the macros
+# never appear, for every target (core, gui, cli, plugins, tests).
+if(WIN32)
+    add_compile_definitions(NOMINMAX)
+endif()
+
 # Enable testing so we can register architecture checks with CTest
 enable_testing()
 
