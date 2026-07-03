@@ -96,6 +96,14 @@ class AlignedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
     return source_ ? source_->has_separate_channels() : false;
   }
 
+  const sample_type* get_frame_luma(FrameID id) const override {
+    return source_ ? source_->get_frame_luma(id + offset_) : nullptr;
+  }
+
+  const sample_type* get_frame_chroma(FrameID id) const override {
+    return source_ ? source_->get_frame_chroma(id + offset_) : nullptr;
+  }
+
   const sample_type* get_line_luma(FrameID id, size_t line) const override {
     return source_ ? source_->get_line_luma(id + offset_, line) : nullptr;
   }
@@ -113,6 +121,34 @@ class AlignedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
       run.frame_id = id;
     }
     return runs;
+  }
+
+  // Per-frame audio / EFM / AC3 must follow the shifted frame IDs.
+  uint32_t get_audio_sample_count(FrameID id) const override {
+    return source_ ? source_->get_audio_sample_count(id + offset_) : 0;
+  }
+
+  std::vector<int16_t> get_audio_samples(FrameID id) const override {
+    return source_ ? source_->get_audio_samples(id + offset_)
+                   : std::vector<int16_t>{};
+  }
+
+  uint32_t get_efm_sample_count(FrameID id) const override {
+    return source_ ? source_->get_efm_sample_count(id + offset_) : 0;
+  }
+
+  std::vector<uint8_t> get_efm_samples(FrameID id) const override {
+    return source_ ? source_->get_efm_samples(id + offset_)
+                   : std::vector<uint8_t>{};
+  }
+
+  uint32_t get_ac3_symbol_count(FrameID id) const override {
+    return source_ ? source_->get_ac3_symbol_count(id + offset_) : 0;
+  }
+
+  std::vector<uint8_t> get_ac3_symbols(FrameID id) const override {
+    return source_ ? source_->get_ac3_symbols(id + offset_)
+                   : std::vector<uint8_t>{};
   }
 
  private:
@@ -212,6 +248,16 @@ class PaddedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
     return source_ ? source_->has_separate_channels() : false;
   }
 
+  const sample_type* get_frame_luma(FrameID id) const override {
+    if (id < pad_count_) return nullptr;
+    return source_ ? source_->get_frame_luma(id - pad_count_) : nullptr;
+  }
+
+  const sample_type* get_frame_chroma(FrameID id) const override {
+    if (id < pad_count_) return nullptr;
+    return source_ ? source_->get_frame_chroma(id - pad_count_) : nullptr;
+  }
+
   const sample_type* get_line_luma(FrameID id, size_t line) const override {
     if (id < pad_count_) return nullptr;
     return source_ ? source_->get_line_luma(id - pad_count_, line) : nullptr;
@@ -230,6 +276,38 @@ class PaddedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
       run.frame_id = id;
     }
     return runs;
+  }
+
+  // Per-frame audio / EFM / AC3 must follow the shifted frame IDs; padding
+  // frames carry no audio, EFM, or AC3 data.
+  uint32_t get_audio_sample_count(FrameID id) const override {
+    if (id < pad_count_ || !source_) return 0;
+    return source_->get_audio_sample_count(id - pad_count_);
+  }
+
+  std::vector<int16_t> get_audio_samples(FrameID id) const override {
+    if (id < pad_count_ || !source_) return {};
+    return source_->get_audio_samples(id - pad_count_);
+  }
+
+  uint32_t get_efm_sample_count(FrameID id) const override {
+    if (id < pad_count_ || !source_) return 0;
+    return source_->get_efm_sample_count(id - pad_count_);
+  }
+
+  std::vector<uint8_t> get_efm_samples(FrameID id) const override {
+    if (id < pad_count_ || !source_) return {};
+    return source_->get_efm_samples(id - pad_count_);
+  }
+
+  uint32_t get_ac3_symbol_count(FrameID id) const override {
+    if (id < pad_count_ || !source_) return 0;
+    return source_->get_ac3_symbol_count(id - pad_count_);
+  }
+
+  std::vector<uint8_t> get_ac3_symbols(FrameID id) const override {
+    if (id < pad_count_ || !source_) return {};
+    return source_->get_ac3_symbols(id - pad_count_);
   }
 
  private:

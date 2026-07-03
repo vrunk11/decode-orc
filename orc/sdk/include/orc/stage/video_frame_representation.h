@@ -195,13 +195,35 @@ class VideoFrameRepresentation {
 // ============================================================================
 // VideoFrameRepresentationWrapper
 // ============================================================================
-// Base for transform stages that wrap a source VFrameR and forward all methods
-// unchanged except the ones they override.
+// Base for transform stages that wrap the connected input stage's VFrameR.
+// The public read API of a wrapper MUST always describe this stage's OUTPUT;
+// callers (downstream stages, observers, analysis sinks) can never reach
+// unprocessed upstream data through any accessor.
+//
+// To guarantee that, accessors fall into two groups:
+//
+// 1. Pass-through primitives — forwarded to the wrapped input. A stage whose
+//    output differs from its input for one of these MUST override it:
+//      frame_range / frame_count / has_frame / get_frame_descriptor,
+//      get_frame, has_separate_channels, get_frame_luma, get_frame_chroma,
+//      get_dropout_hints, get_video_parameters, audio / EFM / AC3 accessors.
+//    A stage that remaps frame IDs MUST override every per-frame accessor in
+//    this group so IDs are translated on the way through.
+//
+// 2. Derived accessors — implemented here in terms of this object's own
+//    virtual primitives, never forwarded:
+//      get_line, get_line_samples  (derive from get_frame)
+//      get_frame_copy              (derives from get_frame)
+//      get_line_luma / get_line_chroma  (derive from get_frame_luma/chroma)
+//    Overriding the frame-level primitives is therefore sufficient for
+//    correctness on every read path; overriding a derived accessor is purely
+//    an optimisation (e.g. a pass-through stage restoring the wrapped
+//    source's seek-one-line-from-disk fast path).
 //
 // Implementing a transform stage:
 //   1. Extend VideoFrameRepresentationWrapper.
 //   2. Store the upstream VFrameR in source_ (set in the constructor).
-//   3. Override only the methods that this stage modifies.
+//   3. Override every pass-through primitive whose output this stage changes.
 //
 // Hint semantics: hints describe the OUTPUT of the stage, not its input.
 // A stage that modifies data covered by a hint MUST override that hint method.
@@ -224,23 +246,22 @@ class VideoFrameRepresentationWrapper : public VideoFrameRepresentation {
     return source_ ? source_->get_frame_descriptor(id) : std::nullopt;
   }
 
-  // Flat access
+  // Flat access. Only get_frame() forwards; get_line() and get_line_samples()
+  // use the base-class defaults, which route through this object's virtual
+  // get_frame()/get_line() so derived overrides apply on every path.
   const sample_type* get_frame(FrameID id) const override {
     return source_ ? source_->get_frame(id) : nullptr;
   }
-  const sample_type* get_line(FrameID id, size_t line) const override {
-    return source_ ? source_->get_line(id, line) : nullptr;
-  }
-  std::vector<sample_type> get_line_samples(FrameID id,
-                                            size_t line) const override {
-    return source_ ? source_->get_line_samples(id, line)
-                   : std::vector<sample_type>{};
-  }
   std::vector<sample_type> get_frame_copy(FrameID id) const override {
-    return source_ ? source_->get_frame_copy(id) : std::vector<sample_type>{};
+    const sample_type* frame = get_frame(id);
+    if (!frame) return {};
+    const size_t total = frame_total_sample_count(id);
+    if (total == 0) return {};
+    return std::vector<sample_type>(frame, frame + total);
   }
 
-  // YC
+  // YC. Frame-level accessors forward; line-level accessors derive from this
+  // object's virtual frame-level accessors.
   bool has_separate_channels() const override {
     return source_ ? source_->has_separate_channels() : false;
   }
@@ -251,10 +272,10 @@ class VideoFrameRepresentationWrapper : public VideoFrameRepresentation {
     return source_ ? source_->get_frame_chroma(id) : nullptr;
   }
   const sample_type* get_line_luma(FrameID id, size_t line) const override {
-    return source_ ? source_->get_line_luma(id, line) : nullptr;
+    return line_within_plane(get_frame_luma(id), line);
   }
   const sample_type* get_line_chroma(FrameID id, size_t line) const override {
-    return source_ ? source_->get_line_chroma(id, line) : nullptr;
+    return line_within_plane(get_frame_chroma(id), line);
   }
 
   // Hints
@@ -298,16 +319,41 @@ class VideoFrameRepresentationWrapper : public VideoFrameRepresentation {
     return source_ ? source_->get_ac3_symbols(id) : std::vector<uint8_t>{};
   }
 
-  std::shared_ptr<const VideoFrameRepresentation> get_source() const {
-    return source_;
-  }
-
  protected:
   explicit VideoFrameRepresentationWrapper(
       std::shared_ptr<const VideoFrameRepresentation> source)
       : source_(std::move(source)) {}
 
   std::shared_ptr<const VideoFrameRepresentation> source_;
+
+ private:
+  // Total sample count of frame |id| as exposed by THIS representation
+  // (descriptor first, video-parameter geometry as fallback).
+  size_t frame_total_sample_count(FrameID id) const {
+    if (const auto desc = get_frame_descriptor(id)) {
+      return desc->samples_total;
+    }
+    if (const auto params = get_video_parameters()) {
+      return frame_line_sample_offset(
+          params->system, static_cast<size_t>(params->frame_width_nominal),
+          static_cast<size_t>(params->frame_height));
+    }
+    return 0;
+  }
+
+  // Pointer to line |line| within a flat luma/chroma plane returned by this
+  // object's frame-level accessors. Planes share the composite frame layout.
+  const sample_type* line_within_plane(const sample_type* plane,
+                                       size_t line) const {
+    if (!plane) return nullptr;
+    const auto params = get_video_parameters();
+    if (!params || line >= static_cast<size_t>(params->frame_height)) {
+      return nullptr;
+    }
+    return plane + frame_line_sample_offset(
+                       params->system,
+                       static_cast<size_t>(params->frame_width_nominal), line);
+  }
 };
 
 using VideoFrameRepresentationPtr = std::shared_ptr<VideoFrameRepresentation>;

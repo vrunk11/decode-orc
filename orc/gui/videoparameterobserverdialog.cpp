@@ -82,7 +82,8 @@ void VideoParameterObserverDialog::setupUI() {
 
   sg->addWidget(new QLabel("Levels (sync/blk/wht):"), row, 0);
   levels_label_ = new QLabel("-");
-  levels_label_->setToolTip("Sync tip / black / white levels in 10-bit ADU");
+  levels_label_->setToolTip(
+      "Sync tip / black / white levels (in the project's amplitude unit)");
   sg->addWidget(levels_label_, row++, 1);
 
   main->addWidget(signal_group_);
@@ -252,12 +253,22 @@ void VideoParameterObserverDialog::updateSignalParams(
       (vp.active_video_start >= 0 && vp.active_video_end >= 0)
           ? QString("%1–%2").arg(vp.active_video_start).arg(vp.active_video_end)
           : "-");
+  // IRE/mV need valid blanking/white levels; fall back to raw 10-bit ADU.
+  const orc::AmplitudeDisplayUnit level_unit =
+      (vp.blanking_level >= 0 && vp.white_level > vp.blanking_level)
+          ? amplitude_unit_
+          : orc::AmplitudeDisplayUnit::Samples10Bit;
+  const auto fmtLevel = [&](int32_t level) {
+    return QString::fromStdString(
+        orc::format_amplitude(level, vp.blanking_level, vp.white_level,
+                              toOrcVideoSystem(vp.system), level_unit));
+  };
   levels_label_->setText(
       (vp.sync_tip_level >= 0 && vp.black_level >= 0 && vp.white_level >= 0)
           ? QString("%1 / %2 / %3")
-                .arg(vp.sync_tip_level)
-                .arg(vp.black_level)
-                .arg(vp.white_level)
+                .arg(fmtLevel(vp.sync_tip_level))
+                .arg(fmtLevel(vp.black_level))
+                .arg(fmtLevel(vp.white_level))
           : "-");
 }
 

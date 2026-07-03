@@ -51,6 +51,25 @@ class VideoParamsOverrideFrameRepresentation
     return cached_params_;
   }
 
+  // This stage modifies only reported video parameters, never sample data, so
+  // line reads may forward to the wrapped input to preserve its
+  // seek-one-line-from-disk fast path (important for analysis sinks scanning
+  // whole recordings).
+  std::vector<sample_type> get_line_samples(FrameID id,
+                                            size_t line) const override {
+    return source_ ? source_->get_line_samples(id, line)
+                   : std::vector<sample_type>{};
+  }
+  const sample_type* get_line(FrameID id, size_t line) const override {
+    return source_ ? source_->get_line(id, line) : nullptr;
+  }
+  const sample_type* get_line_luma(FrameID id, size_t line) const override {
+    return source_ ? source_->get_line_luma(id, line) : nullptr;
+  }
+  const sample_type* get_line_chroma(FrameID id, size_t line) const override {
+    return source_ ? source_->get_line_chroma(id, line) : nullptr;
+  }
+
  private:
   std::optional<SourceParameters> cached_params_;
 };

@@ -1,6 +1,6 @@
 # Stacker
 
-Combines between 1 and 16 frame-aligned input sources into a single superior output by selecting or averaging the best pixel data available across all sources. When only one input is connected the stage acts as a passthrough. With multiple inputs, corresponding pixels from each source are compared and the most plausible value is selected, recovering pixels that are in dropout in one source but valid in another.
+Combines between 1 and 16 frame-aligned input sources into a single superior output by combining the pixel data available across all sources. When only one input is connected the stage acts as a passthrough. With multiple inputs, corresponding pixels from each source are combined per pixel using the selected stacking mode (mean, median, or outlier-rejecting smart mean), recovering pixels that are in dropout in one source but valid in another.
 
 ## When to use
 
@@ -8,15 +8,26 @@ Use Stacker after Source Align when you have multiple captures of the same Laser
 
 ## What it does
 
-For each output field, Stacker fetches the corresponding field from every input source and applies the selected stacking mode pixel by pixel. In `Auto` mode the stage selects the most appropriate algorithm for the number of sources available. Smart modes use a configurable threshold to exclude outlier values before averaging. Differential dropout detection compares dropout flags across sources; if a pixel is flagged as a dropout in fewer than all sources, valid data from the clean sources is used instead. Audio and EFM data can be combined independently of video using their own stacking settings. The stage caches stacked fields in an LRU cache to avoid redundant recomputation during preview navigation.
+For each output frame, Stacker fetches the corresponding frame from every input source and applies the selected stacking mode pixel by pixel. Every mode is an averaging or median policy over the usable source values for that pixel — no mode selects a whole "best" source or frame. Smart modes use a configurable threshold to exclude outlier values before averaging. Differential dropout detection compares dropout flags across sources; if a pixel is flagged as a dropout in fewer than all sources, valid data from the clean sources is used instead. Audio and EFM data can be combined independently of video using their own stacking settings. The stage caches stacked frames in an LRU cache to avoid redundant recomputation during preview navigation.
+
+Note that stacking reduces noise only when the sources contain independent noise (separate captures). Sources that are identical apart from dropouts will stack to the same underlying signal, so signal-to-noise measurements will not improve on dropout-free picture areas.
 
 ## Parameters
 
 ### mode (string)
-Stacking algorithm. Values: `Auto`, `Mean`, `Median`, `Smart Mean`, `Smart Neighbor`, `Neighbor`. Default: `Auto`. `Auto` selects the most appropriate mode for the number of available sources.
+Stacking algorithm, applied per pixel to the usable (non-dropout) values across all sources. Values: `Auto`, `Mean`, `Median`, `Smart Mean`, `Smart Neighbor`, `Neighbor`. Default: `Auto`.
+
+| Mode | Behaviour per pixel |
+|------|--------------------|
+| `Auto` | `Smart Mean` when 3 or more usable source values are available; plain `Mean` otherwise. |
+| `Mean` | Arithmetic mean of all usable source values. |
+| `Median` | Median of the usable source values (mean of the middle two for an even count). |
+| `Smart Mean` | Mean of the values within `smart_threshold` of the median, rejecting outliers; falls back to the median when no value qualifies. |
+| `Smart Neighbor` | Not yet implemented — currently behaves as `Median`. |
+| `Neighbor` | Not yet implemented — currently behaves as `Median`. |
 
 ### smart_threshold (int32)
-Pixel-value threshold used by the `Smart Mean` and `Smart Neighbor` modes to exclude outliers before averaging. Range: 0–128. Default: `15`. Has no effect for other modes.
+Pixel-value threshold used by `Smart Mean` (and by `Auto` when it selects `Smart Mean`) to exclude outliers before averaging: only source values within this distance of the per-pixel median are included in the mean. Range: 0–128. Default: `15`. Has no effect for other modes.
 
 ### no_diff_dod (bool)
 Disable differential dropout detection. When `true`, dropout status from individual sources is not used to guide pixel selection. Default: `false`.

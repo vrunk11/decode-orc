@@ -204,6 +204,47 @@ TEST(AnalysisDialogSmokeTest,
   EXPECT_TRUE(dialogShowsText(dialog, "100.0 ADU"));
 }
 
+TEST(AnalysisDialogSmokeTest,
+     VideoParameterObserverDialog_SignalLevelsFollowAmplitudeUnit) {
+  (void)ensureApplication();
+
+  VideoParameterObserverDialog dialog;
+  const orc::FieldID field_id(0);
+  auto obs = makeBurstObservation();
+  obs.video_params->sync_tip_level = 16;
+  obs.video_params->black_level = 256;
+
+  // 10-bit: raw ADU values, no suffix.
+  dialog.setAmplitudeUnit(orc::AmplitudeDisplayUnit::Samples10Bit);
+  dialog.updateObservations(field_id, obs);
+  EXPECT_TRUE(dialogShowsText(dialog, "16 / 256 / 844"));
+
+  // IRE: blanking maps to 0 IRE, white to 100 IRE (range 588 ADU).
+  dialog.setAmplitudeUnit(orc::AmplitudeDisplayUnit::IRE);
+  dialog.updateObservations(field_id, obs);
+  EXPECT_TRUE(dialogShowsText(dialog, "-40.8 IRE / 0.0 IRE / 100.0 IRE"));
+
+  // mV: PAL active video is 700 mV.
+  dialog.setAmplitudeUnit(orc::AmplitudeDisplayUnit::Millivolts);
+  dialog.updateObservations(field_id, obs);
+  EXPECT_TRUE(dialogShowsText(dialog, "-285.7 mV / 0.0 mV / 700.0 mV"));
+}
+
+TEST(AnalysisDialogSmokeTest,
+     VideoParameterObserverDialog_SignalLevelsFallBackToAduWithoutBlanking) {
+  (void)ensureApplication();
+
+  VideoParameterObserverDialog dialog;
+  auto obs = makeBurstObservation();
+  obs.video_params->sync_tip_level = 16;
+  obs.video_params->black_level = 256;
+  obs.video_params->blanking_level = -1;  // Unmigrated source: no blanking.
+
+  dialog.setAmplitudeUnit(orc::AmplitudeDisplayUnit::IRE);
+  dialog.updateObservations(orc::FieldID(0), obs);
+  EXPECT_TRUE(dialogShowsText(dialog, "16 / 256 / 844"));
+}
+
 TEST(AnalysisDialogSmokeTest, VbiDialog_CanShowAndClose) {
   (void)ensureApplication();
 

@@ -59,6 +59,24 @@ class DropoutMappedFrameRepresentation : public VideoFrameRepresentationWrapper,
 
   std::vector<DropoutRun> get_dropout_hints(FrameID id) const override;
 
+  // This stage modifies only dropout hints, never sample data, so line reads
+  // may forward to the wrapped input to preserve its seek-one-line-from-disk
+  // fast path (important for analysis sinks scanning whole recordings).
+  std::vector<sample_type> get_line_samples(FrameID id,
+                                            size_t line) const override {
+    return source_ ? source_->get_line_samples(id, line)
+                   : std::vector<sample_type>{};
+  }
+  const sample_type* get_line(FrameID id, size_t line) const override {
+    return source_ ? source_->get_line(id, line) : nullptr;
+  }
+  const sample_type* get_line_luma(FrameID id, size_t line) const override {
+    return source_ ? source_->get_line_luma(id, line) : nullptr;
+  }
+  const sample_type* get_line_chroma(FrameID id, size_t line) const override {
+    return source_ ? source_->get_line_chroma(id, line) : nullptr;
+  }
+
  private:
   std::map<uint64_t, FrameDropoutMapEntry> dropout_map_;
 

@@ -323,15 +323,14 @@ TEST(CVBSSourceStageStatusTest, SetParameters_ShowsRed_WhenPathEmpty) {
   EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Red);
 }
 
-TEST(CVBSSourceStageStatusTest,
-     SetParameters_ShowsYellow_WhenFileNotAccessible) {
+TEST(CVBSSourceStageStatusTest, SetParameters_ShowsRed_WhenFileNotAccessible) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
   deps->input_file_valid = false;
   PALCVBSSourceStage stage(deps);
   std::map<std::string, ParameterValue> p{
       {"input_path", std::string("/fake/video.composite")}};
   ASSERT_TRUE(stage.set_parameters(p));
-  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Yellow);
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Red);
 }
 
 TEST(CVBSSourceStageStatusTest,

@@ -25,8 +25,8 @@ The coloured dot in the top-right corner of the node shows its configuration sta
 
 | Colour | Meaning |
 |--------|---------|
-| Green | Fully configured and ready to run. All required parameters are set. |
-| Yellow | Partially configured. The stage can run but will use default or reduced behaviour — for example, pass-through mode or console-only output. Review the parameters for optional settings. |
-| Red | Not configured. One or more required parameters are missing and the stage cannot run. |
+| Green | Fully configured and ready to run. The source file and its metadata are present and valid. |
+| Yellow | The source file is present but its `.meta` sidecar is missing or unreadable. The stage cannot run until the metadata is available. |
+| Red | Not configured. No file path is set, the configured path does not point to an accessible source file, or the file's video system does not match the stage. |
 
 Parameters can be set via **Edit Parameters...** in the node context menu. Some stages also provide interactive stage tools (listed under **Tools** above) that set parameters directly from within the tool.

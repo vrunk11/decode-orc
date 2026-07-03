@@ -1148,7 +1148,9 @@ bool FixedFormatCVBSSourceStage::set_parameters(
   std::string err;
   if (!deps_->validate_input_file(primary, err)) {
     ORC_LOG_WARN("{}: source file not accessible: {}", stage_name_, err);
-    set_configuration_status(orc::ConfigurationStatus::Yellow);
+    // The configured path does not point to a usable source file, so the
+    // stage cannot produce any output; report Red rather than Yellow.
+    set_configuration_status(orc::ConfigurationStatus::Red);
     return true;
   }
 

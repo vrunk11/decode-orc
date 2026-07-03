@@ -351,6 +351,37 @@ Implement one or more of these interfaces depending on stage behaviour:
 Override `DAGStage::execute()` to receive `ArtifactPtr` inputs from upstream
 nodes. Return a vector of `ArtifactPtr` outputs to pass downstream.
 
+### Transform stages: VideoFrameRepresentationWrapper contract
+
+Transform stages that expose video output extend
+`VideoFrameRepresentationWrapper` (in
+`<orc/stage/video_frame_representation.h>`). The wrapper's public read API
+**always describes the stage's output**: downstream stages, observers, and
+analysis sinks can never reach unprocessed upstream data through any
+accessor, and stages themselves may only read from the wrapped input
+(`source_`), never from anything further upstream.
+
+The accessors fall into two groups:
+
+- **Pass-through primitives** (forwarded to the wrapped input): navigation
+  (`frame_range`, `frame_count`, `has_frame`, `get_frame_descriptor`),
+  `get_frame`, `has_separate_channels`, `get_frame_luma`,
+  `get_frame_chroma`, `get_dropout_hints`, `get_video_parameters`, and the
+  audio / EFM / AC3 accessors. A stage whose output differs from its input
+  for one of these **must** override it. A stage that remaps frame IDs must
+  override every per-frame accessor in this group so IDs are translated.
+- **Derived accessors** (`get_line`, `get_line_samples`, `get_frame_copy`,
+  `get_line_luma`, `get_line_chroma`): implemented by the wrapper in terms
+  of the object's own virtual primitives, never forwarded. Overriding the
+  frame-level primitives is therefore sufficient for correctness on every
+  read path; overriding a derived accessor is purely an optimisation (for
+  example, a stage that does not modify sample data may forward line reads
+  to the wrapped input to preserve a source's seek-one-line-from-disk fast
+  path).
+
+This contract is verified by
+`orc-tests/core/unit/contracts/video_frame_representation_wrapper_contract_test.cpp`.
+
 ### Parameters
 
 `ParameterizedStage` exposes three methods:

@@ -1380,7 +1380,9 @@ bool TBCSourceStage::set_parameters(
   std::string err;
   if (!deps_->validate_input_file(tbc_path, err)) {
     ORC_LOG_WARN("tbc_source: source file not accessible: {}", err);
-    set_configuration_status(orc::ConfigurationStatus::Yellow);
+    // The configured path does not point to a usable source file, so the
+    // stage cannot produce any output; report Red rather than Yellow.
+    set_configuration_status(orc::ConfigurationStatus::Red);
     return true;
   }
 

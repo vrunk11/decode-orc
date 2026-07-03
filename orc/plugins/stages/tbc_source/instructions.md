@@ -22,8 +22,8 @@ The coloured dot in the top-right corner of the node shows its configuration sta
 
 | Colour | Meaning |
 |--------|---------|
-| Green | Fully configured and ready to run. All required parameters are set. |
-| Yellow | Partially configured. The stage can run but will use default or reduced behaviour — for example, pass-through mode or console-only output. Review the parameters for optional settings. |
-| Red | Not configured. One or more required parameters are missing and the stage cannot run. |
+| Green | Fully configured and ready to run. The TBC file and its metadata are present and readable. |
+| Yellow | The TBC file is present but its metadata sidecar is missing or unreadable. The stage cannot run until the metadata is available. |
+| Red | Not configured. No file path is set, or the configured path does not point to an accessible TBC file. |
 
 Parameters can be set via **Edit Parameters...** in the node context menu. Some stages also provide interactive stage tools (listed under **Tools** above) that set parameters directly from within the tool.

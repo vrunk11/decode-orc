@@ -17,9 +17,15 @@ dag:
       x: 50
       y: 50
       parameters:
+        c_path:
+          type: string
+          value: ""
         input_path:
           type: string
-          value: ../../videosynth/tests/projects/output-stacking/videosynth_pal_stacking_1001.composite
+          value: ../../videosynth/tests/projects/output-stacking/composite/videosynth_pal_stacking_1001.composite
+        y_path:
+          type: string
+          value: ""
     - id: 2
       stage: PAL_CVBS_Source
       node_type: SOURCE
@@ -28,9 +34,15 @@ dag:
       x: 50
       y: 175
       parameters:
+        c_path:
+          type: string
+          value: ""
         input_path:
           type: string
-          value: ../../videosynth/tests/projects/output-stacking/videosynth_pal_stacking_2002.composite
+          value: ../../videosynth/tests/projects/output-stacking/composite/videosynth_pal_stacking_2002.composite
+        y_path:
+          type: string
+          value: ""
     - id: 3
       stage: PAL_CVBS_Source
       node_type: SOURCE
@@ -39,9 +51,15 @@ dag:
       x: 50
       y: 300
       parameters:
+        c_path:
+          type: string
+          value: ""
         input_path:
           type: string
-          value: ../../videosynth/tests/projects/output-stacking/videosynth_pal_stacking_3003.composite
+          value: ../../videosynth/tests/projects/output-stacking/composite/videosynth_pal_stacking_3003.composite
+        y_path:
+          type: string
+          value: ""
     - id: 4
       stage: PAL_CVBS_Source
       node_type: SOURCE
@@ -50,9 +68,15 @@ dag:
       x: 50
       y: 425
       parameters:
+        c_path:
+          type: string
+          value: ""
         input_path:
           type: string
-          value: ../../videosynth/tests/projects/output-stacking/videosynth_pal_stacking_4004.composite
+          value: ../../videosynth/tests/projects/output-stacking/composite/videosynth_pal_stacking_4004.composite
+        y_path:
+          type: string
+          value: ""
     - id: 5
       stage: stacker
       node_type: MERGER
@@ -60,6 +84,25 @@ dag:
       user_label: Stacker
       x: 275
       y: 50
+      parameters:
+        audio_stacking:
+          type: string
+          value: Mean
+        efm_stacking:
+          type: string
+          value: Mean
+        mode:
+          type: string
+          value: Auto
+        no_diff_dod:
+          type: bool
+          value: false
+        passthrough:
+          type: bool
+          value: false
+        smart_threshold:
+          type: int32
+          value: 15
     - id: 6
       stage: dropout_correct
       node_type: TRANSFORM

@@ -1236,7 +1236,9 @@ std::vector<ParameterDescriptor> StackerStage::get_parameter_descriptors(
     VideoSystem /*project_format*/, SourceType /*source_type*/) const {
   std::vector<ParameterDescriptor> d;
 
-  d.push_back({"mode", "Stacking Mode", "Algorithm for combining sources",
+  d.push_back({"mode", "Stacking Mode",
+               "Per-pixel combining algorithm. Auto = Smart Mean with 3+ "
+               "usable sources, Mean otherwise",
                ParameterType::STRING,
                ParameterConstraints{std::nullopt,
                                     std::nullopt,

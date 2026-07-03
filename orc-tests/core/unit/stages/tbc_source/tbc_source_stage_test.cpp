@@ -435,15 +435,14 @@ TEST(TBCSourceStageStatusTest, SetParameters_ShowsRed_WhenPathEmpty) {
   EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Red);
 }
 
-TEST(TBCSourceStageStatusTest,
-     SetParameters_ShowsYellow_WhenFileNotAccessible) {
+TEST(TBCSourceStageStatusTest, SetParameters_ShowsRed_WhenFileNotAccessible) {
   auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
   ON_CALL(*deps, validate_input_file(_, _)).WillByDefault(Return(false));
   orc::TBCSourceStage stage(deps);
   std::map<std::string, orc::ParameterValue> params;
   params["input_path"] = std::string("/path/to/video.tbc");
   EXPECT_TRUE(stage.set_parameters(params));
-  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Yellow);
+  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Red);
 }
 
 TEST(TBCSourceStageStatusTest,
