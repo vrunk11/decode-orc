@@ -33,6 +33,27 @@ namespace orc {
 namespace {
 
 // ---------------------------------------------------------------------------
+// Sample encoding selection
+// ---------------------------------------------------------------------------
+
+// Sentinel value for the sample_encoding parameter: read the encoding from
+// the .meta sidecar (the default). Any other allowed value selects that
+// encoding manually and makes the .meta sidecar optional (CVBS file format
+// spec: the metadata file is optional).
+constexpr const char* kSampleEncodingFromMetadata = "From metadata";
+
+// The four TBC-locked 4FSC-domain encodings this stage can normalise.
+constexpr const char* kSupportedEncodings[] = {
+    "CVBS_U10_4FSC", "CVBS_U16_4FSC", "CVBS_TPG21_4FSC", "CVBS_S16_FSC"};
+
+bool is_supported_encoding(const std::string& encoding) {
+  for (const char* e : kSupportedEncodings) {
+    if (encoding == e) return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Sidecar path derivation
 // ---------------------------------------------------------------------------
 
@@ -858,16 +879,25 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   const std::string y_path = get_str_param("y_path");
   const std::string c_path = get_str_param("c_path");
   const std::string single_path = get_str_param("input_path");
+  const std::string manual_encoding = get_str_param("sample_encoding");
 
   const bool is_yc = !y_path.empty() && !c_path.empty();
   const std::string input_path = is_yc ? y_path : single_path;
+
+  // Metadata mode (default): read the encoding from the .meta sidecar.
+  // Manual mode: the user selected an explicit encoding, making the .meta
+  // sidecar optional (CVBS file format spec: metadata is optional).
+  const bool use_metadata =
+      manual_encoding.empty() || manual_encoding == kSampleEncodingFromMetadata;
 
   if (input_path.empty()) {
     ORC_LOG_DEBUG("{}: no input configured", stage_name_);
     return {};
   }
 
-  const std::string cache_key = is_yc ? (y_path + "|" + c_path) : input_path;
+  const std::string cache_key =
+      (is_yc ? (y_path + "|" + c_path) : input_path) + "|" +
+      (use_metadata ? std::string("meta") : manual_encoding);
   if (cached_representation_ && cached_input_path_ == cache_key) {
     return {cached_representation_};
   }
@@ -884,37 +914,62 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
     }
   }
 
-  // --- Load and validate metadata ---
-  const std::string meta_path = derive_sidecar_path(input_path, ".meta");
-  std::string meta_err;
-  const auto meta_opt = deps_->load_metadata(meta_path, meta_err);
-  if (!meta_opt) {
-    throw UserDataError("Failed to load CVBS metadata from '" + meta_path +
-                        "': " + meta_err);
-  }
-  const CVBSMetadataRecord& meta = *meta_opt;
+  // --- Determine sample encoding and per-capture metadata ---
+  std::string encoding;
+  std::string signal_type;
+  int32_t meta_frame_count = 0;
+  std::optional<bool> audio_locked_meta;
+  std::optional<int32_t> ntsc_j_black_level;
 
-  // Hard-reject non-STANDARD_TBC_LOCKED signal states.
-  if (meta.signal_state_preset != "STANDARD_TBC_LOCKED") {
-    throw UserDataError("CVBS source '" + input_path +
-                        "' has signal_state_preset '" +
-                        meta.signal_state_preset +
-                        "'. Only STANDARD_TBC_LOCKED files are accepted.");
-  }
+  if (use_metadata) {
+    // --- Load and validate metadata ---
+    const std::string meta_path = derive_sidecar_path(input_path, ".meta");
+    std::string meta_err;
+    const auto meta_opt = deps_->load_metadata(meta_path, meta_err);
+    if (!meta_opt) {
+      throw UserDataError("Failed to load CVBS metadata from '" + meta_path +
+                          "': " + meta_err);
+    }
+    const CVBSMetadataRecord& meta = *meta_opt;
 
-  // Validate that the .meta video standard matches this stage's fixed system.
-  if (meta.preset != std::string(system_name(system_))) {
-    throw UserDataError("CVBS metadata preset '" + meta.preset + "' in '" +
-                        meta_path + "' does not match this stage's system (" +
-                        video_system_to_string(system_) + ")");
-  }
+    // Hard-reject non-STANDARD_TBC_LOCKED signal states.
+    if (meta.signal_state_preset != "STANDARD_TBC_LOCKED") {
+      throw UserDataError("CVBS source '" + input_path +
+                          "' has signal_state_preset '" +
+                          meta.signal_state_preset +
+                          "'. Only STANDARD_TBC_LOCKED files are accepted.");
+    }
 
-  // Accept all four declared sample encodings.
-  const std::string& encoding = meta.sample_encoding_preset;
-  if (encoding != "CVBS_U10_4FSC" && encoding != "CVBS_U16_4FSC" &&
-      encoding != "CVBS_TPG21_4FSC" && encoding != "CVBS_S16_FSC") {
-    throw UserDataError("Unsupported sample_encoding_preset '" + encoding +
-                        "' in '" + meta_path + "'");
+    // Validate that the .meta video standard matches this stage's fixed
+    // system.
+    if (meta.preset != std::string(system_name(system_))) {
+      throw UserDataError("CVBS metadata preset '" + meta.preset + "' in '" +
+                          meta_path + "' does not match this stage's system (" +
+                          video_system_to_string(system_) + ")");
+    }
+
+    // Accept all four declared sample encodings.
+    if (!is_supported_encoding(meta.sample_encoding_preset)) {
+      throw UserDataError("Unsupported sample_encoding_preset '" +
+                          meta.sample_encoding_preset + "' in '" + meta_path +
+                          "'");
+    }
+
+    encoding = meta.sample_encoding_preset;
+    signal_type = meta.signal_type;
+    meta_frame_count = meta.number_of_sequential_frames;
+    audio_locked_meta = meta.audio_locked;
+    ntsc_j_black_level = meta.ntsc_j_black_level;
+  } else {
+    // Manual mode: no .meta sidecar required. The video standard is fixed by
+    // the stage choice and the signal is assumed STANDARD_TBC_LOCKED; the
+    // frame count is measured from the payload size.
+    if (!is_supported_encoding(manual_encoding)) {
+      throw UserDataError("Unsupported sample encoding '" + manual_encoding +
+                          "' selected for '" + input_path + "'");
+    }
+    encoding = manual_encoding;
+    signal_type = is_yc ? "yc" : "composite";
   }
 
   // --- Determine frame geometry ---
@@ -935,8 +990,8 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
 
   // Prefer number_of_sequential_frames from metadata; fall back to measured.
   int32_t frame_count = 0;
-  if (meta.number_of_sequential_frames > 0) {
-    frame_count = meta.number_of_sequential_frames;
+  if (meta_frame_count > 0) {
+    frame_count = meta_frame_count;
     // Sanity-check that the file is large enough.
     const size_t expected =
         static_cast<size_t>(frame_count) * static_cast<size_t>(frame_samples);
@@ -966,7 +1021,7 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   }
 
   // --- Build SourceParameters from spec constants ---
-  const int32_t ntsc_j = meta.ntsc_j_black_level.value_or(-1);
+  const int32_t ntsc_j = ntsc_j_black_level.value_or(-1);
   SourceParameters src_params =
       build_source_parameters(system_, frame_count, ntsc_j);
   if (is_yc) {
@@ -990,7 +1045,9 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   const std::string wav_path = derive_sidecar_path(input_path, "_audio_00.wav");
   const auto audio_info = deps_->get_audio_info(wav_path);
   const bool has_audio = audio_info.has_value();
-  const bool audio_locked_flag = has_audio && meta.audio_locked.value_or(false);
+  // The frame-locked flag only exists in the .meta sidecar; without metadata
+  // any audio is treated as free-running.
+  const bool audio_locked_flag = has_audio && audio_locked_meta.value_or(false);
 
   // Audio pairs per frame: PAL 44100/25=1764, NTSC/PAL_M 44100×1001/30000≈1470.
   uint32_t audio_pairs = 0;
@@ -1022,7 +1079,7 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
 
   // --- Display name update ---
   const std::string signal_type_display =
-      (meta.signal_type == "yc") ? "YC" : "Composite";
+      (signal_type == "yc") ? "YC" : "Composite";
   display_name_ =
       video_system_to_string(system_) + " CVBS " + signal_type_display;
 
@@ -1049,9 +1106,9 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   auto representation = std::make_shared<CVBSDecodedFrameRepresentation>(
       system_, frame_count, frame_samples, frame_height_lines,
       src_params.frame_width_nominal, deps_, input_path, encoding, src_params,
-      meta.ntsc_j_black_level, std::move(dropout_runs), has_audio,
-      audio_locked_flag, wav_path, audio_pairs, has_efm, efm_data_path,
-      std::move(efm_table), has_ac3, ac3_data_path, std::move(ac3_table),
+      ntsc_j_black_level, std::move(dropout_runs), has_audio, audio_locked_flag,
+      wav_path, audio_pairs, has_efm, efm_data_path, std::move(efm_table),
+      has_ac3, ac3_data_path, std::move(ac3_table),
       is_yc ? c_path : std::string{},
       ArtifactID(std::string(stage_name_) + ":" + cache_key), std::move(prov));
 
@@ -1063,16 +1120,23 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
 
 std::vector<ParameterDescriptor>
 FixedFormatCVBSSourceStage::get_parameter_descriptors(
-    VideoSystem /*project_format*/, SourceType /*source_type*/) const {
+    VideoSystem /*project_format*/, SourceType source_type) const {
   std::vector<ParameterDescriptor> desc;
 
-  {
+  // A project is either composite or Y/C, never both — only offer the file
+  // parameters that match the project's source type. Unknown (no project
+  // context) falls back to offering all of them.
+  const bool show_composite = (source_type != SourceType::YC);
+  const bool show_yc = (source_type != SourceType::Composite);
+
+  if (show_composite) {
     ParameterDescriptor pd;
     pd.name = "input_path";
     pd.display_name = "CVBS File Path";
     pd.description =
         "Path to the CVBS composite data file (.composite). "
-        "A <basename>.meta sidecar is required.";
+        "A <basename>.meta sidecar is required unless a sample encoding is "
+        "selected manually.";
     pd.type = ParameterType::FILE_PATH;
     pd.constraints.required = false;
     pd.constraints.default_value = std::string("");
@@ -1080,32 +1144,55 @@ FixedFormatCVBSSourceStage::get_parameter_descriptors(
     desc.push_back(pd);
   }
 
-  {
-    ParameterDescriptor pd;
-    pd.name = "y_path";
-    pd.display_name = "CVBS Y (Luma) File Path";
-    pd.description =
-        "Path to the CVBS luma channel file (.y) for YC sources. "
-        "Set together with c_path; a shared <basename>.meta sidecar is "
-        "required.";
-    pd.type = ParameterType::FILE_PATH;
-    pd.constraints.required = false;
-    pd.constraints.default_value = std::string("");
-    pd.file_extension_hint = ".y";
-    desc.push_back(pd);
+  if (show_yc) {
+    {
+      ParameterDescriptor pd;
+      pd.name = "y_path";
+      pd.display_name = "CVBS Y (Luma) File Path";
+      pd.description =
+          "Path to the CVBS luma channel file (.y) for YC sources. "
+          "Set together with c_path; a shared <basename>.meta sidecar is "
+          "required unless a sample encoding is selected manually.";
+      pd.type = ParameterType::FILE_PATH;
+      pd.constraints.required = false;
+      pd.constraints.default_value = std::string("");
+      pd.file_extension_hint = ".y";
+      desc.push_back(pd);
+    }
+
+    {
+      ParameterDescriptor pd;
+      pd.name = "c_path";
+      pd.display_name = "CVBS C (Chroma) File Path";
+      pd.description =
+          "Path to the CVBS chroma channel file (.c) for YC sources. "
+          "Set together with y_path.";
+      pd.type = ParameterType::FILE_PATH;
+      pd.constraints.required = false;
+      pd.constraints.default_value = std::string("");
+      pd.file_extension_hint = ".c";
+      desc.push_back(pd);
+    }
   }
 
   {
     ParameterDescriptor pd;
-    pd.name = "c_path";
-    pd.display_name = "CVBS C (Chroma) File Path";
+    pd.name = "sample_encoding";
+    pd.display_name = "Sample Encoding";
     pd.description =
-        "Path to the CVBS chroma channel file (.c) for YC sources. "
-        "Set together with y_path.";
-    pd.type = ParameterType::FILE_PATH;
+        "Sample encoding of the CVBS data. 'From metadata' (default) reads "
+        "the encoding from the <basename>.meta sidecar. Selecting an "
+        "encoding manually makes the sidecar optional, allowing CVBS "
+        "sources without metadata to be used; the signal is then assumed "
+        "to be TBC-locked and the frame count is measured from the file "
+        "size.";
+    pd.type = ParameterType::STRING;
     pd.constraints.required = false;
-    pd.constraints.default_value = std::string("");
-    pd.file_extension_hint = ".c";
+    pd.constraints.default_value = std::string(kSampleEncodingFromMetadata);
+    pd.constraints.allowed_strings = {kSampleEncodingFromMetadata};
+    for (const char* e : kSupportedEncodings) {
+      pd.constraints.allowed_strings.push_back(e);
+    }
     desc.push_back(pd);
   }
 
@@ -1114,8 +1201,10 @@ FixedFormatCVBSSourceStage::get_parameter_descriptors(
 
 std::map<std::string, ParameterValue>
 FixedFormatCVBSSourceStage::get_parameters() const {
-  return {
-      {"input_path", input_path_}, {"y_path", y_path_}, {"c_path", c_path_}};
+  return {{"input_path", input_path_},
+          {"y_path", y_path_},
+          {"c_path", c_path_},
+          {"sample_encoding", sample_encoding_}};
 }
 
 bool FixedFormatCVBSSourceStage::set_parameters(
@@ -1127,6 +1216,8 @@ bool FixedFormatCVBSSourceStage::set_parameters(
       y_path_ = std::get<std::string>(value);
     } else if (key == "c_path") {
       c_path_ = std::get<std::string>(value);
+    } else if (key == "sample_encoding") {
+      sample_encoding_ = std::get<std::string>(value);
     } else {
       ORC_LOG_WARN("{}: unknown parameter '{}'", stage_name_, key);
       return false;
@@ -1151,6 +1242,15 @@ bool FixedFormatCVBSSourceStage::set_parameters(
     // The configured path does not point to a usable source file, so the
     // stage cannot produce any output; report Red rather than Yellow.
     set_configuration_status(orc::ConfigurationStatus::Red);
+    return true;
+  }
+
+  // Manual sample encoding makes the .meta sidecar optional; the stage can
+  // run on the payload file alone.
+  const bool use_metadata = sample_encoding_.empty() ||
+                            sample_encoding_ == kSampleEncodingFromMetadata;
+  if (!use_metadata) {
+    set_configuration_status(orc::ConfigurationStatus::Green);
     return true;
   }
 

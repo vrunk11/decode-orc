@@ -272,13 +272,61 @@ TEST(CVBSSourceStageIdentityTest, Stage_VersionIsCurrentPhase) {
 // Parameter descriptors
 // ===========================================================================
 
-TEST(CVBSSourceStageParamTest, HasThreeParameters) {
+TEST(CVBSSourceStageParamTest, UnknownSourceType_HasAllFourParameters) {
   PALCVBSSourceStage stage;
   auto descs = stage.get_parameter_descriptors();
-  ASSERT_EQ(descs.size(), 3u);
+  ASSERT_EQ(descs.size(), 4u);
   EXPECT_EQ(descs[0].name, "input_path");
   EXPECT_EQ(descs[1].name, "y_path");
   EXPECT_EQ(descs[2].name, "c_path");
+  EXPECT_EQ(descs[3].name, "sample_encoding");
+}
+
+TEST(CVBSSourceStageParamTest, CompositeSourceType_OmitsYCPaths) {
+  PALCVBSSourceStage stage;
+  auto descs =
+      stage.get_parameter_descriptors(VideoSystem::PAL, SourceType::Composite);
+  ASSERT_EQ(descs.size(), 2u);
+  EXPECT_EQ(descs[0].name, "input_path");
+  EXPECT_EQ(descs[1].name, "sample_encoding");
+}
+
+TEST(CVBSSourceStageParamTest, YCSourceType_OmitsCompositePath) {
+  PALCVBSSourceStage stage;
+  auto descs =
+      stage.get_parameter_descriptors(VideoSystem::PAL, SourceType::YC);
+  ASSERT_EQ(descs.size(), 3u);
+  EXPECT_EQ(descs[0].name, "y_path");
+  EXPECT_EQ(descs[1].name, "c_path");
+  EXPECT_EQ(descs[2].name, "sample_encoding");
+}
+
+TEST(CVBSSourceStageParamTest, SampleEncoding_DefaultsToFromMetadata) {
+  PALCVBSSourceStage stage;
+  auto descs = stage.get_parameter_descriptors();
+  const auto& pd = descs[3];
+  ASSERT_EQ(pd.name, "sample_encoding");
+  EXPECT_EQ(pd.type, ParameterType::STRING);
+  ASSERT_TRUE(pd.constraints.default_value.has_value());
+  EXPECT_EQ(std::get<std::string>(*pd.constraints.default_value),
+            "From metadata");
+  // "From metadata" plus the four supported encodings.
+  ASSERT_EQ(pd.constraints.allowed_strings.size(), 5u);
+  EXPECT_EQ(pd.constraints.allowed_strings[0], "From metadata");
+  EXPECT_EQ(pd.constraints.allowed_strings[1], "CVBS_U10_4FSC");
+  EXPECT_EQ(pd.constraints.allowed_strings[2], "CVBS_U16_4FSC");
+  EXPECT_EQ(pd.constraints.allowed_strings[3], "CVBS_TPG21_4FSC");
+  EXPECT_EQ(pd.constraints.allowed_strings[4], "CVBS_S16_FSC");
+}
+
+TEST(CVBSSourceStageParamTest, SetGet_SampleEncoding_RoundTrips) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"sample_encoding", std::string("CVBS_U16_4FSC")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  auto got = stage.get_parameters();
+  EXPECT_EQ(std::get<std::string>(got["sample_encoding"]), "CVBS_U16_4FSC");
 }
 
 TEST(CVBSSourceStageParamTest, InputPath_IsFilePathType) {
@@ -384,6 +432,42 @@ TEST(CVBSSourceStageStatusTest,
   EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Green);
 }
 
+TEST(CVBSSourceStageStatusTest,
+     SetParameters_ShowsGreen_WhenManualEncodingAndMetadataMissing) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->metadata_available = false;
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("CVBS_U16_4FSC")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Green);
+}
+
+TEST(CVBSSourceStageStatusTest,
+     SetParameters_ShowsYellow_WhenFromMetadataAndMetadataMissing) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->metadata_available = false;
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("From metadata")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Yellow);
+}
+
+TEST(CVBSSourceStageStatusTest,
+     SetParameters_ShowsRed_WhenManualEncodingButFileNotAccessible) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->input_file_valid = false;
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("CVBS_U16_4FSC")}};
+  ASSERT_TRUE(stage.set_parameters(p));
+  EXPECT_EQ(stage.get_configuration_status(), ConfigurationStatus::Red);
+}
+
 // ===========================================================================
 // Signal state validation
 // ===========================================================================
@@ -449,6 +533,116 @@ TEST(CVBSSourceStageValidationTest, AcceptsAllFourSampleEncodings) {
     ASSERT_NE(vfr, nullptr) << "Failed for encoding: " << enc;
     EXPECT_EQ(vfr->frame_count(), 1u) << "Failed for encoding: " << enc;
   }
+}
+
+// ===========================================================================
+// Manual sample encoding (metadata optional per CVBS file format spec)
+// ===========================================================================
+
+TEST(CVBSSourceManualEncodingTest, LoadsWithoutMetadata) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->metadata_available = false;
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("CVBS_U16_4FSC")}};
+  auto vfr = execute_and_get_vfr(stage, p);
+  ASSERT_NE(vfr, nullptr);
+  EXPECT_EQ(vfr->frame_count(), 1u);
+}
+
+TEST(CVBSSourceManualEncodingTest, FrameCountMeasuredFromPayloadSize) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->metadata_available = false;
+  deps->payload_words = make_blank_payload_u16(
+      static_cast<size_t>(kPalFrameSamples) * 3, kPalBlanking);
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("CVBS_U16_4FSC")}};
+  auto vfr = execute_and_get_vfr(stage, p);
+  ASSERT_NE(vfr, nullptr);
+  EXPECT_EQ(vfr->frame_count(), 3u);
+}
+
+TEST(CVBSSourceManualEncodingTest, MetadataIsIgnoredWhenManualEncodingSet) {
+  // Even a metadata record that would be rejected (wrong system, unlocked
+  // signal state) must not matter in manual mode — the sidecar is not read.
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("NTSC");
+  deps->metadata_record.signal_state_preset = "STANDARD_RAW";
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("CVBS_U16_4FSC")}};
+  auto vfr = execute_and_get_vfr(stage, p);
+  ASSERT_NE(vfr, nullptr);
+  EXPECT_EQ(vfr->frame_count(), 1u);
+}
+
+TEST(CVBSSourceManualEncodingTest, NormalisesSelectedEncoding) {
+  // CVBS_S16_FSC: stored 0 decodes to the PAL blanking level.
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->metadata_available = false;
+  deps->payload_words.assign(static_cast<size_t>(kPalFrameSamples), 0u);
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("CVBS_S16_FSC")}};
+  auto vfr = execute_and_get_vfr(stage, p);
+  ASSERT_NE(vfr, nullptr);
+  const auto* line = vfr->get_line(0, 0);
+  ASSERT_NE(line, nullptr);
+  EXPECT_EQ(line[0], static_cast<int16_t>(kPalBlanking));
+}
+
+TEST(CVBSSourceManualEncodingTest, RejectsUnknownManualEncoding) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("RAW_S16_40M")}};
+  expect_user_data_error(stage, p, "RAW_S16_40M");
+}
+
+TEST(CVBSSourceManualEncodingTest, FromMetadataValue_StillRequiresMetadata) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->metadata_available = false;
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("From metadata")}};
+  expect_user_data_error(stage, p, "metadata");
+}
+
+TEST(CVBSSourceManualEncodingTest, AudioIsFreeRunningWithoutMetadata) {
+  // The frame-locked flag only exists in the .meta sidecar, so audio found
+  // alongside a metadata-less source must be treated as free-running.
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->metadata_available = false;
+  deps->audio_info = CVBSAudioSidecarInfo{true};
+  PALCVBSSourceStage stage(deps);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("CVBS_U16_4FSC")}};
+  auto vfr = execute_and_get_vfr(stage, p);
+  ASSERT_NE(vfr, nullptr);
+  EXPECT_TRUE(vfr->has_audio());
+  EXPECT_FALSE(vfr->audio_locked());
+}
+
+TEST(CVBSSourceManualEncodingTest, EncodingChangeInvalidatesCache) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  PALCVBSSourceStage stage(deps);
+  std::vector<ArtifactPtr> inputs;
+  ObservationContext obs;
+  auto r1 = stage.execute(inputs, kDefaultParams, obs);
+  std::map<std::string, ParameterValue> p{
+      {"input_path", std::string("/fake/video.composite")},
+      {"sample_encoding", std::string("CVBS_U16_4FSC")}};
+  auto r2 = stage.execute(inputs, p, obs);
+  ASSERT_EQ(r1.size(), 1u);
+  ASSERT_EQ(r2.size(), 1u);
+  EXPECT_NE(r1.front().get(), r2.front().get());
 }
 
 // ===========================================================================

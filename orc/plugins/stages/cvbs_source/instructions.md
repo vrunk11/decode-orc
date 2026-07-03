@@ -1,14 +1,29 @@
 # CVBS Source
 
-Reads composite video from a `.composite` file (or a `.y` / `.c` pair for Y/C captures) and its `.meta` SQLite sidecar, then presents the decoded frames as a VideoFrameRepresentation for downstream stages. The stage detects the video system and sample encoding from the sidecar and normalises all sample values to the internal 10-bit CVBS domain before passing data downstream.
+Reads composite video from a `.composite` file (or a `.y` / `.c` pair for Y/C captures) and presents the decoded frames as a VideoFrameRepresentation for downstream stages. By default the stage detects the sample encoding and other capture details from the `.meta` SQLite sidecar; because the CVBS file format declares metadata optional, the sample encoding can also be selected manually so that sources without a sidecar can be used. All sample values are normalised to the internal 10-bit CVBS domain before passing data downstream.
 
 ## When to use
 
 Add CVBS Source as the first stage in any pipeline that starts from a CVBS file produced by the decode-orc capture toolchain. Only files with a signal state of `STANDARD_TBC_LOCKED` are accepted; files in any other state (for example `STANDARD_TBC_UNLOCKED` or `STANDARD_RAW`) are rejected before any sample data is read.
 
+## Parameters
+
+The file-path parameters offered match the project's source type: a composite project shows only **CVBS File Path**, while a Y/C project shows only the **Y (Luma)** and **C (Chroma)** paths.
+
+| Parameter | Meaning |
+|-----------|---------|
+| CVBS File Path (`input_path`) | Path to the composite data file (`.composite`). Composite projects only. |
+| CVBS Y (Luma) File Path (`y_path`) | Path to the luma channel file (`.y`). Y/C projects only; set together with `c_path`. |
+| CVBS C (Chroma) File Path (`c_path`) | Path to the chroma channel file (`.c`). Y/C projects only; set together with `y_path`. |
+| Sample Encoding (`sample_encoding`) | `From metadata` (default) reads the encoding from the `.meta` sidecar. Selecting `CVBS_U10_4FSC`, `CVBS_U16_4FSC`, `CVBS_TPG21_4FSC`, or `CVBS_S16_FSC` manually makes the sidecar optional. |
+
 ## What it does
 
-At execute time the stage opens the `.meta` sidecar and reads the video standard, sample encoding, and signal state. If the signal state is not `STANDARD_TBC_LOCKED` the stage reports a configuration error and stops. Otherwise it computes the frame count from the file size and reads each frame's sample words in order, applying the normalisation appropriate to the declared encoding:
+With **Sample Encoding** at its default (`From metadata`), the stage opens the `.meta` sidecar at execute time and reads the video standard, sample encoding, and signal state. If the signal state is not `STANDARD_TBC_LOCKED`, or the video standard does not match the stage, the stage reports a configuration error and stops.
+
+When a sample encoding is selected manually the `.meta` sidecar is ignored (it need not exist). The video standard comes from the stage itself, the signal is assumed to be TBC-locked, the frame count is measured from the file size, and any audio sidecar is treated as free-running (frame-locked audio requires the metadata flag).
+
+Each frame's sample words are read in order, applying the normalisation appropriate to the encoding:
 
 - `CVBS_U10_4FSC` — identity transform; values are already in the 10-bit domain.
 - `CVBS_U16_4FSC` — divide the 16-bit unsigned value by 64.
@@ -25,8 +40,8 @@ The coloured dot in the top-right corner of the node shows its configuration sta
 
 | Colour | Meaning |
 |--------|---------|
-| Green | Fully configured and ready to run. The source file and its metadata are present and valid. |
-| Yellow | The source file is present but its `.meta` sidecar is missing or unreadable. The stage cannot run until the metadata is available. |
+| Green | Fully configured and ready to run. The source file is present and valid, and metadata is either present and valid or not required (manual sample encoding). |
+| Yellow | The source file is present but its `.meta` sidecar is missing or unreadable, and the sample encoding is set to `From metadata`. Provide the sidecar or select an encoding manually. |
 | Red | Not configured. No file path is set, the configured path does not point to an accessible source file, or the file's video system does not match the stage. |
 
 Parameters can be set via **Edit Parameters...** in the node context menu. Some stages also provide interactive stage tools (listed under **Tools** above) that set parameters directly from within the tool.

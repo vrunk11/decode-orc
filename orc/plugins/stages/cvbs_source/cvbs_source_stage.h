@@ -129,12 +129,21 @@ class ICVBSSourceStageDeps {
 // without output clamping so that headroom is preserved.
 //
 // Parameters:
-//   input_path  – path to the CVBS composite data file (.composite)
-//   y_path      – path to the luma channel file (.y) for YC mode
-//   c_path      – path to the chroma channel file (.c) for YC mode
+//   input_path       – path to the CVBS composite data file (.composite)
+//   y_path           – path to the luma channel file (.y) for YC mode
+//   c_path           – path to the chroma channel file (.c) for YC mode
+//   sample_encoding  – "From metadata" (default) or an explicit encoding
 //
 // YC mode is active when both y_path and c_path are non-empty; composite mode
-// uses input_path.  The two modes are mutually exclusive.
+// uses input_path.  The two modes are mutually exclusive; the parameter
+// descriptors only offer the file fields matching the project's source type.
+//
+// Metadata: the CVBS file format spec declares the .meta sidecar optional.
+// With sample_encoding at its default the sidecar is required and provides
+// the encoding, frame count, signal state, and NTSC-J black level.  When an
+// encoding is selected manually the sidecar is ignored: the video standard
+// comes from the stage's fixed system, the signal is assumed TBC-locked, and
+// the frame count is measured from the payload size.
 class FixedFormatCVBSSourceStage : public DAGStage,
                                    public ParameterizedStage,
                                    public IStagePreviewCapability {
@@ -196,9 +205,10 @@ class FixedFormatCVBSSourceStage : public DAGStage,
   const char* description_;
   VideoFormatCompatibility compatible_formats_;
 
-  std::string input_path_;  // composite / single-channel mode
-  std::string y_path_;      // YC mode: luma path
-  std::string c_path_;      // YC mode: chroma path
+  std::string input_path_;       // composite / single-channel mode
+  std::string y_path_;           // YC mode: luma path
+  std::string c_path_;           // YC mode: chroma path
+  std::string sample_encoding_;  // "From metadata" (default) or explicit
 
   mutable std::mutex execute_mutex_;
   mutable std::string cached_input_path_;

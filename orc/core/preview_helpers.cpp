@@ -203,16 +203,6 @@ PreviewImage render_standard_preview(
     return result;
   }
 
-  // For YC sources, get a pointer to the frame buffer for the selected channel.
-  // Indexing is identical to the composite path: buf_line * width gives the
-  // start of that (frame-flat) line within the buffer.
-  const VideoFrameRepresentation::sample_type* yc_frame_ptr = nullptr;
-  if (yc_channel == YCChannel::Luma) {
-    yc_frame_ptr = representation->get_frame_luma(frame_id);
-  } else if (yc_channel == YCChannel::Chroma) {
-    yc_frame_ptr = representation->get_frame_chroma(frame_id);
-  }
-
   uint32_t width = static_cast<uint32_t>(descriptor->samples_per_line_nominal);
   uint32_t height = static_cast<uint32_t>(descriptor->height);
   int32_t black_level = video_params->black_level;
@@ -264,9 +254,20 @@ PreviewImage render_standard_preview(
       buf_line = display_row;
     }
 
-    const VideoFrameRepresentation::sample_type* line =
-        yc_frame_ptr ? yc_frame_ptr + buf_line * width
-                     : representation->get_line(frame_id, buf_line);
+    // Per-line accessors account for PAL's non-uniform line lengths (1135 or
+    // 1136 samples); a fixed buf_line * width stride would drift on field 2.
+    const VideoFrameRepresentation::sample_type* line = nullptr;
+    switch (yc_channel) {
+      case YCChannel::Luma:
+        line = representation->get_line_luma(frame_id, buf_line);
+        break;
+      case YCChannel::Chroma:
+        line = representation->get_line_chroma(frame_id, buf_line);
+        break;
+      case YCChannel::Composite:
+        line = representation->get_line(frame_id, buf_line);
+        break;
+    }
     if (!line) continue;
 
     for (uint32_t x = 0; x < width; ++x) {

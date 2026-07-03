@@ -17,9 +17,15 @@ dag:
       x: 50
       y: 50
       parameters:
+        c_path:
+          type: string
+          value: ""
         input_path:
           type: string
-          value: ../../videosynth/tests/projects/output-stacking/videosynth_ntsc_discsim_A.composite
+          value: ../../videosynth/tests/projects/output-stacking/composite/videosynth_ntsc_stacking_1001.composite
+        y_path:
+          type: string
+          value: ""
     - id: 2
       stage: NTSC_CVBS_Source
       node_type: SOURCE
@@ -28,9 +34,15 @@ dag:
       x: 50
       y: 175
       parameters:
+        c_path:
+          type: string
+          value: ""
         input_path:
           type: string
-          value: ../../videosynth/tests/projects/output-stacking/videosynth_ntsc_discsim_B.composite
+          value: ../../videosynth/tests/projects/output-stacking/composite/videosynth_ntsc_stacking_2002.composite
+        y_path:
+          type: string
+          value: ""
     - id: 3
       stage: NTSC_CVBS_Source
       node_type: SOURCE
@@ -39,9 +51,15 @@ dag:
       x: 50
       y: 300
       parameters:
+        c_path:
+          type: string
+          value: ""
         input_path:
           type: string
-          value: ../../videosynth/tests/projects/output-stacking/videosynth_ntsc_discsim_C.composite
+          value: ../../videosynth/tests/projects/output-stacking/composite/videosynth_ntsc_stacking_3003.composite
+        y_path:
+          type: string
+          value: ""
     - id: 4
       stage: NTSC_CVBS_Source
       node_type: SOURCE
@@ -50,9 +68,15 @@ dag:
       x: 50
       y: 425
       parameters:
+        c_path:
+          type: string
+          value: ""
         input_path:
           type: string
-          value: ../../videosynth/tests/projects/output-stacking/videosynth_ntsc_discsim_D.composite
+          value: ../../videosynth/tests/projects/output-stacking/composite/videosynth_ntsc_stacking_4004.composite
+        y_path:
+          type: string
+          value: ""
     - id: 5
       stage: source_align
       node_type: COMPLEX
