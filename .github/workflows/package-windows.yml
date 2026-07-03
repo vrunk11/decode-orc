@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Fetch QtNodes source
         shell: pwsh
@@ -75,7 +75,7 @@ jobs:
 
       - name: Cache vcpkg bootstrap
         id: vcpkg-bootstrap-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: vcpkg
           key: vcpkg-bootstrap-${{ runner.os }}-e5a1490e
@@ -122,7 +122,7 @@ jobs:
 
       - name: Restore vcpkg installed tree
         id: vcpkg-installed-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: vcpkg_installed
           key: vcpkg-installed-${{ runner.os }}-x64-windows-release-${{ hashFiles('vcpkg.json') }}-baseline-e5a1490
@@ -174,9 +174,12 @@ jobs:
           Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"
           
-          # Use the same preset flow as local Windows builds (GUI release)
-          $configurePreset = "windows-gui-release"
-          $buildPreset = "build-windows-gui-release"
+          # CI uses the Ninja preset: it builds with whatever MSVC the VS dev
+          # shell above provides, so runner image bumps (VS 2022 -> 2026 -> ...)
+          # don't break configure the way the pinned "Visual Studio NN" generator
+          # in the local presets does.
+          $configurePreset = "windows-gui-release-ninja"
+          $buildPreset = "build-windows-gui-release-ninja"
           $projectVersion = "${{ steps.version.outputs.cmake_version }}"
           $ezpwdDir = "$PWD\external\ezpwd-reed-solomon\c++"
           $pkgconfExe = "$PWD\vcpkg_installed\x64-windows-release\tools\pkgconf\pkgconf.exe"
@@ -218,7 +221,7 @@ jobs:
           }
 
           # Ensure GUI binary is built (required for MSI packaging)
-          $guiBuilt = Get-ChildItem -Path "build/windows-gui-release/bin" -Recurse -Filter "orc-gui.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $guiBuilt = Get-ChildItem -Path "build/windows-gui-release-ninja/bin" -Recurse -Filter "orc-gui.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $guiBuilt) {
             Write-Error "orc-gui.exe was not produced by preset build"
             exit 1
@@ -231,7 +234,7 @@ jobs:
           if (Test-Path package-root) {
             Remove-Item -Recurse -Force package-root
           }
-          cmake --install "build/windows-gui-release" --prefix "$PWD/package-root" --component Runtime --config Release
+          cmake --install "build/windows-gui-release-ninja" --prefix "$PWD/package-root" --component Runtime --config Release
 
       - name: Bundle Qt dependencies
         shell: pwsh
@@ -643,7 +646,7 @@ jobs:
           }
 
       - name: Upload MSI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}
           path: dist/*.msi

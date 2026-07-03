@@ -502,8 +502,11 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
       size_t max_output_frame = 0;
       for (size_t i = 0; i < input_sources.size(); ++i) {
         if (first_vbi_frames[i] >= 0) {
-          max_output_frame = std::max(max_output_frame,
-                                      pad_counts[i] + source_ranges[i].count());
+          // Cast needed: size_t and uint64_t are distinct types on macOS,
+          // which breaks std::max template deduction.
+          max_output_frame = std::max(
+              max_output_frame,
+              static_cast<size_t>(pad_counts[i] + source_ranges[i].count()));
         }
       }
       std::map<size_t, int> cov_events;
