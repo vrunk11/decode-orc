@@ -9,6 +9,9 @@
 
 #include "../include/disc_mapper_presenter.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/stage.h>
+
 #include <algorithm>
 #include <memory>
 #include <utility>
@@ -17,9 +20,7 @@
 #include "../../core/analysis/analysis_registry.h"
 #include "../../core/analysis/analysis_tool.h"
 #include "../../core/include/dag_executor.h"
-#include "../../core/include/logging.h"
 #include "../../core/include/project.h"
-#include "../../core/stages/stage.h"
 
 namespace orc::presenters {
 
@@ -113,8 +114,8 @@ orc::AnalysisResult DiscMapperPresenter::runAnalysis(
   }
 
   if (!node_it->stage ||
-      node_it->stage->get_node_type_info().stage_name != "field_map") {
-    result.summary = "Disc Mapper only applies to field_map stages";
+      node_it->stage->get_node_type_info().stage_name != "frame_map") {
+    result.summary = "Disc Mapper only applies to frame_map stages";
     ORC_LOG_ERROR("{}", result.summary);
     return result;
   }

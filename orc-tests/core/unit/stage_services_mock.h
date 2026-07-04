@@ -30,6 +30,15 @@ class MockFileWriterUint16 : public orc::IFileWriterUint16 {
   MOCK_METHOD(void, close, (), (override));
 };
 
+class MockFileWriterInt16 : public orc::IFileWriterInt16 {
+ public:
+  MOCK_METHOD(bool, open, (const std::string& filepath), (override));
+  MOCK_METHOD(void, write, (const int16_t* data, size_t count), (override));
+  MOCK_METHOD(void, write, (const std::vector<int16_t>& data), (override));
+  MOCK_METHOD(void, flush, (), (override));
+  MOCK_METHOD(void, close, (), (override));
+};
+
 class MockStageServices : public orc::IStageServices {
  public:
   MOCK_METHOD(std::shared_ptr<orc::IFileWriterUint8>,
@@ -37,5 +46,8 @@ class MockStageServices : public orc::IStageServices {
               (override));
   MOCK_METHOD(std::shared_ptr<orc::IFileWriterUint16>,
               create_buffered_file_writer_uint16, (size_t buffer_size),
+              (override));
+  MOCK_METHOD(std::shared_ptr<orc::IFileWriterInt16>,
+              create_buffered_file_writer_int16, (size_t buffer_size),
               (override));
 };

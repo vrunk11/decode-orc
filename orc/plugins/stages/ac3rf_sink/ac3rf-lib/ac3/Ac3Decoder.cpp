@@ -21,8 +21,8 @@ std::vector<std::array<uint8_t, 1536>> Ac3Decoder::decodeSymbols(
             m_block_handler.handleCorrectedBlock(correctedBlock.value());
         result.insert(result.end(), output.cbegin(), output.cend());
       }
-}
-}
+    }
+  }
 
   return result;
 }

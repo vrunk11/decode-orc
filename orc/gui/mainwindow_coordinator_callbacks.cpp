@@ -17,6 +17,7 @@
 #include "fieldpreviewwidget.h"
 #include "logging.h"
 #include "mainwindow.h"
+#include "presenters/include/render_presenter.h"
 #include "presenters/include/vbi_presenter.h"
 #include "presenters/include/vbi_view_models.h"
 #include "previewdialog.h"
@@ -54,6 +55,13 @@ void MainWindow::onPreviewReady(uint64_t request_id,
 
   endPreviewRenderInFlight();
 
+  // Refresh vectorscope after every completed render so it stays in sync
+  // with the preview as the user steps through frames — not only when
+  // navigation has settled.
+  preview_dialog_->setSharedPreviewCoordinate(buildCurrentPreviewCoordinate());
+  refreshVectorscopeForCurrentCoordinate();
+  refreshHistogramForCurrentCoordinate();
+
   // If the user navigated while we were rendering, the dialog's current
   // index will already differ from what we just rendered — issue a follow-up.
   if (preview_dialog_->currentIndex() != rendered_index) {
@@ -63,24 +71,6 @@ void MainWindow::onPreviewReady(uint64_t request_id,
         preview_dialog_->currentIndex(), rendered_index);
     updateAllPreviewComponents();
     return;
-  }
-
-  // Keep shared coordinate in sync with the currently displayed preview before
-  // requesting vectorscope data for this settled frame/field.
-  preview_dialog_->setSharedPreviewCoordinate(buildCurrentPreviewCoordinate());
-  refreshVectorscopeForCurrentCoordinate();
-}
-
-void MainWindow::onStageParametersApplied(uint64_t request_id, bool success) {
-  // On failure the worker never emits previewReady, so
-  // preview_render_in_flight_ would stay true permanently.  Clear it here so
-  // the normal render path recovers.
-  if (!success && request_id == pending_preview_request_id_) {
-    ORC_LOG_WARN(
-        "onStageParametersApplied: apply failed for request {}; clearing "
-        "in-flight flag",
-        request_id);
-    endPreviewRenderInFlight();
   }
 }
 
@@ -175,10 +165,10 @@ void MainWindow::onAvailableOutputsReady(
 
   // If current option not available, try to find a sensible default
   if (!found_match && !available_outputs_.empty()) {
-    // Prefer "frame" (Frame (Y)) if available, otherwise use first output
+    // Prefer "interlaced_clamped" if available, otherwise use first output
     bool found_frame = false;
     for (const auto& output : available_outputs_) {
-      if (output.option_id == "frame") {
+      if (output.option_id == "interlaced_clamped") {
         current_output_type_ = output.type;
         current_option_id_ = output.option_id;
         found_frame = true;
@@ -345,10 +335,18 @@ void MainWindow::onTriggerComplete(uint64_t request_id, bool success,
   }
 
   // If trigger was successful, automatically create dialog and request analysis
-  // data for display
+  // data for display.
+  //
+  // IMPORTANT: createAndShowAnalysisDialog must be deferred to the next event
+  // loop iteration via QueuedConnection. QProgressDialog::setValue() calls
+  // QCoreApplication::processEvents() internally; if triggerComplete arrives
+  // during that processEvents (i.e. we are on the call stack of the trigger
+  // dialog's setValue), running createAndShowAnalysisDialog synchronously
+  // causes a second modal dialog's setValue to trigger another processEvents,
+  // during which the DeferredDelete for the trigger dialog fires and destroys
+  // it while its setValue stack frame is still live. The dangling d-pointer
+  // then causes a null-dereference crash in QProgressBar::maximum().
   if (success && pending_trigger_node_id_.is_valid()) {
-    // Descriptor-driven analysis routing: resolve the node stage and defer
-    // tool selection to createAndShowAnalysisDialog().
     const auto nodes = project_.presenter()->getNodes();
     auto node_it = std::find_if(nodes.begin(), nodes.end(),
                                 [this](const orc::presenters::NodeInfo& n) {
@@ -356,8 +354,14 @@ void MainWindow::onTriggerComplete(uint64_t request_id, bool success,
                                 });
 
     if (node_it != nodes.end()) {
-      createAndShowAnalysisDialog(pending_trigger_node_id_,
-                                  node_it->stage_name);
+      orc::NodeID analysis_node_id = pending_trigger_node_id_;
+      std::string analysis_stage_name = node_it->stage_name;
+      QMetaObject::invokeMethod(
+          this,
+          [this, analysis_node_id, analysis_stage_name]() {
+            createAndShowAnalysisDialog(analysis_node_id, analysis_stage_name);
+          },
+          Qt::QueuedConnection);
     }
   }
 
@@ -405,7 +409,7 @@ void MainWindow::onCoordinatorError(uint64_t request_id, QString message) {
       // Show empty line scope (no samples) - this will display "No data
       // available for this line"
       preview_dialog_->showLineScope(node_id_str, stage_index, 0, 0, 0,
-                                     std::vector<uint16_t>(),  // Empty samples
+                                     std::vector<int16_t>(),  // Empty samples
                                      std::nullopt, 0, 0, 0,
                                      current_output_type_);
     }
@@ -662,13 +666,28 @@ void MainWindow::onBurstLevelDataReady(
     return;
   }
 
+  // Fetch video parameters for amplitude unit conversion.
+  std::optional<orc::presenters::VideoParametersView> video_params;
+  auto* core_project = project_.presenter()->getCoreProjectHandle();
+  if (core_project) {
+    orc::presenters::RenderPresenter render_presenter(core_project);
+    render_presenter.setDAG(project_.getDAG());
+    auto vp = render_presenter.getVideoParameters(node_id);
+    if (vp.has_value()) {
+      video_params = orc::presenters::toVideoParametersView(*vp);
+    }
+  }
+
   // Start update cycle
   dialog->startUpdate(total_frames);
 
   // Add all data points
+  bool first = true;
   for (const auto& stats : frame_stats) {
     if (stats.has_data) {
-      dialog->addDataPoint(stats.frame_number, stats.median_burst_ire);
+      dialog->addDataPoint(stats.frame_number, stats.median_burst_10bit,
+                           first ? video_params : std::nullopt);
+      first = false;
     }
   }
 

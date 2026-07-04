@@ -1,10 +1,16 @@
 # orc-plugin-sdk: Public stable plugin SDK for decode-orc stage plugins.
 #
 # This INTERFACE library provides:
-#   - The public SDK include directory (orc/plugin/orc_plugin_sdk.h umbrella).
-#   - Access to the orc-core and orc-common include paths required to compile
-#     against the stable stage API (ParameterizedStage, TriggerableStage, etc.).
-#   - The orc-core link target so plugins can link the host runtime library.
+#   - The public SDK include directory only: <orc/plugin/...> (ABI/services)
+#     and <orc/stage/...> (stage contract headers). Private host include
+#     trees (orc/core, orc/common, orc/view-types) are deliberately NOT
+#     propagated: a plugin TU that includes a private host header must fail
+#     to compile, matching the allowlist enforced by
+#     cmake/check_plugin_private_includes.sh.
+#   - The orc-core link target (link-only) so plugins can resolve DAGStage,
+#     ArtifactPtr, and the other contract symbols at link time.
+#   - spdlog/fmt usage requirements for the SDK logging surface
+#     (<orc/stage/logging.h>, <orc/plugin/orc_plugin_services_helpers.h>).
 #
 # In-tree usage (plugins built inside this repository):
 #   target_link_libraries(my-plugin PRIVATE orc-plugin-sdk)
@@ -16,22 +22,27 @@
 
 add_library(orc-plugin-sdk INTERFACE)
 
+# Exported as orc::plugin-sdk from the installed package (the in-tree target
+# name keeps the orc- prefix; EXPORT_NAME controls only the imported name).
+set_target_properties(orc-plugin-sdk PROPERTIES EXPORT_NAME plugin-sdk)
+
 target_include_directories(orc-plugin-sdk INTERFACE
-    # SDK headers: <orc/plugin/orc_plugin_sdk.h>, etc.
+    # SDK headers: <orc/plugin/...> and <orc/stage/...>.
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/decode-orc-plugin-sdk>
 )
 
-# Expose orc/core/stages/ so that <triggerable_stage.h> (used by orc_stage_api.h)
-# is resolvable for plugin builds without requiring knowledge of the internal tree.
-target_include_directories(orc-plugin-sdk INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/orc/core/stages>
-)
+# Plugins link orc-core for symbols only. $<LINK_ONLY:...> strips orc-core's
+# usage requirements (include directories, compile definitions), so private
+# host headers are not reachable from plugin TUs; third-party dependencies a
+# plugin needs beyond the SDK surface must be declared by the plugin's own
+# CMakeLists.txt.
+target_link_libraries(orc-plugin-sdk INTERFACE $<LINK_ONLY:orc-core>)
 
-# Plugins must link against orc-core to resolve DAGStage, ArtifactPtr, etc.
-# This also transitively exposes orc-common include paths (parameter_types.h,
-# node_type.h, common_types.h) and orc-core/include (stage_parameter.h, etc.).
-target_link_libraries(orc-plugin-sdk INTERFACE orc-core)
+# The SDK headers themselves use spdlog (<orc/stage/logging.h>) and fmt
+# (<orc/plugin/orc_plugin_services_helpers.h>), so their usage requirements
+# are part of the SDK contract.
+target_link_libraries(orc-plugin-sdk INTERFACE spdlog::spdlog fmt::fmt)
 
 # =============================================================================
 # Install rules
@@ -43,13 +54,27 @@ install(DIRECTORY include/
     FILES_MATCHING PATTERN "*.h"
 )
 
-# CMake package config files (see cmake/decode-orc-plugin-sdk/)
-# Note: full CMake package export (find_package support) requires orc-core to
-# also be installed and exported. The Config.cmake and Helpers.cmake are
-# installed here; the Targets.cmake is generated when orc-core is packaged.
-# Full out-of-tree package support is completed in Phase 7.
+# Exported targets for out-of-tree plugin builds. The export set collects
+# orc-plugin-sdk (this file), orc-core (orc/core/CMakeLists.txt), and
+# orc-common (orc/common/CMakeLists.txt); the generated Targets file defines
+# orc::plugin-sdk plus the orc::orc-core / orc::orc-common link targets it
+# references.
+install(TARGETS orc-plugin-sdk EXPORT decode-orc-plugin-sdkTargets)
+install(EXPORT decode-orc-plugin-sdkTargets
+    FILE decode-orc-plugin-sdkTargets.cmake
+    NAMESPACE orc::
+    DESTINATION lib/cmake/decode-orc-plugin-sdk
+)
+
+# CMake package config files (see cmake/decode-orc-plugin-sdk/). The Config
+# file is installed under the exact name find_package(decode-orc-plugin-sdk)
+# looks for on case-sensitive filesystems: <package-name>Config.cmake.
 install(FILES
     ${CMAKE_SOURCE_DIR}/cmake/decode-orc-plugin-sdk/DecodeOrcPluginSDKConfig.cmake
+    DESTINATION lib/cmake/decode-orc-plugin-sdk
+    RENAME decode-orc-plugin-sdkConfig.cmake
+)
+install(FILES
     ${CMAKE_SOURCE_DIR}/cmake/decode-orc-plugin-sdk/DecodeOrcPluginSDKHelpers.cmake
     DESTINATION lib/cmake/decode-orc-plugin-sdk
 )

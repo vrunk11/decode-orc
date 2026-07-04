@@ -10,21 +10,17 @@
 #ifndef PREVIEWDIALOG_H
 #define PREVIEWDIALOG_H
 
-#include <node_id.h>
-#include <orc_preview_types.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_preview_types.h>
+#include <orc/stage/orc_vectorscope.h>
 #include <orc_preview_views.h>
-#include <orc_vectorscope.h>
-#include <parameter_types.h>
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
-#include <QDoubleSpinBox>
-#include <QFormLayout>
 #include <QLabel>
 #include <QMenuBar>
 #include <QPushButton>
-#include <QScrollArea>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStatusBar>
@@ -32,7 +28,6 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <cstdint>
-#include <map>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -41,9 +36,11 @@
 #include "presenters/include/hints_view_models.h"  // For VideoParametersView
 
 class FieldPreviewWidget;
-class LineScopeDialog;
-class FieldTimingDialog;
+class FrameScopeDialog;
+class FrameTimingDialog;
+class HistogramDialog;
 class VectorscopeDialog;
+class WaveformMonitorDialog;
 
 /**
  * @brief Separate dialog window for previewing field/frame outputs from DAG
@@ -163,6 +160,27 @@ class PreviewDialog : public QDialog {
   void showVectorscopeForNode(orc::NodeID node_id);
 
   /**
+   * @brief Show video histogram dialog owned by the preview subsystem.
+   */
+  void showHistogramForNode(orc::NodeID node_id);
+
+  /**
+   * @brief Update histogram dialog content.
+   */
+  void updateHistogram(orc::NodeID node_id,
+                       const std::optional<orc::VideoHistogramData>& data);
+
+  /**
+   * @brief Check if histogram is visible for node.
+   */
+  bool isHistogramVisibleForNode(orc::NodeID node_id) const;
+
+  /**
+   * @brief Return the histogram preview view id.
+   */
+  static const std::string& kHistogramViewIdRef();
+
+  /**
    * @brief Update vectorscope dialog content for the given node.
    */
   void updateVectorscope(orc::NodeID node_id,
@@ -174,31 +192,45 @@ class PreviewDialog : public QDialog {
   bool isVectorscopeVisibleForNode(orc::NodeID node_id) const;
 
   /**
-   * @brief Show line scope dialog with sample data
-   * @param node_id Node identifier for the stage being viewed
-   * @param stage_index Stage number in the pipeline (1-based)
-   * @param field_index Field number being displayed (0-based)
-   * @param line_number Line number being displayed (1-based field line)
-   * @param sample_x Sample X position that was clicked
-   * @param samples Vector of 16-bit samples for the line
-   * @param video_params Optional video parameters for region markers
-   * @param preview_mode Current preview mode (Field/Frame/Split)
-   * @param y_samples Optional Y channel samples for YC sources
-   * @param c_samples Optional C channel samples for YC sources
+   * @brief Show frame scope dialog with sample data
+   *
+   * field_index is used as frame_id and line_number (1-based) is converted
+   * to a 0-based frame-flat line index.
+   *
+   * @param node_id          Stage node identifier
+   * @param stage_index      1-based pipeline stage number
+   * @param field_index      0-based field index (used as frame_id)
+   * @param line_number      1-based field line number
+   * @param sample_x         Sample X position that was clicked
+   * @param samples          CVBS_U10_4FSC composite samples
+   * @param video_params     Optional video parameters for level markers
+   * @param preview_image_width  Pixel width of preview image
+   * @param original_sample_x    Preview-space X (for cross-hair sync)
+   * @param original_image_y     Preview-space Y (for refresh)
+   * @param preview_mode     Current preview mode (kept for callers; ignored
+   * internally)
+   * @param y_samples        Optional luma samples (YC sources)
+   * @param c_samples        Optional chroma samples (YC sources)
    */
   void showLineScope(
       const QString& node_id, int stage_index, uint64_t field_index,
-      int line_number, int sample_x, const std::vector<uint16_t>& samples,
+      int line_number, int sample_x, const std::vector<int16_t>& samples,
       const std::optional<orc::presenters::VideoParametersView>& video_params,
       int preview_image_width, int original_sample_x, int original_image_y,
       orc::PreviewOutputType preview_mode,
-      const std::vector<uint16_t>& y_samples = {},
-      const std::vector<uint16_t>& c_samples = {});
+      const std::vector<int16_t>& y_samples = {},
+      const std::vector<int16_t>& c_samples = {});
 
   /**
    * @brief Close all child dialogs (e.g., line scope)
    */
   void closeChildDialogs();
+
+  /**
+   * @brief Forward amplitude display unit to all owned supplementary dialogs.
+   * Called by MainWindow::propagateAmplitudeUnit() whenever the unit changes.
+   */
+  void forwardAmplitudeUnit(orc::AmplitudeDisplayUnit unit);
 
   /**
    * @brief Check if line scope dialog is currently visible
@@ -214,14 +246,21 @@ class PreviewDialog : public QDialog {
   void notifyFrameChanged();
 
   /**
-   * @brief Get line scope dialog (for updating when stage changes)
+   * @brief Get frame scope dialog (for updating when stage changes)
    */
-  LineScopeDialog* lineScopeDialog() { return line_scope_dialog_; }
+  FrameScopeDialog* frameScopeDialog() { return frame_scope_dialog_; }
 
   /**
-   * @brief Get field timing dialog (for updating when frame changes)
+   * @brief Get frame timing dialog (for updating when frame changes)
    */
-  FieldTimingDialog* fieldTimingDialog() { return field_timing_dialog_; }
+  FrameTimingDialog* frameTimingDialog() { return frame_timing_dialog_; }
+
+  /**
+   * @brief Get waveform monitor dialog (for updating when frame changes)
+   */
+  WaveformMonitorDialog* waveformMonitorDialog() {
+    return waveform_monitor_dialog_;
+  }
 
   /**
    * @brief Returns the current 0-based navigation index (always matches
@@ -252,36 +291,18 @@ class PreviewDialog : public QDialog {
    */
   void setIndex(int zero_based);
 
-  // -------------------------------------------------------------------------
-  // Live Preview Tweak Panel (Phase 6)
-  // -------------------------------------------------------------------------
+  /**
+   * @brief Set the playback timer interval in milliseconds.
+   * Must be called by MainWindow whenever the video standard is known.
+   * PAL: 40 ms (25 fps). NTSC: 33 ms (~30 fps).
+   */
+  void setPlaybackFrameRateMs(int ms);
 
   /**
-   * @brief Populate (or clear) the live-tweak parameter panel.
-   *
-   * Called by MainWindow after a node change when tweakable parameters are
-   * available.  Pass empty vectors to clear/hide the panel.
-   *
-   * @param node_id       Node whose stage the tweaks target.
-   * @param tweakable     Tweakable parameter view-models from the coordinator.
-   * @param descriptors   Full ParameterDescriptors for building widgets.
-   * @param display_values Current live stage parameter values to initialise
-   * widgets.
-   * @param has_unsaved_changes Whether this stage currently has unwritten live
-   * tweaks.
+   * @brief Stop playback and reset the play/pause button to the play state.
+   * Call this whenever the source or project changes.
    */
-  void setTweakableParameters(
-      orc::NodeID node_id,
-      const std::vector<orc::LiveTweakableParameterView>& tweakable,
-      const std::vector<orc::ParameterDescriptor>& descriptors,
-      const std::map<std::string, orc::ParameterValue>& display_values,
-      bool has_unsaved_changes);
-
-  /**
-   * @brief Update the explicit unsaved state for the currently displayed tweak
-   * stage.
-   */
-  void setLiveTweaksDirty(bool has_unsaved_changes);
+  void stopPlayback();
 
  Q_SIGNALS:
   /**
@@ -303,11 +324,11 @@ class PreviewDialog : public QDialog {
   void aspectRatioModeChanged(int index);
   void exportPNGRequested();
   void showVBIDialogRequested();  // Emitted when VBI Decoder menu item selected
-  void showHintsDialogRequested();  // Emitted when Hints menu item selected
-  void showQualityMetricsDialogRequested();  // Emitted when Quality Metrics
-                                             // menu item selected
-  void showNtscObserverDialogRequested();    // Emitted when NTSC Observer menu
-                                             // item selected
+  void
+  showVideoParameterObserverDialogRequested();  // Emitted when Video Parameter
+                                                // Observer menu item selected
+  void showNtscObserverDialogRequested();  // Emitted when NTSC Observer menu
+                                           // item selected
   void showDropoutsChanged(
       bool show);  // Emitted when dropout visibility changes
   void lineScopeRequested(int image_x,
@@ -320,49 +341,23 @@ class PreviewDialog : public QDialog {
   void
   previewFrameChanged();  // Emitted when preview frame/output type changes -
                           // tells line scope to refresh at current position
-  void fieldTimingRequested();  // Emitted when user requests field timing view
+  void frameTimingRequested();  // Emitted when user requests frame timing view
+  void
+  waveformMonitorRequested();  // Emitted when user requests waveform monitor
   void vectorscopeRequested(const orc::PreviewCoordinate&
                                 coordinate);  // Emitted when vectorscope should
                                               // refresh via presenter contract
+  void histogramRequested(const orc::PreviewCoordinate&
+                              coordinate);  // Emitted when histogram should
+                                            // refresh via presenter contract
   void previewCoordinateChanged(
       const orc::PreviewCoordinate&
           coordinate);  // Emitted whenever shared coordinate changes
 
-  /**
-   * @brief Emitted when the user changes a live-tweak widget.
-   *
-   * Carries all current tweak-panel parameter values and the cost class of
-   * the parameter that was just changed.  MainWindow routes this to
-   * RenderCoordinator::requestApplyStageParameters().
-   */
-  void tweakParameterChanged(orc::NodeID node_id,
-                             std::map<std::string, orc::ParameterValue> params,
-                             orc::LiveTweakClass tweak_class);
-
-  /**
-   * @brief User requested reverting live tweaks to persisted stage parameters.
-   */
-  void resetLiveTweaksRequested(orc::NodeID node_id);
-
-  /**
-   * @brief User requested writing current tweak values back to stage
-   * parameters.
-   */
-  void writeLiveTweaksRequested(
-      orc::NodeID node_id, std::map<std::string, orc::ParameterValue> params);
-
-  /**
-   * @brief Emitted when the live tweaks dialog is closed without writing.
-   * MainWindow should discard all applied tweaks for all stages.
-   */
-  void allLiveTweaksDismissed();
-
  private slots:
   void onSampleMarkerMoved(int sample_x);
   void onComponentVectorscopeActionTriggered();
-  void onShowLiveTweaksToggled(bool checked);
-  void onResetLiveTweaksClicked();
-  void onWriteLiveTweaksClicked();
+  void onHistogramActionTriggered();
 
  private:
   void setupUI();
@@ -381,16 +376,19 @@ class PreviewDialog : public QDialog {
   QStatusBar* status_bar_;
   QAction* export_png_action_;
   QAction* show_vbi_action_;
-  QAction* show_hints_action_;
-  QAction* show_quality_metrics_action_;
+  QAction* show_video_parameter_observer_action_;
   QAction* show_ntsc_observer_action_;
-  QAction* show_field_timing_action_;
+  QAction* show_frame_timing_action_;
+  QAction* show_waveform_monitor_action_;
   QAction* show_component_vectorscope_action_;
-  QAction* show_live_tweaks_action_;
-  LineScopeDialog* line_scope_dialog_;
-  FieldTimingDialog* field_timing_dialog_;
+  QAction* show_histogram_action_;
+  FrameScopeDialog* frame_scope_dialog_;
+  FrameTimingDialog* frame_timing_dialog_;
+  WaveformMonitorDialog* waveform_monitor_dialog_;
   VectorscopeDialog* vectorscope_dialog_{nullptr};
   orc::NodeID vectorscope_node_id_;
+  HistogramDialog* histogram_dialog_{nullptr};
+  orc::NodeID histogram_node_id_;
   orc::NodeID current_node_id_;
   std::optional<orc::PreviewCoordinate> shared_preview_coordinate_;
   std::unordered_set<std::string> available_preview_view_ids_;
@@ -405,42 +403,19 @@ class PreviewDialog : public QDialog {
   QTimer* nav_debounce_timer_;
   QPushButton* first_button_;
   QPushButton* prev_button_;
+  QPushButton* play_pause_button_;
   QPushButton* next_button_;
   QPushButton* last_button_;
   QPushButton* zoom1to1_button_;
   QPushButton* dropouts_button_;
   QSpinBox* frame_jump_spinbox_;
 
-  // Live preview tweak panel (Phase 6)
-  struct TweakWidgetEntry {
-    orc::ParameterType type;
-    QWidget* widget{nullptr};
-    orc::LiveTweakClass tweak_class{orc::LiveTweakClass::DecodePhase};
-  };
-
-  QDialog* live_tweaks_dialog_{nullptr};
-  QWidget* tweak_panel_content_{nullptr};
-  QScrollArea* tweak_panel_scroll_{nullptr};
-  QPushButton* tweak_reset_button_{nullptr};
-  QPushButton* tweak_write_button_{nullptr};
-  QFormLayout* tweak_form_layout_{nullptr};
-  QTimer* tweak_debounce_timer_{nullptr};
-  orc::NodeID tweak_node_id_;
-  bool tweak_unsaved_changes_{false};
-  orc::LiveTweakClass last_tweak_class_{orc::LiveTweakClass::DecodePhase};
-  std::map<std::string, TweakWidgetEntry> tweak_widgets_;
-
-  void buildTweakPanel(
-      const std::vector<orc::LiveTweakableParameterView>& tweakable,
-      const std::vector<orc::ParameterDescriptor>& descriptors,
-      const std::map<std::string, orc::ParameterValue>& current_values);
-  void clearTweakPanel();
-  void updateLiveTweaksWindowTitle();
-  std::map<std::string, orc::ParameterValue> collectTweakValues() const;
-  orc::LiveTweakClass dominantTweakClass(
-      const std::string& changed_param_name) const;
+  // Playback
+  QTimer* playback_timer_;
+  bool is_playing_{false};
 
   void closeVectorscopeDialogs();
+  void closeHistogramDialog();
 
  protected:
   void closeEvent(QCloseEvent* event) override;

@@ -10,6 +10,8 @@
 
 #include "framecanvas.h"
 
+#include <orc/stage/cvbs_signal_constants.h>
+
 FrameCanvas::FrameCanvas(ComponentFrame& _componentFrame,
                          const ::orc::SourceParameters& _videoParameters)
     : yData(_componentFrame.y(0)),
@@ -17,8 +19,8 @@ FrameCanvas::FrameCanvas(ComponentFrame& _componentFrame,
       vData(_componentFrame.v(0)),
       width(_componentFrame.getWidth()),
       height(_componentFrame.getHeight()),
-      ireRange(_videoParameters.white_16b_ire - _videoParameters.black_16b_ire),
-      blackIre(_videoParameters.black_16b_ire),
+      ireRange(_videoParameters.white_level - _videoParameters.blanking_level),
+      blackIre(static_cast<double>(_videoParameters.blanking_level)),
       videoParameters(_videoParameters) {}
 
 int32_t FrameCanvas::top() { return videoParameters.first_active_frame_line; }

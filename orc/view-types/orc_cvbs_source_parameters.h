@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <common_types.h>  // For VideoSystem enum
+#include <orc/stage/common_types.h>  // For VideoSystem enum
 
 #include <cstdint>
 #include <string>

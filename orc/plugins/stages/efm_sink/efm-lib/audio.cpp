@@ -8,11 +8,11 @@
 
 #include "audio.h"
 
+#include <orc/stage/logging.h>
+
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-
-#include "logging.h"
 
 // Audio class
 // Set the data for the audio, ensuring it matches the frame size

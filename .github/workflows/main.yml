@@ -1,8 +1,20 @@
 name: Main CI/CD
 
 on:
+  # All branch pushes run the build-and-test gate; packaging is additionally
+  # gated below to main, tags, and manual dispatch.
   push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
   pull_request:
+  workflow_dispatch:
+
+# One run per ref; superseded runs are cancelled except for tag (release) builds.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build-and-test:
@@ -10,8 +22,12 @@ jobs:
     uses: ./.github/workflows/build-and-test.yml
     secrets: inherit
 
+  # Packaging runs on every push (branches and tags) and manual dispatch so
+  # the installable artifacts can be tested per-branch. PR events skip
+  # packaging only to avoid duplicating the push-triggered run.
   package-macos:
     name: Package MacOS DMG
+    if: github.event_name != 'pull_request'
     needs: build-and-test
     uses: ./.github/workflows/package-macos.yml
     with:
@@ -21,6 +37,7 @@ jobs:
 
   package-flatpak:
     name: Package Linux Flatpak
+    if: github.event_name != 'pull_request'
     needs: build-and-test
     uses: ./.github/workflows/package-flatpak.yml
     with:
@@ -30,45 +47,31 @@ jobs:
 
   package-windows:
     name: Package Windows MSI
+    if: github.event_name != 'pull_request'
     needs: build-and-test
     uses: ./.github/workflows/package-windows.yml
     with:
       artifact_name: decode-orc-windows-msi
       retention_days: 30
+    permissions:
+      contents: read
+      packages: write
     secrets: inherit
 
-  release-macos:
-    name: Publish MacOS DMG release
+  # Single release job so the GitHub release is created exactly once with all
+  # platform assets (avoids the create-release race between parallel jobs and
+  # partially-published releases when one platform fails).
+  release:
+    name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: package-macos
+    needs:
+      - package-macos
+      - package-flatpak
+      - package-windows
     permissions:
       contents: write
     uses: ./.github/workflows/release-from-artifact.yml
     with:
-      artifact_name: decode-orc-macos-dmg
-      file_glob: release-artifacts/*.dmg
-    secrets: inherit
-
-  release-flatpak:
-    name: Publish Linux Flatpak release
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: package-flatpak
-    permissions:
-      contents: write
-    uses: ./.github/workflows/release-from-artifact.yml
-    with:
-      artifact_name: decode-orc-linux-flatpak
-      file_glob: release-artifacts/*.flatpak
-    secrets: inherit
-
-  release-windows:
-    name: Publish Windows MSI release
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: package-windows
-    permissions:
-      contents: write
-    uses: ./.github/workflows/release-from-artifact.yml
-    with:
-      artifact_name: decode-orc-windows-msi
-      file_glob: release-artifacts/*.msi
+      artifact_pattern: decode-orc-*
+      file_glob: release-artifacts/*
     secrets: inherit

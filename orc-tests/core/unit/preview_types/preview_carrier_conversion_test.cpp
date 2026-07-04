@@ -8,9 +8,8 @@
  */
 
 #include <gtest/gtest.h>
-
-#include "../../../orc/core/include/colour_preview_conversion.h"
-#include "../../../orc/view-types/orc_preview_carriers.h"
+#include <orc/stage/colour_preview_conversion.h>
+#include <orc/stage/orc_preview_carriers.h>
 
 namespace orc_unit_test {
 
@@ -29,8 +28,8 @@ TEST(ColourFrameCarrierTest, ValidWhenAllPlanes_MatchDimensions) {
   orc::ColourFrameCarrier carrier{};
   carrier.width = 2;
   carrier.height = 2;
-  carrier.black_16b_ire = 0.0;
-  carrier.white_16b_ire = 1000.0;
+  carrier.cvbs_blanking = 0.0;
+  carrier.cvbs_white = 1000.0;
   carrier.y_plane = {200.0, 300.0, 400.0, 500.0};
   carrier.u_plane = {0.0, 0.0, 0.0, 0.0};
   carrier.v_plane = {0.0, 0.0, 0.0, 0.0};
@@ -39,13 +38,14 @@ TEST(ColourFrameCarrierTest, ValidWhenAllPlanes_MatchDimensions) {
 }
 
 TEST(ColourCarrierConversionTest, Produces_ValidRgbImage) {
+  // Y values in the carrier's own domain [cvbs_blanking=0, cvbs_white=65535].
   orc::ColourFrameCarrier carrier{};
   carrier.width = 2;
   carrier.height = 1;
-  carrier.black_16b_ire = 0.0;
-  carrier.white_16b_ire = 1000.0;
+  carrier.cvbs_blanking = 0.0;
+  carrier.cvbs_white = 65535.0;
   carrier.colorimetry = orc::ColorimetricMetadata::default_ntsc();
-  carrier.y_plane = {200.0, 800.0};
+  carrier.y_plane = {20000.0, 46000.0};  // dim and bright, both in TBC domain
   carrier.u_plane = {0.0, 0.0};
   carrier.v_plane = {0.0, 0.0};
 
@@ -65,15 +65,18 @@ TEST(ColourCarrierConversionTest, Produces_ValidRgbImage) {
 }
 
 TEST(ColourCarrierConversionTest, MatrixSelection_AffectsRgbResult) {
+  // Y/U/V in carrier domain [cvbs_blanking=0, cvbs_white=65535]; chroma
+  // large enough for the small matrix coefficient difference to survive
+  // 8-bit quantization.
   orc::ColourFrameCarrier ntsc{};
   ntsc.width = 1;
   ntsc.height = 1;
-  ntsc.black_16b_ire = 0.0;
-  ntsc.white_16b_ire = 1000.0;
+  ntsc.cvbs_blanking = 0.0;
+  ntsc.cvbs_white = 65535.0;
   ntsc.colorimetry = orc::ColorimetricMetadata::default_ntsc();
-  ntsc.y_plane = {500.0};
-  ntsc.u_plane = {150.0};
-  ntsc.v_plane = {50.0};
+  ntsc.y_plane = {30000.0};
+  ntsc.u_plane = {12000.0};
+  ntsc.v_plane = {5000.0};
 
   orc::ColourFrameCarrier fcc = ntsc;
   fcc.colorimetry.matrix_coefficients =
@@ -102,8 +105,8 @@ TEST(ColourFrameCarrierTest, EqualBlackAndWhiteLevels_IsNotValid) {
   orc::ColourFrameCarrier carrier{};
   carrier.width = 1;
   carrier.height = 1;
-  carrier.black_16b_ire = 500.0;
-  carrier.white_16b_ire = 500.0;  // equal to black
+  carrier.cvbs_blanking = 500.0;
+  carrier.cvbs_white = 500.0;  // equal to black
   carrier.y_plane = {500.0};
   carrier.u_plane = {0.0};
   carrier.v_plane = {0.0};
@@ -115,8 +118,8 @@ TEST(ColourFrameCarrierTest, InvertedBlackAndWhiteLevels_IsNotValid) {
   orc::ColourFrameCarrier carrier{};
   carrier.width = 1;
   carrier.height = 1;
-  carrier.black_16b_ire = 1000.0;
-  carrier.white_16b_ire = 0.0;  // white < black
+  carrier.cvbs_blanking = 1000.0;
+  carrier.cvbs_white = 0.0;  // white < black
   carrier.y_plane = {500.0};
   carrier.u_plane = {0.0};
   carrier.v_plane = {0.0};
@@ -141,13 +144,14 @@ TEST(ColourCarrierConversionTest, InvalidCarrier_ReturnsInvalidImage) {
 
 TEST(ColourCarrierConversionTest, Gamma28Transfer_ProducesValidRgbImage) {
   // PAL recording using BT.601-625 matrix with 2.8 gamma transfer.
+  // Y values in carrier domain [cvbs_blanking=0, cvbs_white=65535].
   orc::ColourFrameCarrier carrier{};
   carrier.width = 2;
   carrier.height = 1;
-  carrier.black_16b_ire = 0.0;
-  carrier.white_16b_ire = 1000.0;
+  carrier.cvbs_blanking = 0.0;
+  carrier.cvbs_white = 65535.0;
   carrier.colorimetry = orc::ColorimetricMetadata::default_pal();
-  carrier.y_plane = {200.0, 800.0};
+  carrier.y_plane = {20000.0, 46000.0};  // dim and bright, both in TBC domain
   carrier.u_plane = {0.0, 0.0};
   carrier.v_plane = {0.0, 0.0};
 
@@ -168,15 +172,16 @@ TEST(ColourCarrierConversionTest,
      Bt709Transfer_ProducesDistinctOutputFromGamma22) {
   // BT.709 OETF is piecewise-linear near black, unlike pure power-law gamma,
   // so the resulting display values should differ for the same input.
+  // Y in carrier domain [cvbs_blanking=0, cvbs_white=65535]; neutral chroma.
   orc::ColourFrameCarrier gamma22{};
   gamma22.width = 1;
   gamma22.height = 1;
-  gamma22.black_16b_ire = 0.0;
-  gamma22.white_16b_ire = 1000.0;
+  gamma22.cvbs_blanking = 0.0;
+  gamma22.cvbs_white = 65535.0;
   gamma22.colorimetry = orc::ColorimetricMetadata::default_ntsc();
   gamma22.colorimetry.transfer_characteristics =
       orc::ColorimetricTransferCharacteristics::Gamma22;
-  gamma22.y_plane = {300.0};
+  gamma22.y_plane = {25000.0};
   gamma22.u_plane = {0.0};
   gamma22.v_plane = {0.0};
 
@@ -203,8 +208,8 @@ TEST(ColourCarrierConversionTest, Bt1886Transfer_ProducesValidImage) {
   orc::ColourFrameCarrier carrier{};
   carrier.width = 1;
   carrier.height = 1;
-  carrier.black_16b_ire = 0.0;
-  carrier.white_16b_ire = 1000.0;
+  carrier.cvbs_blanking = 0.0;
+  carrier.cvbs_white = 1000.0;
   carrier.colorimetry = orc::ColorimetricMetadata::default_ntsc();
   carrier.colorimetry.transfer_characteristics =
       orc::ColorimetricTransferCharacteristics::BT1886;

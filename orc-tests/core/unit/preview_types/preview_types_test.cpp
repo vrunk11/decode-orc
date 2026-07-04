@@ -13,13 +13,13 @@
  */
 
 #include <gtest/gtest.h>
+#include <orc/stage/orc_preview_types.h>
+#include <orc/stage/orc_vectorscope.h>
+#include <orc/stage/stage_preview_capability.h>
 
 #include <climits>
 
-#include "../../../orc/core/include/stage_preview_capability.h"
-#include "../../../orc/view-types/orc_preview_types.h"
 #include "../../../orc/view-types/orc_preview_views.h"
-#include "../../../orc/view-types/orc_vectorscope.h"
 
 namespace orc_unit_test {
 
@@ -403,29 +403,6 @@ TEST(PreviewGeometryTest, WithZeroDarCorrectionFactor_IsNotValid) {
 }
 
 // =============================================================================
-// PreviewTweakableParameter — tweak class values
-// =============================================================================
-
-TEST(PreviewTweakableParameterTest, DisplayPhaseClass_IsPreserved) {
-  orc::PreviewTweakableParameter param{"chroma_matrix",
-                                       orc::PreviewTweakClass::DisplayPhase};
-  EXPECT_EQ(param.parameter_name, "chroma_matrix");
-  EXPECT_EQ(param.tweak_class, orc::PreviewTweakClass::DisplayPhase);
-}
-
-TEST(PreviewTweakableParameterTest, DecodePhaseClass_IsPreserved) {
-  orc::PreviewTweakableParameter param{"chroma_gain",
-                                       orc::PreviewTweakClass::DecodePhase};
-  EXPECT_EQ(param.parameter_name, "chroma_gain");
-  EXPECT_EQ(param.tweak_class, orc::PreviewTweakClass::DecodePhase);
-}
-
-TEST(PreviewTweakableParameterTest, DisplayPhaseAndDecodePhase_AreDistinct) {
-  EXPECT_NE(orc::PreviewTweakClass::DisplayPhase,
-            orc::PreviewTweakClass::DecodePhase);
-}
-
-// =============================================================================
 // StagePreviewCapability — schema and validity
 // =============================================================================
 
@@ -474,30 +451,6 @@ TEST(StagePreviewCapabilityTest, MultipleDataTypes_IsValid) {
   cap.geometry = {928, 576, 4.0 / 3.0, 0.7};
   EXPECT_TRUE(cap.is_valid());
   EXPECT_EQ(cap.supported_data_types.size(), 2u);
-}
-
-TEST(StagePreviewCapabilityTest,
-     EmptyTweakableParameters_DoesNotInvalidateCapability) {
-  orc::StagePreviewCapability cap{};
-  cap.supported_data_types = {orc::VideoDataType::CompositeNTSC};
-  cap.navigation_extent = {200, 1, "field"};
-  cap.geometry = {760, 263, 4.0 / 3.0, 0.7};
-  EXPECT_TRUE(cap.is_valid());
-  EXPECT_TRUE(cap.tweakable_parameters.empty());
-}
-
-TEST(StagePreviewCapabilityTest, TweakableParameters_AreIncluded) {
-  orc::StagePreviewCapability cap{};
-  cap.supported_data_types = {orc::VideoDataType::ColourNTSC,
-                              orc::VideoDataType::YC_NTSC};
-  cap.navigation_extent = {100, 1, "frame"};
-  cap.geometry = {760, 486, 4.0 / 3.0, 0.7};
-  cap.tweakable_parameters = {
-      {"chroma_matrix", orc::PreviewTweakClass::DisplayPhase},
-      {"chroma_gain", orc::PreviewTweakClass::DecodePhase},
-  };
-  EXPECT_TRUE(cap.is_valid());
-  EXPECT_EQ(cap.tweakable_parameters.size(), 2u);
 }
 
 // =============================================================================
@@ -619,73 +572,6 @@ TEST(PreviewViewDataResultTest,
   result.payload_kind = orc::PreviewViewPayloadKind::Vectorscope;
   // vectorscope left as std::nullopt
   EXPECT_FALSE(result.is_valid());
-}
-
-// =============================================================================
-// LiveTweakableParameterView — view-types mirror of PreviewTweakableParameter
-// =============================================================================
-
-TEST(LiveTweakableParameterViewTest, DisplayPhaseClass_IsPreserved) {
-  orc::LiveTweakableParameterView param;
-  param.parameter_name = "chroma_matrix";
-  param.tweak_class = orc::LiveTweakClass::DisplayPhase;
-  EXPECT_EQ(param.parameter_name, "chroma_matrix");
-  EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DisplayPhase);
-}
-
-TEST(LiveTweakableParameterViewTest, DecodePhaseClass_IsPreserved) {
-  orc::LiveTweakableParameterView param;
-  param.parameter_name = "chroma_gain";
-  param.tweak_class = orc::LiveTweakClass::DecodePhase;
-  EXPECT_EQ(param.parameter_name, "chroma_gain");
-  EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DecodePhase);
-}
-
-TEST(LiveTweakableParameterViewTest, DisplayPhaseAndDecodePhase_AreDistinct) {
-  EXPECT_NE(orc::LiveTweakClass::DisplayPhase,
-            orc::LiveTweakClass::DecodePhase);
-}
-
-TEST(LiveTweakableParameterViewTest, DefaultTweakClass_IsDecodePhase) {
-  orc::LiveTweakableParameterView param;
-  EXPECT_EQ(param.tweak_class, orc::LiveTweakClass::DecodePhase);
-}
-
-// =============================================================================
-// rgb_to_uv — inline chrominance conversion
-// =============================================================================
-
-TEST(RgbToUvTest, NeutralGray_ProducesNearZeroChroma) {
-  // Equal R=G=B should have near-zero U and V components.
-  const auto sample = orc::rgb_to_uv(32768, 32768, 32768);
-  EXPECT_NEAR(sample.u, 0.0, 1.0);
-  EXPECT_NEAR(sample.v, 0.0, 1.0);
-}
-
-TEST(RgbToUvTest, FullBlue_ProducesPositiveU) {
-  // Pure blue should have positive U (Cb) according to BT.601.
-  const auto sample = orc::rgb_to_uv(0, 0, 65535);
-  EXPECT_GT(sample.u, 0.0);
-}
-
-TEST(RgbToUvTest, FullRed_ProducesPositiveV) {
-  // Pure red should have positive V (Cr) according to BT.601.
-  const auto sample = orc::rgb_to_uv(65535, 0, 0);
-  EXPECT_GT(sample.v, 0.0);
-}
-
-TEST(RgbToUvTest, Output_IsInSignedRange) {
-  // U and V values should be in approximately [-32768, +32768] range.
-  const auto sample = orc::rgb_to_uv(65535, 0, 0);
-  EXPECT_GE(sample.u, -32768.0);
-  EXPECT_LE(sample.u, 32768.0);
-  EXPECT_GE(sample.v, -32768.0);
-  EXPECT_LE(sample.v, 32768.0);
-}
-
-TEST(RgbToUvTest, FieldId_DefaultsToZero) {
-  const auto sample = orc::rgb_to_uv(0, 0, 0);
-  EXPECT_EQ(sample.field_id, 0u);
 }
 
 }  // namespace orc_unit_test

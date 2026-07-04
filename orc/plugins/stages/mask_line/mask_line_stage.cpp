@@ -1,7 +1,7 @@
 /*
  * File:        mask_line_stage.cpp
  * Module:      orc-core
- * Purpose:     Line masking stage
+ * Purpose:     Line masking stage (VFrameR, frame-flat line addressing)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
@@ -9,409 +9,339 @@
 
 #include "mask_line_stage.h"
 
-#include <logging.h>
-#include <preview_helpers.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/error_types.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
 
 #include <algorithm>
 #include <sstream>
 
 namespace orc {
 
-// ===== MaskedLineRepresentation Implementation =====
+// ============================================================================
+// MaskedFrameRepresentation
+// ============================================================================
 
-MaskedLineRepresentation::MaskedLineRepresentation(
-    std::shared_ptr<const VideoFieldRepresentation> source,
-    const std::string& line_spec, double mask_ire)
-    : VideoFieldRepresentationWrapper(source, ArtifactID("masked_line"),
-                                      Provenance{}),
-      mask_ire_(mask_ire) {
+MaskedFrameRepresentation::MaskedFrameRepresentation(
+    std::shared_ptr<const VideoFrameRepresentation> source,
+    const std::string& line_spec, int32_t mask_sample_level)
+    : VideoFrameRepresentationWrapper(std::move(source)),
+      Artifact(ArtifactID("masked_frame"), Provenance{}),
+      mask_sample_level_(mask_sample_level) {
   parse_line_spec(line_spec);
 }
 
-void MaskedLineRepresentation::parse_line_spec(const std::string& line_spec) {
+void MaskedFrameRepresentation::parse_line_spec(const std::string& spec) {
   line_ranges_.clear();
+  if (spec.empty()) return;
 
-  if (line_spec.empty()) {
-    return;
-  }
-
-  // Parse comma-separated ranges like "F:21" or "S:15-17,A:21,F:30-32"
-  std::istringstream ss(line_spec);
+  std::istringstream ss(spec);
   std::string token;
-
   while (std::getline(ss, token, ',')) {
-    // Trim whitespace
     token.erase(0, token.find_first_not_of(" \t"));
-    token.erase(token.find_last_not_of(" \t") + 1);
+    const size_t last = token.find_last_not_of(" \t");
+    if (last == std::string::npos) continue;
+    token = token.substr(0, last + 1);
 
-    if (token.empty()) {
-      continue;
-    }
-
-    // Parse parity prefix (F:, S:, or A:)
-    char parity = 'A';  // Default to all fields
-    std::string range_str = token;
-
-    size_t colon_pos = token.find(':');
-    if (colon_pos != std::string::npos && colon_pos > 0) {
-      char prefix =
-          static_cast<char>(std::toupper(static_cast<unsigned char>(token[0])));
-      if (prefix == 'F' || prefix == 'S' || prefix == 'A') {
-        parity = prefix;
-        range_str = token.substr(colon_pos + 1);
-      }
-    }
-
-    // Check if it's a range (contains '-')
-    size_t dash_pos = range_str.find('-');
-    if (dash_pos != std::string::npos) {
-      // Parse range
-      std::string start_str = range_str.substr(0, dash_pos);
-      std::string end_str = range_str.substr(dash_pos + 1);
-
+    const size_t dash = token.find('-');
+    if (dash != std::string::npos) {
       try {
-        size_t start = std::stoul(start_str);
-        size_t end = std::stoul(end_str);
-        line_ranges_.push_back({parity, start, end});
-        ORC_LOG_DEBUG("MaskLine: Added line range {}:{}-{}", parity, start,
-                      end);
-      } catch (const std::exception& e) {
-        ORC_LOG_WARN("MaskLine: Invalid line range '{}': {}", token, e.what());
+        const size_t start = std::stoul(token.substr(0, dash));
+        const size_t end = std::stoul(token.substr(dash + 1));
+        line_ranges_.push_back({start, end});
+      } catch (...) {
+        ORC_LOG_WARN("MaskLine: invalid range '{}'", token);
       }
     } else {
-      // Single line number
       try {
-        size_t line = std::stoul(range_str);
-        line_ranges_.push_back({parity, line, line});
-        ORC_LOG_DEBUG("MaskLine: Added single line {}:{}", parity, line);
-      } catch (const std::exception& e) {
-        ORC_LOG_WARN("MaskLine: Invalid line number '{}': {}", token, e.what());
+        const size_t line = std::stoul(token);
+        line_ranges_.push_back({line, line});
+      } catch (...) {
+        ORC_LOG_WARN("MaskLine: invalid line '{}'", token);
       }
     }
   }
 }
 
-uint16_t MaskedLineRepresentation::ire_to_sample(double ire) const {
-  // Get video parameters for black and white levels
-  if (!source_) {
-    return 0;
+bool MaskedFrameRepresentation::should_mask_line(size_t frame_line) const {
+  for (const auto& r : line_ranges_) {
+    if (frame_line >= r.start && frame_line <= r.end) return true;
   }
-
-  auto video_params = source_->get_video_parameters();
-  if (!video_params.has_value() || !video_params->is_valid()) {
-    // Fallback: use standard 16-bit range
-    // IRE 0 = 0, IRE 100 = 65535
-    return static_cast<uint16_t>((ire / 100.0) * 65535.0);
-  }
-
-  // Convert IRE to 16-bit sample using video parameters
-  // black_16b_ire corresponds to 0 IRE, white_16b_ire corresponds to 100 IRE
-  uint16_t black_level = static_cast<uint16_t>(video_params->black_16b_ire);
-  uint16_t white_level = static_cast<uint16_t>(video_params->white_16b_ire);
-
-  // Linear interpolation
-  double sample = black_level + (ire / 100.0) * (white_level - black_level);
-  return static_cast<uint16_t>(std::clamp(sample, 0.0, 65535.0));
-}
-
-bool MaskedLineRepresentation::should_mask_line(FieldID field_id,
-                                                size_t line_num) const {
-  // Get field parity for this field
-  bool is_first_field = false;
-  if (source_) {
-    auto parity_hint = source_->get_field_parity_hint(field_id);
-    if (parity_hint.has_value()) {
-      is_first_field = parity_hint->is_first_field;
-    }
-  }
-
-  // Check if line is in any of the specified ranges with matching parity
-  for (const auto& range : line_ranges_) {
-    // Check if parity matches
-    if (range.parity == 'F' && !is_first_field) continue;
-    if (range.parity == 'S' && is_first_field) continue;
-    // 'A' matches all fields
-
-    // Check if line is in range
-    if (line_num >= range.start && line_num <= range.end) {
-      return true;
-    }
-  }
-
   return false;
 }
 
-const MaskedLineRepresentation::sample_type* MaskedLineRepresentation::get_line(
-    FieldID id, size_t line) const {
-  if (!source_) {
-    return nullptr;
-  }
+const MaskedFrameRepresentation::sample_type*
+MaskedFrameRepresentation::get_line(FrameID id, size_t line) const {
+  if (!source_) return nullptr;
+  if (!should_mask_line(line)) return source_->get_line(id, line);
 
-  // If this line shouldn't be masked, return source data
-  if (!should_mask_line(id, line)) {
-    return source_->get_line(id, line);
-  }
+  auto params = source_ ? source_->get_video_parameters() : std::nullopt;
+  if (!params.has_value()) return nullptr;
+  const size_t spl =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
+  const size_t width = frame_line_sample_count(params->system, spl, line);
 
-  // Get source line to determine width
-  const sample_type* source_line = source_->get_line(id, line);
-  if (!source_line) {
-    return nullptr;
-  }
-
-  // Get field descriptor for width
-  auto descriptor = source_->get_descriptor(id);
-  if (!descriptor.has_value()) {
-    return nullptr;
-  }
-
-  // Fill reusable buffer with mask value (converted from IRE)
-  uint16_t mask_sample = ire_to_sample(mask_ire_);
-  masked_line_buffer_.assign(descriptor->width, mask_sample);
-
+  const int16_t val =
+      static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
+  masked_line_buffer_.assign(width, val);
   return masked_line_buffer_.data();
 }
 
-std::vector<MaskedLineRepresentation::sample_type>
-MaskedLineRepresentation::get_field(FieldID id) const {
-  if (!source_) {
-    return {};
-  }
+std::vector<MaskedFrameRepresentation::sample_type>
+MaskedFrameRepresentation::get_frame_copy(FrameID id) const {
+  if (!source_) return {};
+  auto desc = source_->get_frame_descriptor(id);
+  auto params = source_->get_video_parameters();
+  if (!desc || !params) return {};
 
-  auto descriptor = source_->get_descriptor(id);
-  if (!descriptor.has_value()) {
-    return {};
-  }
-
-  std::vector<sample_type> field_data;
-  field_data.reserve(descriptor->width * descriptor->height);
-
-  for (size_t line = 0; line < descriptor->height; ++line) {
-    const sample_type* line_data = get_line(id, line);
-    if (line_data) {
-      field_data.insert(field_data.end(), line_data,
-                        line_data + descriptor->width);
+  std::vector<sample_type> result;
+  result.reserve(desc->samples_total);
+  const size_t spl =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
+  for (size_t line = 0; line < desc->height; ++line) {
+    const size_t w = frame_line_sample_count(params->system, spl, line);
+    const sample_type* ptr = get_line(id, line);
+    if (ptr) {
+      result.insert(result.end(), ptr, ptr + w);
     } else {
-      // If we can't get the line, fill with zeros
-      field_data.insert(field_data.end(), descriptor->width, 0);
+      result.insert(result.end(), w, sample_type{0});
     }
   }
-
-  return field_data;
+  return result;
 }
 
-// Dual-channel support for YC sources
+const MaskedFrameRepresentation::sample_type*
+MaskedFrameRepresentation::get_line_luma(FrameID id, size_t line) const {
+  if (!source_ || !source_->has_separate_channels()) return nullptr;
+  if (!should_mask_line(line)) return source_->get_line_luma(id, line);
 
-const MaskedLineRepresentation::sample_type*
-MaskedLineRepresentation::get_line_luma(FieldID id, size_t line) const {
-  if (!source_ || !source_->has_separate_channels()) {
-    return VideoFieldRepresentationWrapper::get_line_luma(id, line);
-  }
-
-  // If this line shouldn't be masked, return source data
-  if (!should_mask_line(id, line)) {
-    return source_->get_line_luma(id, line);
-  }
-
-  // Get source line to determine width
-  const sample_type* source_line = source_->get_line_luma(id, line);
-  if (!source_line) {
-    return nullptr;
-  }
-
-  // Get field descriptor for width
-  auto descriptor = source_->get_descriptor(id);
-  if (!descriptor.has_value()) {
-    return nullptr;
-  }
-
-  // Fill reusable buffer with mask value
-  uint16_t mask_sample = ire_to_sample(mask_ire_);
-  masked_luma_buffer_.assign(descriptor->width, mask_sample);
-
+  auto params_luma = source_ ? source_->get_video_parameters() : std::nullopt;
+  if (!params_luma.has_value()) return nullptr;
+  const size_t spl_luma =
+      static_cast<size_t>(samples_per_line_from_system(params_luma->system));
+  const size_t width =
+      frame_line_sample_count(params_luma->system, spl_luma, line);
+  const int16_t val =
+      static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
+  masked_luma_buffer_.assign(width, val);
   return masked_luma_buffer_.data();
 }
 
-const MaskedLineRepresentation::sample_type*
-MaskedLineRepresentation::get_line_chroma(FieldID id, size_t line) const {
-  if (!source_ || !source_->has_separate_channels()) {
-    return VideoFieldRepresentationWrapper::get_line_chroma(id, line);
-  }
+const MaskedFrameRepresentation::sample_type*
+MaskedFrameRepresentation::get_line_chroma(FrameID id, size_t line) const {
+  if (!source_ || !source_->has_separate_channels()) return nullptr;
+  if (!should_mask_line(line)) return source_->get_line_chroma(id, line);
 
-  // If this line shouldn't be masked, return source data
-  if (!should_mask_line(id, line)) {
-    return source_->get_line_chroma(id, line);
-  }
-
-  // Get source line to determine width
-  const sample_type* source_line = source_->get_line_chroma(id, line);
-  if (!source_line) {
-    return nullptr;
-  }
-
-  // Get field descriptor for width
-  auto descriptor = source_->get_descriptor(id);
-  if (!descriptor.has_value()) {
-    return nullptr;
-  }
-
-  // Fill reusable buffer with mask value
-  uint16_t mask_sample = ire_to_sample(mask_ire_);
-  masked_chroma_buffer_.assign(descriptor->width, mask_sample);
-
+  auto params_chroma = source_ ? source_->get_video_parameters() : std::nullopt;
+  if (!params_chroma.has_value()) return nullptr;
+  const size_t spl_chroma =
+      static_cast<size_t>(samples_per_line_from_system(params_chroma->system));
+  const size_t width =
+      frame_line_sample_count(params_chroma->system, spl_chroma, line);
+  const int16_t val =
+      static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
+  masked_chroma_buffer_.assign(width, val);
   return masked_chroma_buffer_.data();
 }
 
-std::vector<MaskedLineRepresentation::sample_type>
-MaskedLineRepresentation::get_field_luma(FieldID id) const {
-  if (!source_ || !source_->has_separate_channels()) {
-    return VideoFieldRepresentationWrapper::get_field_luma(id);
+const MaskedFrameRepresentation::sample_type*
+MaskedFrameRepresentation::get_frame(FrameID id) const {
+  if (!source_) return nullptr;
+  if (line_ranges_.empty()) return source_->get_frame(id);
+
+  {
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    auto it = masked_frame_cache_.find(id);
+    if (it != masked_frame_cache_.end()) return it->second.data();
   }
 
-  auto descriptor = source_->get_descriptor(id);
-  if (!descriptor.has_value()) {
-    return {};
-  }
+  auto desc = source_->get_frame_descriptor(id);
+  auto params = source_->get_video_parameters();
+  const sample_type* src = source_->get_frame(id);
+  if (!desc || !params || !src) return src;
 
-  std::vector<sample_type> field_data;
-  field_data.reserve(descriptor->width * descriptor->height);
-
-  for (size_t line = 0; line < descriptor->height; ++line) {
-    const sample_type* line_data = get_line_luma(id, line);
-    if (line_data) {
-      field_data.insert(field_data.end(), line_data,
-                        line_data + descriptor->width);
+  const int16_t val =
+      static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
+  const size_t spl =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
+  std::vector<sample_type> result;
+  result.reserve(desc->samples_total);
+  size_t offset = 0;
+  for (size_t line = 0; line < desc->height; ++line) {
+    const size_t w = frame_line_sample_count(params->system, spl, line);
+    if (should_mask_line(line)) {
+      result.insert(result.end(), w, val);
     } else {
-      field_data.insert(field_data.end(), descriptor->width, 0);
+      result.insert(result.end(), src + offset, src + offset + w);
     }
+    offset += w;
   }
 
-  return field_data;
+  std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+  auto [it, inserted] = masked_frame_cache_.emplace(id, std::move(result));
+  (void)inserted;
+  return it->second.data();
 }
 
-std::vector<MaskedLineRepresentation::sample_type>
-MaskedLineRepresentation::get_field_chroma(FieldID id) const {
-  if (!source_ || !source_->has_separate_channels()) {
-    return VideoFieldRepresentationWrapper::get_field_chroma(id);
+const MaskedFrameRepresentation::sample_type*
+MaskedFrameRepresentation::get_frame_luma(FrameID id) const {
+  if (!source_ || !source_->has_separate_channels()) return nullptr;
+  if (line_ranges_.empty()) return source_->get_frame_luma(id);
+
+  {
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    auto it = masked_luma_frame_cache_.find(id);
+    if (it != masked_luma_frame_cache_.end()) return it->second.data();
   }
 
-  auto descriptor = source_->get_descriptor(id);
-  if (!descriptor.has_value()) {
-    return {};
-  }
+  auto desc = source_->get_frame_descriptor(id);
+  auto params = source_->get_video_parameters();
+  const sample_type* src = source_->get_frame_luma(id);
+  if (!desc || !params || !src) return src;
 
-  std::vector<sample_type> field_data;
-  field_data.reserve(descriptor->width * descriptor->height);
-
-  for (size_t line = 0; line < descriptor->height; ++line) {
-    const sample_type* line_data = get_line_chroma(id, line);
-    if (line_data) {
-      field_data.insert(field_data.end(), line_data,
-                        line_data + descriptor->width);
+  const int16_t val =
+      static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
+  const size_t spl_luma =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
+  std::vector<sample_type> result;
+  result.reserve(desc->samples_total);
+  size_t offset = 0;
+  for (size_t line = 0; line < desc->height; ++line) {
+    const size_t w = frame_line_sample_count(params->system, spl_luma, line);
+    if (should_mask_line(line)) {
+      result.insert(result.end(), w, val);
     } else {
-      field_data.insert(field_data.end(), descriptor->width, 0);
+      result.insert(result.end(), src + offset, src + offset + w);
     }
+    offset += w;
   }
 
-  return field_data;
+  std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+  auto [it, inserted] = masked_luma_frame_cache_.emplace(id, std::move(result));
+  (void)inserted;
+  return it->second.data();
 }
 
-// ===== MaskLineStage Implementation =====
+const MaskedFrameRepresentation::sample_type*
+MaskedFrameRepresentation::get_frame_chroma(FrameID id) const {
+  if (!source_ || !source_->has_separate_channels()) return nullptr;
+  if (line_ranges_.empty()) return source_->get_frame_chroma(id);
+
+  {
+    std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+    auto it = masked_chroma_frame_cache_.find(id);
+    if (it != masked_chroma_frame_cache_.end()) return it->second.data();
+  }
+
+  auto desc = source_->get_frame_descriptor(id);
+  auto params = source_->get_video_parameters();
+  const sample_type* src = source_->get_frame_chroma(id);
+  if (!desc || !params || !src) return src;
+
+  const int16_t val =
+      static_cast<int16_t>(std::clamp(mask_sample_level_, 0, 1023));
+  const size_t spl_chroma =
+      static_cast<size_t>(samples_per_line_from_system(params->system));
+  std::vector<sample_type> result;
+  result.reserve(desc->samples_total);
+  size_t offset = 0;
+  for (size_t line = 0; line < desc->height; ++line) {
+    const size_t w = frame_line_sample_count(params->system, spl_chroma, line);
+    if (should_mask_line(line)) {
+      result.insert(result.end(), w, val);
+    } else {
+      result.insert(result.end(), src + offset, src + offset + w);
+    }
+    offset += w;
+  }
+
+  std::lock_guard<std::mutex> lock(frame_cache_mutex_);
+  auto [it, inserted] =
+      masked_chroma_frame_cache_.emplace(id, std::move(result));
+  (void)inserted;
+  return it->second.data();
+}
+
+// ============================================================================
+// MaskLineStage
+// ============================================================================
+
+MaskLineStage::MaskLineStage() {
+  set_configuration_status(orc::ConfigurationStatus::Yellow);
+}
 
 std::vector<ArtifactPtr> MaskLineStage::execute(
     const std::vector<ArtifactPtr>& inputs,
     const std::map<std::string, ParameterValue>& parameters,
     ObservationContext& observation_context) {
-  (void)observation_context;  // Unused for now
+  (void)observation_context;
   if (inputs.empty()) {
     throw DAGExecutionError("MaskLineStage requires one input");
   }
-
-  auto input_artifact = inputs[0];
-  if (!input_artifact) {
-    throw DAGExecutionError("MaskLineStage received null input artifact");
+  auto input = inputs[0];
+  if (!input) {
+    throw DAGExecutionError("MaskLineStage received null input");
   }
 
-  // Cast to VideoFieldRepresentation
-  auto input_vfr =
-      std::dynamic_pointer_cast<const VideoFieldRepresentation>(input_artifact);
-  if (!input_vfr) {
+  auto vfr = std::dynamic_pointer_cast<const VideoFrameRepresentation>(input);
+  if (!vfr) {
     throw DAGExecutionError(
-        "MaskLineStage input must be VideoFieldRepresentation");
+        "MaskLineStage input must be VideoFrameRepresentation");
   }
 
-  // Set parameters from the execute call
   if (!parameters.empty()) {
-    // Create a mutable copy of this to set parameters
     const_cast<MaskLineStage*>(this)->set_parameters(parameters);
   }
 
-  // Process and return
-  auto output_vfr = process(input_vfr);
-  cached_output_ = output_vfr;  // Cache for preview
+  auto output = process(vfr);
+  cached_output_ = output;
 
   std::vector<ArtifactPtr> outputs;
-  outputs.push_back(
-      std::const_pointer_cast<VideoFieldRepresentation>(output_vfr));
+  outputs.push_back(std::dynamic_pointer_cast<Artifact>(
+      std::const_pointer_cast<VideoFrameRepresentation>(output)));
   return outputs;
 }
 
-std::shared_ptr<const VideoFieldRepresentation> MaskLineStage::process(
-    std::shared_ptr<const VideoFieldRepresentation> source) const {
-  if (!source) {
-    return nullptr;
-  }
-
-  // If no lines specified, just pass through
-  if (line_spec_.empty()) {
-    ORC_LOG_DEBUG("MaskLine: No lines specified, passing through unchanged");
-    return source;
-  }
-
-  // Create a wrapper that masks the specified lines
-  return std::make_shared<MaskedLineRepresentation>(source, line_spec_,
-                                                    mask_ire_);
+std::shared_ptr<const VideoFrameRepresentation> MaskLineStage::process(
+    std::shared_ptr<const VideoFrameRepresentation> source) const {
+  if (!source) return nullptr;
+  if (line_spec_.empty()) return source;  // pass-through
+  return std::make_shared<MaskedFrameRepresentation>(source, line_spec_,
+                                                     mask_sample_level_);
 }
 
 std::vector<ParameterDescriptor> MaskLineStage::get_parameter_descriptors(
-    VideoSystem project_format, SourceType source_type) const {
-  (void)project_format;  // Unused - mask line works with all formats
-  (void)source_type;     // Unused - mask line works with all source types
-
+    VideoSystem, SourceType) const {
   return {
       ParameterDescriptor{
           "lineSpec", "Line Specification",
-          "Lines to mask with parity prefix. Format: PARITY:LINE or "
-          "PARITY:START-END. "
-          "Parity: F (first field), S (second field), A (all fields). "
-          "Examples: 'F:21' (NTSC closed captions), 'S:6-22' (second field "
-          "lines 6-22), 'A:10,F:21' (line 10 all fields + line 21 first "
-          "field). "
-          "Line numbers are 0-based field line numbers.",
+          "Frame-flat 0-based line numbers to mask. Format: LINE or START-END, "
+          "comma-separated. Examples: '21' (NTSC CC line), '100-115', "
+          "'21,334'.",
           ParameterType::STRING,
-          ParameterConstraints{
-              std::nullopt,                     // no min
-              std::nullopt,                     // no max
-              ParameterValue{std::string("")},  // default: empty (no masking)
-              {},                               // no allowed values (free-form)
-              false,                            // not required
-              std::nullopt                      // no dependency
-          }},
-      ParameterDescriptor{"maskIRE", "Mask IRE Level",
-                          "IRE level to write to masked pixels (0 = black, 100 "
-                          "= white). Default is 0 (black).",
-                          ParameterType::DOUBLE,
-                          ParameterConstraints{
-                              ParameterValue{0.0},    // min
-                              ParameterValue{100.0},  // max
-                              ParameterValue{0.0},    // default
-                              {},                     // no allowed strings
-                              false,                  // not required
-                              std::nullopt            // no dependency
-                          }}};
+          ParameterConstraints{std::nullopt,
+                               std::nullopt,
+                               ParameterValue{std::string("")},
+                               {},
+                               false,
+                               std::nullopt}},
+      ParameterDescriptor{
+          "maskSampleLevel", "Mask Sample Level",
+          "10-bit sample level for masked pixels (0=sync tip, 256=blanking, "
+          "844=white for PAL/NTSC).",
+          ParameterType::INT32,
+          ParameterConstraints{ParameterValue{int32_t{0}},
+                               ParameterValue{int32_t{1023}},
+                               ParameterValue{int32_t{0}},
+                               {},
+                               false,
+                               std::nullopt}}};
 }
 
 std::map<std::string, ParameterValue> MaskLineStage::get_parameters() const {
-  return {{"lineSpec", line_spec_}, {"maskIRE", mask_ire_}};
+  return {{"lineSpec", line_spec_}, {"maskSampleLevel", mask_sample_level_}};
 }
 
 bool MaskLineStage::set_parameters(
@@ -419,31 +349,20 @@ bool MaskLineStage::set_parameters(
   for (const auto& [key, value] : params) {
     if (key == "lineSpec" && std::holds_alternative<std::string>(value)) {
       line_spec_ = std::get<std::string>(value);
-    } else if (key == "maskIRE" && std::holds_alternative<double>(value)) {
-      mask_ire_ = std::get<double>(value);
+    } else if (key == "maskSampleLevel" &&
+               std::holds_alternative<int32_t>(value)) {
+      mask_sample_level_ =
+          std::clamp(std::get<int32_t>(value), int32_t{0}, int32_t{1023});
     }
   }
-
+  set_configuration_status(line_spec_.empty()
+                               ? orc::ConfigurationStatus::Yellow
+                               : orc::ConfigurationStatus::Green);
   return true;
 }
 
-std::vector<PreviewOption> MaskLineStage::get_preview_options() const {
-  if (!cached_output_) {
-    return {};
-  }
-
-  return PreviewHelpers::get_standard_preview_options(cached_output_);
-}
-
-PreviewImage MaskLineStage::render_preview(const std::string& option_id,
-                                           uint64_t index,
-                                           PreviewNavigationHint hint) const {
-  if (!cached_output_) {
-    return PreviewImage{};
-  }
-
-  return PreviewHelpers::render_standard_preview(cached_output_, option_id,
-                                                 index, hint);
+StagePreviewCapability MaskLineStage::get_preview_capability() const {
+  return PreviewHelpers::make_signal_preview_capability(cached_output_);
 }
 
 }  // namespace orc

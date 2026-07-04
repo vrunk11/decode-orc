@@ -10,11 +10,12 @@
 #ifndef ORC_CORE_DROPOUT_ANALYSIS_SINK_DEPS_H
 #define ORC_CORE_DROPOUT_ANALYSIS_SINK_DEPS_H
 
+#include <orc/stage/logging.h>
+
 #include <atomic>
 #include <utility>
 
 #include "dropout_analysis_sink_deps_interface.h"
-#include "logging.h"
 
 namespace orc {
 class DropoutAnalysisSinkStageDeps : public IDropoutAnalysisSinkStageDeps {
@@ -25,7 +26,7 @@ class DropoutAnalysisSinkStageDeps : public IDropoutAnalysisSinkStageDeps {
             std::atomic<bool>* cancel_requested) override;
 
   DropoutAnalysisComputeResult compute_and_analyze(
-      VideoFieldRepresentation* representation,
+      VideoFrameRepresentation* representation,
       IObservationContext& observation_context,
       DropoutAnalysisComputeOptions options) override;
 

@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
 #include <orc_analysis.h>  // For AnalysisToolInfo
 
 #include <QMenu>
@@ -69,8 +69,6 @@ class OrcGraphicsScene : public QtNodes::BasicGraphicsScene {
           node_id);  ///< Emitted when user wants to edit node parameters
   void triggerStageRequested(
       const NodeID& node_id);  ///< Emitted when user wants to trigger a stage
-  void inspectStageRequested(
-      const NodeID& node_id);  ///< Emitted when user wants to inspect a stage
 
   /**
    * @brief Emitted when user requests to run an analysis tool on a node
@@ -81,6 +79,13 @@ class OrcGraphicsScene : public QtNodes::BasicGraphicsScene {
   void runAnalysisRequested(const orc::AnalysisToolInfo& tool_info,
                             const NodeID& node_id,
                             const std::string& stage_name);
+
+ public slots:
+  // Overridden to reset _draftConnection before QGraphicsScene::clear() runs.
+  // Without this, onModelReset() deletes the draft ConnectionGraphicsObject
+  // via Qt scene ownership while _draftConnection still holds the pointer,
+  // causing a use-after-free vtable crash on the next makeDraftConnection call.
+  void onModelReset() override;
 
  private slots:
   void onSelectionChanged();

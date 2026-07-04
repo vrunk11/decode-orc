@@ -9,88 +9,96 @@
 
 #include "fm_code_observer.h"
 
-#include "logging.h"
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include "vbi_utilities.h"
 
 namespace orc {
 
-void FmCodeObserver::process_field(
-    const VideoFieldRepresentation& representation, FieldID field_id,
+void FmCodeObserver::process_frame(
+    const VideoFrameRepresentation& representation, FrameID frame_id,
     IObservationContext& context) {
-  auto descriptor = representation.get_descriptor(field_id);
-  if (!descriptor.has_value()) {
-    ORC_LOG_DEBUG("FmCodeObserver: Field {} - no descriptor", field_id.value());
+  auto vp_opt = representation.get_video_parameters();
+  if (!vp_opt.has_value()) {
+    ORC_LOG_TRACE("FmCodeObserver: No video parameters for frame {}", frame_id);
+    return;
+  }
+  const auto& vp = vp_opt.value();
+
+  // FM code is NTSC-only
+  if (vp.system != VideoSystem::NTSC) {
     return;
   }
 
-  // Only applicable to NTSC
-  if (descriptor->format != VideoFormat::NTSC) {
-    ORC_LOG_DEBUG("FmCodeObserver: Field {} - not NTSC (format={})",
-                  field_id.value(), static_cast<int>(descriptor->format));
-    return;
-  }
+  // CVBS_U10_4FSC zero-crossing: midpoint between blanking and white.
+  int16_t zero_crossing =
+      static_cast<int16_t>((vp.white_level + vp.blanking_level) / 2);
 
-  // Line 10 (0-based index 9)
-  constexpr size_t line_num = 9;
-  if (line_num >= descriptor->height) {
-    ORC_LOG_DEBUG("FmCodeObserver: Field {} - line 9 out of bounds (height={})",
-                  field_id.value(), descriptor->height);
-    return;
-  }
-
-  const uint16_t* line_data = representation.get_line(field_id, line_num);
-  if (!line_data) {
-    ORC_LOG_DEBUG("FmCodeObserver: Field {} - no line data for line 9",
-                  field_id.value());
-    return;
-  }
-
-  // Derive zero-crossing and sample rate from video parameters if available
-  uint16_t zero_crossing = 0;
-  double sample_rate = 40000000.0;  // Default fallback (40MHz)
-  size_t active_start = descriptor->width / 8;
-
-  if (auto video_params_opt = representation.get_video_parameters()) {
-    const auto& vp = *video_params_opt;
-    zero_crossing = static_cast<uint16_t>(
-        ((vp.white_16b_ire - vp.black_16b_ire) / 2) + vp.black_16b_ire);
-    sample_rate = vp.sample_rate;
-    active_start = vp.active_video_start;
-  } else {
-    // Fallback to legacy constants
-    zero_crossing = static_cast<uint16_t>((50000 + 15000) / 2);
-  }
+  // 4FSC sample rate is fully determined by the video system.
+  double sample_rate = sample_rate_from_system(vp.system);
+  size_t active_start = static_cast<size_t>(vp.active_video_start);
+  size_t line_width = static_cast<size_t>(vp.frame_width_nominal);
 
   // Calculate bit timing: 0.75 microseconds per bit at actual sample rate
   double jump_samples = (sample_rate / 1000000.0) * 0.75;
 
-  ORC_LOG_DEBUG(
-      "FmCodeObserver: Field {} - sample_rate={}, jump_samples={:.2f}, "
-      "active_start={}",
-      field_id.value(), static_cast<size_t>(sample_rate), jump_samples,
-      active_start);
+  size_t f1_lines = field1_lines(vp.system);
 
-  DecodedFmCode decoded;
-  bool success = decode_line(line_data, descriptor->width, zero_crossing,
-                             active_start, jump_samples, decoded);
+  for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+    FieldID derived_fid(frame_id * 2 + field_idx);
+    size_t line_offset = (field_idx == 0) ? 0 : f1_lines;
+    size_t field_height = (field_idx == 0)
+                              ? f1_lines
+                              : static_cast<size_t>(vp.frame_height) - f1_lines;
 
-  if (!success) {
-    ORC_LOG_DEBUG("FmCodeObserver: Field {} - decode_line failed",
-                  field_id.value());
-    return;
+    // Line 10 (0-based index 9)
+    constexpr size_t line_num = 9;
+    if (line_num >= field_height) {
+      ORC_LOG_DEBUG(
+          "FmCodeObserver: Field {} - line 9 out of bounds (height={})",
+          derived_fid.value(), field_height);
+      continue;
+    }
+
+    const int16_t* line_data =
+        representation.get_line(frame_id, line_offset + line_num);
+    if (!line_data) {
+      ORC_LOG_DEBUG("FmCodeObserver: Field {} - no line data for line 9",
+                    derived_fid.value());
+      continue;
+    }
+
+    ORC_LOG_DEBUG(
+        "FmCodeObserver: Field {} - sample_rate={}, jump_samples={:.2f}, "
+        "active_start={}",
+        derived_fid.value(), static_cast<size_t>(sample_rate), jump_samples,
+        active_start);
+
+    DecodedFmCode decoded;
+    bool success = decode_line(line_data, line_width, zero_crossing,
+                               active_start, jump_samples, decoded);
+
+    if (!success) {
+      ORC_LOG_DEBUG("FmCodeObserver: Field {} - decode_line failed",
+                    derived_fid.value());
+      continue;
+    }
+
+    context.set(derived_fid, "fm_code", "present", true);
+    context.set(derived_fid, "fm_code", "data_value",
+                static_cast<int32_t>(decoded.data_value));
+    context.set(derived_fid, "fm_code", "field_flag", decoded.field_flag);
+
+    ORC_LOG_DEBUG("FmCodeObserver: Field {} fm_code={:#06x} field_flag={}",
+                  derived_fid.value(), decoded.data_value, decoded.field_flag);
   }
-
-  context.set(field_id, "fm_code", "present", true);
-  context.set(field_id, "fm_code", "data_value",
-              static_cast<int32_t>(decoded.data_value));
-  context.set(field_id, "fm_code", "field_flag", decoded.field_flag);
-
-  ORC_LOG_DEBUG("FmCodeObserver: Field {} fm_code={:#06x} field_flag={}",
-                field_id.value(), decoded.data_value, decoded.field_flag);
 }
 
-bool FmCodeObserver::decode_line(const uint16_t* line_data, size_t sample_count,
-                                 uint16_t zero_crossing, size_t active_start,
+bool FmCodeObserver::decode_line(const int16_t* line_data, size_t sample_count,
+                                 int16_t zero_crossing, size_t active_start,
                                  double jump_samples,
                                  DecodedFmCode& out) const {
   auto fm_data =

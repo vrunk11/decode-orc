@@ -9,12 +9,12 @@
 
 #pragma once
 
+#include <orc/stage/observation_schema.h>
+#include <orc/stage/stage.h>
+
 #include <set>
 #include <string>
 #include <vector>
-
-#include "../stages/stage.h"
-#include "observation_schema.h"
 
 namespace orc {
 

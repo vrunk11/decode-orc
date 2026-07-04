@@ -9,19 +9,19 @@
 
 #include "chroma_sink_stage.h"
 
-#include "colour_preview_conversion.h"
-#include "logging.h"
-#include "preview_helpers.h"
-#include "preview_renderer.h"
+#include <orc/stage/colour_preview_conversion.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
 
-// Decoder includes (relative to this file)
-#include "../../analysis/vectorscope/vectorscope_analysis.h"
 #include "decoders/comb.h"
 #include "decoders/componentframe.h"
 #include "decoders/monodecoder.h"
 #include "decoders/outputwriter.h"
 #include "decoders/palcolour.h"
 #include "decoders/sourcefield.h"
+#include "decoders/vectorscope_extract.h"
 #include "video_parameter_safety.h"
 
 // Output backend includes
@@ -29,6 +29,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <deque>
 #include <fstream>
 #include <mutex>
 #include <thread>
@@ -118,7 +119,9 @@ ChromaSinkStage::ChromaSinkStage()
       hardware_encoder_("none"),
       prores_profile_("hq"),
       use_lossless_mode_(false),
-      apply_deinterlace_(false) {}
+      apply_deinterlace_(false) {
+  set_configuration_status(orc::ConfigurationStatus::Yellow);
+}
 
 ChromaSinkStage::~ChromaSinkStage() {}
 
@@ -126,7 +129,7 @@ std::unique_ptr<MonoDecoder> ChromaSinkStage::create_yc_mono_decoder(
     const orc::SourceParameters& videoParams) const {
   MonoDecoder::MonoConfiguration config;
   config.yNRLevel = luma_nr_;
-  config.filterChroma = false;  // Y-TBC contains no chroma to filter.
+  config.filterChroma = false;  // Luma-only input contains no chroma to filter.
   config.videoParameters = videoParams;
   return std::make_unique<MonoDecoder>(config);
 }
@@ -166,7 +169,8 @@ std::vector<ArtifactPtr> ChromaSinkStage::execute(
   if (!inputs.empty()) {
     std::lock_guard<std::mutex> lock(cached_input_mutex_);
     cached_input_ =
-        std::dynamic_pointer_cast<const VideoFieldRepresentation>(inputs[0]);
+        std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
+            inputs[0]);
   }
 
   // Sink stages don't produce outputs during normal execution
@@ -397,10 +401,10 @@ std::vector<ParameterDescriptor> ChromaSinkStage::get_parameter_descriptors(
            false,
            {},
            false,
-           ParameterDependency{"output_format",
-                               {"mkv-ffv1", "mov-prores", "mov-v210",
-                                "mov-v410", "mp4-h264", "mov-h264", "mp4-hevc",
-                                "mov-hevc", "mp4-av1"}}}}};
+           ParameterDependency{
+               "output_format",
+               {"mkv-ffv1", "mov-prores", "mov-v210", "mov-v410", "mp4-h264",
+                "mov-h264", "mp4-hevc", "mov-hevc", "mp4-av1"}}}}};
 
   // Add format-specific parameters
   if (project_format == VideoSystem::NTSC) {
@@ -765,6 +769,9 @@ bool ChromaSinkStage::set_parameters(
         "recreated on next preview");
   }
 
+  set_configuration_status(output_path_.empty()
+                               ? orc::ConfigurationStatus::Yellow
+                               : orc::ConfigurationStatus::Green);
   return true;
 }
 
@@ -792,7 +799,7 @@ bool ChromaSinkStage::trigger(
     return false;
   }
 
-  // 1. Extract VideoFieldRepresentation from input
+  // 1. Extract VideoFrameRepresentation from input
   if (inputs.empty()) {
     ORC_LOG_ERROR("ChromaSink: No input provided");
     trigger_status_ = "Error: No input";
@@ -800,9 +807,10 @@ bool ChromaSinkStage::trigger(
     return false;
   }
 
-  auto vfr = std::dynamic_pointer_cast<VideoFieldRepresentation>(inputs[0]);
+  auto vfr =
+      std::dynamic_pointer_cast<orc::VideoFrameRepresentation>(inputs[0]);
   if (!vfr) {
-    ORC_LOG_ERROR("ChromaSink: Input is not a VideoFieldRepresentation");
+    ORC_LOG_ERROR("ChromaSink: Input is not a VideoFrameRepresentation");
     trigger_status_ = "Error: Invalid input type";
     trigger_in_progress_.store(false);
     return false;
@@ -828,27 +836,6 @@ bool ChromaSinkStage::trigger(
       "  Vertical active region: {} to {} ({} lines)",
       videoParams.first_active_frame_line, videoParams.last_active_frame_line,
       videoParams.last_active_frame_line - videoParams.first_active_frame_line);
-
-  // Apply line parameter overrides from hints
-  // Hints provide both frame-based and field-based values
-  // Use frame-based values for video output (matches decoder requirements)
-  auto active_line_hint = vfr->get_active_line_hint();
-  if (active_line_hint && active_line_hint->is_valid()) {
-    videoParams.first_active_frame_line =
-        active_line_hint->first_active_frame_line;
-    videoParams.last_active_frame_line =
-        active_line_hint->last_active_frame_line;
-    ORC_LOG_DEBUG(
-        "ChromaSink: Using active line hint: frame first={}, last={} (field "
-        "first={}, last={})",
-        active_line_hint->first_active_frame_line,
-        active_line_hint->last_active_frame_line,
-        active_line_hint->first_active_field_line,
-        active_line_hint->last_active_field_line);
-  } else {
-    ORC_LOG_DEBUG(
-        "ChromaSink: No active line hint available, using metadata defaults");
-  }
 
   // Apply padding adjustments to active video region BEFORE configuring decoder
   // This ensures the decoder processes the correct region that will be written
@@ -895,6 +882,9 @@ bool ChromaSinkStage::trigger(
   std::unique_ptr<Comb> ntscDecoder;
 
   const bool is_yc_source = vfr->has_separate_channels();
+  // PAL_M has NTSC-like frame geometry (525 lines, 909 samples/line); only
+  // pure PAL uses the 625-line non-uniform layout.
+  const bool isPal = (videoParams.system == orc::VideoSystem::PAL);
 
   bool useMonoDecoder = (decoder_type_ == "mono");
   bool usePalDecoder =
@@ -1016,26 +1006,21 @@ bool ChromaSinkStage::trigger(
         "route)");
   }
 
-  // 5. Determine frame range to process
-  // Use the field_range from VFR (which may be filtered by upstream stages like
-  // field_map) If no upstream filtering, this returns the full source range
-  FieldIDRange field_range = vfr->field_range();
-  size_t total_source_fields = vfr->field_count();
-  size_t total_source_frames = total_source_fields / 2;
+  // 5. Determine frame range to process.
+  // Use the frame_range from VFrameR (may be filtered by upstream stages like
+  // field_map). FrameIDRange is inclusive on both ends [first, last].
+  orc::FrameIDRange frame_range = vfr->frame_range();
+  size_t total_source_frames = vfr->frame_count();
 
-  // Calculate frame range from field_range
-  // field_range.start and field_range.end are field IDs (0-based)
-  // field_range.end is EXCLUSIVE (half-open range [start, end))
-  // Convert to frame numbers (also 0-based): frame = field / 2
-  size_t start_frame = field_range.start.value() / 2;
-  size_t end_frame =
-      field_range.end.value() / 2;  // exclusive end for frames too
+  // Convert inclusive [first, last] to exclusive end [start, end).
+  size_t start_frame = frame_range.first;
+  size_t end_frame = frame_range.last + 1;  // exclusive
 
   ORC_LOG_DEBUG(
-      "ChromaSink: Processing frames {} to {} (of {} in source, field range "
+      "ChromaSink: Processing frames {} to {} (of {} in source, frame range "
       "{}-{})",
-      start_frame + 1, end_frame, total_source_frames,
-      field_range.start.value(), field_range.end.value());
+      start_frame + 1, end_frame, total_source_frames, frame_range.first,
+      frame_range.last);
 
   // 6. Field ordering and interlacing structure
   // In interlaced video, each frame consists of two fields captured
@@ -1059,12 +1044,10 @@ bool ChromaSinkStage::trigger(
   if (palDecoder) {
     // PalColour internally uses Transform3D which needs lookbehind/lookahead
     if (decoder_type_ == "transform3d" || decoder_type_ == "transform2d") {
-      // Transform PAL decoders need extra fields for FFT overlap
-      // These values come from TransformPal3D::getLookBehind/Ahead()
-      colourLookBehindFrames =
-          (decoder_type_ == "transform3d") ? 2 : 0;  // (HALFZTILE + 1) / 2
-      colourLookAheadFrames =
-          (decoder_type_ == "transform3d") ? 4 : 0;  // (ZTILE - 1 + 1) / 2
+      // Design §8.7: VFrameR frame-based architecture; Transform3D returns 1
+      // frame of look-behind and 4 frames of look-ahead.
+      colourLookBehindFrames = (decoder_type_ == "transform3d") ? 1 : 0;
+      colourLookAheadFrames = (decoder_type_ == "transform3d") ? 4 : 0;
     }
   } else if (ntscDecoder) {
     // NTSC 3D decoder might need lookbehind/lookahead
@@ -1093,68 +1076,35 @@ bool ChromaSinkStage::trigger(
   int32_t extended_end_frame =
       static_cast<int32_t>(end_frame) + lookAheadFrames;
 
-  // 8. Store field IDs and metadata (NOT field data) to avoid loading
-  // everything into RAM Field data will be loaded on-demand in worker threads
-  struct FieldInfo {
-    FieldID field_id;
+  // 8. Build the frame info list — one entry per frame including look-around.
+  // Frame data is loaded on-demand in worker threads.
+  struct FrameInfo {
+    orc::FrameID frame_id;
     bool use_blank;
-    int32_t frame_number;
   };
 
-  std::vector<FieldInfo> fieldInfoList;
-  int32_t total_fields_needed = (extended_end_frame - extended_start_frame) * 2;
-  fieldInfoList.reserve(total_fields_needed);
+  std::vector<FrameInfo> frameInfoList;
+  frameInfoList.reserve(
+      static_cast<size_t>(extended_end_frame - extended_start_frame));
 
   ORC_LOG_DEBUG(
-      "ChromaSink: Preparing {} field descriptors (frames {}-{}) for decode",
-      total_fields_needed, extended_start_frame + 1, extended_end_frame);
+      "ChromaSink: Preparing {} frame descriptors (frames {}-{}) for decode",
+      extended_end_frame - extended_start_frame, extended_start_frame + 1,
+      extended_end_frame);
 
   for (int32_t frame = extended_start_frame; frame < extended_end_frame;
        frame++) {
-    // Determine if this frame is outside the SOURCE TBC range (need black
-    // padding)
     bool useBlankFrame =
-        (frame < 0) || (frame >= static_cast<int32_t>(total_source_frames));
+        (frame < 0) || (static_cast<orc::FrameID>(frame) < frame_range.first) ||
+        (static_cast<orc::FrameID>(frame) > frame_range.last);
 
-    // Convert frame to 1-based for field ID calculation
-    int32_t frameNumberFor1BasedTBC = frame + 1;
-    int32_t metadataFrameNumber = useBlankFrame ? 1 : frameNumberFor1BasedTBC;
-
-    FieldID firstFieldId = FieldID((metadataFrameNumber * 2) - 2);
-    FieldID secondFieldId = FieldID((metadataFrameNumber * 2) - 1);
-
-    // For non-blank frames, verify fields exist and find correct field pair
-    if (!useBlankFrame) {
-      FieldID scan_id = firstFieldId;
-      int max_scan = 10;
-
-      for (int scan = 0;
-           scan < max_scan && scan_id.value() < field_range.end.value();
-           scan++) {
-        if (!vfr->has_field(scan_id)) {
-          scan_id = FieldID(scan_id.value() + 1);
-          continue;
-        }
-
-        auto desc_opt = vfr->get_descriptor(scan_id);
-        if (desc_opt.has_value() && desc_opt->parity == FieldParity::Top) {
-          firstFieldId = scan_id;
-          secondFieldId = FieldID(scan_id.value() + 1);
-          break;
-        }
-        scan_id = FieldID(scan_id.value() + 1);
-      }
-
-      if (!vfr->has_field(firstFieldId) || !vfr->has_field(secondFieldId)) {
-        ORC_LOG_WARN("ChromaSink: Skipping frame {} (missing fields {}/{})",
-                     frame + 1, firstFieldId.value(), secondFieldId.value());
-        continue;
-      }
+    orc::FrameID fid = useBlankFrame ? 0 : static_cast<orc::FrameID>(frame);
+    if (!useBlankFrame && !vfr->has_frame(fid)) {
+      ORC_LOG_WARN("ChromaSink: Skipping frame {} (not present in VFrameR)",
+                   frame + 1);
+      useBlankFrame = true;
     }
-
-    // Store field info (not data)
-    fieldInfoList.push_back({firstFieldId, useBlankFrame, frame});
-    fieldInfoList.push_back({secondFieldId, useBlankFrame, frame});
+    frameInfoList.push_back({fid, useBlankFrame});
   }
 
   // 10. Process frames in parallel using worker threads
@@ -1169,15 +1119,14 @@ bool ChromaSinkStage::trigger(
   // shared between threads.
 
   // Calculate how many frames to OUTPUT
-  // field_range represents the actual fields to output (already filtered by
-  // upstream stages) We output all these frames - lookahead is only for decoder
-  // context (extended_range handles that)
+  // frame_range represents the actual frames to output (already filtered by
+  // upstream stages). Lookahead is only for decoder context (extended_range
+  // handles that).
   int32_t numOutputFrames = static_cast<int32_t>(end_frame - start_frame);
   int32_t numFrames = numOutputFrames;
 
-  ORC_LOG_DEBUG("ChromaSink: Will output {} frames from field range {}-{}",
-                numOutputFrames, field_range.start.value(),
-                field_range.end.value());
+  ORC_LOG_DEBUG("ChromaSink: Will output {} frames from frame range {}-{}",
+                numOutputFrames, frame_range.first, frame_range.last);
 
   // Initialize output backend BEFORE decoding to enable streaming writes
   auto backend = OutputBackendFactory::create(output_format_);
@@ -1208,36 +1157,35 @@ bool ChromaSinkStage::trigger(
       apply_deinterlace_ ? "true" : "false";
   backendConfig.observation_context = &observation_context;
 
-  // Set field range for audio, closed caption, and/or chapter metadata extraction
+  // Set field-equivalent range for audio, closed caption, and/or chapter
+  // metadata extraction. The ffmpeg backend uses field-based indexing
+  // internally; convert frame range to field units (1 frame = 2 fields).
   if ((embed_audio_ && vfr && vfr->has_audio()) || embed_closed_captions_ ||
       embed_chapter_metadata_) {
-    backendConfig.start_field_index = field_range.start.value();
-    backendConfig.num_fields =
-        field_range.end.value() - field_range.start.value();
+    backendConfig.start_field_index = frame_range.first * 2;
+    backendConfig.num_fields = (frame_range.last - frame_range.first + 1) * 2;
 
     if (embed_audio_ && vfr && vfr->has_audio()) {
       backendConfig.vfr = vfr.get();
       ORC_LOG_DEBUG(
-          "ChromaSink: Audio embedding enabled for output (fields {} to {} = "
-          "{} fields, {} frames)",
-          field_range.start.value(), field_range.end.value(),
-          backendConfig.num_fields, numOutputFrames);
+          "ChromaSink: Audio embedding enabled (frames {} to {} = {} frames, "
+          "{} field-equiv)",
+          frame_range.first, frame_range.last, numOutputFrames,
+          backendConfig.num_fields);
     }
 
     if (embed_closed_captions_) {
       ORC_LOG_DEBUG(
-          "ChromaSink: Closed caption embedding enabled for output (fields {} "
-          "to {} = {} fields, {} frames)",
-          field_range.start.value(), field_range.end.value(),
-          backendConfig.num_fields, numOutputFrames);
+          "ChromaSink: Closed caption embedding enabled (frames {} to {} = "
+          "{} frames)",
+          frame_range.first, frame_range.last, numOutputFrames);
     }
 
     if (embed_chapter_metadata_) {
       ORC_LOG_DEBUG(
-          "ChromaSink: Chapter metadata embedding enabled for output (fields "
-          "{} to {} = {} fields, {} frames)",
-          field_range.start.value(), field_range.end.value(),
-          backendConfig.num_fields, numOutputFrames);
+          "ChromaSink: Chapter metadata embedding enabled (frames {} to {} = "
+          "{} frames)",
+          frame_range.first, frame_range.last, numOutputFrames);
     }
   }
 
@@ -1377,92 +1325,144 @@ bool ChromaSinkStage::trigger(
         break;  // No more frames to process
       }
 
-      // Build a field array for this ONE frame by loading data on-demand
+      // Build a field array for this ONE frame by loading data on-demand.
       // [lookbehind fields... target frame fields... lookahead fields...]
+      // frameInfoList has one entry per frame; we expand each to 2
+      // SourceFields.
       std::vector<SourceField> frameFields;
+
+      // Owned black buffers for blank SourceFields; must outlive frameFields.
+      // Use a deque so that push_back never invalidates existing data()
+      // pointers.
+      std::deque<std::vector<int16_t>> ownedBlankData;
 
       // The actual frame number we're processing
       int32_t actualFrameNum = static_cast<int32_t>(start_frame) + frameIdx;
 
-      // Position in fieldInfoList where this frame's fields start
-      int32_t frameStartIdx = (actualFrameNum - extended_start_frame) * 2;
+      // Position in frameInfoList where this frame's entry is
+      int32_t frameStartIdx = (actualFrameNum - extended_start_frame);
 
-      // Calculate the range to load: lookbehind + target + lookahead
-      int32_t copyStartIdx = frameStartIdx - (lookBehindFrames * 2);
-      int32_t copyEndIdx = frameStartIdx + 2 + (lookAheadFrames * 2);
+      // Calculate the range to load: lookbehind + target + lookahead (in
+      // frames)
+      int32_t copyStartIdx = frameStartIdx - lookBehindFrames;
+      int32_t copyEndIdx = frameStartIdx + 1 + lookAheadFrames;
 
-      // Clamp to valid range and load field data on-demand
+      // Clamp to valid range
       copyStartIdx = std::max(0, copyStartIdx);
       copyEndIdx =
-          std::min(static_cast<int32_t>(fieldInfoList.size()), copyEndIdx);
+          std::min(static_cast<int32_t>(frameInfoList.size()), copyEndIdx);
 
-      for (int32_t i = copyStartIdx; i < copyEndIdx; i++) {
-        const auto& fieldInfo = fieldInfoList[i];
+      // Blanking level for black fields (CVBS 10-bit domain)
+      const int16_t blankingLevel =
+          isPal ? static_cast<int16_t>(orc::kPalBlanking)
+                : static_cast<int16_t>(orc::kNtscBlanking);
+
+      // Helper: compute sample count for field 1 or 2 given video params
+      auto fieldSampleCount = [&](bool is_first) -> size_t {
+        if (isPal) {
+          // EBU Tech. 3280-E §1.3.1: field 1 = 312×1135 + 1×1137 = 355,257,
+          // field 2 = 311×1135 + 1×1137 = 354,122
+          return is_first ? (312 * 1135 + 1 * 1137) : (311 * 1135 + 1 * 1137);
+        }
+        // NTSC / PAL_M: uniform sampling
+        size_t spl = (videoParams.system == orc::VideoSystem::PAL_M)
+                         ? static_cast<size_t>(orc::kPalMSamplesPerLine)
+                         : static_cast<size_t>(orc::kNtscSamplesPerLine);
+        size_t field_lines = is_first
+                                 ? static_cast<size_t>(orc::kNtscField1Lines)
+                                 : static_cast<size_t>(orc::kNtscFrameLines -
+                                                       orc::kNtscField1Lines);
+        return spl * field_lines;
+      };
+
+      // Helper: build a blank SourceField backed by an entry in ownedBlankData
+      auto makeBlankField = [&](bool is_first_field) -> SourceField {
+        size_t samples = fieldSampleCount(is_first_field);
+        ownedBlankData.emplace_back(samples, blankingLevel);
+        const int16_t* buf = ownedBlankData.back().data();
+
         SourceField sf;
-
-        if (fieldInfo.use_blank) {
-          // Create blank field with metadata but black data
-          sf = convertToSourceField(vfr.get(), fieldInfo.field_id);
-          uint16_t black = static_cast<uint16_t>(videoParams.black_16b_ire);
-
-          // Handle both composite and YC sources
-          if (sf.is_yc) {
-            sf.luma_data.assign(sf.luma_data.size(), black);
-            sf.chroma_data.assign(sf.chroma_data.size(), black);
-          } else {
-            sf.data.assign(sf.data.size(), black);
-          }
-        } else {
-          // Load field data from TBC (this is where the actual I/O happens,
-          // on-demand)
-          sf = convertToSourceField(vfr.get(), fieldInfo.field_id);
+        sf.is_first_field = is_first_field;
+        sf.data = buf;
+        sf.is_yc = is_yc_source;
+        if (is_yc_source) {
+          sf.luma_data = buf;
+          sf.chroma_data = buf;
         }
 
-        frameFields.push_back(std::move(sf));
+        if (isPal) {
+          sf.line_count = is_first_field
+                              ? static_cast<size_t>(orc::kPalField1Lines)
+                              : static_cast<size_t>(orc::kPalFrameLines -
+                                                    orc::kPalField1Lines);
+          sf.samples_per_line = 1135;
+          sf.line_ptrs.reserve(sf.line_count);
+          const size_t blank_field_base =
+              is_first_field ? 0 : static_cast<size_t>(orc::kPalField1Lines);
+          size_t offset = 0;
+          for (size_t ln = 0; ln < sf.line_count; ++ln) {
+            sf.line_ptrs.push_back(buf + offset);
+            offset += frame_line_sample_count(
+                orc::VideoSystem::PAL,
+                static_cast<size_t>(orc::kPalSamplesPerLineNominal),
+                blank_field_base + ln);
+          }
+          if (is_yc_source) {
+            sf.luma_line_ptrs = sf.line_ptrs;
+            sf.chroma_line_ptrs = sf.line_ptrs;
+          }
+        } else {
+          size_t spl = (videoParams.system == orc::VideoSystem::PAL_M)
+                           ? static_cast<size_t>(orc::kPalMSamplesPerLine)
+                           : static_cast<size_t>(orc::kNtscSamplesPerLine);
+          sf.line_count = is_first_field
+                              ? static_cast<size_t>(orc::kNtscField1Lines)
+                              : static_cast<size_t>(orc::kNtscFrameLines -
+                                                    orc::kNtscField1Lines);
+          sf.samples_per_line = spl;
+          // NTSC: uniform lines, no line_ptrs needed
+        }
+        return sf;
+      };
+
+      for (int32_t i = copyStartIdx; i < copyEndIdx; i++) {
+        const auto& fi = frameInfoList[i];
+
+        if (fi.use_blank) {
+          frameFields.push_back(makeBlankField(true));
+          frameFields.push_back(makeBlankField(false));
+        } else {
+          frameFields.push_back(
+              convertToSourceField(vfr.get(), fi.frame_id, true, videoParams));
+          frameFields.push_back(
+              convertToSourceField(vfr.get(), fi.frame_id, false, videoParams));
+        }
       }
 
-      // The target frame's position within frameFields depends on how much
-      // lookbehind we actually got
-      int32_t actualLookbehindFields = (frameStartIdx - copyStartIdx);
+      // The target frame's position within frameFields (in field units)
+      int32_t actualLookbehindFields = (frameStartIdx - copyStartIdx) * 2;
 
       // CRITICAL: For Transform3D temporal consistency, all frames must be
       // decoded at the SAME Z-position (temporal index) regardless of their
-      // frame number. Always decode at lookBehindFrames * 2 field indices,
-      // which is after the lookbehind context. If we don't have full lookbehind
-      // (edge frames), pad the frameFields with black to maintain position.
+      // frame number. Always decode at lookBehindFrames * 2 field indices.
+      // If we don't have full lookbehind (edge frames), pad with black fields.
       std::vector<SourceField> paddedFrameFields;
       int32_t requiredLookbehindFields = lookBehindFrames * 2;
 
       if (actualLookbehindFields < requiredLookbehindFields) {
-        // Need to pad with black fields at the start
         int32_t paddingNeeded =
             requiredLookbehindFields - actualLookbehindFields;
 
-        // Create black fields for padding
+        // Create black fields for padding (always in field pairs)
         for (int32_t p = 0; p < paddingNeeded; p++) {
-          SourceField blackField;
-          if (!frameFields.empty()) {
-            blackField = frameFields[0];  // Copy structure
-            uint16_t black = static_cast<uint16_t>(videoParams.black_16b_ire);
-
-            // Handle both composite and YC sources
-            if (blackField.is_yc) {
-              blackField.luma_data.assign(blackField.luma_data.size(), black);
-              blackField.chroma_data.assign(blackField.chroma_data.size(),
-                                            black);
-            } else {
-              blackField.data.assign(blackField.data.size(), black);
-            }
-          }
-          paddedFrameFields.push_back(blackField);
+          paddedFrameFields.push_back(makeBlankField(p % 2 == 0));
         }
 
-        // Add the actual fields
         for (const auto& field : frameFields) {
           paddedFrameFields.push_back(field);
         }
 
-        frameFields = paddedFrameFields;
+        frameFields = std::move(paddedFrameFields);
       }
 
       // Now all frames decode at the same Z-position: after lookBehindFrames *
@@ -1482,18 +1482,26 @@ bool ChromaSinkStage::trigger(
         ycCFields.reserve(frameFields.size());
 
         for (const auto& field : frameFields) {
+          // Y-route: composite view of luma channel only
           SourceField yField = field;
           yField.is_yc = false;
           yField.data = field.luma_data;
-          yField.luma_data.clear();
-          yField.chroma_data.clear();
+          yField.luma_data = nullptr;
+          yField.chroma_data = nullptr;
+          yField.line_ptrs = field.luma_line_ptrs;
+          yField.luma_line_ptrs.clear();
+          yField.chroma_line_ptrs.clear();
           ycYFields.push_back(std::move(yField));
 
+          // C-route: composite view of chroma channel only
           SourceField cField = field;
           cField.is_yc = false;
           cField.data = field.chroma_data;
-          cField.luma_data.clear();
-          cField.chroma_data.clear();
+          cField.luma_data = nullptr;
+          cField.chroma_data = nullptr;
+          cField.line_ptrs = field.chroma_line_ptrs;
+          cField.luma_line_ptrs.clear();
+          cField.chroma_line_ptrs.clear();
           ycCFields.push_back(std::move(cField));
         }
 
@@ -1620,165 +1628,136 @@ std::string ChromaSinkStage::get_trigger_status() const {
   return trigger_status_;
 }
 
-// Helper method: Convert VideoFieldRepresentation field to SourceField
+// Build a non-owning SourceField view into the VFrameR flat frame buffer.
+// The VFrameR frame buffer layout is:
+//   [field1_line0 | field1_line1 | … | field2_line0 | …]
+// For PAL, frame-flat lines 312 and 624 carry 1137 samples (all other lines
+// carry 1135 samples).  EBU Tech. 3280-E §1.3.1.
 SourceField ChromaSinkStage::convertToSourceField(
-    const VideoFieldRepresentation* vfr, FieldID field_id) const {
+    const orc::VideoFrameRepresentation* vfr, orc::FrameID frame_id,
+    bool is_first_field, const orc::SourceParameters& videoParams) const {
   SourceField sf;
 
-  // Get field descriptor
-  auto desc_opt = vfr->get_descriptor(field_id);
-  if (!desc_opt) {
-    ORC_LOG_WARN("ChromaSink: Field {} has no descriptor",
-                 static_cast<uint64_t>(field_id.value()));
+  const int16_t* frame_ptr = vfr->get_frame(frame_id);
+  if (!frame_ptr) {
+    ORC_LOG_WARN("ChromaSink: Frame {} has no data in VFrameR", frame_id);
     return sf;
   }
 
-  const auto& desc = *desc_opt;
+  sf.seq_no = static_cast<int32_t>(frame_id) + 1;
+  sf.is_first_field = is_first_field;
 
-  // Set field metadata from VFR interface
-  // Note: seq_no must be 1-based (ORC uses 0-based FieldID, so add 1)
-  sf.seq_no = static_cast<int32_t>(field_id.value()) + 1;
-
-  // Determine if this is the "first field" or "second field" from field parity
-  // Field parity determines field ordering (same for both NTSC and PAL):
-  //   - Top field (even field indices)    → first field
-  //   - Bottom field (odd field indices)  → second field
-  sf.is_first_field = (desc.parity == FieldParity::Top);
-
-  ORC_LOG_TRACE(
-      "ChromaSink: Field {} parity={} → isFirstField={}", field_id.value(),
-      desc.parity == FieldParity::Top ? "Top" : "Bottom", sf.is_first_field);
-
-  // Get field_phase_id from phase hint (from VFR interface)
-  auto phase_hint = vfr->get_field_phase_hint(field_id);
-  if (phase_hint.has_value()) {
-    sf.field_phase_id = phase_hint->field_phase_id;
-    ORC_LOG_TRACE("ChromaSink: Field {} has fieldPhaseID={}", field_id.value(),
-                  sf.field_phase_id.value());
+  if (auto desc = vfr->get_frame_descriptor(frame_id)) {
+    if (desc->colour_frame_index >= 0) {
+      sf.frame_phase_id = static_cast<int32_t>(desc->colour_frame_index);
+      ORC_LOG_TRACE("ChromaSink: Frame {} colour_frame_index={}", frame_id,
+                    desc->colour_frame_index);
+    }
   }
 
-  ORC_LOG_TRACE(
-      "ChromaSink: Field {} (1-based seqNo={}) parity={} -> isFirstField={}",
-      field_id.value(), sf.seq_no,
-      (desc.parity == FieldParity::Top ? "Top" : "Bottom"), sf.is_first_field);
+  // PAL_M has NTSC-like frame geometry (525 lines, 909 samples/line); only
+  // pure PAL uses the 625-line non-uniform layout.
+  const bool is_pal = (videoParams.system == orc::VideoSystem::PAL);
 
-  // Check if this is a YC source (separate Y and C channels)
-  if (vfr->has_separate_channels()) {
-    // YC SOURCE PATH - get Y and C independently
-    sf.is_yc = true;
+  // EBU Tech. 3280-E §1.3.1: frame-flat offset of the start of field 2.
+  const size_t kPalField1Samples = frame_line_sample_offset(
+      orc::VideoSystem::PAL,
+      static_cast<size_t>(orc::kPalSamplesPerLineNominal),
+      static_cast<size_t>(orc::kPalField1Lines));
 
-    // Get luma (Y) data
-    std::vector<uint16_t> y_field_data = vfr->get_field_luma(field_id);
-    sf.luma_data = y_field_data;
-
-    // Get chroma (C) data
-    std::vector<uint16_t> c_field_data = vfr->get_field_chroma(field_id);
-    sf.chroma_data = c_field_data;
-
-    ORC_LOG_TRACE("ChromaSink: YC source - Field {} Y.size()={} C.size()={}",
-                  field_id.value(), sf.luma_data.size(), sf.chroma_data.size());
-
-    // Apply PAL subcarrier-locked field shift to both Y and C
-    auto videoParamsOpt = vfr->get_video_parameters();
-    if (videoParamsOpt.has_value()) {
-      const auto& videoParams = videoParamsOpt.value();
-      bool isPal = (videoParams.system == VideoSystem::PAL ||
-                    videoParams.system == VideoSystem::PAL_M);
-      bool isSecondField = (desc.parity == FieldParity::Bottom);
-      const bool isCvbsSource = (videoParams.decoder == "cvbs-source");
-
-      if (isPal && videoParams.is_subcarrier_locked && isSecondField &&
-          !isCvbsSource) {
-        // Shift second field left by 2 samples (remove first 2, add 2 black
-        // samples at end)
-        uint16_t black = static_cast<uint16_t>(videoParams.black_16b_ire);
-
-        // Shift Y channel
-        sf.luma_data.erase(sf.luma_data.begin(), sf.luma_data.begin() + 2);
-        sf.luma_data.push_back(black);
-        sf.luma_data.push_back(black);
-
-        // Shift C channel
-        sf.chroma_data.erase(sf.chroma_data.begin(),
-                             sf.chroma_data.begin() + 2);
-        sf.chroma_data.push_back(black);
-        sf.chroma_data.push_back(black);
-
-        ORC_LOG_TRACE(
-            "ChromaSink: Applied PAL subcarrier-locked shift to YC field {}",
-            field_id.value());
-      }
+  // Helper: build PAL per-line pointer table for non-uniform line lengths.
+  // frame_base_line: 0 for field 1, kPalField1Lines for field 2.
+  auto buildPalLinePtrs =
+      [](const int16_t* base, size_t line_count,
+         size_t frame_base_line) -> std::vector<const int16_t*> {
+    std::vector<const int16_t*> ptrs;
+    ptrs.reserve(line_count);
+    size_t offset = 0;
+    for (size_t ln = 0; ln < line_count; ++ln) {
+      ptrs.push_back(base + offset);
+      offset += frame_line_sample_count(
+          orc::VideoSystem::PAL,
+          static_cast<size_t>(orc::kPalSamplesPerLineNominal),
+          frame_base_line + ln);
     }
+    return ptrs;
+  };
 
-    // Log first few fields
-    if (field_id.value() < 6) {
-      ORC_LOG_DEBUG("ChromaSink: YC Field {} FULL metadata:", field_id.value());
-      ORC_LOG_DEBUG("  seq_no={} is_first_field={} field_phase_id={}",
-                    sf.seq_no, sf.is_first_field,
-                    sf.field_phase_id.value_or(-1));
-      ORC_LOG_DEBUG("  is_yc=true luma.size()={} chroma.size()={}",
-                    sf.luma_data.size(), sf.chroma_data.size());
-      ORC_LOG_DEBUG("  Y first4=[{},{},{},{}] C first4=[{},{},{},{}]",
-                    sf.luma_data.size() > 0 ? sf.luma_data[0] : 0,
-                    sf.luma_data.size() > 1 ? sf.luma_data[1] : 0,
-                    sf.luma_data.size() > 2 ? sf.luma_data[2] : 0,
-                    sf.luma_data.size() > 3 ? sf.luma_data[3] : 0,
-                    sf.chroma_data.size() > 0 ? sf.chroma_data[0] : 0,
-                    sf.chroma_data.size() > 1 ? sf.chroma_data[1] : 0,
-                    sf.chroma_data.size() > 2 ? sf.chroma_data[2] : 0,
-                    sf.chroma_data.size() > 3 ? sf.chroma_data[3] : 0);
+  if (is_pal) {
+    const size_t field1_lines =
+        static_cast<size_t>(orc::kPalField1Lines);  // 313
+    const size_t field2_lines =
+        static_cast<size_t>(orc::kPalFrameLines - orc::kPalField1Lines);  // 312
+
+    sf.samples_per_line = 1135;  // nominal; lines 312 and 624 carry 1137
+
+    if (is_first_field) {
+      sf.data = frame_ptr;
+      sf.line_count = field1_lines;
+      sf.line_ptrs = buildPalLinePtrs(frame_ptr, field1_lines, 0);
+    } else {
+      sf.data = frame_ptr + kPalField1Samples;
+      sf.line_count = field2_lines;
+      sf.line_ptrs = buildPalLinePtrs(
+          sf.data, field2_lines, static_cast<size_t>(orc::kPalField1Lines));
     }
-
   } else {
-    // COMPOSITE SOURCE PATH - Y+C modulated together (existing behavior)
-    sf.is_yc = false;
+    // NTSC or PAL_M: uniform sampling, no line_ptrs needed
+    const size_t spl = (videoParams.system == orc::VideoSystem::PAL_M)
+                           ? static_cast<size_t>(orc::kPalMSamplesPerLine)
+                           : static_cast<size_t>(orc::kNtscSamplesPerLine);
+    const size_t field1_lines =
+        static_cast<size_t>(orc::kNtscField1Lines);  // 263 (top spatial)
+    const size_t field2_lines = static_cast<size_t>(
+        orc::kNtscFrameLines - orc::kNtscField1Lines);  // 262 (bottom spatial)
 
-    // Get field data
-    std::vector<uint16_t> field_data = vfr->get_field(field_id);
-
-    // Copy field data to SourceField
-    sf.data = field_data;
-
-    // Apply PAL subcarrier-locked field shift (matches standalone decoder
-    // behavior) With 4fSC PAL sampling, the two fields are misaligned by 2
-    // samples The second field needs to be shifted left by 2 samples
-    auto videoParamsOpt = vfr->get_video_parameters();
-    if (videoParamsOpt.has_value()) {
-      const auto& videoParams = videoParamsOpt.value();
-      bool isPal = (videoParams.system == VideoSystem::PAL ||
-                    videoParams.system == VideoSystem::PAL_M);
-      bool isSecondField = (desc.parity == FieldParity::Bottom);
-      const bool isCvbsSource = (videoParams.decoder == "cvbs-source");
-
-      if (isPal && videoParams.is_subcarrier_locked && isSecondField &&
-          !isCvbsSource) {
-        // Shift second field left by 2 samples (remove first 2, add 2 black
-        // samples at end)
-        sf.data.erase(sf.data.begin(), sf.data.begin() + 2);
-        uint16_t black = static_cast<uint16_t>(videoParams.black_16b_ire);
-        sf.data.push_back(black);
-        sf.data.push_back(black);
-        ORC_LOG_TRACE(
-            "ChromaSink: Applied PAL subcarrier-locked shift to composite "
-            "field {}",
-            field_id.value());
-      }
-    }
-
-    // Log complete Field structure for debugging (first 6 fields only)
-    if (field_id.value() < 6) {
-      ORC_LOG_DEBUG("ChromaSink: Composite Field {} FULL metadata:",
-                    field_id.value());
-      ORC_LOG_DEBUG("  seq_no={} is_first_field={} field_phase_id={}",
-                    sf.seq_no, sf.is_first_field,
-                    sf.field_phase_id.value_or(-1));
-      ORC_LOG_DEBUG("  is_yc=false data.size()={} first4=[{},{},{},{}]",
-                    sf.data.size(), sf.data.size() > 0 ? sf.data[0] : 0,
-                    sf.data.size() > 1 ? sf.data[1] : 0,
-                    sf.data.size() > 2 ? sf.data[2] : 0,
-                    sf.data.size() > 3 ? sf.data[3] : 0);
+    sf.samples_per_line = spl;
+    if (is_first_field) {
+      sf.data = frame_ptr;
+      sf.line_count = field1_lines;
+    } else {
+      sf.data = frame_ptr + field1_lines * spl;
+      sf.line_count = field2_lines;
     }
   }
+
+  if (vfr->has_separate_channels()) {
+    sf.is_yc = true;
+    const int16_t* luma_ptr = vfr->get_frame_luma(frame_id);
+    const int16_t* chroma_ptr = vfr->get_frame_chroma(frame_id);
+
+    if (luma_ptr && chroma_ptr) {
+      if (is_pal) {
+        if (is_first_field) {
+          sf.luma_data = luma_ptr;
+          sf.chroma_data = chroma_ptr;
+          sf.luma_line_ptrs = buildPalLinePtrs(luma_ptr, sf.line_count, 0);
+          sf.chroma_line_ptrs = buildPalLinePtrs(chroma_ptr, sf.line_count, 0);
+        } else {
+          sf.luma_data = luma_ptr + kPalField1Samples;
+          sf.chroma_data = chroma_ptr + kPalField1Samples;
+          sf.luma_line_ptrs =
+              buildPalLinePtrs(sf.luma_data, sf.line_count,
+                               static_cast<size_t>(orc::kPalField1Lines));
+          sf.chroma_line_ptrs =
+              buildPalLinePtrs(sf.chroma_data, sf.line_count,
+                               static_cast<size_t>(orc::kPalField1Lines));
+        }
+      } else {
+        const size_t spl = sf.samples_per_line;
+        const size_t field1_lines = static_cast<size_t>(orc::kNtscField1Lines);
+        size_t field_offset = is_first_field ? 0 : field1_lines * spl;
+        sf.luma_data = luma_ptr + field_offset;
+        sf.chroma_data = chroma_ptr + field_offset;
+      }
+    }
+  }
+
+  ORC_LOG_TRACE(
+      "ChromaSink: Frame {} {} field: line_count={} samples_per_line={} "
+      "is_yc={} line_ptrs={}",
+      frame_id, is_first_field ? "field1" : "field2", sf.line_count,
+      sf.samples_per_line, sf.is_yc, sf.line_ptrs.size());
 
   return sf;
 }
@@ -1787,7 +1766,7 @@ SourceField ChromaSinkStage::convertToSourceField(
 bool ChromaSinkStage::writeOutputFile(
     const std::string& output_path, const std::string& format,
     const std::vector<::ComponentFrame>& frames, const void* videoParamsPtr,
-    const VideoFieldRepresentation* vfr, uint64_t start_field_index,
+    const orc::VideoFrameRepresentation* vfr, uint64_t start_field_index,
     uint64_t num_fields, std::string& error_message) const {
   const auto& videoParams =
       *static_cast<const orc::SourceParameters*>(videoParamsPtr);
@@ -1877,155 +1856,21 @@ bool ChromaSinkStage::writeOutputFile(
   return true;
 }
 
-std::vector<PreviewOption> ChromaSinkStage::get_preview_options() const {
-  if (!cached_input_) {
-    return {};
-  }
-
-  auto video_params = cached_input_->get_video_parameters();
-  if (!video_params) {
-    return {};
-  }
-
-  uint64_t field_count = cached_input_->field_count();
-  if (field_count < 2) {
-    return {};  // Need at least 2 fields to decode a frame
-  }
-
-  uint64_t frame_count = field_count / 2;
-
-  // Decode a test frame to get the actual full frame dimensions (with padding)
-  uint32_t full_width = 0;
-  uint32_t full_height = 0;
-
-  if (frame_count > 0) {
-    auto test_preview =
-        render_preview("frame", 0, PreviewNavigationHint::Random);
-    if (test_preview.width > 0 && test_preview.height > 0) {
-      full_width = test_preview.width;
-      full_height = test_preview.height;
-    }
-  }
-
-  // Fallback to typical dimensions if decode failed
-  if (full_width == 0 || full_height == 0) {
-    full_width = 1135;  // Typical PAL with padding
-    full_height = 625;
-    if (video_params->system == VideoSystem::NTSC) {
-      full_height = 505;  // Typical NTSC with padding
-    }
-  }
-
-  // Get active picture area dimensions from metadata
-  // These are used to calculate the DAR correction, not for the preview
-  // dimensions
-  uint32_t active_width = 702;   // Fallback PAL active picture width
-  uint32_t active_height = 576;  // Fallback PAL active picture height
-
-  if (video_params->active_video_start >= 0 &&
-      video_params->active_video_end > video_params->active_video_start) {
-    active_width =
-        video_params->active_video_end - video_params->active_video_start;
-  }
-  if (video_params->first_active_frame_line >= 0 &&
-      video_params->last_active_frame_line >
-          video_params->first_active_frame_line) {
-    active_height = video_params->last_active_frame_line -
-                    video_params->first_active_frame_line;
-  }
-
-  // Calculate DAR correction based on active area for 4:3 display
-  // The active picture area should display at 4:3 aspect ratio
-  // Example: PAL 702x576 active → target ratio 4:3 = 1.333
-  //          Current ratio: 702/576 = 1.219
-  //          Need to multiply width by: 1.333/1.219 = 1.094 to reach proper 4:3
-  double active_ratio =
-      static_cast<double>(active_width) / static_cast<double>(active_height);
-  double target_ratio = 4.0 / 3.0;
-  double dar_correction = target_ratio / active_ratio;
-
-  ORC_LOG_DEBUG(
-      "ChromaSink: Preview dimensions: {}x{} (full frame), active area ~{}x{} "
-      "(ratio={:.3f}), DAR correction = {:.3f} (target ratio=1.333)",
-      full_width, full_height, active_width, active_height, active_ratio,
-      dar_correction);
-
-  // Only offer Frame mode for chroma decoder (fields are combined into RGB
-  // frames)
-  std::vector<PreviewOption> options;
-  options.push_back(PreviewOption{"frame", "Frame (RGB)", false, full_width,
-                                  full_height, frame_count, dar_correction});
-
-  return options;
-}
-
-PreviewImage ChromaSinkStage::render_preview(const std::string& option_id,
-                                             uint64_t index,
-                                             PreviewNavigationHint hint
-                                             [[maybe_unused]]) const {
-  if (option_id != "frame") {
-    return PreviewImage{};
-  }
-
-  auto carrier_opt = get_colour_preview_carrier(index, hint);
-  if (!carrier_opt.has_value()) {
-    return PreviewImage{};
-  }
-
-  auto result = render_preview_from_colour_carrier(*carrier_opt);
-  result.vectorscope_data = carrier_opt->vectorscope_data;
-  return result;
-}
-
 StagePreviewCapability ChromaSinkStage::get_preview_capability() const {
   StagePreviewCapability capability{};
 
-  // Declare live-tweakable parameters independent of loaded preview data so
-  // the GUI can build the tweak panel as soon as the node is selected.
-  auto add_decode_tweaks = [&capability](std::optional<bool> is_pal_opt) {
-    capability.tweakable_parameters.push_back(
-        {"decoder_type", PreviewTweakClass::DecodePhase});
-    capability.tweakable_parameters.push_back(
-        {"chroma_gain", PreviewTweakClass::DecodePhase});
-    capability.tweakable_parameters.push_back(
-        {"chroma_phase", PreviewTweakClass::DecodePhase});
-    capability.tweakable_parameters.push_back(
-        {"luma_nr", PreviewTweakClass::DecodePhase});
-    capability.tweakable_parameters.push_back(
-        {"chroma_nr", PreviewTweakClass::DecodePhase});
-
-    // If system is not known yet, include both sets; descriptor filtering
-    // in the GUI removes keys not valid for the current project format.
-    if (!is_pal_opt.has_value() || is_pal_opt.value()) {
-      capability.tweakable_parameters.push_back(
-          {"simple_pal", PreviewTweakClass::DecodePhase});
-      capability.tweakable_parameters.push_back(
-          {"transform_threshold", PreviewTweakClass::DecodePhase});
-    }
-    if (!is_pal_opt.has_value() || !is_pal_opt.value()) {
-      capability.tweakable_parameters.push_back(
-          {"ntsc_phase_comp", PreviewTweakClass::DecodePhase});
-      capability.tweakable_parameters.push_back(
-          {"chroma_weight", PreviewTweakClass::DecodePhase});
-      capability.tweakable_parameters.push_back(
-          {"adapt_threshold", PreviewTweakClass::DecodePhase});
-    }
-  };
-
-  std::shared_ptr<const VideoFieldRepresentation> local_input;
+  std::shared_ptr<const orc::VideoFrameRepresentation> local_input;
   {
     std::lock_guard<std::mutex> lock(cached_input_mutex_);
     local_input = cached_input_;
   }
 
   if (!local_input) {
-    add_decode_tweaks(std::nullopt);
     return capability;
   }
 
   auto video_params_opt = local_input->get_video_parameters();
   if (!video_params_opt) {
-    add_decode_tweaks(std::nullopt);
     return capability;
   }
 
@@ -2041,8 +1886,7 @@ StagePreviewCapability ChromaSinkStage::get_preview_capability() const {
           : (is_pal ? VideoDataType::CompositePAL
                     : VideoDataType::CompositeNTSC));
 
-  const uint64_t field_count = local_input->field_count();
-  capability.navigation_extent.item_count = field_count / 2;
+  capability.navigation_extent.item_count = local_input->frame_count();
   capability.navigation_extent.granularity = 1;
   capability.navigation_extent.item_label = "frame";
 
@@ -2070,16 +1914,11 @@ StagePreviewCapability ChromaSinkStage::get_preview_capability() const {
 
   capability.geometry.display_aspect_ratio = 4.0 / 3.0;
 
-  // Match DAR correction math used by PreviewHelpers/get_preview_options().
+  // Match DAR correction math used by make_signal_preview_capability().
   double active_ratio = static_cast<double>(capability.geometry.active_width) /
                         static_cast<double>(capability.geometry.active_height);
   double target_ratio = 4.0 / 3.0;
   capability.geometry.dar_correction_factor = target_ratio / active_ratio;
-
-  // Declare live-tweakable parameters (DecodePhase: affect the chroma decoder).
-  // Output/file parameters (output_path, output_format, encoder_*) are
-  // intentionally excluded from this list.
-  add_decode_tweaks(is_pal);
 
   return capability;
 }
@@ -2091,7 +1930,7 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
       "{}, has_cached_input={}",
       static_cast<const void*>(this), index, (cached_input_ != nullptr));
 
-  std::shared_ptr<const VideoFieldRepresentation> local_input;
+  std::shared_ptr<const orc::VideoFrameRepresentation> local_input;
   {
     std::lock_guard<std::mutex> lock(cached_input_mutex_);
     local_input = cached_input_;
@@ -2115,74 +1954,133 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
     return std::nullopt;
   }
 
-  uint64_t first_field_offset = 0;
-  auto parity_hint = local_input->get_field_parity_hint(FieldID(0));
-  if (parity_hint.has_value() && !parity_hint->is_first_field) {
-    first_field_offset = 1;
-  }
-
-  uint64_t field_a_index = first_field_offset + (index * 2);
-  uint64_t field_b_index = field_a_index + 1;
+  // With VFrameR, frames are indexed directly (no field-parity offset needed).
+  // Preview frame index == VFrameR frame_id offset into the frame range.
+  const orc::FrameIDRange preview_frame_range = local_input->frame_range();
+  const uint64_t frame_a_index = preview_frame_range.first + index;
 
   std::vector<SourceField> inputFields;
-  int32_t num_lookbehind_fields = 0;
-  int32_t num_lookahead_fields = 0;
+  int32_t num_lookbehind_frames = 0;
+  int32_t num_lookahead_frames = 0;
 
   std::string temp_decoder_type = decoder_type_;
-  const bool will_use_3d =
-      (temp_decoder_type == "transform3d" || temp_decoder_type == "ntsc3d" ||
-       temp_decoder_type == "ntsc3dnoadapt");
-
-  if (will_use_3d) {
-    num_lookbehind_fields = 4;
-    num_lookahead_fields = 4;
+  if (temp_decoder_type == "transform3d") {
+    // TransformPal3D::getLookBehind() = 1, getLookAhead() = 4 (frames).
+    // Preview must supply at least getLookAhead()*2 = 8 fields after endIndex.
+    num_lookbehind_frames = 2;
+    num_lookahead_frames = 4;
+  } else if (temp_decoder_type == "ntsc3d" ||
+             temp_decoder_type == "ntsc3dnoadapt") {
+    num_lookbehind_frames = 2;
+    num_lookahead_frames = 2;
   } else {
-    num_lookbehind_fields = 2;
-    num_lookahead_fields = 2;
+    num_lookbehind_frames = 1;
+    num_lookahead_frames = 1;
   }
 
-  int64_t start_field =
-      static_cast<int64_t>(field_a_index) - num_lookbehind_fields;
-  int64_t end_field =
-      static_cast<int64_t>(field_b_index) + num_lookahead_fields;
-
-  auto video_desc = local_input->get_descriptor(FieldID(0));
-  if (!video_desc) {
-    return std::nullopt;
-  }
+  int64_t start_frame_idx =
+      static_cast<int64_t>(frame_a_index) - num_lookbehind_frames;
+  int64_t end_frame_idx =
+      static_cast<int64_t>(frame_a_index) + num_lookahead_frames;
 
   const bool is_yc_source = local_input->has_separate_channels();
+  // PAL_M has NTSC-like frame geometry (525 lines, 909 samples/line); only
+  // pure PAL uses the 625-line non-uniform layout.
+  const bool preview_is_pal = (safeVideoParams.system == orc::VideoSystem::PAL);
+  const int16_t preview_blanking =
+      preview_is_pal ? static_cast<int16_t>(orc::kPalBlanking)
+                     : static_cast<int16_t>(orc::kNtscBlanking);
 
-  for (int64_t f = start_field; f <= end_field; ++f) {
-    if (f >= 0 && local_input->has_field(FieldID(f))) {
-      SourceField sf = convertToSourceField(local_input.get(), FieldID(f));
-      const bool has_data =
-          sf.is_yc ? (!sf.luma_data.empty() && !sf.chroma_data.empty())
-                   : !sf.data.empty();
-      if (has_data) {
-        inputFields.push_back(sf);
-      }
+  // Owned blank buffers for out-of-range frames; must outlive inputFields.
+  std::deque<std::vector<int16_t>> previewBlankBuffers;
+
+  // Helper: build a blank SourceField for preview
+  auto makePreviewBlankField = [&](int64_t fi,
+                                   bool is_first_field) -> SourceField {
+    SourceField blank;
+    blank.seq_no = static_cast<int32_t>(fi) + 1;
+    blank.is_first_field = is_first_field;
+    blank.is_yc = is_yc_source;
+
+    // Compute samples for this field
+    size_t samples;
+    if (preview_is_pal) {
+      const size_t pal_f1_samples = frame_line_sample_offset(
+          orc::VideoSystem::PAL,
+          static_cast<size_t>(orc::kPalSamplesPerLineNominal),
+          static_cast<size_t>(orc::kPalField1Lines));
+      samples =
+          is_first_field
+              ? pal_f1_samples
+              : (static_cast<size_t>(orc::kPalFrameSamples) - pal_f1_samples);
+      blank.samples_per_line = 1135;
+      blank.line_count =
+          is_first_field
+              ? static_cast<size_t>(orc::kPalField1Lines)
+              : static_cast<size_t>(orc::kPalFrameLines - orc::kPalField1Lines);
     } else {
-      SourceField blank_field;
-      blank_field.seq_no = static_cast<int32_t>(f) + 1;
-      blank_field.is_first_field = (f % 2 == 0);
+      size_t spl = (safeVideoParams.system == orc::VideoSystem::PAL_M)
+                       ? static_cast<size_t>(orc::kPalMSamplesPerLine)
+                       : static_cast<size_t>(orc::kNtscSamplesPerLine);
+      size_t fl = is_first_field ? static_cast<size_t>(orc::kNtscField1Lines)
+                                 : static_cast<size_t>(orc::kNtscFrameLines -
+                                                       orc::kNtscField1Lines);
+      samples = spl * fl;
+      blank.samples_per_line = spl;
+      blank.line_count = fl;
+    }
 
-      if (is_yc_source) {
-        blank_field.is_yc = true;
-        blank_field.luma_data.resize(video_desc->width * video_desc->height, 0);
-        blank_field.chroma_data.resize(video_desc->width * video_desc->height,
-                                       0);
-      } else {
-        blank_field.is_yc = false;
-        blank_field.data.resize(video_desc->width * video_desc->height, 0);
+    previewBlankBuffers.emplace_back(samples, preview_blanking);
+    const int16_t* buf = previewBlankBuffers.back().data();
+
+    blank.data = buf;
+    if (is_yc_source) {
+      blank.luma_data = buf;
+      blank.chroma_data = buf;
+    }
+
+    if (preview_is_pal) {
+      blank.line_ptrs.reserve(blank.line_count);
+      const size_t preview_field_base =
+          is_first_field ? 0 : static_cast<size_t>(orc::kPalField1Lines);
+      size_t off = 0;
+      for (size_t ln = 0; ln < blank.line_count; ++ln) {
+        blank.line_ptrs.push_back(buf + off);
+        off += frame_line_sample_count(
+            orc::VideoSystem::PAL,
+            static_cast<size_t>(orc::kPalSamplesPerLineNominal),
+            preview_field_base + ln);
       }
-      inputFields.push_back(blank_field);
+      if (is_yc_source) {
+        blank.luma_line_ptrs = blank.line_ptrs;
+        blank.chroma_line_ptrs = blank.line_ptrs;
+      }
+    }
+    return blank;
+  };
+
+  for (int64_t fi = start_frame_idx; fi <= end_frame_idx; ++fi) {
+    orc::FrameID fid = static_cast<orc::FrameID>(fi);
+    if (fi >= 0 && local_input->has_frame(fid)) {
+      auto sf1 =
+          convertToSourceField(local_input.get(), fid, true, safeVideoParams);
+      auto sf2 =
+          convertToSourceField(local_input.get(), fid, false, safeVideoParams);
+      if (sf1.data || sf1.luma_data) inputFields.push_back(std::move(sf1));
+      if (sf2.data || sf2.luma_data) inputFields.push_back(std::move(sf2));
+    } else {
+      inputFields.push_back(makePreviewBlankField(fi, true));
+      inputFields.push_back(makePreviewBlankField(fi, false));
     }
   }
 
   if (inputFields.size() < 2) {
     return std::nullopt;
   }
+
+  // Determine the target frame's position within inputFields (field units).
+  // Each frame contributes 2 SourceFields; lookbehind frames come first.
+  const int32_t frameStartIndex = num_lookbehind_frames * 2;
 
   std::string effectiveDecoderType = decoder_type_;
 
@@ -2272,7 +2170,6 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
   }
 
   std::vector<::ComponentFrame> outputFrames(1);
-  const int32_t frameStartIndex = num_lookbehind_fields;
   const int32_t frameEndIndex = frameStartIndex + 2;
 
   if (preview_decoder_cache_.yc_mono_decoder) {
@@ -2285,15 +2182,21 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
       SourceField yField = field;
       yField.is_yc = false;
       yField.data = field.luma_data;
-      yField.luma_data.clear();
-      yField.chroma_data.clear();
+      yField.luma_data = nullptr;
+      yField.chroma_data = nullptr;
+      yField.line_ptrs = field.luma_line_ptrs;
+      yField.luma_line_ptrs.clear();
+      yField.chroma_line_ptrs.clear();
       ycYFields.push_back(std::move(yField));
 
       SourceField cField = field;
       cField.is_yc = false;
       cField.data = field.chroma_data;
-      cField.luma_data.clear();
-      cField.chroma_data.clear();
+      cField.luma_data = nullptr;
+      cField.chroma_data = nullptr;
+      cField.line_ptrs = field.chroma_line_ptrs;
+      cField.luma_line_ptrs.clear();
+      cField.chroma_line_ptrs.clear();
       ycCFields.push_back(std::move(cField));
     }
 
@@ -2366,15 +2269,17 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
        videoParams.last_active_frame_line <= height)
           ? static_cast<uint32_t>(videoParams.last_active_frame_line)
           : carrier.height;
-  carrier.black_16b_ire = videoParams.black_16b_ire;
-  carrier.white_16b_ire = videoParams.white_16b_ire;
+  // CVBS_U10_4FSC normative levels from source parameters.
+  carrier.cvbs_blanking = videoParams.blanking_level;
+  carrier.cvbs_black = videoParams.black_level;
+  carrier.cvbs_white = videoParams.white_level;
 
-  carrier.vectorscope_data = VectorscopeAnalysisTool::extractFromComponentFrame(
-      frame, videoParams, field_a_index, 4);
+  carrier.vectorscope_data = extract_vectorscope_from_component_frame(
+      frame, videoParams, frame_a_index * 2, 4);
   if (carrier.vectorscope_data.has_value()) {
     carrier.vectorscope_data->system = videoParams.system;
-    carrier.vectorscope_data->white_16b_ire = videoParams.white_16b_ire;
-    carrier.vectorscope_data->black_16b_ire = videoParams.black_16b_ire;
+    carrier.vectorscope_data->cvbs_white = videoParams.white_level;
+    carrier.vectorscope_data->cvbs_blanking = videoParams.blanking_level;
   }
 
   const size_t samples =

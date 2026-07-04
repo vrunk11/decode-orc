@@ -10,7 +10,7 @@
 #ifndef SNRANALYSISDIALOG_H
 #define SNRANALYSISDIALOG_H
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 #include <QComboBox>
 #include <QPointF>

@@ -8,9 +8,9 @@
 
 #include "writer_raw.h"
 
-#include <iostream>
+#include <orc/stage/logging.h>
 
-#include "logging.h"
+#include <iostream>
 
 // This writer class writes audio data to a file in raw format (no header)
 // This is used when the output is stereo audio data without WAV header
@@ -57,11 +57,13 @@ void WriterRaw::write(const AudioSection& audioSection) {
   for (int index = 0; index < 98; ++index) {
     Audio audio = audioSection.frame(index);
     if (m_usingStdout) {
-      std::cout.write(reinterpret_cast<const char*>(audio.data().data()),
-                      static_cast<std::streamsize>(audio.frameSize() * sizeof(int16_t)));
+      std::cout.write(
+          reinterpret_cast<const char*>(audio.data().data()),
+          static_cast<std::streamsize>(audio.frameSize() * sizeof(int16_t)));
     } else {
-      m_file.write(reinterpret_cast<const char*>(audio.data().data()),
-                   static_cast<std::streamsize>(audio.frameSize() * sizeof(int16_t)));
+      m_file.write(
+          reinterpret_cast<const char*>(audio.data().data()),
+          static_cast<std::streamsize>(audio.frameSize() * sizeof(int16_t)));
     }
   }
 }

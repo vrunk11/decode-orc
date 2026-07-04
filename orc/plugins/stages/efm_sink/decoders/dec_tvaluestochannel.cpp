@@ -8,13 +8,13 @@
 
 #include "dec_tvaluestochannel.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <queue>
 #include <stdexcept>
-
-#include "logging.h"
 
 TvaluesToChannel::TvaluesToChannel() {
   // Statistics
@@ -105,9 +105,10 @@ TvaluesToChannel::State TvaluesToChannel::expectingInitialSync() {
   // Does the buffer contain a T11+T11 sequence?
   auto it = std::search(m_internalBuffer.begin(), m_internalBuffer.end(),
                         t11_t11.begin(), t11_t11.end());
-  int initialSyncIndex = (it != m_internalBuffer.end())
-                             ? static_cast<int>(std::distance(m_internalBuffer.begin(), it))
-                             : -1;
+  int initialSyncIndex =
+      (it != m_internalBuffer.end())
+          ? static_cast<int>(std::distance(m_internalBuffer.begin(), it))
+          : -1;
 
   if (initialSyncIndex != -1) {
     ORC_LOG_DEBUG(
@@ -139,9 +140,10 @@ TvaluesToChannel::State TvaluesToChannel::expectingSync() {
   std::vector<uint8_t> t11_t11 = {0x0B, 0x0B};
   auto it = std::search(m_internalBuffer.begin() + 2, m_internalBuffer.end(),
                         t11_t11.begin(), t11_t11.end());
-  int syncIndex = (it != m_internalBuffer.end())
-                      ? static_cast<int>(std::distance(m_internalBuffer.begin(), it))
-                      : -1;
+  int syncIndex =
+      (it != m_internalBuffer.end())
+          ? static_cast<int>(std::distance(m_internalBuffer.begin(), it))
+          : -1;
 
   // Do we have a valid second sync header?
   if (syncIndex != -1) {
@@ -163,7 +165,7 @@ TvaluesToChannel::State TvaluesToChannel::expectingSync() {
         if (bitCount > 588) attemptToFixOvershootFrame(frameData);
         if (bitCount < 588) {
           attemptToFixUndershootFrame(0, syncIndex, frameData);
-}
+        }
       }
 
       // We have a valid frame
@@ -218,17 +220,19 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
   std::vector<uint8_t> t11_t11 = {0x0B, 0x0B};
   auto it = std::search(m_internalBuffer.begin() + 2, m_internalBuffer.end(),
                         t11_t11.begin(), t11_t11.end());
-  int secondSyncIndex = (it != m_internalBuffer.end())
-                            ? static_cast<int>(std::distance(m_internalBuffer.begin(), it))
-                            : -1;
+  int secondSyncIndex =
+      (it != m_internalBuffer.end())
+          ? static_cast<int>(std::distance(m_internalBuffer.begin(), it))
+          : -1;
 
   // Find the third sync header
   auto it3 =
       std::search(m_internalBuffer.begin() + secondSyncIndex + 2,
                   m_internalBuffer.end(), t11_t11.begin(), t11_t11.end());
-  int thirdSyncIndex = (it3 != m_internalBuffer.end())
-                           ? static_cast<int>(std::distance(m_internalBuffer.begin(), it3))
-                           : -1;
+  int thirdSyncIndex =
+      (it3 != m_internalBuffer.end())
+          ? static_cast<int>(std::distance(m_internalBuffer.begin(), it3))
+          : -1;
 
   // So, unless the data is completely corrupt we should have 588 bits between
   // the first and third sync headers (i.e. the second was a corrupt sync
@@ -240,11 +244,12 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
 
   if (thirdSyncIndex != -1) {
     // Value of the Ts between the first and third sync header
-    int fttBitCount = static_cast<int>(countBits(m_internalBuffer, 0, thirdSyncIndex));
+    int fttBitCount =
+        static_cast<int>(countBits(m_internalBuffer, 0, thirdSyncIndex));
 
     // Value of the Ts between the second and third sync header
-    int sttBitCount =
-        static_cast<int>(countBits(m_internalBuffer, secondSyncIndex, thirdSyncIndex));
+    int sttBitCount = static_cast<int>(
+        countBits(m_internalBuffer, secondSyncIndex, thirdSyncIndex));
 
     if (fttBitCount > 550 && fttBitCount < 600) {
       ORC_LOG_DEBUG(
@@ -263,7 +268,7 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
         if (bitCount > 588) attemptToFixOvershootFrame(frameData);
         if (bitCount < 588) {
           attemptToFixUndershootFrame(0, thirdSyncIndex, frameData);
-}
+        }
       }
       m_outputBuffer.push(frameData);
 
@@ -296,7 +301,7 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
         if (bitCount < 588) {
           attemptToFixUndershootFrame(secondSyncIndex, thirdSyncIndex,
                                       frameData);
-}
+        }
       }
       m_outputBuffer.push(frameData);
 
@@ -360,9 +365,10 @@ TvaluesToChannel::State TvaluesToChannel::handleOvershoot() {
   // Find the second sync header
   auto it = std::search(m_internalBuffer.begin() + 2, m_internalBuffer.end(),
                         t11_t11.begin(), t11_t11.end());
-  int syncIndex = (it != m_internalBuffer.end())
-                      ? static_cast<int>(std::distance(m_internalBuffer.begin(), it))
-                      : -1;
+  int syncIndex =
+      (it != m_internalBuffer.end())
+          ? static_cast<int>(std::distance(m_internalBuffer.begin(), it))
+          : -1;
 
   // Do we have a valid second sync header?
   if (syncIndex != -1) {
@@ -490,8 +496,9 @@ void TvaluesToChannel::attemptToFixUndershootFrame(
   int32_t bitCount = static_cast<int32_t>(countBits(frameData));
 
   if (bitCount < 588) {
-    std::vector<uint8_t> lframeData(m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(startIndex),
-                                    m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(endIndex) + 1);
+    std::vector<uint8_t> lframeData(
+        m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(startIndex),
+        m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(endIndex) + 1);
     int32_t lbitCount = static_cast<int32_t>(countBits(lframeData));
 
     if (lbitCount == 588) {
@@ -503,8 +510,10 @@ void TvaluesToChannel::attemptToFixUndershootFrame(
     }
 
     if (startIndex > 0) {
-      std::vector<uint8_t> rframeData(m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(startIndex) - 1,
-                                      m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(endIndex));
+      std::vector<uint8_t> rframeData(
+          m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(startIndex) -
+              1,
+          m_internalBuffer.begin() + static_cast<std::ptrdiff_t>(endIndex));
       int32_t rbitCount = static_cast<int32_t>(countBits(rframeData));
 
       if (rbitCount == 588) {

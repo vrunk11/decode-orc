@@ -9,6 +9,8 @@
 
 #include "transformpal2d.h"
 
+#include <orc/stage/cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -93,8 +95,8 @@ void TransformPal2D::filterFields(const std::vector<SourceField>& inputFields,
 
   // Check we have a valid vector of input fields, and a matching output vector
   assert((inputFields.size() % 2) == 0);
-  for (int32_t i = 0; i < inputFields.size(); i++) {
-    assert(!inputFields[i].data.empty());
+  for (int32_t i = 0; i < static_cast<int32_t>(inputFields.size()); i++) {
+    assert(inputFields[i].data != nullptr);
   }
   assert(outputFields.size() == (endIndex - startIndex));
 
@@ -102,8 +104,10 @@ void TransformPal2D::filterFields(const std::vector<SourceField>& inputFields,
   chromaBuf.resize(endIndex - startIndex);
 
   for (int32_t i = 0; i < static_cast<int32_t>(chromaBuf.size()); i++) {
-    chromaBuf[i].resize(static_cast<size_t>(videoParameters.field_width) *
-                        videoParameters.field_height);
+    chromaBuf[i].resize(
+        static_cast<size_t>(videoParameters.frame_width_nominal) *
+        static_cast<int32_t>(
+            calculate_padded_field_height(videoParameters.system)));
     std::fill(chromaBuf[i].begin(), chromaBuf[i].end(), 0.0);
 
     outputFields[i] = chromaBuf[i].data();
@@ -152,20 +156,21 @@ void TransformPal2D::filterField(const SourceField& inputField,
 void TransformPal2D::forwardFFTTile(int32_t tileX, int32_t tileY,
                                     int32_t startY, int32_t endY,
                                     const SourceField& inputField) {
-  // Copy the input signal into fftReal, applying the window function
-  const uint16_t* inputPtr = inputField.data.data();
+  // Copy the input signal into fftReal, applying the window function.
+  // Use inputField.getLine() to correctly handle PAL non-uniform lines.
   for (int32_t y = 0; y < YTILE; y++) {
     // If this frame line is above/below the active region, fill it with
-    // black instead.
+    // blanking level instead.
     if (y < startY || y >= endY) {
       for (int32_t x = 0; x < XTILE; x++) {
-        fftReal[(y * XTILE) + x] =
-            videoParameters.black_16b_ire * windowFunction[y][x];
+        // EBU Tech. 3280-E: blanking level = kPalBlanking in 10-bit domain.
+        fftReal[(y * XTILE) + x] = orc::kPalBlanking * windowFunction[y][x];
       }
       continue;
     }
 
-    const uint16_t* b = inputPtr + (static_cast<ptrdiff_t>((tileY + y) * videoParameters.field_width));
+    const int32_t field_line = tileY + y;
+    const int16_t* b = inputField.getLine(static_cast<size_t>(field_line));
     for (int32_t x = 0; x < XTILE; x++) {
       fftReal[(y * XTILE) + x] = b[tileX + x] * windowFunction[y][x];
     }
@@ -192,7 +197,9 @@ void TransformPal2D::inverseFFTTile(int32_t tileX, int32_t tileY,
   // Overlay the result, normalising the FFTW output, into chromaBuf
   double* outputPtr = chromaBuf[outputIndex].data();
   for (int32_t y = startY; y < endY; y++) {
-    double* b = outputPtr + (static_cast<ptrdiff_t>((tileY + y) * videoParameters.field_width));
+    double* b =
+        outputPtr + (static_cast<ptrdiff_t>(
+                        (tileY + y) * videoParameters.frame_width_nominal));
     for (int32_t x = startX; x < endX; x++) {
       b[tileX + x] += fftReal[(y * XTILE) + x] / (YTILE * XTILE);
     }
@@ -236,12 +243,15 @@ void TransformPal2D::applyFilter() {
     const int32_t y_ref = ((YTILE / 2) + YTILE - y) % YTILE;
 
     // Input data for this line and its reflection
-    const fftw_complex* bi = fftComplexIn + (static_cast<ptrdiff_t>(y * XCOMPLEX));
-    const fftw_complex* bi_ref = fftComplexIn + (static_cast<ptrdiff_t>(y_ref * XCOMPLEX));
+    const fftw_complex* bi =
+        fftComplexIn + (static_cast<ptrdiff_t>(y * XCOMPLEX));
+    const fftw_complex* bi_ref =
+        fftComplexIn + (static_cast<ptrdiff_t>(y_ref * XCOMPLEX));
 
     // Output data for this line and its reflection
     fftw_complex* bo = fftComplexOut + (static_cast<ptrdiff_t>(y * XCOMPLEX));
-    fftw_complex* bo_ref = fftComplexOut + (static_cast<ptrdiff_t>(y_ref * XCOMPLEX));
+    fftw_complex* bo_ref =
+        fftComplexOut + (static_cast<ptrdiff_t>(y_ref * XCOMPLEX));
 
     // We only need to look at horizontal frequencies that might be chroma
     // (0.5fSC to 1.5fSC).
@@ -290,9 +300,13 @@ void TransformPal2D::overlayFFTFrame(
     const std::vector<SourceField>& inputFields, int32_t fieldIndex,
     ComponentFrame& componentFrame) {
   // Do nothing if the tile isn't within the frame
-  if (positionX < 0 || positionX + XTILE > videoParameters.field_width ||
+  if (positionX < 0 ||
+      positionX + XTILE > videoParameters.frame_width_nominal ||
       positionY < 0 ||
-      positionY + YTILE > (2 * videoParameters.field_height) + 1) {
+      positionY + YTILE >
+          (2 * static_cast<int32_t>(
+                   calculate_padded_field_height(videoParameters.system))) +
+              1) {
     return;
   }
 

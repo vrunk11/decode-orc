@@ -12,7 +12,7 @@
 #ifndef COMB_H
 #define COMB_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <cmath>
 #include <fstream>
@@ -135,14 +135,14 @@ class Comb {
     // IRE scaling
     double irescale;
 
-    // Baseband samples (interlaced to form a complete frame)
-    std::vector<uint16_t> rawbuffer;
+    // Baseband samples (interlaced to form a complete frame).
+    // int16_t in CVBS_U10_4FSC 10-bit domain.
+    std::vector<int16_t> rawbuffer;
 
-    // YC-specific: separate Y and C buffers for YC sources
-    std::vector<uint16_t>
-        luma_buffer;  // Clean Y channel (no comb filtering needed)
-    std::vector<uint16_t>
-        chroma_buffer;   // Modulated C channel (needs demodulation only)
+    // YC-specific: separate Y and C buffers for YC sources.
+    // int16_t in CVBS_U10_4FSC 10-bit domain.
+    std::vector<int16_t> luma_buffer;
+    std::vector<int16_t> chroma_buffer;
     bool is_yc = false;  // True if loaded from YC source
 
     // Chroma phase of the frame's two fields

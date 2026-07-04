@@ -1,0 +1,361 @@
+/*
+ * File:        video_frame_representation.h
+ * Module:      decode-orc Plugin SDK (stage contract)
+ * Purpose:     VideoFrameRepresentation interface for CVBS_U10_4FSC frames
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
+#pragma once
+
+#include <orc/stage/dropout_run.h>
+#include <orc/stage/frame_descriptor.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/video_metadata_types.h>
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <vector>
+
+namespace orc {
+
+// ============================================================================
+// VideoFrameRepresentation
+// ============================================================================
+// Read-only access to a sequence of CVBS_U10_4FSC frames.
+//
+// Sample domain: int16_t in the CVBS_U10_4FSC 10-bit domain.
+// Frames are stored in a flat contiguous buffer:
+//   [field1_line0 | field1_line1 | … | field2_line0 | …]
+// PAL frames have non-uniform line lengths (1135 or 1136 samples per line).
+// Use frame_line_sample_count() / frame_line_sample_offset() from
+// frame_line_util.h when stages require per-line access.
+//
+// Thread safety: all const methods may be called concurrently from multiple
+// threads once the implementing object has been fully constructed.
+class VideoFrameRepresentation {
+ public:
+  using sample_type = int16_t;  // CVBS_U10_4FSC 10-bit domain
+
+  virtual ~VideoFrameRepresentation() = default;
+
+  // --------------------------------------------------------------------------
+  // Navigation
+  // --------------------------------------------------------------------------
+
+  // Half-open [first, last] range of valid FrameIDs.
+  virtual FrameIDRange frame_range() const = 0;
+
+  // Total number of frames available.
+  virtual size_t frame_count() const = 0;
+
+  // True if the given FrameID is present in this representation.
+  virtual bool has_frame(FrameID id) const = 0;
+
+  // Per-frame metadata descriptor. Returns nullopt when id is not present.
+  virtual std::optional<FrameDescriptor> get_frame_descriptor(
+      FrameID id) const = 0;
+
+  // --------------------------------------------------------------------------
+  // Flat sample access
+  // --------------------------------------------------------------------------
+  // Returned pointers are valid until the next call to any method on this
+  // object or until the object is destroyed.  Do not retain pointers across
+  // calls.
+
+  // Pointer to the start of the flat frame buffer for the given frame.
+  // Returns nullptr when id is not present.
+  virtual const sample_type* get_frame(FrameID id) const = 0;
+
+  // Pointer to line |line| (0-based) within the flat frame buffer.
+  // For PAL, line lengths vary (1135 or 1136 samples); use
+  // frame_line_sample_count() from frame_line_util.h to obtain the exact width
+  // before reading. Returns nullptr when id is not present or line is out of
+  // range. Override only when the frame layout cannot be derived from
+  // get_frame() plus get_video_parameters() — for example, a transform that
+  // reorders lines without materialising a new flat buffer.
+  virtual const sample_type* get_line(FrameID id, size_t line) const {
+    const sample_type* frame = get_frame(id);
+    if (!frame) return nullptr;
+    const auto params = get_video_parameters();
+    if (!params || line >= static_cast<size_t>(params->frame_height))
+      return nullptr;
+    return frame + frame_line_sample_offset(
+                       params->system,
+                       static_cast<size_t>(params->frame_width_nominal), line);
+  }
+
+  // Returns an owned copy of the complete frame buffer.
+  virtual std::vector<sample_type> get_frame_copy(FrameID id) const = 0;
+
+  // Returns an owned copy of the samples for a single line.
+  // Prefer this over get_line() when only a few lines are needed per frame:
+  // sources can override it to seek+read just the target line from disk
+  // rather than loading the full frame (important for analysis sinks that
+  // scan the entire recording but only touch 3-6 lines per frame).
+  // Default: falls back through get_line() → get_frame() → full load.
+  virtual std::vector<sample_type> get_line_samples(FrameID id,
+                                                    size_t line) const {
+    const auto params = get_video_parameters();
+    if (!params) return {};
+    const sample_type* ptr = get_line(id, line);
+    if (!ptr) return {};
+    const size_t width = static_cast<size_t>(params->frame_width_nominal);
+    return std::vector<sample_type>(ptr, ptr + width);
+  }
+
+  // --------------------------------------------------------------------------
+  // YC (separate luma / chroma) access
+  // --------------------------------------------------------------------------
+  // These methods are meaningful only for YC sources (has_separate_channels()
+  // returns true).  For composite sources all YC methods return nullptr / {}.
+
+  virtual bool has_separate_channels() const { return false; }
+
+  virtual const sample_type* get_frame_luma(FrameID /*id*/) const {
+    return nullptr;
+  }
+  virtual const sample_type* get_frame_chroma(FrameID /*id*/) const {
+    return nullptr;
+  }
+  virtual const sample_type* get_line_luma(FrameID /*id*/,
+                                           size_t /*line*/) const {
+    return nullptr;
+  }
+  virtual const sample_type* get_line_chroma(FrameID /*id*/,
+                                             size_t /*line*/) const {
+    return nullptr;
+  }
+
+  // --------------------------------------------------------------------------
+  // Hints
+  // --------------------------------------------------------------------------
+
+  // Dropout regions as frame-flat DropoutRun descriptors.
+  virtual std::vector<DropoutRun> get_dropout_hints(FrameID /*id*/) const {
+    return {};
+  }
+
+  // Video parameters describing the signal geometry and level domain.
+  virtual std::optional<SourceParameters> get_video_parameters() const {
+    return std::nullopt;
+  }
+
+  // --------------------------------------------------------------------------
+  // Audio
+  // --------------------------------------------------------------------------
+
+  virtual bool has_audio() const { return false; }
+
+  // True when audio is sample-locked to video frames (frame-locked PCM).
+  // False when audio is a free-running WAV stream independent of frame timing.
+  virtual bool audio_locked() const { return false; }
+
+  // Number of stereo int16_t pairs for the given frame.
+  // Meaningful only when audio_locked() is true; returns 0 otherwise.
+  virtual uint32_t get_audio_sample_count(FrameID /*id*/) const { return 0; }
+
+  // Interleaved stereo int16_t pairs (L, R, L, R, …) for the given frame.
+  virtual std::vector<int16_t> get_audio_samples(FrameID /*id*/) const {
+    return {};
+  }
+
+  // --------------------------------------------------------------------------
+  // EFM
+  // --------------------------------------------------------------------------
+
+  virtual bool has_efm() const { return false; }
+
+  // Number of EFM t-values for the given frame (values in [3, 11]).
+  virtual uint32_t get_efm_sample_count(FrameID /*id*/) const { return 0; }
+
+  virtual std::vector<uint8_t> get_efm_samples(FrameID /*id*/) const {
+    return {};
+  }
+
+  // --------------------------------------------------------------------------
+  // AC3 RF
+  // --------------------------------------------------------------------------
+
+  virtual bool has_ac3_rf() const { return false; }
+
+  // Number of QPSK dibit symbols for the given frame.
+  virtual uint32_t get_ac3_symbol_count(FrameID /*id*/) const { return 0; }
+
+  virtual std::vector<uint8_t> get_ac3_symbols(FrameID /*id*/) const {
+    return {};
+  }
+};
+
+// ============================================================================
+// VideoFrameRepresentationWrapper
+// ============================================================================
+// Base for transform stages that wrap the connected input stage's VFrameR.
+// The public read API of a wrapper MUST always describe this stage's OUTPUT;
+// callers (downstream stages, observers, analysis sinks) can never reach
+// unprocessed upstream data through any accessor.
+//
+// To guarantee that, accessors fall into two groups:
+//
+// 1. Pass-through primitives — forwarded to the wrapped input. A stage whose
+//    output differs from its input for one of these MUST override it:
+//      frame_range / frame_count / has_frame / get_frame_descriptor,
+//      get_frame, has_separate_channels, get_frame_luma, get_frame_chroma,
+//      get_dropout_hints, get_video_parameters, audio / EFM / AC3 accessors.
+//    A stage that remaps frame IDs MUST override every per-frame accessor in
+//    this group so IDs are translated on the way through.
+//
+// 2. Derived accessors — implemented here in terms of this object's own
+//    virtual primitives, never forwarded:
+//      get_line, get_line_samples  (derive from get_frame)
+//      get_frame_copy              (derives from get_frame)
+//      get_line_luma / get_line_chroma  (derive from get_frame_luma/chroma)
+//    Overriding the frame-level primitives is therefore sufficient for
+//    correctness on every read path; overriding a derived accessor is purely
+//    an optimisation (e.g. a pass-through stage restoring the wrapped
+//    source's seek-one-line-from-disk fast path).
+//
+// Implementing a transform stage:
+//   1. Extend VideoFrameRepresentationWrapper.
+//   2. Store the upstream VFrameR in source_ (set in the constructor).
+//   3. Override every pass-through primitive whose output this stage changes.
+//
+// Hint semantics: hints describe the OUTPUT of the stage, not its input.
+// A stage that modifies data covered by a hint MUST override that hint method.
+class VideoFrameRepresentationWrapper : public VideoFrameRepresentation {
+ public:
+  ~VideoFrameRepresentationWrapper() override = default;
+
+  // Navigation
+  FrameIDRange frame_range() const override {
+    return source_ ? source_->frame_range() : FrameIDRange{};
+  }
+  size_t frame_count() const override {
+    return source_ ? source_->frame_count() : 0;
+  }
+  bool has_frame(FrameID id) const override {
+    return source_ ? source_->has_frame(id) : false;
+  }
+  std::optional<FrameDescriptor> get_frame_descriptor(
+      FrameID id) const override {
+    return source_ ? source_->get_frame_descriptor(id) : std::nullopt;
+  }
+
+  // Flat access. Only get_frame() forwards; get_line() and get_line_samples()
+  // use the base-class defaults, which route through this object's virtual
+  // get_frame()/get_line() so derived overrides apply on every path.
+  const sample_type* get_frame(FrameID id) const override {
+    return source_ ? source_->get_frame(id) : nullptr;
+  }
+  std::vector<sample_type> get_frame_copy(FrameID id) const override {
+    const sample_type* frame = get_frame(id);
+    if (!frame) return {};
+    const size_t total = frame_total_sample_count(id);
+    if (total == 0) return {};
+    return std::vector<sample_type>(frame, frame + total);
+  }
+
+  // YC. Frame-level accessors forward; line-level accessors derive from this
+  // object's virtual frame-level accessors.
+  bool has_separate_channels() const override {
+    return source_ ? source_->has_separate_channels() : false;
+  }
+  const sample_type* get_frame_luma(FrameID id) const override {
+    return source_ ? source_->get_frame_luma(id) : nullptr;
+  }
+  const sample_type* get_frame_chroma(FrameID id) const override {
+    return source_ ? source_->get_frame_chroma(id) : nullptr;
+  }
+  const sample_type* get_line_luma(FrameID id, size_t line) const override {
+    return line_within_plane(get_frame_luma(id), line);
+  }
+  const sample_type* get_line_chroma(FrameID id, size_t line) const override {
+    return line_within_plane(get_frame_chroma(id), line);
+  }
+
+  // Hints
+  std::vector<DropoutRun> get_dropout_hints(FrameID id) const override {
+    return source_ ? source_->get_dropout_hints(id) : std::vector<DropoutRun>{};
+  }
+  std::optional<SourceParameters> get_video_parameters() const override {
+    return source_ ? source_->get_video_parameters() : std::nullopt;
+  }
+  // Audio
+  bool has_audio() const override {
+    return source_ ? source_->has_audio() : false;
+  }
+  bool audio_locked() const override {
+    return source_ ? source_->audio_locked() : false;
+  }
+  uint32_t get_audio_sample_count(FrameID id) const override {
+    return source_ ? source_->get_audio_sample_count(id) : 0;
+  }
+  std::vector<int16_t> get_audio_samples(FrameID id) const override {
+    return source_ ? source_->get_audio_samples(id) : std::vector<int16_t>{};
+  }
+
+  // EFM
+  bool has_efm() const override { return source_ ? source_->has_efm() : false; }
+  uint32_t get_efm_sample_count(FrameID id) const override {
+    return source_ ? source_->get_efm_sample_count(id) : 0;
+  }
+  std::vector<uint8_t> get_efm_samples(FrameID id) const override {
+    return source_ ? source_->get_efm_samples(id) : std::vector<uint8_t>{};
+  }
+
+  // AC3 RF
+  bool has_ac3_rf() const override {
+    return source_ ? source_->has_ac3_rf() : false;
+  }
+  uint32_t get_ac3_symbol_count(FrameID id) const override {
+    return source_ ? source_->get_ac3_symbol_count(id) : 0;
+  }
+  std::vector<uint8_t> get_ac3_symbols(FrameID id) const override {
+    return source_ ? source_->get_ac3_symbols(id) : std::vector<uint8_t>{};
+  }
+
+ protected:
+  explicit VideoFrameRepresentationWrapper(
+      std::shared_ptr<const VideoFrameRepresentation> source)
+      : source_(std::move(source)) {}
+
+  std::shared_ptr<const VideoFrameRepresentation> source_;
+
+ private:
+  // Total sample count of frame |id| as exposed by THIS representation
+  // (descriptor first, video-parameter geometry as fallback).
+  size_t frame_total_sample_count(FrameID id) const {
+    if (const auto desc = get_frame_descriptor(id)) {
+      return desc->samples_total;
+    }
+    if (const auto params = get_video_parameters()) {
+      return frame_line_sample_offset(
+          params->system, static_cast<size_t>(params->frame_width_nominal),
+          static_cast<size_t>(params->frame_height));
+    }
+    return 0;
+  }
+
+  // Pointer to line |line| within a flat luma/chroma plane returned by this
+  // object's frame-level accessors. Planes share the composite frame layout.
+  const sample_type* line_within_plane(const sample_type* plane,
+                                       size_t line) const {
+    if (!plane) return nullptr;
+    const auto params = get_video_parameters();
+    if (!params || line >= static_cast<size_t>(params->frame_height)) {
+      return nullptr;
+    }
+    return plane + frame_line_sample_offset(
+                       params->system,
+                       static_cast<size_t>(params->frame_width_nominal), line);
+  }
+};
+
+using VideoFrameRepresentationPtr = std::shared_ptr<VideoFrameRepresentation>;
+
+}  // namespace orc

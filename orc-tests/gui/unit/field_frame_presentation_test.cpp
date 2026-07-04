@@ -223,21 +223,22 @@ TEST(FrameFieldConversionTest, Get_FieldWithinFrameAlternates) {
 // =============================================================================
 
 TEST(PresentationLineTest, GetPresentationFieldLinePALFirstField_StartsAt1) {
-  // PAL first field (even fieldID): lines 1..312
+  // PAL field 1 (odd-scan, isFirstField, even fieldID): 313 lines, 1..313.
+  // EBU Tech. 3280-E §1.1: lines 1, 3, 5, …, 625 → 313 stored lines.
   int line = getPresentationFieldLine(0, 0, true);  // fieldID 0, line 0
   EXPECT_EQ(line, 1);
 
-  line = getPresentationFieldLine(0, 311, true);  // fieldID 0, line 311
-  EXPECT_EQ(line, 312);
+  line = getPresentationFieldLine(0, 312, true);  // fieldID 0, line 312
+  EXPECT_EQ(line, 313);
 }
 
-TEST(PresentationLineTest,
-     GetPresentationFieldLinePALSecondField_StartsAt313) {
-  // PAL second field (odd fieldID): lines 313..625
+TEST(PresentationLineTest, GetPresentationFieldLinePALSecondField_StartsAt314) {
+  // PAL field 2 (even-scan, odd fieldID): 312 lines, 314..625.
+  // EBU Tech. 3280-E §1.1: lines 2, 4, 6, …, 624 → 312 stored lines.
   int line = getPresentationFieldLine(1, 0, true);  // fieldID 1, line 0
-  EXPECT_EQ(line, 313);
+  EXPECT_EQ(line, 314);
 
-  line = getPresentationFieldLine(1, 312, true);  // fieldID 1, line 312
+  line = getPresentationFieldLine(1, 311, true);  // fieldID 1, line 311
   EXPECT_EQ(line, 625);
 }
 

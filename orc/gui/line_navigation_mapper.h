@@ -10,7 +10,7 @@
 #ifndef LINE_NAVIGATION_MAPPER_H
 #define LINE_NAVIGATION_MAPPER_H
 
-#include <orc_rendering.h>
+#include <orc/stage/orc_rendering.h>
 
 #include <cstdint>
 #include <functional>

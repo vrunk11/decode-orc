@@ -1,10 +1,10 @@
 add_library(orc-core SHARED
     # Phase 1: Foundations
     field_id.cpp
-    video_field_representation.cpp
+    dropout_util.cpp
     artifact.cpp
     dag_executor.cpp
-    dag_field_renderer.cpp
+    dag_frame_renderer.cpp
     preview_renderer.cpp
     preview_view_registry.cpp
     preview_helpers.cpp
@@ -21,11 +21,6 @@ add_library(orc-core SHARED
     # Abstract factories
     factories.cpp
 
-    # TBC file I/O
-    tbc_reader.cpp
-    tbc_source_internal/tbc_audio_efm_handler.cpp
-    tbc_video_field_representation.cpp
-    tbc_yc_video_field_representation.cpp
     
     # VBI utilities
     vbi_utilities.cpp
@@ -41,6 +36,7 @@ add_library(orc-core SHARED
     observers/fm_code_observer.cpp
     observers/white_flag_observer.cpp
     observers/burst_level_observer.cpp
+    observers/colour_frame_phase_observer.cpp
     observers/white_snr_observer.cpp
     observers/black_psnr_observer.cpp
     observers/field_quality_observer.cpp
@@ -52,15 +48,14 @@ add_library(orc-core SHARED
     # Vectorscope analysis
     analysis/vectorscope/vectorscope_analysis.cpp
     
-    # Field mapping analysis
-    # Re-enable range-based field mapping tools (observer-independent)
+    # Field/frame mapping analysis
     analysis/disc_mapper/disc_mapper_analysis.cpp
     analysis/disc_mapper/disc_mapper_analyzer.cpp
-    analysis/field_map_range/field_map_range_analysis.cpp
+    analysis/frame_map_range/frame_map_range_analysis.cpp
     
-    # Field corruption analysis (testing tool)
-    analysis/field_corruption/field_corruption_analyzer.cpp
-    analysis/field_corruption/field_corruption_analysis.cpp
+    # Frame corruption analysis (testing tool)
+    analysis/frame_corruption/frame_corruption_analyzer.cpp
+    analysis/frame_corruption/frame_corruption_analysis.cpp
     
     # Dropout editor tool
     analysis/dropout/dropout_editor_tool.cpp
@@ -93,6 +88,7 @@ add_library(orc-core SHARED
     stage_plugin_loader.cpp
     stage_plugin_registry.cpp
     plugin_remote_loader.cpp
+    sha256_hash.cpp
     
     # DAG serialization
     dag_serialization.cpp
@@ -105,14 +101,23 @@ add_library(orc-core SHARED
     project_to_dag.cpp
 )
 
-# the scope needs to be PUBLIC so the unit test project can share these include directory rules
+# the scope needs to be PUBLIC so the unit test project can share these include
+# directory rules. All entries are BUILD_INTERFACE-only: orc-core is exported
+# in the decode-orc-plugin-sdk package as a link-only target (plugins compile
+# against the SDK headers, never against core's private headers), so its
+# installed interface deliberately carries no include directories.
 target_include_directories(orc-core PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/stages
-    ${CMAKE_CURRENT_SOURCE_DIR}/../view-types  # Access to view types (MVP architecture allows core -> view dependency)
-    ${CMAKE_CURRENT_SOURCE_DIR}/observers
-    ${CMAKE_CURRENT_SOURCE_DIR}/analysis
-    ${EZPWD_INCLUDE_DIR}
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/stages>
+    # Access to view types (MVP architecture allows core -> view dependency)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../view-types>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/observers>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/analysis>
+    # Plugin SDK headers (<orc/plugin/...>): stage plugin headers include them
+    # by angle path, and core (stage_factories.cpp) and the test tree compile
+    # against plugin stage headers directly.
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../sdk/include>
+    $<BUILD_INTERFACE:${EZPWD_INCLUDE_DIR}>
 )
 
 # =============================================================================
@@ -125,16 +130,8 @@ target_include_directories(orc-core PUBLIC
 # Note: All include directories above are PRIVATE by default
 # =============================================================================
 
-# Metadata I/O library (SQLite reader/writer; sub-library of orc-core)
-add_subdirectory(metadata)
-
 # Link against common types
 target_link_libraries(orc-core PUBLIC orc-common)
-
-# Link against metadata library (SQLite reader/writer)
-# PUBLIC so that orc-presenters (which already uses TBCMetadataReader) continues
-# to see tbc_metadata.h.
-target_link_libraries(orc-core PUBLIC orc-metadata)
 
 # Link fmt (used by EFM decoder pipeline sources compiled directly into orc-core)
 target_link_libraries(orc-core PUBLIC fmt::fmt)
@@ -183,8 +180,11 @@ elseif(UNIX AND NOT WIN32)
     )
 endif()
 
-# Find and link SQLite3
+# Find and link SQLite3. Promoted to a global target so stage plugins
+# (sibling directory scope) can declare it in their own LINK_LIBRARIES:
+# the SDK no longer propagates orc-core's third-party dependencies.
 find_package(SQLite3 REQUIRED)
+set_target_properties(SQLite::SQLite3 PROPERTIES IMPORTED_GLOBAL TRUE)
 target_link_libraries(orc-core PUBLIC SQLite::SQLite3)
 
 # Find and link yaml-cpp
@@ -211,9 +211,12 @@ endif()
 find_package(PNG REQUIRED)
 target_link_libraries(orc-core PUBLIC PNG::PNG)
 
-# Find and link FFmpeg libraries (for MP4 output)
+# Find and link FFmpeg libraries (for MP4 output). GLOBAL so the video sink
+# stage plugins (sibling directory scope) can declare PkgConfig::FFMPEG in
+# their own LINK_LIBRARIES: the SDK no longer propagates orc-core's
+# third-party dependencies.
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET GLOBAL
     libavcodec
     libavformat
     libavutil
@@ -223,7 +226,7 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
 # Create aggregate PkgConfig::FFMPEG target if it doesn't exist
 # (pkg_check_modules may create individual targets like PkgConfig::libavcodec)
 if(NOT TARGET PkgConfig::FFMPEG)
-    add_library(PkgConfig::FFMPEG INTERFACE IMPORTED)
+    add_library(PkgConfig::FFMPEG INTERFACE IMPORTED GLOBAL)
     set(_ffmpeg_pc_libs "")
     foreach(_ffmpeg_pc_target libavcodec libavformat libavutil libswscale)
         if(TARGET PkgConfig::${_ffmpeg_pc_target})
@@ -249,18 +252,22 @@ if(NOT TARGET PkgConfig::FFMPEG)
     unset(_ffmpeg_pc_libs)
 endif()
 
+# orc-core is part of the decode-orc-plugin-sdk export set: out-of-tree
+# plugins link it (via orc::plugin-sdk's $<LINK_ONLY:...>) to resolve stage
+# contract symbols. The export set is installed by orc/sdk/CMakeLists.txt.
 if(APPLE)
-    install(TARGETS orc-core
+    install(TARGETS orc-core EXPORT decode-orc-plugin-sdkTargets
         LIBRARY DESTINATION "orc-gui.app/Contents/Frameworks" COMPONENT Runtime
         RUNTIME DESTINATION "orc-gui.app/Contents/MacOS" COMPONENT Runtime
     )
 elseif(WIN32)
-    install(TARGETS orc-core
+    install(TARGETS orc-core EXPORT decode-orc-plugin-sdkTargets
         RUNTIME DESTINATION bin COMPONENT Runtime
         LIBRARY DESTINATION lib COMPONENT Runtime
+        ARCHIVE DESTINATION lib COMPONENT Runtime
     )
 else()
-    install(TARGETS orc-core
+    install(TARGETS orc-core EXPORT decode-orc-plugin-sdkTargets
         LIBRARY DESTINATION lib COMPONENT Runtime
         RUNTIME DESTINATION bin COMPONENT Runtime
     )

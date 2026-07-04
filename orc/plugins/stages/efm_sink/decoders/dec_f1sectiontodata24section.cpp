@@ -83,7 +83,7 @@ void F1SectionToData24Section::processQueue() {
         ++m_invalidF1FramesCount;
       } else {
         ++m_validF1FramesCount;
-}
+      }
 
       // Check the error data (and count any flagged padding)
       uint32_t paddingCount = f1Frame.countPadded();
@@ -93,7 +93,7 @@ void F1SectionToData24Section::processQueue() {
         ++m_paddedF1FramesCount;
       } else {
         ++m_unpaddedF1FramesCount;
-}
+      }
 
       // Put the resulting data into a Data24 frame and push it to the output
       // buffer

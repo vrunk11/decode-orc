@@ -1,7 +1,7 @@
 /*
  * File:        hints_view_models.h
  * Module:      orc-presenters
- * Purpose:     View-facing hint data models for GUI/CLI layers
+ * Purpose:     View-facing data models for GUI/CLI layers
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -12,42 +12,6 @@
 #include <cstdint>
 
 namespace orc::presenters {
-
-/**
- * @brief Source of a hint as exposed to presentation layers.
- */
-enum class HintSourceView {
-  METADATA,
-  USER_OVERRIDE,
-  INHERITED,
-  SAMPLE_ANALYSIS,
-  CORROBORATED,
-  UNKNOWN
-};
-
-struct FieldParityHintView {
-  bool is_first_field = false;
-  HintSourceView source = HintSourceView::UNKNOWN;
-  int confidence_pct = 0;
-};
-
-struct FieldPhaseHintView {
-  int field_phase_id = -1;  // -1 means unknown
-  HintSourceView source = HintSourceView::UNKNOWN;
-  int confidence_pct = 0;
-};
-
-struct ActiveLineHintView {
-  int first_active_frame_line = -1;
-  int last_active_frame_line = -1;
-  HintSourceView source = HintSourceView::UNKNOWN;
-  int confidence_pct = 0;
-
-  bool is_valid() const {
-    return first_active_frame_line >= 0 &&
-           last_active_frame_line >= first_active_frame_line;
-  }
-};
 
 /**
  * @brief Video system/format enumeration for presenter layer
@@ -69,9 +33,10 @@ struct VideoParametersView {
   // Format
   VideoSystem system = VideoSystem::Unknown;
 
-  // Field/frame dimensions
-  int field_width = -1;
-  int field_height = -1;
+  // Frame geometry — canonical field names matching SourceParameters.
+  // frame_width_nominal: nominal samples per line (1135 PAL, 910 NTSC, 909
+  // PAL_M).
+  int frame_width_nominal = -1;
 
   // Sample ranges
   int color_burst_start = -1;
@@ -79,19 +44,22 @@ struct VideoParametersView {
   int active_video_start = -1;
   int active_video_end = -1;
 
-  // IRE levels (16-bit)
-  int white_ire = -1;     // White level (100 IRE)
-  int black_ire = -1;     // Black level
-  int blanking_ire = -1;  // Blanking/pedestal level (0 IRE)
+  // CVBS_U10_4FSC 10-bit domain signal levels (from SourceParameters).
+  // -1 means not populated (source has not been migrated to Phase 3+ pipeline).
+  int32_t sync_tip_level = -1;
+  int32_t blanking_level = -1;
+  int32_t black_level = -1;
+  int32_t white_level = -1;
+  int32_t peak_level = -1;
 
-  // Sample rate (Hz)
-  double sample_rate = 0.0;
+  // CVBS_U10_4FSC DC level of the chroma signal for YC sources (-1 = N/A).
+  int32_t chroma_dc_offset = -1;
 };
 
 }  // namespace orc::presenters
 
 // Include public API types that are used
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 namespace orc::presenters {
 

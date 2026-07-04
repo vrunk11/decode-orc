@@ -10,20 +10,24 @@
 #include "include/stage_plugin_loader.h"
 
 #include <fmt/format.h>
+#include <orc/stage/colour_preview_conversion.h>
+#include <orc/stage/file_io_interface.h>
+// Application logging (get_app_logger): plugin log messages are routed to
+// the host application logger, not the core pipeline logger.
+#include <logging.h>
 
 #include <cstring>
 #include <utility>
 
 #include "../../sdk/include/orc/plugin/orc_plugin_services.h"
 #include "../../sdk/include/orc/plugin/orc_stage_services.h"
-#include "../common/include/logging.h"
 #include "factories.h"
-#include "include/colour_preview_conversion.h"
-#include "include/file_io_interface.h"
 #include "include/plugin_safe_call.h"
 
 #if defined(_WIN32)
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #else
 #include <dlfcn.h>
@@ -110,6 +114,44 @@ class FileWriterUint16ServiceAdapter final : public IFileWriterUint16 {
   std::shared_ptr<IFileWriter<uint16_t>> writer_;
 };
 
+class FileWriterInt16ServiceAdapter final : public IFileWriterInt16 {
+ public:
+  explicit FileWriterInt16ServiceAdapter(
+      std::shared_ptr<IFileWriter<int16_t>> writer)
+      : writer_(std::move(writer)) {}
+
+  bool open(const std::string& filepath) override {
+    return writer_ && writer_->open(filepath);
+  }
+
+  void write(const int16_t* data, size_t count) override {
+    if (writer_) {
+      writer_->write(data, count);
+    }
+  }
+
+  void write(const std::vector<int16_t>& data) override {
+    if (writer_) {
+      writer_->write(data);
+    }
+  }
+
+  void flush() override {
+    if (writer_) {
+      writer_->flush();
+    }
+  }
+
+  void close() override {
+    if (writer_) {
+      writer_->close();
+    }
+  }
+
+ private:
+  std::shared_ptr<IFileWriter<int16_t>> writer_;
+};
+
 class CoreStageServicesAdapter final : public IStageServices {
  public:
   std::shared_ptr<IFileWriterUint8> create_buffered_file_writer_uint8(
@@ -139,12 +181,28 @@ class CoreStageServicesAdapter final : public IStageServices {
     }
     return std::make_shared<FileWriterUint16ServiceAdapter>(std::move(writer));
   }
+
+  std::shared_ptr<IFileWriterInt16> create_buffered_file_writer_int16(
+      size_t buffer_size) override {
+    auto factories = Factories::instance();
+    if (!factories) {
+      return nullptr;
+    }
+    auto writer =
+        factories->create_instance_buffered_file_writer_int16(buffer_size);
+    if (!writer) {
+      return nullptr;
+    }
+    return std::make_shared<FileWriterInt16ServiceAdapter>(std::move(writer));
+  }
 };
 
 struct RegisterContext {
   const StagePluginLoader::RegisterStageCallback* callback = nullptr;
   LoadedStagePlugin* plugin = nullptr;
   std::string* last_error = nullptr;
+  // Keep-alive token shared with every factory registered by this plugin.
+  std::shared_ptr<void> library;
 };
 
 void* open_shared_library(const std::string& path, std::string& error_message) {
@@ -156,7 +214,13 @@ void* open_shared_library(const std::string& path, std::string& error_message) {
   }
   return reinterpret_cast<void*>(handle);
 #else
-  void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+  // RTLD_LOCAL: each plugin's symbols stay private to that plugin. This
+  // prevents ODR unification across plugins (e.g. two plugins carrying
+  // different versions of a common helper, or SDK inline variables such as
+  // orc::plugin::g_services resolving to the first-loaded plugin's copy).
+  // Cross-boundary dynamic_cast still works: typeinfo names have default
+  // visibility, so libstdc++ falls back to string comparison.
+  void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
   if (!handle) {
     const char* error = dlerror();
     error_message = error ? error : "dlopen failed";
@@ -187,7 +251,49 @@ void* get_symbol(void* handle, const char* symbol_name) {
 #endif
 }
 
+// RAII owner of an opened plugin shared library and its host service table.
+// Shared (via shared_ptr) between the loader's handle entry, every registered
+// stage factory, and every live stage instance; the library is closed when
+// the last of those references is released. The service table lives here so
+// that a plugin's stored OrcPluginServices pointer stays valid for as long as
+// any of its stages can still run.
+struct LoadedLibrary {
+  explicit LoadedLibrary(void* h) : handle(h) {}
+  ~LoadedLibrary() { close_shared_library(handle); }
+
+  LoadedLibrary(const LoadedLibrary&) = delete;
+  LoadedLibrary& operator=(const LoadedLibrary&) = delete;
+
+  void* handle = nullptr;
+  std::shared_ptr<OrcPluginServices> services;
+};
+
 }  // namespace
+
+namespace core_internal {
+
+std::function<DAGStagePtr()> make_keepalive_stage_factory(
+    OrcStageFactoryFn factory, std::shared_ptr<void> library_keep_alive) {
+  return
+      [factory, keep_alive = std::move(library_keep_alive)]() -> DAGStagePtr {
+        DAGStagePtr stage = factory();
+        if (!stage) {
+          return nullptr;
+        }
+        DAGStage* raw = stage.get();
+        // The returned pointer's deleter owns both the stage and the keep-alive
+        // token: the stage destructor runs first (while the plugin code is
+        // still mapped), and only then is the token released, which may close
+        // the library if this was the last reference.
+        return DAGStagePtr(
+            raw, [stage = std::move(stage), keep_alive](DAGStage*) mutable {
+              stage.reset();
+              keep_alive.reset();
+            });
+      };
+}
+
+}  // namespace core_internal
 
 StagePluginLoader::~StagePluginLoader() { unload_all(); }
 
@@ -204,13 +310,17 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
     return result;
   }
 
+  // RAII ownership from here on: every early return below releases `library`,
+  // which closes the shared library automatically. On success, ownership is
+  // shared with each registered stage factory (see RegisterContext::library).
+  auto library = std::make_shared<LoadedLibrary>(handle);
+
   auto* descriptor_fn = reinterpret_cast<OrcGetStagePluginDescriptorFn>(
       get_symbol(handle, kGetStagePluginDescriptorSymbol));
   auto* register_fn = reinterpret_cast<OrcRegisterStagePluginFn>(
       get_symbol(handle, kRegisterStagePluginSymbol));
 
   if (!descriptor_fn || !register_fn) {
-    close_shared_library(handle);
     result.error_message =
         "Plugin '" + path + "' is missing required stage plugin entrypoints";
     return result;
@@ -218,25 +328,26 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
 
   const StagePluginDescriptor* descriptor = nullptr;
   std::string fault_error;
+  // Fault-guard note (see plugin_safe_call.h): the guarded body only invokes
+  // a raw plugin function pointer and assigns a raw pointer — no host-side
+  // C++ objects are constructed inside the guarded region.
   if (!plugin_safe_call([&] { descriptor = descriptor_fn(); }, fault_error)) {
-    close_shared_library(handle);
     result.error_message =
         "Plugin '" + path + "' crashed in descriptor function: " + fault_error;
     return result;
   }
   if (!descriptor) {
-    close_shared_library(handle);
     result.error_message = "Plugin '" + path + "' returned null descriptor";
     return result;
   }
 
-  // Copy version values from descriptor BEFORE any close_shared_library() call.
-  // After dlclose(), the memory is unmapped and descriptor would be dangling.
+  // Copy version values from descriptor BEFORE any early return. Once the
+  // library shared_ptr is released the memory is unmapped and descriptor
+  // would be dangling.
   const uint32_t plugin_host_abi = descriptor->host_abi_version;
   const uint32_t plugin_api = descriptor->plugin_api_version;
 
   if (plugin_host_abi != kStagePluginHostAbiVersion) {
-    close_shared_library(handle);
     result.error_message =
         "Plugin '" + path +
         "' ABI mismatch: plugin=" + std::to_string(plugin_host_abi) +
@@ -245,7 +356,6 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
   }
 
   if (plugin_api != kStagePluginApiVersion) {
-    close_shared_library(handle);
     result.error_message =
         "Plugin '" + path +
         "' API version mismatch: plugin=" + std::to_string(plugin_api) +
@@ -253,15 +363,26 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
     return result;
   }
 
-  PluginHandleEntry entry;
-  entry.handle = handle;
-  entry.services = std::make_shared<OrcPluginServices>();
-  if (!entry.services) {
-    close_shared_library(handle);
-    result.error_message =
-        "Plugin '" + path + "' failed to allocate services table";
+  // Toolchain tag (ABI v5): reject plugins built with an incompatible
+  // compiler family/major version, C++ standard library, or (Windows) CRT
+  // flavour. Reading the appended descriptor field is safe here because the
+  // exact-match ABI check above guarantees the v5 descriptor layout.
+  const std::string plugin_toolchain =
+      sanitize_c_string(descriptor->toolchain_tag);
+  if (plugin_toolchain != ORC_SDK_TOOLCHAIN_TAG) {
+    result.error_message = "Plugin '" + path + "' toolchain mismatch: plugin=" +
+                           (plugin_toolchain.empty() ? std::string("(missing)")
+                                                     : plugin_toolchain) +
+                           ", host=" ORC_SDK_TOOLCHAIN_TAG;
     return result;
   }
+
+  // The service table lives inside LoadedLibrary so the plugin's stored
+  // pointer stays valid for as long as any of its stages can still run.
+  library->services = std::make_shared<OrcPluginServices>();
+
+  PluginHandleEntry entry;
+  entry.library = library;
   entry.plugin.path = path;
   entry.plugin.plugin_id = sanitize_c_string(descriptor->plugin_id);
   entry.plugin.plugin_version = sanitize_c_string(descriptor->plugin_version);
@@ -272,7 +393,7 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
   // orc_register_stage_plugin().  Callbacks wrap host-internal functions via
   // stateless function pointers so that no host-internal symbols are resolved
   // directly via the dynamic linker from within the plugin.
-  OrcPluginServices& services = *entry.services;
+  OrcPluginServices& services = *library->services;
   services = {};
   static CoreStageServicesAdapter stage_services_adapter;
   services.services_size = static_cast<uint32_t>(sizeof(OrcPluginServices));
@@ -312,25 +433,33 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
   services.stage_services = &stage_services_adapter;
 
   std::string last_error;
-  RegisterContext context{&register_stage_callback, &entry.plugin, &last_error};
+  RegisterContext context{&register_stage_callback, &entry.plugin, &last_error,
+                          library};
   const char* plugin_error = nullptr;
 
   bool register_ok = false;
+  // Fault-guard note (see plugin_safe_call.h): this guarded region does NOT
+  // meet the "raw C function pointers only" constraint — register_fn
+  // re-enters the host through register_stage_trampoline, which allocates
+  // std::string/std::function/std::vector. If the plugin faults mid-
+  // registration, siglongjmp abandons those host-side objects in flight
+  // (leaking memory and, in principle, leaving heap metadata inconsistent).
+  // This residual risk is accepted: registration runs once at startup, and
+  // surviving a faulty third-party plugin with a diagnostic is preferred
+  // over crashing the host outright.
   if (!plugin_safe_call(
           [&] {
             register_ok = register_fn(
-                entry.services.get(), &context,
+                library->services.get(), &context,
                 &StagePluginLoader::register_stage_trampoline, &plugin_error);
           },
           fault_error)) {
-    close_shared_library(handle);
     result.error_message =
         "Plugin '" + path +
         "' crashed during stage registration: " + fault_error;
     return result;
   }
   if (!register_ok) {
-    close_shared_library(handle);
     std::string error_from_plugin = sanitize_c_string(plugin_error);
     if (!last_error.empty()) {
       result.error_message =
@@ -354,10 +483,9 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
 }
 
 void StagePluginLoader::unload_all() {
-  for (auto& entry : handle_entries_) {
-    close_shared_library(entry.handle);
-    entry.handle = nullptr;
-  }
+  // Releases only the loader's references. Each library is closed by
+  // ~LoadedLibrary when the last registered factory or live stage instance
+  // sharing it is destroyed (possibly right here, if none remain).
   handle_entries_.clear();
   loaded_plugins_.clear();
 }
@@ -375,9 +503,12 @@ bool StagePluginLoader::register_stage_trampoline(void* context,
     return false;
   }
 
-  StagePluginLoader::RegisterStageFactory wrapped_factory = [factory]() {
-    return factory();
-  };
+  // Wrap the raw plugin factory so each created stage shares ownership of
+  // the plugin library; the library cannot be unmapped while any stage
+  // instance created through this factory is alive.
+  StagePluginLoader::RegisterStageFactory wrapped_factory =
+      core_internal::make_keepalive_stage_factory(factory,
+                                                  register_context->library);
 
   const std::string stage_name_string(stage_name);
   const bool ok =

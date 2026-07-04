@@ -10,18 +10,18 @@
 #ifndef ORC_CORE_VBI_SINK_STAGE_H
 #define ORC_CORE_VBI_SINK_STAGE_H
 
-#include <node_type.h>
+#include <orc/plugin/orc_stage_preview.h>
+#include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
-
-#include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
-#include "stage_parameter.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 
@@ -38,14 +38,13 @@ class IDaphneVBISinkStageDeps;
  * When triggered, it reads all fields from its input and writes them to:
  * - .vbi file: Binary data.
  *
- * This sink does not support preview.
- *
  * Parameters:
  * - output_path: Output file path
  */
 class DaphneVBISinkStage : public DAGStage,
                            public ParameterizedStage,
-                           public TriggerableStage {
+                           public TriggerableStage,
+                           public IStagePreviewCapability {
  public:
   explicit DaphneVBISinkStage(IStageServices* stage_services);
 
@@ -58,6 +57,7 @@ class DaphneVBISinkStage : public DAGStage,
 
   // DAGStage interface
   std::string version() const override { return "1.0"; }
+  ORC_STAGE_INSTRUCTIONS_MD
   NodeTypeInfo get_node_type_info() const override;
 
   std::vector<ArtifactPtr> execute(
@@ -91,17 +91,19 @@ class DaphneVBISinkStage : public DAGStage,
 
   void cancel_trigger() override { cancel_requested_.store(true); }
 
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
+
  private:
   std::string output_path_;
   std::string trigger_status_;
-  mutable std::shared_ptr<const VideoFieldRepresentation>
-      cached_input_;  // For preview
   TriggerProgressCallback
       progress_callback_;  // Progress callback for trigger operations
   std::atomic<bool> is_processing_{false};
   std::atomic<bool> cancel_requested_{false};
   IStageServices* stage_services_{nullptr};
   std::shared_ptr<IDaphneVBISinkStageDeps> deps_override_;
+  mutable std::shared_ptr<const VideoFrameRepresentation> cached_input_;
 };
 }  // namespace orc
 

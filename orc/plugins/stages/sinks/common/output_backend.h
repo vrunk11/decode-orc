@@ -10,7 +10,7 @@
 #ifndef ORC_CORE_OUTPUT_BACKEND_H
 #define ORC_CORE_OUTPUT_BACKEND_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <map>
 #include <memory>
@@ -21,7 +21,7 @@ class ComponentFrame;
 
 namespace orc {
 
-class VideoFieldRepresentation;  // Forward declaration for audio access
+class VideoFrameRepresentation;  // Forward declaration for audio/video access
 
 /**
  * @brief Abstract base class for output backends
@@ -56,10 +56,11 @@ class OutputBackend {
 
     // Audio settings
     bool embed_audio = false;  ///< Embed audio in output (requires audio data)
-    const class VideoFieldRepresentation* vfr =
-        nullptr;  ///< VFR for audio access (if embed_audio=true)
-    uint64_t start_field_index = 0;  ///< Starting field for audio extraction
-    uint64_t num_fields = 0;         ///< Number of fields to extract audio from
+    const class VideoFrameRepresentation* vfr =
+        nullptr;  ///< VFrameR for audio access (if embed_audio=true)
+    uint64_t start_field_index =
+        0;                    ///< Starting field index for audio/CC extraction
+    uint64_t num_fields = 0;  ///< Number of fields to extract audio from
 
     // Closed caption settings (MP4 only, converts EIA-608 to mov_text)
     bool embed_closed_captions =

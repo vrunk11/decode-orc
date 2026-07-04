@@ -15,14 +15,13 @@
     "GUI code cannot include core/analysis/analysis_context.h. Use AnalysisPresenter instead."
 #endif
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/stage_parameter.h>
 #include <orc_analysis.h>  // For AnalysisSourceType
 
 #include <map>
 #include <memory>
 #include <string>
-
-#include "../include/stage_parameter.h"
 
 namespace orc {
 
@@ -35,7 +34,7 @@ class Project;
  */
 struct AnalysisContext {
   AnalysisSourceType source_type = AnalysisSourceType::LaserDisc;
-  std::string source_file;  // Path to TBC or video file (legacy - prefer using
+  std::string source_file;  // Path to source file (legacy - prefer using
                             // dag/project)
   NodeID node_id;           // ID of node being analyzed
   std::map<std::string, ParameterValue>

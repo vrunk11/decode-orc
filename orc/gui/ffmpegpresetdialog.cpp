@@ -333,7 +333,8 @@ void FFmpegPresetDialog::apply_configuration() {
   // Set options
   set_parameter("embed_audio", embed_audio_checkbox_->isChecked());
   set_parameter("embed_closed_captions", embed_captions_checkbox_->isChecked());
-  set_parameter("embed_chapter_metadata", embed_chapters_checkbox_->isChecked());
+  set_parameter("embed_chapter_metadata",
+                embed_chapters_checkbox_->isChecked());
 
   // Set output filename (output_path parameter)
   QString filename = filename_edit_->text().trimmed();
@@ -393,7 +394,7 @@ void FFmpegPresetDialog::load_from_parameters(
       quality_preset_combo_->setCurrentIndex(4);
     } else {
       quality_preset_combo_->setCurrentIndex(0);
-}
+    }
   }
 
   // Load CRF

@@ -10,7 +10,8 @@
 #ifndef ORC_CORE_FFMPEG_VIDEO_SINK_STAGE_H
 #define ORC_CORE_FFMPEG_VIDEO_SINK_STAGE_H
 
-#include "../../../sdk/include/orc/plugin/orc_stage_tooling.h"
+#include <orc/plugin/orc_stage_tooling.h>
+
 #include "chroma_sink_stage.h"
 
 namespace orc {
@@ -59,6 +60,7 @@ namespace orc {
  */
 class FFmpegVideoSinkStage : public ChromaSinkStage, public StageToolProvider {
  public:
+  ORC_STAGE_INSTRUCTIONS_MD
   FFmpegVideoSinkStage();
   ~FFmpegVideoSinkStage() override = default;
 
@@ -88,6 +90,8 @@ class FFmpegVideoSinkStage : public ChromaSinkStage, public StageToolProvider {
                                 StageToolKind::ConfigDialog, false,
                                 "decode-orc.stage-tools.ffmpeg-preset.v1"}};
   }
+
+ private:
 };
 
 }  // namespace orc

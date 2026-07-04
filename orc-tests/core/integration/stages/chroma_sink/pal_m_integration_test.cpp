@@ -12,6 +12,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <orc/stage/cvbs_signal_constants.h>
 
 #include <memory>
 #include <vector>
@@ -27,21 +28,11 @@ namespace {
 orc::SourceParameters make_pal_m_video_params() {
   orc::SourceParameters p;
   p.system = orc::VideoSystem::PAL_M;
-  p.field_width = 909;
-  p.field_height = 263;
+  p.frame_width_nominal = 909;
   p.active_video_start = 16;
   p.active_video_end = 893;
   p.first_active_frame_line = 0;
   p.last_active_frame_line = 520;  // 525 lines, -1 for 0-indexing adjustment
-  p.first_active_field_line = 0;
-  p.last_active_field_line = 262;
-  p.colour_burst_start = 16;
-  p.colour_burst_end = 110;
-  p.black_16b_ire = 0;
-  p.white_16b_ire = 100;
-  // PAL-M FSC and sample rate per official specs
-  p.sample_rate = 14318181.8181;  // 4 * FSC
-  p.fsc = 3575611.89;
   p.active_area_cropping_applied = false;
   return p;
 }
@@ -50,50 +41,46 @@ orc::SourceParameters make_pal_m_video_params() {
 orc::SourceParameters make_pal_video_params() {
   orc::SourceParameters p;
   p.system = orc::VideoSystem::PAL;
-  p.field_width = 909;
-  p.field_height = 313;
+  p.frame_width_nominal = 909;
   p.active_video_start = 16;
   p.active_video_end = 893;
   p.first_active_frame_line = 0;
   p.last_active_frame_line = 620;
-  p.first_active_field_line = 0;
-  p.last_active_field_line = 312;
-  p.colour_burst_start = 16;
-  p.colour_burst_end = 110;
-  p.black_16b_ire = 0;
-  p.white_16b_ire = 100;
-  // Standard PAL FSC and sample rate
-  p.sample_rate = 17734472.0;  // 4 * FSC
-  p.fsc = 4433618.75;
   p.active_area_cropping_applied = false;
   return p;
 }
 
-// Create a simple YC test field with known patterns
-SourceField make_pal_m_yc_test_field(bool is_first, uint16_t base_y,
-                                     uint16_t base_c) {
+// Owning wrapper for YC test fields; SourceField holds non-owning pointers.
+struct OwnedYCField {
+  std::vector<int16_t> luma_buf;
+  std::vector<int16_t> chroma_buf;
   SourceField field;
-  field.is_yc = true;
-  field.is_first_field = is_first;
 
-  const int width = 909;
-  const int height = 263;
+  static OwnedYCField make(bool is_first, uint16_t base_y, uint16_t base_c) {
+    OwnedYCField of;
+    constexpr int width = 909;
+    constexpr int height = 263;
 
-  field.luma_data.resize(width * height, 0);
-  field.chroma_data.resize(width * height, 0);
+    of.luma_buf.resize(width * height);
+    of.chroma_buf.resize(width * height);
 
-  // Fill with simple gradients to test processing
-  for (int line = 0; line < height; ++line) {
-    for (int x = 0; x < width; ++x) {
-      int idx = line * width + x;
-      // Simple gradient patterns
-      field.luma_data[idx] = static_cast<uint16_t>(base_y + (line % 256));
-      field.chroma_data[idx] = static_cast<uint16_t>(base_c + ((x % 4) * 16));
+    for (int line = 0; line < height; ++line) {
+      for (int x = 0; x < width; ++x) {
+        const int idx = line * width + x;
+        of.luma_buf[idx] = static_cast<int16_t>(base_y + (line % 256));
+        of.chroma_buf[idx] = static_cast<int16_t>(base_c + ((x % 4) * 16));
+      }
     }
-  }
 
-  return field;
-}
+    of.field.is_yc = true;
+    of.field.is_first_field = is_first;
+    of.field.line_count = static_cast<size_t>(height);
+    of.field.samples_per_line = static_cast<size_t>(width);
+    of.field.luma_data = of.luma_buf.data();
+    of.field.chroma_data = of.chroma_buf.data();
+    return of;
+  }
+};
 }  // namespace
 
 // =========================================================================
@@ -122,12 +109,20 @@ TEST(PalMIntegrationTest, palMHasCorrectFieldHeight) {
   const auto pal_m_params = make_pal_m_video_params();
 
   // PAL uses 625 lines (313 per field)
-  EXPECT_EQ(pal_params.field_height, 313);
-  EXPECT_EQ(pal_params.field_height * 2 - 1, 625);
+  EXPECT_EQ(calculate_padded_field_height(pal_params.system), 313u);
+  EXPECT_EQ(
+      static_cast<int32_t>(calculate_padded_field_height(pal_params.system)) *
+              2 -
+          1,
+      625);
 
-  // PAL-M uses 525 lines (263 per field, -1 adjustment)
-  EXPECT_EQ(pal_m_params.field_height, 263);
-  EXPECT_EQ(pal_m_params.field_height * 2 - 1, 525);
+  // PAL-M uses 525 lines (263 per field)
+  EXPECT_EQ(calculate_padded_field_height(pal_m_params.system), 263u);
+  EXPECT_EQ(
+      static_cast<int32_t>(calculate_padded_field_height(pal_m_params.system)) *
+              2 -
+          1,
+      525);
 }
 
 TEST(PalMIntegrationTest, palMHasCorrectFsc) {
@@ -135,13 +130,14 @@ TEST(PalMIntegrationTest, palMHasCorrectFsc) {
   const auto pal_m_params = make_pal_m_video_params();
 
   // PAL FSC ~4.43 MHz
-  EXPECT_NEAR(pal_params.fsc, 4433618.75, 100.0);
+  EXPECT_NEAR(orc::fsc_from_system(pal_params.system), 4433618.75, 100.0);
 
   // PAL-M FSC ~3.58 MHz (distinct from PAL)
-  EXPECT_NEAR(pal_m_params.fsc, 3575611.89, 100.0);
+  EXPECT_NEAR(orc::fsc_from_system(pal_m_params.system), 3575611.89, 100.0);
 
   // Verify they are distinctly different
-  EXPECT_NE(pal_params.fsc, pal_m_params.fsc);
+  EXPECT_NE(orc::fsc_from_system(pal_params.system),
+            orc::fsc_from_system(pal_m_params.system));
 }
 
 // =========================================================================
@@ -161,9 +157,10 @@ TEST(PalMIntegrationTest, palColourDecodesYcFieldWithPalMParameters) {
   decoder.updateConfiguration(params, config);
 
   // Create test fields
-  std::vector<SourceField> input_fields;
-  input_fields.push_back(make_pal_m_yc_test_field(true, 50, 64));
-  input_fields.push_back(make_pal_m_yc_test_field(false, 52, 64));
+  auto owned_first = OwnedYCField::make(true, 50, 64);
+  auto owned_second = OwnedYCField::make(false, 52, 64);
+  std::vector<SourceField> input_fields = {owned_first.field,
+                                           owned_second.field};
 
   // Decode frames
   std::vector<ComponentFrame> output_frames(1);
@@ -171,9 +168,11 @@ TEST(PalMIntegrationTest, palColourDecodesYcFieldWithPalMParameters) {
       << "Decoding YC fields with PAL-M parameters should not throw";
 
   // Verify output dimensions match input parameters
-  EXPECT_EQ(output_frames[0].getWidth(), params.field_width);
-  // Frame height = (field_height * 2) - 1 for interlaced
-  EXPECT_EQ(output_frames[0].getHeight(), (params.field_height * 2) - 1);
+  EXPECT_EQ(output_frames[0].getWidth(), params.frame_width_nominal);
+  const int32_t expected_height =
+      static_cast<int32_t>(calculate_padded_field_height(params.system)) * 2 -
+      1;
+  EXPECT_EQ(output_frames[0].getHeight(), expected_height);
 }
 
 TEST(PalMIntegrationTest, palColourPreservesYcDataPath) {
@@ -187,9 +186,10 @@ TEST(PalMIntegrationTest, palColourPreservesYcDataPath) {
   decoder.updateConfiguration(params, config);
 
   // Create test field with known luma values
-  std::vector<SourceField> input_fields;
-  input_fields.push_back(make_pal_m_yc_test_field(true, 100, 64));
-  input_fields.push_back(make_pal_m_yc_test_field(false, 102, 64));
+  auto owned_first = OwnedYCField::make(true, 100, 64);
+  auto owned_second = OwnedYCField::make(false, 102, 64);
+  std::vector<SourceField> input_fields = {owned_first.field,
+                                           owned_second.field};
 
   std::vector<ComponentFrame> output_frames(1);
   decoder.decodeFrames(input_fields, 0, 2, output_frames);

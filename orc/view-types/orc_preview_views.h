@@ -9,15 +9,16 @@
 
 #pragma once
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_preview_types.h>
+#include <orc/stage/orc_rendering.h>
+#include <orc/stage/orc_vectorscope.h>
 
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "orc_preview_types.h"
-#include "orc_rendering.h"
-#include "orc_vectorscope.h"
+#include "orc_histogram.h"
 
 namespace orc {
 
@@ -28,6 +29,7 @@ enum class PreviewViewPayloadKind {
   None,
   Image,
   Vectorscope,
+  Histogram,
 };
 
 /**
@@ -48,6 +50,7 @@ struct PreviewViewDataResult {
   PreviewViewPayloadKind payload_kind{PreviewViewPayloadKind::None};
   std::optional<PreviewImage> image;
   std::optional<VectorscopeData> vectorscope;
+  std::optional<VideoHistogramData> histogram;
 
   bool is_valid() const {
     if (!success) {
@@ -62,6 +65,10 @@ struct PreviewViewDataResult {
       return vectorscope.has_value();
     }
 
+    if (payload_kind == PreviewViewPayloadKind::Histogram) {
+      return histogram.has_value();
+    }
+
     return false;
   }
 };
@@ -72,39 +79,6 @@ struct PreviewViewDataResult {
 struct PreviewViewExportResult {
   bool success{false};
   std::string error_message;
-};
-
-// =============================================================================
-// Live Preview Tweak Panel Types
-// =============================================================================
-
-/**
- * @brief Cost class for a live-tweakable stage parameter.
- *
- * Mirrors orc::PreviewTweakClass from the core layer. Defined here in
- * view-types so that the GUI and coordinator layers can express update cost
- * without depending directly on core stage headers.
- *
- * - DisplayPhase: re-apply display conversion to cached decoded output only (no
- * re-decode).
- * - DecodePhase: re-decode the current preview field/frame only (no full DAG
- * rebuild).
- */
-enum class LiveTweakClass {
-  DisplayPhase,  ///< Conversion-only update; no re-decode
-  DecodePhase,   ///< Single-field re-decode; no full DAG rebuild
-};
-
-/**
- * @brief View-model for a single live-tweakable parameter declared by a stage.
- *
- * Returned by the presenter/coordinator layer so the GUI can build a parameter
- * widget for each entry and categorise changes by their update cost.
- */
-struct LiveTweakableParameterView {
-  std::string parameter_name;  ///< Must match ParameterDescriptor::name
-  LiveTweakClass tweak_class{
-      LiveTweakClass::DecodePhase};  ///< Update cost class
 };
 
 // =============================================================================

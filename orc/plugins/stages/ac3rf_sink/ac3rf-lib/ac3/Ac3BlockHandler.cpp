@@ -86,7 +86,7 @@ Ac3BlockHandler::errorCorrectBlock(const UncorrectedBlock& block) {
     m_c2.decode(c2Data);
     for (int i = 0; i < 32; i++) {
       c2CorrectedBlock.block_data[k][i] = c2Data[i].byteValue();
-}
+    }
   }
 
   if (c2CorrectedBlock.block_data[0][0] != 0x10 ||
@@ -124,7 +124,7 @@ std::vector<std::array<uint8_t, 1536>> Ac3BlockHandler::handleCorrectedBlock(
         if (byte != 0x77) {
           if (m_last_burst_symbol_index != -1) {
             m_log.warn(eAudio, "Block does not start with 0x0b 0x77");
-}
+          }
           m_ac3_output_block_index = 0;
           continue;
         }
@@ -132,12 +132,13 @@ std::vector<std::array<uint8_t, 1536>> Ac3BlockHandler::handleCorrectedBlock(
         if (byte != 0x1c) {
           if (m_last_burst_symbol_index != -1) {
             m_log.warn(eAudio, "Block does not start with 0x0b 0x77 ? ? 0x1c");
-}
+          }
           m_ac3_output_block_index = 0;
           continue;
         }
-        m_first_symbol_in_burst = block.global_symbol_index + symbol_in_block -
-                                  static_cast<size_t>(m_ac3_output_block_index) * 4;
+        m_first_symbol_in_burst =
+            block.global_symbol_index + symbol_in_block -
+            static_cast<size_t>(m_ac3_output_block_index) * 4;
 
         // Data doesn't arrive equally spaced.  Output blocks appear 31.25 times
         // per second and contain 2880 bytes.  4 output blocks are made from 5
@@ -145,7 +146,8 @@ std::vector<std::array<uint8_t, 1536>> Ac3BlockHandler::handleCorrectedBlock(
         // (2304 bytes).  We warn if the space between input blocks is more than
         // 3000.
         if (m_last_burst_symbol_index != -1 &&
-            m_first_symbol_in_burst - m_last_burst_symbol_index > static_cast<size_t>(3000 * 4)) {
+            m_first_symbol_in_burst - m_last_burst_symbol_index >
+                static_cast<size_t>(3000 * 4)) {
           m_log.warn(
               eAudio,
               fmt::format(

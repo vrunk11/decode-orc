@@ -9,14 +9,15 @@
 
 #include "../include/ffmpeg_preset_presenter.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/stage.h>
+
 #include <algorithm>
 
 #include "../../core/analysis/analysis_progress.h"
 #include "../../core/analysis/analysis_registry.h"
 #include "../../core/include/dag_executor.h"
-#include "../../core/include/logging.h"
 #include "../../core/include/project.h"
-#include "../../core/stages/stage.h"
 
 namespace orc::presenters {
 

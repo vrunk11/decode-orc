@@ -9,8 +9,9 @@
 
 #include "analysis_registry.h"
 
+#include <orc/stage/logging.h>
+
 #include "analysis_init.h"
-#include "logging.h"
 
 namespace orc {
 

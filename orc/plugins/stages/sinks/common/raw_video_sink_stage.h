@@ -51,6 +51,7 @@ namespace orc {
  */
 class RawVideoSinkStage : public ChromaSinkStage {
  public:
+  ORC_STAGE_INSTRUCTIONS_MD
   RawVideoSinkStage();
   ~RawVideoSinkStage() override = default;
 
@@ -68,6 +69,8 @@ class RawVideoSinkStage : public ChromaSinkStage {
   // Override set_parameters to restrict output format to raw formats only
   bool set_parameters(
       const std::map<std::string, ParameterValue>& params) override;
+
+ private:
 };
 
 }  // namespace orc

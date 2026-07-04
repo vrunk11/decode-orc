@@ -9,8 +9,8 @@
 
 #pragma once
 
-#include <node_id.h>
-#include <node_type.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/node_type.h>
 
 #include <functional>
 #include <string>
@@ -20,7 +20,7 @@ namespace orc::presenters {
 /**
  * @brief Video format enumeration for GUI use
  */
-enum class VideoFormat { NTSC, PAL, Unknown };
+enum class VideoFormat { NTSC, PAL, PAL_M, Unknown };
 
 /**
  * @brief Source type enumeration for GUI use
@@ -60,6 +60,7 @@ struct PluginRegistryEntryInfo {
   std::string license_spdx;
   bool is_core_plugin = false;
   uint32_t required_host_abi = 0;
+  std::string sha256;
   bool is_loaded = false;
   bool path_exists = false;
 };
@@ -101,10 +102,8 @@ struct NodeInfo {
   double y_position;           ///< Y position in graph
   bool can_remove;             ///< Whether node can be removed
   bool can_trigger;            ///< Whether node can be triggered
-  bool can_inspect;            ///< Whether node can be inspected
   std::string remove_reason;   ///< Reason if cannot remove
   std::string trigger_reason;  ///< Reason if cannot trigger
-  std::string inspect_reason;  ///< Reason if cannot inspect
 };
 
 /**

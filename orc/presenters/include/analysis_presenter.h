@@ -9,8 +9,8 @@
 
 #pragma once
 
-#include <field_id.h>
-#include <node_id.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/node_id.h>
 #include <orc_analysis.h>  // Public API analysis types
 
 #include <functional>

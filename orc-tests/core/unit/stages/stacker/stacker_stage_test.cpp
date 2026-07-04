@@ -13,9 +13,13 @@
 
 #include <algorithm>
 
-#include "../../include/video_field_representation_mock.h"
+#include "../../mocks/mock_video_frame_representation.h"
+
+using ::testing::_;
+using ::testing::Return;
 
 namespace orc_unit_test {
+
 namespace {
 const orc::ParameterDescriptor* find_descriptor(
     const std::vector<orc::ParameterDescriptor>& descriptors,
@@ -138,12 +142,117 @@ TEST(StackerStageTest, Process_ReturnsNullWhenSourcesEmpty) {
 
 TEST(StackerStageTest, Process_ReturnsOnlySourceInPassthroughMode) {
   orc::StackerStage stage;
-  auto source = std::make_shared<MockVideoFieldRepresentation>();
-  std::vector<std::shared_ptr<const orc::VideoFieldRepresentation>> sources = {
+  auto source = std::make_shared<MockVideoFrameRepresentation>();
+
+  EXPECT_CALL(*source, has_separate_channels()).WillRepeatedly(Return(false));
+
+  std::vector<std::shared_ptr<const orc::VideoFrameRepresentation>> sources = {
       source};
 
   const auto result = stage.process(sources);
 
   EXPECT_EQ(result.get(), source.get());
 }
+
+TEST(StackerStageTest, Process_ReturnsWrappedOutputForMultipleSources) {
+  orc::StackerStage stage;
+  auto src0 = std::make_shared<MockVideoFrameRepresentation>();
+  auto src1 = std::make_shared<MockVideoFrameRepresentation>();
+
+  EXPECT_CALL(*src0, has_separate_channels()).WillRepeatedly(Return(false));
+  EXPECT_CALL(*src1, has_separate_channels()).WillRepeatedly(Return(false));
+
+  std::vector<std::shared_ptr<const orc::VideoFrameRepresentation>> sources = {
+      src0, src1};
+
+  const auto result = stage.process(sources);
+
+  ASSERT_NE(result, nullptr);
+  EXPECT_NE(result.get(), src0.get());
+  EXPECT_NE(result.get(), src1.get());
+}
+
+namespace {
+
+// Minimal in-memory composite source: one frame filled with a constant value.
+// NTSC geometry keeps every line at kStackWidth samples.
+using sample_type = orc::VideoFrameRepresentation::sample_type;
+constexpr size_t kStackWidth = 16;
+constexpr size_t kStackHeight = 8;
+
+class FakeConstantSource : public orc::VideoFrameRepresentation {
+ public:
+  explicit FakeConstantSource(sample_type value)
+      : frame_(kStackWidth * kStackHeight, value) {}
+
+  orc::FrameIDRange frame_range() const override {
+    return {orc::FrameID{0}, orc::FrameID{0}};
+  }
+  size_t frame_count() const override { return 1; }
+  bool has_frame(orc::FrameID id) const override {
+    return id == orc::FrameID{0};
+  }
+
+  std::optional<orc::FrameDescriptor> get_frame_descriptor(
+      orc::FrameID id) const override {
+    if (!has_frame(id)) return std::nullopt;
+    orc::FrameDescriptor desc;
+    desc.frame_id = id;
+    desc.system = orc::VideoSystem::NTSC;
+    desc.height = kStackHeight;
+    desc.samples_total = frame_.size();
+    desc.samples_per_line_nominal = kStackWidth;
+    return desc;
+  }
+
+  const sample_type* get_frame(orc::FrameID id) const override {
+    return has_frame(id) ? frame_.data() : nullptr;
+  }
+  std::vector<sample_type> get_frame_copy(orc::FrameID id) const override {
+    return has_frame(id) ? frame_ : std::vector<sample_type>{};
+  }
+
+  std::optional<orc::SourceParameters> get_video_parameters() const override {
+    orc::SourceParameters params;
+    params.system = orc::VideoSystem::NTSC;
+    params.frame_width_nominal = static_cast<int32_t>(kStackWidth);
+    params.frame_height = static_cast<int32_t>(kStackHeight);
+    params.black_level = 282;
+    params.number_of_sequential_frames = 1;
+    return params;
+  }
+
+ private:
+  std::vector<sample_type> frame_;
+};
+
+}  // namespace
+
+// Regression: get_line_samples()/get_line() on the stacked representation
+// must return the stacked output, never the first source's raw samples
+// (observers and analysis sinks read lines through these accessors).
+TEST(StackerStageTest, LineReads_ReturnStackedOutputNotFirstSource) {
+  orc::StackerStage stage;
+  ASSERT_TRUE(stage.set_parameters({{"mode", std::string("Mean")}}));
+
+  auto src0 = std::make_shared<FakeConstantSource>(100);
+  auto src1 = std::make_shared<FakeConstantSource>(200);
+
+  const auto stacked = stage.process({src0, src1});
+  ASSERT_NE(stacked, nullptr);
+
+  const sample_type* frame = stacked->get_frame(orc::FrameID{0});
+  ASSERT_NE(frame, nullptr);
+
+  for (size_t line = 0; line < kStackHeight; ++line) {
+    const auto samples = stacked->get_line_samples(orc::FrameID{0}, line);
+    ASSERT_EQ(samples.size(), kStackWidth) << "line " << line;
+    for (size_t i = 0; i < kStackWidth; ++i) {
+      // Mean of 100 and 200 — and definitely not the first source's value.
+      EXPECT_EQ(samples[i], 150) << "line " << line << " sample " << i;
+      EXPECT_EQ(samples[i], frame[line * kStackWidth + i]);
+    }
+  }
+}
+
 }  // namespace orc_unit_test

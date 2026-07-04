@@ -8,10 +8,11 @@
 
 #include "reedsolomon.h"
 
+#include <orc/stage/logging.h>
+
 #include <cstdlib>
 
 #include "ezpwd_compat.h"
-#include "logging.h"
 
 // ezpwd C1 ECMA-130 CIRC configuration
 template <size_t SYMBOLS, size_t PAYLOAD>
@@ -92,7 +93,7 @@ void ReedSolomon::c1Decode(std::vector<uint8_t>& inputData,
       ++m_validC1s;
     } else {
       ++m_fixedC1s;
-}
+    }
     return;
   }
 
@@ -162,7 +163,7 @@ void ReedSolomon::c2Decode(std::vector<uint8_t>& inputData,
       ++m_validC2s;
     } else {
       ++m_fixedC2s;
-}
+    }
     return;
   }
 

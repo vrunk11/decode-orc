@@ -1,0 +1,126 @@
+# Preview Window
+
+## Overview
+
+The Preview Window displays the video output of the currently active pipeline
+stage. It provides frame-by-frame navigation, channel selection, dropout
+visualisation, and a suite of signal-analysis tools: Line Scope, Frame Timing,
+Waveform Monitor, Vectorscope, and several metadata observers.
+
+## Navigation Bar
+
+| Control | Description |
+|---------|-------------|
+| << | Jump to the first frame or field. |
+| < | Step back one frame or field. Hold to step continuously. |
+| ▶ / ⏸ | Play back at the project frame rate (PAL: 25 fps; NTSC: ~30 fps). Press again to pause. Stops automatically at the last frame. |
+| > | Step forward one frame or field. Hold to step continuously. |
+| >> | Jump to the last frame or field. |
+| Frame spinbox | Type a frame number to jump there directly (1-indexed display). |
+| Slider | Drag to scrub through the entire range. Rendering is debounced during rapid movement. |
+
+## Control Row
+
+| Control | Description |
+|---------|-------------|
+| Preview Mode | Select the output type: **Frame**, **Top Field**, **Bottom Field**, or other modes offered by the selected stage. |
+| Channel | For YC (separate luma/chroma) sources: **Y+C** (composite display), **Luma (Y)**, or **Chroma (C)**. Hidden for composite CVBS sources. |
+| Aspect Ratio | Set the display aspect ratio: Square Pixels, 4:3, 16:9, and others. |
+| Zoom 1:1 | Resize the preview window so the image is displayed at its native pixel resolution. |
+| Dropouts: Off/On | Toggle the dropout overlay. When enabled, samples flagged as dropout are highlighted in red over the preview image. |
+
+## Line Scope
+
+Click anywhere in the preview image to open the **Line Scope**, which shows the
+raw sample waveform for that horizontal line.
+
+- Horizontal axis: sample position across the line.
+- Vertical axis: signal amplitude in millivolts.
+- For YC sources, separate **Y** (luma) and **C** (chroma) waveforms are shown.
+- Black level and white level markers are drawn from active video parameter hints.
+- Up/Down navigation controls step to adjacent lines without closing the scope.
+- A cross-hair on the preview image tracks the sample marker position in the
+  scope and vice versa.
+
+## File Menu
+
+| Action | Shortcut | Description |
+|--------|----------|-------------|
+| Export PNG... | Ctrl+Shift+E | Save the currently displayed preview image as a PNG file. |
+
+## Observers Menu
+
+Observers decode metadata from the video signal and display it in floating
+dialogs that update as you navigate frames.
+
+| Action | Shortcut | Description |
+|--------|----------|-------------|
+| VBI Decoder | Ctrl+Shift+V | Decode Vertical Blanking Interval data: closed captions, VITC timecode, teletext, and LaserDisc programme metadata. |
+| Quality Metrics | Ctrl+Shift+M | Per-frame signal quality statistics: SNR, colour burst level, and dropout sample count. |
+| NTSC Observer | Ctrl+Shift+N | NTSC-specific frame metadata: FM code status and white flag bit. |
+
+## Hints Menu
+
+| Action | Shortcut | Description |
+|--------|----------|-------------|
+| Video Parameter Hints | Ctrl+Shift+H | Show the video parameters in effect for the selected stage: colour system (PAL/NTSC), line count, black level, white level, and active video geometry. User overrides are flagged separately from signal-derived values. |
+
+## View Menu
+
+Signal analysis tools displayed as waveform or vector graphs in floating dialogs.
+
+| Action | Shortcut | Description |
+|--------|----------|-------------|
+| Frame Timing | Ctrl+Shift+T | Show the sync and timing waveform across all lines of the current frame. Useful for diagnosing sync pulse position and line structure. |
+| Waveform Monitor | Ctrl+Shift+W | Sample histogram across multiple lines with adjustable gain and range. Available for supported stages only. |
+| Vectorscope | Ctrl+Shift+S | U/V chroma vector plot with a standard vectorscope graticule. Available for stages with separate Y and C channels. |
+
+### Waveform Monitor
+
+Displays a stacked histogram of sample values across a range of lines.
+
+| Control | Description |
+|---------|-------------|
+| Gain | Vertical amplification of the trace. |
+| Range | The vertical display range in millivolts. |
+
+Only available when the selected stage provides this view.
+
+### Vectorscope
+
+Plots the chroma U and V components as a scatter on a standard vectorscope graticule.
+
+| Control | Description |
+|---------|-------------|
+| Field | Choose which field (top, bottom, or full frame) contributes to the plot. |
+| Blend | Persistence factor — higher values retain more signal history on screen. |
+| Defocus | Gaussian blur on the trace to aid reading at high dot density. |
+
+Only available for stages that output separate Y and C channels.
+
+### VBI Decoder
+
+Decodes and displays Vertical Blanking Interval content for the current frame,
+including closed captions, VITC timecode, teletext lines, and LaserDisc
+programme metadata such as chapter and frame numbers.
+
+### Quality Metrics
+
+Per-frame signal quality data:
+
+| Metric | Description |
+|--------|-------------|
+| SNR | Signal-to-noise ratio of the luma channel. |
+| Burst Level | Amplitude of the colour burst reference signal. |
+| Dropout Count | Number of dropout samples detected in this frame. |
+
+### NTSC Observer
+
+Shows NTSC-specific frame metadata including the FM code status and white flag bit.
+
+### Video Parameter Hints
+
+Shows the video parameters currently in effect for the selected stage: colour
+system (PAL/NTSC), nominal line count, black level, white level, first and last
+active frame lines, and whether each value originates from the source signal or
+a user override applied by the Video Parameters stage.

@@ -10,6 +10,10 @@
 #ifndef ORC_CORE_BURST_LEVEL_ANALYSIS_SINK_DEPS_INTERFACE_H
 #define ORC_CORE_BURST_LEVEL_ANALYSIS_SINK_DEPS_INTERFACE_H
 
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -17,15 +21,11 @@
 #include <vector>
 
 #include "burst_level_analysis_types.h"
-#include "observation_context_interface.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 struct BurstAnalysisComputeOptions {
   std::string output_path;
   bool write_csv{false};
-  size_t max_frames{1000};
 };
 
 struct BurstAnalysisComputeResult {
@@ -43,7 +43,7 @@ class IBurstLevelAnalysisSinkStageDeps {
                     std::atomic<bool>* cancel_requested) = 0;
 
   virtual BurstAnalysisComputeResult compute_and_analyze(
-      VideoFieldRepresentation* representation,
+      VideoFrameRepresentation* representation,
       IObservationContext& observation_context,
       BurstAnalysisComputeOptions options) = 0;
 

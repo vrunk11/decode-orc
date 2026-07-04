@@ -9,12 +9,12 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/triggerable_stage.h>
 
 #include <set>
 #include <string>
 
-#include "../../../orc/core/include/observation_context.h"
-#include "../../../orc/core/stages/triggerable_stage.h"
 #include "../include/observation_context_interface_mock.h"
 #include "../include/public_stage_inventory.h"
 
@@ -115,10 +115,11 @@ TEST_P(PublicStageContractTest, Parameter_DefaultsMatchRuntimeState) {
 
   for (const auto& [name, value] : parameters) {
     const auto& param_name = name;
-    auto it = std::find_if(descriptors.begin(), descriptors.end(),
-                           [&param_name](const orc::ParameterDescriptor& descriptor) {
-                             return descriptor.name == param_name;
-                           });
+    auto it =
+        std::find_if(descriptors.begin(), descriptors.end(),
+                     [&param_name](const orc::ParameterDescriptor& descriptor) {
+                       return descriptor.name == param_name;
+                     });
     EXPECT_NE(it, descriptors.end())
         << spec().inventory_id
         << " exposes runtime parameter without descriptor: '" << name << "'";

@@ -9,10 +9,10 @@
 
 #pragma once
 
-#include <field_id.h>
-#include <node_id.h>
-#include <orc_source_parameters.h>  // For public_api::SourceParameters
-#include <parameter_types.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_source_parameters.h>  // For public_api::SourceParameters
+#include <orc/stage/parameter_types.h>
 
 #include <map>
 #include <memory>
@@ -22,7 +22,6 @@
 
 #include "i_project_presenter.h"
 #include "project_presenter_types.h"
-#include "stage_inspection_view_models.h"
 
 // Forward declare core Project type
 namespace orc {
@@ -105,6 +104,18 @@ class ProjectPresenter : public IProjectPresenter {
    */
   static std::optional<orc::SourceParameters> readVideoParameters(
       const std::string& metadata_path);
+
+  /**
+   * @brief Read video parameters from a CVBS .meta metadata file
+   * @param meta_path Path to .meta SQLite file
+   * @return SourceParameters with system set if successful, nullopt on failure
+   *
+   * Reads the preset field from the cvbs_file table to determine the video
+   * system (PAL, NTSC, or PAL_M) for use when creating a quick project from
+   * a CVBS source file.
+   */
+  static std::optional<orc::SourceParameters> readCVBSVideoParameters(
+      const std::string& meta_path);
 
   // === Project Lifecycle ===
 
@@ -209,6 +220,16 @@ class ProjectPresenter : public IProjectPresenter {
    * @brief Set source type
    */
   void setSourceType(SourceType source) override;
+
+  /**
+   * @brief Get amplitude display unit
+   */
+  orc::AmplitudeDisplayUnit getAmplitudeUnit() const override;
+
+  /**
+   * @brief Set amplitude display unit
+   */
+  void setAmplitudeUnit(orc::AmplitudeDisplayUnit unit) override;
 
   // === DAG Management ===
 
@@ -340,6 +361,10 @@ class ProjectPresenter : public IProjectPresenter {
                                                 bool enabled) const override {
     return ProjectPresenter::setPluginRegistryEntryEnabled(plugin_id, enabled);
   }
+  PluginRegistryMutationResult setPluginTrusted(const std::string& plugin_id,
+                                                bool trusted) const override {
+    return ProjectPresenter::setPluginRegistryEntryTrusted(plugin_id, trusted);
+  }
 
   // === Stage Registry ===
 
@@ -424,20 +449,22 @@ class ProjectPresenter : public IProjectPresenter {
       const std::string& plugin_id, bool enabled);
 
   /**
+   * @brief Mark a plugin entry as trusted or untrusted in the persistent
+   * registry
+   *
+   * Untrusted non-core entries are neither downloaded nor loaded at startup.
+   * Core plugin entries are implicitly trusted and cannot be changed.
+   */
+  static PluginRegistryMutationResult setPluginRegistryEntryTrusted(
+      const std::string& plugin_id, bool trusted);
+
+  /**
    * @brief Clear persistent plugin registry entries for safe startup mode
    *
    * This resets the user plugin registry to an empty set so the runtime loads
    * only core plugins discovered from build/install default plugin paths.
    */
   static PluginRegistryMutationResult clearPluginRegistryForSafeMode();
-
-  /**
-   * @brief Get stage instance for inspection (from DAG if available, else
-   * fresh)
-   * @param node_id Node to get stage for
-   * @return Stage instance or nullptr if not found
-   */
-  std::shared_ptr<void> getStageForInspection(NodeID node_id) const override;
 
   /**
    * @brief Get stage instance for parameter editing
@@ -463,8 +490,7 @@ class ProjectPresenter : public IProjectPresenter {
    * @param progress_callback Optional progress callback
    * @return true on success
    */
-  bool triggerNode(NodeID node_id,
-                   ProgressCallback progress_callback) override;
+  bool triggerNode(NodeID node_id, ProgressCallback progress_callback) override;
 
   /**
    * @brief Trigger all sink nodes in the project
@@ -490,18 +516,7 @@ class ProjectPresenter : public IProjectPresenter {
    */
   std::vector<std::string> getValidationErrors() const override;
 
-  // === Stage Inspection ===
-
-  /**
-   * @brief Get inspection report for a node
-   * @param node_id Node to inspect
-   * @return Inspection report, or nullopt if not available
-   *
-   * This creates a stage instance (from DAG if available, otherwise fresh),
-   * and generates an inspection report. The report contains human-readable
-   * information about the stage's current state and configuration.
-   */
-  std::optional<StageInspectionView> getNodeInspection(
+  orc::ConfigurationStatus getNodeConfigurationStatus(
       NodeID node_id) const override;
 
   // === Project Snapshots ===
@@ -532,6 +547,14 @@ class ProjectPresenter : public IProjectPresenter {
   bool validateDAG() override;
 
   // === Parameter Operations ===
+
+  /**
+   * @brief Get the help text (Markdown) for a stage type
+   * @param stage_name Internal stage name
+   * @return Markdown string, or empty string if no documentation is available
+   */
+  std::string getStageInstructions(
+      const std::string& stage_name) const override;
 
   /**
    * @brief Get parameter descriptors for a stage type

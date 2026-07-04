@@ -7,44 +7,40 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "black_psnr_observer.h"
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/observers/black_psnr_observer.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <algorithm>
 #include <cmath>
 #include <numeric>
 
-#include "../include/field_id.h"
-#include "../include/logging.h"
-#include "../include/observation_context.h"
-#include "../include/video_field_representation.h"
-
 namespace orc {
 
-void BlackPSNRObserver::process_field(
-    const VideoFieldRepresentation& representation, FieldID field_id,
+void BlackPSNRObserver::process_frame(
+    const VideoFrameRepresentation& representation, FrameID frame_id,
     IObservationContext& context) {
-  // Get field descriptor to determine format
-  auto descriptor_opt = representation.get_descriptor(field_id);
-  if (!descriptor_opt.has_value()) {
-    ORC_LOG_TRACE("BlackPSNRObserver: No descriptor for field {}",
-                  field_id.value());
+  auto vp_opt = representation.get_video_parameters();
+  if (!vp_opt.has_value()) {
+    ORC_LOG_TRACE("BlackPSNRObserver: No video parameters for frame {}",
+                  frame_id);
     return;
   }
+  const auto& vp = vp_opt.value();
 
-  const auto& descriptor = descriptor_opt.value();
-  const bool uses_pal_vits_layout = (descriptor.system == VideoSystem::PAL);
+  size_t f1_lines = field1_lines(vp.system);
 
   // VITS black level locations (from ld-process-vits)
   // PAL: Line 22, 12μs start, 50μs length
   // NTSC: Line 1, 10μs start, 20μs length
-  // (Same line numbers for both top and bottom fields - using field-local line
-  // numbering)
-
   size_t line;
   double start_us;
   double length_us;
 
-  if (uses_pal_vits_layout) {
+  if (vp.system == VideoSystem::PAL) {
     line = 22;
     start_us = 12.0;
     length_us = 50.0;
@@ -54,88 +50,95 @@ void BlackPSNRObserver::process_field(
     length_us = 20.0;
   }
 
-  auto black_slice =
-      get_line_slice_ire(representation, field_id, line, start_us, length_us);
+  // Accumulate PSNR from both field halves, then store one frame-level result.
+  double psnr_sum = 0.0;
+  size_t psnr_count = 0;
 
-  if (black_slice.empty()) {
-    ORC_LOG_TRACE("BlackPSNRObserver: No valid black level data for field {}",
-                  field_id.value());
+  for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+    size_t line_offset = (field_idx == 0) ? 0 : f1_lines;
+    size_t field_height = (field_idx == 0)
+                              ? f1_lines
+                              : static_cast<size_t>(vp.frame_height) - f1_lines;
+
+    auto black_slice =
+        get_line_slice_ire(representation, frame_id, line_offset, line,
+                           start_us, length_us, field_height, vp);
+
+    if (black_slice.empty()) {
+      continue;
+    }
+
+    psnr_sum += calculate_psnr(black_slice);
+    ++psnr_count;
+  }
+
+  if (psnr_count == 0) {
+    ORC_LOG_TRACE("BlackPSNRObserver: No valid black level data for frame {}",
+                  frame_id);
     return;
   }
 
-  [[maybe_unused]] double noise_std = calc_std(black_slice);
-  [[maybe_unused]] double black_mean = calc_mean(black_slice);
-  double psnr_db = calculate_psnr(black_slice);
-
-  // Store in observation context
-  context.set(field_id, "black_psnr", "psnr_db", psnr_db);
-
-  ORC_LOG_DEBUG(
-      "BlackPSNRObserver: Field {} psnr={:.2f} dB (mean={:.1f} IRE, "
-      "std={:.3f})",
-      field_id.value(), psnr_db, black_mean, noise_std);
+  double psnr_db = psnr_sum / static_cast<double>(psnr_count);
+  context.set(FieldID(frame_id * 2), "black_psnr", "psnr_db", psnr_db);
+  ORC_LOG_DEBUG("BlackPSNRObserver: Frame {} psnr={:.2f} dB", frame_id,
+                psnr_db);
 }
 
 std::vector<double> BlackPSNRObserver::get_line_slice_ire(
-    const VideoFieldRepresentation& representation, FieldID field_id,
-    size_t field_line, double start_us, double length_us) const {
+    const VideoFrameRepresentation& representation, FrameID frame_id,
+    size_t line_offset, size_t field_line, double start_us, double length_us,
+    size_t field_height, const SourceParameters& vp) const {
   std::vector<double> result;
-
-  auto descriptor_opt = representation.get_descriptor(field_id);
-  if (!descriptor_opt.has_value()) {
-    return result;
-  }
-
-  const auto& descriptor = descriptor_opt.value();
 
   // Adjust for 1-based line numbering
   size_t line_index = field_line - 1;
 
   // Range check
-  if (line_index >= descriptor.height) {
+  if (line_index >= field_height) {
     return result;
   }
 
   // Calculate samples per microsecond
-  const bool uses_pal_line_timing = (descriptor.system == VideoSystem::PAL);
+  const bool uses_pal_line_timing = (vp.system == VideoSystem::PAL);
   double us_per_line = uses_pal_line_timing ? 64.0 : 63.5;
-  double samples_per_us = static_cast<double>(descriptor.width) / us_per_line;
+  double samples_per_us =
+      static_cast<double>(vp.frame_width_nominal) / us_per_line;
 
   // Calculate sample positions
   size_t start_sample = static_cast<size_t>(start_us * samples_per_us);
   size_t length_samples = static_cast<size_t>(length_us * samples_per_us);
 
   // Range check
-  if (start_sample + length_samples > descriptor.width) {
+  if (start_sample + length_samples >
+      static_cast<size_t>(vp.frame_width_nominal)) {
     return result;
   }
 
-  // Get the line data (YC sources use luma only)
-  const uint16_t* line_data =
-      representation.has_separate_channels()
-          ? representation.get_line_luma(field_id, line_index)
-          : representation.get_line(field_id, line_index);
+  // Get the line data; use get_line_samples() for composite sources so the
+  // field-level buffer in the VFR is used instead of a full-frame LRU load.
+  size_t frame_line = line_offset + line_index;
+  auto line_samples_buf = std::vector<int16_t>{};
+  const int16_t* line_data = nullptr;
+  if (representation.has_separate_channels()) {
+    line_data = representation.get_line_luma(frame_id, frame_line);
+  } else {
+    line_samples_buf = representation.get_line_samples(frame_id, frame_line);
+    line_data = line_samples_buf.empty() ? nullptr : line_samples_buf.data();
+  }
   if (!line_data) {
     return result;
   }
 
-  // Get video parameters for IRE conversion
-  auto video_params_opt = representation.get_video_parameters();
-  double black_16b = 16384.0;  // Default
-  double white_16b = 53248.0;  // Default
-
-  if (video_params_opt.has_value()) {
-    black_16b = static_cast<double>(video_params_opt->black_16b_ire);
-    white_16b = static_cast<double>(video_params_opt->white_16b_ire);
-  }
-
-  double ire_scale = 100.0 / (white_16b - black_16b);
+  // CVBS_U10_4FSC signal levels from SourceParameters.
+  double black_10b = static_cast<double>(vp.blanking_level);
+  double white_10b = static_cast<double>(vp.white_level);
+  double ire_scale = 100.0 / (white_10b - black_10b);
 
   // Convert samples to IRE values
   result.reserve(length_samples);
   for (size_t i = 0; i < length_samples; ++i) {
-    uint16_t sample = line_data[start_sample + i];
-    double ire = (static_cast<double>(sample) - black_16b) * ire_scale;
+    double sample = static_cast<double>(line_data[start_sample + i]);
+    double ire = (sample - black_10b) * ire_scale;
     result.push_back(ire);
   }
 

@@ -10,6 +10,10 @@
 #ifndef ORC_CORE_DROPOUT_ANALYSIS_SINK_DEPS_INTERFACE_H
 #define ORC_CORE_DROPOUT_ANALYSIS_SINK_DEPS_INTERFACE_H
 
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -17,16 +21,12 @@
 #include <vector>
 
 #include "dropout_analysis_types.h"
-#include "observation_context_interface.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 struct DropoutAnalysisComputeOptions {
   std::string output_path;
   bool write_csv{false};
   DropoutAnalysisMode mode{DropoutAnalysisMode::FULL_FIELD};
-  size_t max_frames{0};
 };
 
 struct DropoutAnalysisComputeResult {
@@ -44,7 +44,7 @@ class IDropoutAnalysisSinkStageDeps {
                     std::atomic<bool>* cancel_requested) = 0;
 
   virtual DropoutAnalysisComputeResult compute_and_analyze(
-      VideoFieldRepresentation* representation,
+      VideoFrameRepresentation* representation,
       IObservationContext& observation_context,
       DropoutAnalysisComputeOptions options) = 0;
 

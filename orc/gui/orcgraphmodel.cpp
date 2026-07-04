@@ -96,8 +96,31 @@ std::string OrcGraphModel::getNodeStageName(const NodeID& node_id) const {
 void OrcGraphModel::refresh() {
   ORC_LOG_DEBUG("OrcGraphModel::refresh - Rebuilding node mappings");
   buildMappings();
+  config_status_cache_.clear();
   ORC_LOG_DEBUG("OrcGraphModel::refresh - Emitting modelReset signal");
   Q_EMIT modelReset();
+}
+
+orc::ConfigurationStatus OrcGraphModel::getConfigurationStatus(
+    NodeId nodeId) const {
+  auto cache_it = config_status_cache_.find(nodeId);
+  if (cache_it != config_status_cache_.end()) {
+    return cache_it->second;
+  }
+
+  auto it = qt_to_orc_nodes_.find(nodeId);
+  if (it == qt_to_orc_nodes_.end()) {
+    return orc::ConfigurationStatus::Green;
+  }
+
+  orc::ConfigurationStatus status =
+      presenter_.getNodeConfigurationStatus(it->second);
+  config_status_cache_[nodeId] = status;
+  return status;
+}
+
+void OrcGraphModel::invalidateConfigurationStatus(NodeId nodeId) {
+  config_status_cache_.erase(nodeId);
 }
 
 std::unordered_set<NodeId> OrcGraphModel::allNodeIds() const {
@@ -142,7 +165,7 @@ bool OrcGraphModel::connectionExists(ConnectionId const connectionId) const {
 NodeId OrcGraphModel::addNode(QString const nodeType) {
   // Use presenter's add_node function which generates unique IDs properly
   std::string stage_name =
-      nodeType.isEmpty() ? "TBCSource" : nodeType.toStdString();
+      nodeType.isEmpty() ? "tbc_source" : nodeType.toStdString();
 
   try {
     NodeID node_id = presenter_.addNode(stage_name, 0.0, 0.0);
@@ -319,7 +342,7 @@ QVariant OrcGraphModel::portData(NodeId nodeId, PortType portType,
         return QVariant();
 
       case PortRole::DataType:
-        return QString("VideoField");
+        return QString("VideoFrame");
 
       case PortRole::ConnectionPolicyRole: {
         // Return Many if the port can handle multiple connections

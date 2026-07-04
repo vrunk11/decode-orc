@@ -9,8 +9,12 @@
 
 #include "project_presenter.h"
 
-#include <open_tbc_metadata.h>  // for open_tbc_metadata (handles .tbc.db and legacy .tbc.json)
-#include <orc_source_parameters.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/triggerable_stage.h>
+#include <sqlite3.h>
 
 #include <algorithm>
 #include <cctype>
@@ -18,14 +22,11 @@
 #include <set>
 #include <stdexcept>
 
-#include "../core/include/logging.h"
 #include "../core/include/plugin_remote_loader.h"
 #include "../core/include/project.h"
 #include "../core/include/project_to_dag.h"
-#include "../core/include/stage_parameter.h"
 #include "../core/include/stage_plugin_registry.h"
 #include "../core/include/stage_registry.h"
-#include "../core/stages/triggerable_stage.h"
 
 namespace orc::presenters {
 
@@ -59,6 +60,8 @@ static VideoSystem toVideoSystem(VideoFormat format) {
       return VideoSystem::NTSC;
     case VideoFormat::PAL:
       return VideoSystem::PAL;
+    case VideoFormat::PAL_M:
+      return VideoSystem::PAL_M;
     case VideoFormat::Unknown:
       return VideoSystem::Unknown;
   }
@@ -70,8 +73,9 @@ static VideoFormat fromVideoSystem(VideoSystem system) {
     case VideoSystem::NTSC:
       return VideoFormat::NTSC;
     case VideoSystem::PAL:
-    case VideoSystem::PAL_M:
       return VideoFormat::PAL;
+    case VideoSystem::PAL_M:
+      return VideoFormat::PAL_M;
     case VideoSystem::Unknown:
       return VideoFormat::Unknown;
   }
@@ -119,21 +123,75 @@ static PluginDiagnosticSeverity fromPluginDiagnosticSeverity(
 
 std::optional<orc::SourceParameters> ProjectPresenter::readVideoParameters(
     const std::string& metadata_path) {
-  try {
-    auto reader = orc::open_tbc_metadata(metadata_path);
-    if (!reader) {
-      ORC_LOG_WARN("Failed to open metadata file: {}", metadata_path);
-      return std::nullopt;
-    }
-
-    auto params = reader->read_video_parameters();
-    reader->close();
-    return params;
-  } catch (const std::exception& e) {
-    ORC_LOG_ERROR("Exception reading metadata from {}: {}", metadata_path,
-                  e.what());
+  sqlite3* db = nullptr;
+  int rc = sqlite3_open_v2(metadata_path.c_str(), &db, SQLITE_OPEN_READONLY,
+                           nullptr);
+  if (rc != SQLITE_OK) {
+    ORC_LOG_WARN("Failed to open metadata file: {}", metadata_path);
+    if (db) sqlite3_close(db);
     return std::nullopt;
   }
+
+  sqlite3_stmt* stmt = nullptr;
+  rc = sqlite3_prepare_v2(db, "SELECT system FROM capture WHERE capture_id = 1",
+                          -1, &stmt, nullptr);
+  if (rc != SQLITE_OK) {
+    ORC_LOG_WARN("Failed to query video system from: {}", metadata_path);
+    sqlite3_close(db);
+    return std::nullopt;
+  }
+
+  std::optional<orc::SourceParameters> result;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    const char* sys_text =
+        reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+    if (sys_text) {
+      orc::SourceParameters sp;
+      sp.system = orc::video_system_from_string(sys_text);
+      result = sp;
+    }
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return result;
+}
+
+std::optional<orc::SourceParameters> ProjectPresenter::readCVBSVideoParameters(
+    const std::string& meta_path) {
+  sqlite3* db = nullptr;
+  int rc =
+      sqlite3_open_v2(meta_path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
+  if (rc != SQLITE_OK) {
+    ORC_LOG_WARN("Failed to open CVBS metadata file: {}", meta_path);
+    if (db) sqlite3_close(db);
+    return std::nullopt;
+  }
+
+  sqlite3_stmt* stmt = nullptr;
+  rc = sqlite3_prepare_v2(
+      db, "SELECT preset FROM cvbs_file ORDER BY cvbs_file_id LIMIT 1", -1,
+      &stmt, nullptr);
+  if (rc != SQLITE_OK) {
+    ORC_LOG_WARN("Failed to query preset from CVBS metadata: {}", meta_path);
+    sqlite3_close(db);
+    return std::nullopt;
+  }
+
+  std::optional<orc::SourceParameters> result;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    const char* preset_text =
+        reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+    if (preset_text) {
+      orc::SourceParameters sp;
+      sp.system = orc::video_system_from_string(preset_text);
+      result = sp;
+    }
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return result;
 }
 
 // === ProjectPresenter Implementation ===
@@ -264,7 +322,7 @@ bool ProjectPresenter::loadProject(const std::string& project_path) {
     is_modified_ = false;
     return true;
   } catch (const std::exception&) {
-    return false;
+    throw;
   }
 }
 
@@ -345,6 +403,18 @@ SourceType ProjectPresenter::getSourceType() const {
 
 void ProjectPresenter::setSourceType(SourceType source) {
   orc::project_io::set_source_format(*getProject(), toSourceType(source));
+  is_modified_ = true;
+}
+
+orc::AmplitudeDisplayUnit ProjectPresenter::getAmplitudeUnit() const {
+  if (!getProject()) {
+    return orc::AmplitudeDisplayUnit::IRE;
+  }
+  return getProject()->get_amplitude_unit();
+}
+
+void ProjectPresenter::setAmplitudeUnit(orc::AmplitudeDisplayUnit unit) {
+  orc::project_io::set_amplitude_unit(*getProject(), unit);
   is_modified_ = true;
 }
 
@@ -436,10 +506,8 @@ std::vector<NodeInfo> ProjectPresenter::getNodes() const {
     info.y_position = node.y_position;
     info.can_remove = caps.can_remove;
     info.can_trigger = caps.can_trigger;
-    info.can_inspect = caps.can_inspect;
     info.remove_reason = caps.remove_reason;
     info.trigger_reason = caps.trigger_reason;
-    info.inspect_reason = caps.inspect_reason;
 
     result.push_back(info);
   }
@@ -502,10 +570,8 @@ NodeInfo ProjectPresenter::getNodeInfo(orc::NodeID node_id) const {
       info.y_position = node.y_position;
       info.can_remove = caps.can_remove;
       info.can_trigger = caps.can_trigger;
-      info.can_inspect = caps.can_inspect;
       info.remove_reason = caps.remove_reason;
       info.trigger_reason = caps.trigger_reason;
-      info.inspect_reason = caps.inspect_reason;
 
       return info;
     }
@@ -549,6 +615,12 @@ std::vector<StageInfo> ProjectPresenter::getAvailableStages(
           case VideoFormat::PAL:
             compatible = (node_type_info.compatible_formats ==
                               orc::VideoFormatCompatibility::PAL_ONLY ||
+                          node_type_info.compatible_formats ==
+                              orc::VideoFormatCompatibility::ALL);
+            break;
+          case VideoFormat::PAL_M:
+            compatible = (node_type_info.compatible_formats ==
+                              orc::VideoFormatCompatibility::PAL_M_ONLY ||
                           node_type_info.compatible_formats ==
                               orc::VideoFormatCompatibility::ALL);
             break;
@@ -679,6 +751,7 @@ PluginRegistryInfo ProjectPresenter::readPluginRegistry() {
     info.license_spdx = entry.license_spdx;
     info.is_core_plugin = entry.is_core_plugin;
     info.required_host_abi = entry.required_host_abi;
+    info.sha256 = entry.sha256;
     info.is_loaded = loaded_paths.count(entry.path) > 0 ||
                      (!entry.plugin_id.empty() &&
                       loaded_plugin_ids.count(entry.plugin_id) > 0);
@@ -792,6 +865,7 @@ PluginRegistryMutationResult ProjectPresenter::addPluginRegistryEntry(
   new_entry.license_spdx = entry_info.license_spdx;
   new_entry.is_core_plugin = false;
   new_entry.required_host_abi = entry_info.required_host_abi;
+  new_entry.sha256 = entry_info.sha256;
   entries.push_back(std::move(new_entry));
 
   std::string error;
@@ -905,6 +979,40 @@ PluginRegistryMutationResult ProjectPresenter::removePluginRegistryEntry(
   return result;
 }
 
+// Find a registry entry by plugin_id. If no direct match exists, fall back
+// to matching a loaded plugin's path against entries whose plugin_id is
+// still empty (happens when plugins are added via file before their ID is
+// known) and backfill the id.
+static std::vector<orc::StagePluginRegistryEntry>::iterator
+findRegistryEntryByPluginId(std::vector<orc::StagePluginRegistryEntry>& entries,
+                            const std::string& plugin_id) {
+  auto it = std::find_if(entries.begin(), entries.end(),
+                         [&plugin_id](const orc::StagePluginRegistryEntry& e) {
+                           return e.plugin_id == plugin_id;
+                         });
+
+  if (it == entries.end()) {
+    const auto& loaded_plugins =
+        orc::StageRegistry::instance().get_loaded_plugins();
+    auto loaded_it = std::find_if(
+        loaded_plugins.begin(), loaded_plugins.end(),
+        [&plugin_id](const auto& lp) { return lp.plugin_id == plugin_id; });
+
+    if (loaded_it != loaded_plugins.end()) {
+      it = std::find_if(entries.begin(), entries.end(),
+                        [&loaded_it](const orc::StagePluginRegistryEntry& e) {
+                          return !e.path.empty() && e.path == loaded_it->path;
+                        });
+
+      if (it != entries.end() && it->plugin_id.empty()) {
+        it->plugin_id = plugin_id;
+      }
+    }
+  }
+
+  return it;
+}
+
 PluginRegistryMutationResult ProjectPresenter::setPluginRegistryEntryEnabled(
     const std::string& plugin_id, bool enabled) {
   PluginRegistryMutationResult result;
@@ -918,37 +1026,7 @@ PluginRegistryMutationResult ProjectPresenter::setPluginRegistryEntryEnabled(
   auto entries = persisted_registry.entries;
   const std::string registry_path = persisted_registry.registry_path;
 
-  // First, try to find entry by exact plugin_id match
-  auto it = std::find_if(entries.begin(), entries.end(),
-                         [&plugin_id](const orc::StagePluginRegistryEntry& e) {
-                           return e.plugin_id == plugin_id;
-                         });
-
-  // If not found and plugin_id is non-empty, also look for entries with empty
-  // plugin_id where the loaded plugin matches this ID (happens when plugins are
-  // added via file before their ID is known)
-  if (it == entries.end()) {
-    const auto& loaded_plugins =
-        orc::StageRegistry::instance().get_loaded_plugins();
-    auto loaded_it = std::find_if(
-        loaded_plugins.begin(), loaded_plugins.end(),
-        [&plugin_id](const auto& lp) { return lp.plugin_id == plugin_id; });
-
-    if (loaded_it != loaded_plugins.end()) {
-      // Found a loaded plugin with this ID - now find the registry entry that
-      // matches its path
-      it = std::find_if(entries.begin(), entries.end(),
-                        [&loaded_it](const orc::StagePluginRegistryEntry& e) {
-                          return !e.path.empty() && e.path == loaded_it->path;
-                        });
-
-      // If found, populate the plugin_id in the registry entry (it was empty
-      // before)
-      if (it != entries.end() && it->plugin_id.empty()) {
-        it->plugin_id = plugin_id;
-      }
-    }
-  }
+  auto it = findRegistryEntryByPluginId(entries, plugin_id);
 
   if (it == entries.end()) {
     result.error_message =
@@ -957,6 +1035,46 @@ PluginRegistryMutationResult ProjectPresenter::setPluginRegistryEntryEnabled(
   }
 
   it->enabled = enabled;
+
+  std::string error;
+  if (!orc::StagePluginRegistry::save(registry_path, entries, &error)) {
+    result.error_message = "Failed to save registry: " + error;
+    return result;
+  }
+
+  result.success = true;
+  return result;
+}
+
+PluginRegistryMutationResult ProjectPresenter::setPluginRegistryEntryTrusted(
+    const std::string& plugin_id, bool trusted) {
+  PluginRegistryMutationResult result;
+
+  if (plugin_id.empty()) {
+    result.error_message = "Plugin id cannot be empty";
+    return result;
+  }
+
+  const auto persisted_registry = orc::StagePluginRegistry::load_default();
+  auto entries = persisted_registry.entries;
+  const std::string registry_path = persisted_registry.registry_path;
+
+  auto it = findRegistryEntryByPluginId(entries, plugin_id);
+
+  if (it == entries.end()) {
+    result.error_message =
+        "No plugin with id '" + plugin_id + "' found in registry";
+    return result;
+  }
+
+  if (it->is_core_plugin) {
+    result.error_message =
+        "Core plugins are always trusted; their trust "
+        "state cannot be changed";
+    return result;
+  }
+
+  it->trust_state = trusted ? "trusted" : "untrusted";
 
   std::string error;
   if (!orc::StagePluginRegistry::save(registry_path, entries, &error)) {
@@ -982,36 +1100,6 @@ ProjectPresenter::clearPluginRegistryForSafeMode() {
 
   result.success = true;
   return result;
-}
-
-std::shared_ptr<void> ProjectPresenter::getStageForInspection(
-    NodeID node_id) const {
-  if (!project_.get()) return nullptr;
-
-  // Try to get from DAG first (preserves execution state)
-  auto dag = orc::project_to_dag(*getProject());
-  if (dag) {
-    const auto& dag_nodes = dag->nodes();
-    auto it = std::find_if(
-        dag_nodes.begin(), dag_nodes.end(),
-        [&node_id](const orc::DAGNode& n) { return n.node_id == node_id; });
-    if (it != dag_nodes.end() && it->stage) {
-      return std::static_pointer_cast<void>(it->stage);
-    }
-  }
-
-  // Fall back to creating fresh instance
-  const auto& nodes = project_.get()->get_nodes();
-  auto node_it = std::find_if(nodes.begin(), nodes.end(),
-                              [&node_id](const orc::ProjectDAGNode& n) {
-                                return n.node_id == node_id;
-                              });
-
-  if (node_it != nodes.end()) {
-    return createStageInstance(node_it->stage_name);
-  }
-
-  return nullptr;
 }
 
 std::shared_ptr<void> ProjectPresenter::createStageInstance(
@@ -1172,53 +1260,31 @@ std::vector<std::string> ProjectPresenter::getValidationErrors() const {
   return errors;
 }
 
-std::optional<StageInspectionView> ProjectPresenter::getNodeInspection(
-    NodeID node_id) const {
-  if (!project_) {
-    return std::nullopt;
-  }
+orc::ConfigurationStatus ProjectPresenter::getNodeConfigurationStatus(
+    orc::NodeID node_id) const {
+  if (!getProject()) return orc::ConfigurationStatus::Green;
 
-  // Find the node in the project
-  const auto& nodes = project_.get()->get_nodes();
+  const auto& nodes = getProject()->get_nodes();
   auto node_it = std::find_if(nodes.begin(), nodes.end(),
                               [&node_id](const orc::ProjectDAGNode& n) {
                                 return n.node_id == node_id;
                               });
 
-  if (node_it == nodes.end()) {
-    return std::nullopt;  // Node not found
-  }
+  if (node_it == nodes.end()) return orc::ConfigurationStatus::Green;
 
-  const std::string& stage_name = node_it->stage_name;
-
-  // Create a stage instance from the registry
-  std::shared_ptr<orc::DAGStage> stage;
   try {
-    auto& stage_registry = orc::StageRegistry::instance();
-    stage = stage_registry.create_stage(stage_name);
+    auto stage =
+        orc::StageRegistry::instance().create_stage(node_it->stage_name);
 
-    // Apply the node's parameters to the stage if it's parameterized
     auto* param_stage = dynamic_cast<orc::ParameterizedStage*>(stage.get());
     if (param_stage) {
       param_stage->set_parameters(node_it->parameters);
     }
-  } catch (const std::exception&) {
-    return std::nullopt;  // Failed to create stage
+
+    return stage->get_configuration_status();
+  } catch (...) {
+    return orc::ConfigurationStatus::Green;
   }
-
-  // Generate report from the stage
-  auto core_report = stage->generate_report();
-  if (!core_report) {
-    return std::nullopt;  // Stage doesn't support inspection
-  }
-
-  // Convert to view model
-  StageInspectionView view;
-  view.summary = core_report->summary;
-  view.items = core_report->items;
-  view.metrics = core_report->metrics;
-
-  return view;
 }
 
 std::shared_ptr<void> ProjectPresenter::getDAG() const {
@@ -1255,6 +1321,20 @@ bool ProjectPresenter::validateDAG() {
     return test_dag != nullptr;
   } catch (const std::exception&) {
     return false;
+  }
+}
+
+std::string ProjectPresenter::getStageInstructions(
+    const std::string& stage_name) const {
+  try {
+    auto& registry = orc::StageRegistry::instance();
+    if (!registry.has_stage(stage_name)) {
+      return {};
+    }
+    auto stage = registry.create_stage(stage_name);
+    return stage->get_instructions();
+  } catch (const std::exception&) {
+    return {};
   }
 }
 
@@ -1317,7 +1397,7 @@ bool ProjectPresenter::setNodeParameters(
   } catch (const std::exception& e) {
     ORC_LOG_ERROR("Failed to set node parameters for node {}: {}",
                   node_id.to_string(), e.what());
-    return false;
+    throw;
   }
 }
 

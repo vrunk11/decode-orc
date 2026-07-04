@@ -9,19 +9,21 @@
 
 #include "daphne_vbi_sink_stage.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
+
 #include <filesystem>
 #include <memory>
 
-#include "buffered_file_io.h"
 #include "daphne_vbi_sink_stage_deps.h"
 #include "daphne_vbi_writer_util.h"
-#include "logging.h"
-#include "preview_renderer.h"
 
 namespace orc {
 
 DaphneVBISinkStage::DaphneVBISinkStage(IStageServices* stage_services)
-    : stage_services_(stage_services) {}
+    : stage_services_(stage_services) {
+  set_configuration_status(orc::ConfigurationStatus::Red);
+}
 
 NodeTypeInfo DaphneVBISinkStage::get_node_type_info() const {
   return NodeTypeInfo{NodeType::SINK,     // type
@@ -43,10 +45,19 @@ std::vector<ArtifactPtr> DaphneVBISinkStage::execute(
     const std::vector<ArtifactPtr>& inputs,
     const std::map<std::string, ParameterValue>& parameters [[maybe_unused]],
     ObservationContext& observation_context) {
-  (void)inputs;
   (void)observation_context;
 
+  cached_input_ = nullptr;
+  if (!inputs.empty()) {
+    cached_input_ =
+        std::dynamic_pointer_cast<const VideoFrameRepresentation>(inputs[0]);
+  }
+
   return {};  // No outputs
+}
+
+StagePreviewCapability DaphneVBISinkStage::get_preview_capability() const {
+  return PreviewHelpers::make_signal_preview_capability(cached_input_);
 }
 
 std::vector<ParameterDescriptor> DaphneVBISinkStage::get_parameter_descriptors(
@@ -82,6 +93,9 @@ bool DaphneVBISinkStage::set_parameters(
     }
   }
 
+  set_configuration_status(output_path_.empty()
+                               ? orc::ConfigurationStatus::Red
+                               : orc::ConfigurationStatus::Green);
   return true;
 }
 
@@ -122,10 +136,10 @@ bool DaphneVBISinkStage::trigger(
 
   // Get input representation
   auto representation =
-      std::dynamic_pointer_cast<const VideoFieldRepresentation>(inputs[0]);
+      std::dynamic_pointer_cast<const VideoFrameRepresentation>(inputs[0]);
   if (!representation) {
-    ORC_LOG_ERROR("DaphneVBISink: Input is not VideoFieldRepresentation");
-    return fail_trigger("Error: Input is not a video field representation");
+    ORC_LOG_ERROR("DaphneVBISink: Input is not VideoFrameRepresentation");
+    return fail_trigger("Error: Input is not a video frame representation");
   }
 
   // Write .VBI binary file
@@ -145,8 +159,8 @@ bool DaphneVBISinkStage::trigger(
       deps->write_vbi(representation.get(), output_path, observation_context);
 
   if (success) {
-    auto range = representation->field_range();
-    trigger_status_ = "Exported " + std::to_string(range.size()) +
+    auto frame_rng = representation->frame_range();
+    trigger_status_ = "Exported " + std::to_string(frame_rng.count() * 2) +
                       " fields to " + output_path;
     ORC_LOG_DEBUG("DaphneVBISink: Trigger completed successfully");
   } else {

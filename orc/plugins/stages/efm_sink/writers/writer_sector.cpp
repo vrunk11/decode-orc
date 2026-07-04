@@ -8,9 +8,9 @@
 
 #include "writer_sector.h"
 
-#include <iostream>
+#include <orc/stage/logging.h>
 
-#include "logging.h"
+#include <iostream>
 
 // This writer class writes raw data to a file directly from the Data24 sections
 // This is (generally) used when the output is not stereo audio data
@@ -47,8 +47,9 @@ bool WriterSector::open(const std::string& filename) {
 void WriterSector::write(const Sector& sector) {
   if (m_usingStdout) {
     // Write to stdout
-    std::cout.write(reinterpret_cast<const char*>(sector.data().data()),
-                    static_cast<std::streamsize>(sector.size() * sizeof(uint8_t)));
+    std::cout.write(
+        reinterpret_cast<const char*>(sector.data().data()),
+        static_cast<std::streamsize>(sector.size() * sizeof(uint8_t)));
   } else {
     if (!m_file.is_open()) {
       ORC_LOG_CRITICAL("WriterSector::write() - File is not open for writing");

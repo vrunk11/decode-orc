@@ -38,6 +38,8 @@
 
 #include "crash_handler.h"
 
+#include <orc/stage/logging.h>
+
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
@@ -50,12 +52,16 @@
 #include <sstream>
 #include <vector>
 
-#include "logging.h"
-
 #ifdef _WIN32
+#ifndef NOMINMAX
 #define NOMINMAX
-#include <dbghelp.h>
+#endif
+// clang-format off
+// windows.h must precede dbghelp.h: dbghelp.h uses Win32 types (HANDLE,
+// BOOLEAN, ...) without including their definitions itself.
 #include <windows.h>
+#include <dbghelp.h>
+// clang-format on
 #endif
 
 // Unix/POSIX-specific headers (not available on Windows)

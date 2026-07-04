@@ -9,8 +9,9 @@
 
 #pragma once
 
-#include <orc_source_parameters.h>
-#include <parameter_types.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/parameter_types.h>
 
 #include <map>
 #include <memory>
@@ -19,7 +20,6 @@
 #include <vector>
 
 #include "project_presenter_types.h"
-#include "stage_inspection_view_models.h"
 
 namespace orc::presenters {
 
@@ -50,6 +50,8 @@ class IProjectPresenter {
   virtual std::shared_ptr<const void> createSnapshot() const = 0;
   virtual SourceType getSourceType() const = 0;
   virtual void setSourceType(SourceType source) = 0;
+  virtual orc::AmplitudeDisplayUnit getAmplitudeUnit() const = 0;
+  virtual void setAmplitudeUnit(orc::AmplitudeDisplayUnit unit) = 0;
 
   // === DAG Management ===
   virtual NodeID addNode(const std::string& stage_name, double x_position,
@@ -75,7 +77,6 @@ class IProjectPresenter {
   virtual bool stageExists(const std::string& stage_name) const = 0;
   virtual std::shared_ptr<void> instantiateStage(
       const std::string& stage_name) const = 0;
-  virtual std::shared_ptr<void> getStageForInspection(NodeID node_id) const = 0;
   virtual std::vector<LoadedPluginInfo> listLoadedPlugins() const = 0;
   virtual std::vector<PluginDiagnosticInfo> listPluginDiagnostics() const = 0;
   virtual std::vector<std::string> listPluginSearchPaths() const = 0;
@@ -88,6 +89,8 @@ class IProjectPresenter {
       const std::string& plugin_id) const = 0;
   virtual PluginRegistryMutationResult setPluginEnabled(
       const std::string& plugin_id, bool enabled) const = 0;
+  virtual PluginRegistryMutationResult setPluginTrusted(
+      const std::string& plugin_id, bool trusted) const = 0;
 
   // === Batch Operations ===
   virtual bool canTriggerNode(NodeID node_id, std::string* reason) const = 0;
@@ -99,14 +102,18 @@ class IProjectPresenter {
   virtual bool validateProject() const = 0;
   virtual std::vector<std::string> getValidationErrors() const = 0;
 
-  // === Stage Inspection ===
-  virtual std::optional<StageInspectionView> getNodeInspection(
+  // === Configuration Status ===
+  virtual orc::ConfigurationStatus getNodeConfigurationStatus(
       NodeID node_id) const = 0;
 
   // === DAG Operations ===
   virtual std::shared_ptr<void> getDAG() const = 0;
   virtual std::shared_ptr<void> buildDAG() = 0;
   virtual bool validateDAG() = 0;
+
+  // === Stage Help ===
+  virtual std::string getStageInstructions(
+      const std::string& stage_name) const = 0;
 
   // === Parameter Operations ===
   virtual std::vector<ParameterDescriptor> getStageParameters(

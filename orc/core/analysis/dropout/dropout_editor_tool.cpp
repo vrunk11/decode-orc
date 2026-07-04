@@ -9,8 +9,9 @@
 
 #include "dropout_editor_tool.h"
 
+#include <orc/stage/logging.h>
+
 #include "analysis_registry.h"
-#include "logging.h"
 
 namespace orc {
 

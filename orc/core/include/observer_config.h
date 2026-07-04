@@ -9,11 +9,11 @@
 
 #pragma once
 
+#include <orc/stage/stage_parameter.h>
+
 #include <map>
 #include <string>
 #include <vector>
-
-#include "stage_parameter.h"
 
 namespace orc {
 

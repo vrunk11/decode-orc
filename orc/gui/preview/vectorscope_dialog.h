@@ -10,8 +10,8 @@
 #ifndef ORC_GUI_ANALYSIS_VECTORSCOPE_DIALOG_H
 #define ORC_GUI_ANALYSIS_VECTORSCOPE_DIALOG_H
 
-#include <node_id.h>
-#include <orc_vectorscope.h>  // Public API types
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_vectorscope.h>  // Public API types
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -132,6 +132,7 @@ class VectorscopeDialog : public QDialog {
   QRadioButton* graticule_none_radio_;
   QRadioButton* graticule_full_radio_;
   QRadioButton* graticule_75_radio_;
+  QRadioButton* graticule_both_radio_;
   QButtonGroup* graticule_group_;
 };
 

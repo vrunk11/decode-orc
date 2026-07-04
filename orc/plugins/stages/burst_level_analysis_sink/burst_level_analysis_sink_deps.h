@@ -10,11 +10,13 @@
 #ifndef ORC_CORE_BURST_LEVEL_ANALYSIS_SINK_DEPS_H
 #define ORC_CORE_BURST_LEVEL_ANALYSIS_SINK_DEPS_H
 
+#include <orc/stage/logging.h>
+#include <orc/stage/observers/burst_level_observer.h>
+
 #include <atomic>
 #include <utility>
 
 #include "burst_level_analysis_sink_deps_interface.h"
-#include "logging.h"
 
 namespace orc {
 class BurstLevelAnalysisSinkStageDeps
@@ -26,7 +28,7 @@ class BurstLevelAnalysisSinkStageDeps
             std::atomic<bool>* cancel_requested) override;
 
   BurstAnalysisComputeResult compute_and_analyze(
-      VideoFieldRepresentation* representation,
+      VideoFrameRepresentation* representation,
       IObservationContext& observation_context,
       BurstAnalysisComputeOptions options) override;
 
@@ -64,6 +66,7 @@ class BurstLevelAnalysisSinkStageDeps
 
   TriggerProgressCallback progress_callback_;
   std::atomic<bool>* cancel_requested_{nullptr};
+  BurstLevelObserver burst_level_observer_;
   SpdlogLoggerAdapter logger_;
 };
 }  // namespace orc

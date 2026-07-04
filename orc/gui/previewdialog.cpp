@@ -10,6 +10,7 @@
 #include "previewdialog.h"
 
 #include <QCloseEvent>
+#include <QFile>
 #include <QFontMetrics>
 #include <QGuiApplication>
 #include <QHBoxLayout>
@@ -22,75 +23,53 @@
 #include <QScreen>
 #include <QSettings>
 #include <QShowEvent>
-#include <QSignalBlocker>
 #include <QStatusBar>
 #include <QVBoxLayout>
 #include <algorithm>
 
 #include "fieldpreviewwidget.h"
-#include "fieldtimingdialog.h"
-#include "linescopedialog.h"
+#include "framescopedialog.h"
+#include "frametimingdialog.h"
 #include "logging.h"
+#include "preview/histogram_dialog.h"
 #include "preview/vectorscope_dialog.h"
+#include "stage_help_dialog.h"
+#include "waveformmonitordialog.h"
 
 namespace {
 
 constexpr const char* kLineScopeViewId = "preview.linescope";
-constexpr const char* kFieldTimingViewId = "preview.field_timing";
+constexpr const char* kFrameTimingViewId = "preview.frame_timing";
+constexpr const char* kWaveformMonitorViewId = "preview.frame_timing";
 constexpr const char* kComponentVectorscopeViewId = "preview.vectorscope";
-
-orc::ParameterValue resolveTweakParameterValue(
-    const orc::ParameterDescriptor& desc,
-    const std::map<std::string, orc::ParameterValue>& values) {
-  auto val_it = values.find(desc.name);
-  if (val_it != values.end()) {
-    return val_it->second;
-  }
-
-  if (desc.constraints.default_value.has_value()) {
-    return *desc.constraints.default_value;
-  }
-
-  switch (desc.type) {
-    case orc::ParameterType::INT32:
-      return int32_t{0};
-    case orc::ParameterType::UINT32:
-      return uint32_t{0};
-    case orc::ParameterType::DOUBLE:
-      return double{0.0};
-    case orc::ParameterType::BOOL:
-      return false;
-    case orc::ParameterType::STRING:
-    case orc::ParameterType::FILE_PATH:
-      return std::string{};
-  }
-
-  return std::string{};
-}
+constexpr const char* kHistogramViewId = "preview.histogram";
 
 }  // namespace
 
 PreviewDialog::PreviewDialog(QWidget* parent)
     : QDialog(parent),
-      line_scope_dialog_(nullptr),
-      field_timing_dialog_(nullptr),
+      frame_scope_dialog_(nullptr),
+      frame_timing_dialog_(nullptr),
+      waveform_monitor_dialog_(nullptr),
       vectorscope_dialog_(nullptr),
       nav_debounce_timer_(new QTimer(this)),
-      tweak_debounce_timer_(new QTimer(this)) {
+      playback_timer_(new QTimer(this)) {
   nav_debounce_timer_->setSingleShot(true);
   nav_debounce_timer_->setInterval(100);  // ms: coalesces rapid scrub moves
   connect(nav_debounce_timer_, &QTimer::timeout,
           [this]() { emit renderRequested(currentIndex()); });
 
-  tweak_debounce_timer_->setSingleShot(true);
-  tweak_debounce_timer_->setInterval(
-      150);  // ms: coalesces rapid widget changes
-  connect(tweak_debounce_timer_, &QTimer::timeout, [this]() {
-    if (!tweak_node_id_.is_valid() || tweak_widgets_.empty()) {
+  // ITU-R BT.470-6 §5.1 (PAL 25 fps) / SMPTE 170M-2004 §2 (NTSC ~30 fps).
+  // Default to PAL rate; MainWindow calls setPlaybackFrameRateMs() once it
+  // knows the video standard.
+  playback_timer_->setInterval(40);
+  connect(playback_timer_, &QTimer::timeout, [this]() {
+    const int next = currentIndex() + 1;
+    if (next > preview_slider_->maximum()) {
+      stopPlayback();
       return;
     }
-    emit tweakParameterChanged(tweak_node_id_, collectTweakValues(),
-                               last_tweak_class_);
+    navigateToIndex(next);
   });
 
   setupUI();
@@ -116,6 +95,11 @@ PreviewDialog::~PreviewDialog() = default;
 
 const std::string& PreviewDialog::kComponentVectorscopeViewIdRef() {
   static const std::string view_id{kComponentVectorscopeViewId};
+  return view_id;
+}
+
+const std::string& PreviewDialog::kHistogramViewIdRef() {
+  static const std::string view_id{kHistogramViewId};
   return view_id;
 }
 
@@ -165,36 +149,44 @@ void PreviewDialog::setupUI() {
   connect(show_vbi_action_, &QAction::triggered, this,
           &PreviewDialog::showVBIDialogRequested);
 
-  show_quality_metrics_action_ = observersMenu->addAction("&Quality Metrics");
-  show_quality_metrics_action_->setShortcut(
-      QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
-  connect(show_quality_metrics_action_, &QAction::triggered, this,
-          &PreviewDialog::showQualityMetricsDialogRequested);
-
   show_ntsc_observer_action_ = observersMenu->addAction("&NTSC Observer");
   show_ntsc_observer_action_->setShortcut(
       QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N));
   connect(show_ntsc_observer_action_, &QAction::triggered, this,
           &PreviewDialog::showNtscObserverDialogRequested);
 
-  auto* hintsMenu = menu_bar_->addMenu("&Hints");
-  show_hints_action_ = hintsMenu->addAction("&Video Parameter Hints");
-  show_hints_action_->setShortcut(
+  show_video_parameter_observer_action_ =
+      observersMenu->addAction("&Video Parameters");
+  show_video_parameter_observer_action_->setShortcut(
       QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_H));
-  connect(show_hints_action_, &QAction::triggered, this,
-          &PreviewDialog::showHintsDialogRequested);
+  connect(show_video_parameter_observer_action_, &QAction::triggered, this,
+          &PreviewDialog::showVideoParameterObserverDialogRequested);
 
   auto* viewMenu = menu_bar_->addMenu("&View");
-  show_field_timing_action_ = viewMenu->addAction("&Field Timing");
-  show_field_timing_action_->setShortcut(
+  show_frame_timing_action_ = viewMenu->addAction("&Frame Timing");
+  show_frame_timing_action_->setShortcut(
       QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
-  connect(show_field_timing_action_, &QAction::triggered, this, [this]() {
-    if (!hasAvailablePreviewView(kFieldTimingViewId)) {
-      status_bar_->showMessage("Field timing is not available for this stage",
+  connect(show_frame_timing_action_, &QAction::triggered, this, [this]() {
+    if (!hasAvailablePreviewView(kFrameTimingViewId)) {
+      status_bar_->showMessage("Frame timing is not available for this stage",
                                2000);
       return;
     }
-    emit fieldTimingRequested();
+    emit frameTimingRequested();
+  });
+
+  show_waveform_monitor_action_ = viewMenu->addAction("&Waveform Monitor");
+  show_waveform_monitor_action_->setShortcut(
+      QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_W));
+  show_waveform_monitor_action_->setVisible(false);
+  show_waveform_monitor_action_->setEnabled(false);
+  connect(show_waveform_monitor_action_, &QAction::triggered, this, [this]() {
+    if (!hasAvailablePreviewView(kWaveformMonitorViewId)) {
+      status_bar_->showMessage(
+          "Waveform monitor is not available for this stage", 2000);
+      return;
+    }
+    emit waveformMonitorRequested();
   });
 
   show_component_vectorscope_action_ = viewMenu->addAction("&Vectorscope");
@@ -205,13 +197,24 @@ void PreviewDialog::setupUI() {
   connect(show_component_vectorscope_action_, &QAction::triggered, this,
           &PreviewDialog::onComponentVectorscopeActionTriggered);
 
-  show_live_tweaks_action_ = viewMenu->addAction("&Live Tweaks");
-  show_live_tweaks_action_->setShortcut(
-      QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L));
-  show_live_tweaks_action_->setCheckable(true);
-  show_live_tweaks_action_->setChecked(false);
-  connect(show_live_tweaks_action_, &QAction::toggled, this,
-          &PreviewDialog::onShowLiveTweaksToggled);
+  show_histogram_action_ = viewMenu->addAction("&Video Histogram");
+  show_histogram_action_->setShortcut(
+      QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
+  show_histogram_action_->setVisible(false);
+  show_histogram_action_->setEnabled(false);
+  connect(show_histogram_action_, &QAction::triggered, this,
+          &PreviewDialog::onHistogramActionTriggered);
+
+  auto* helpMenu = menu_bar_->addMenu("&Help");
+  auto* user_guide_action = helpMenu->addAction("&User Guide...");
+  connect(user_guide_action, &QAction::triggered, this, [this]() {
+    QFile f(":/orc-gui/docs/preview_window.md");
+    const QString md = f.open(QIODevice::ReadOnly)
+                           ? QString::fromUtf8(f.readAll())
+                           : QString{};
+    auto* dlg = new StageHelpDialog("Preview Window", md, this);
+    dlg->show();
+  });
 
   mainLayout->setMenuBar(menu_bar_);
 
@@ -230,6 +233,7 @@ void PreviewDialog::setupUI() {
   // Navigation buttons
   first_button_ = new QPushButton("<<");
   prev_button_ = new QPushButton("<");
+  play_pause_button_ = new QPushButton("▶");  // ▶ play symbol
   next_button_ = new QPushButton(">");
   last_button_ = new QPushButton(">>");
 
@@ -247,14 +251,18 @@ void PreviewDialog::setupUI() {
   // (without this, the << button appears focused when the spinbox has focus)
   first_button_->setAutoDefault(false);
   prev_button_->setAutoDefault(false);
+  play_pause_button_->setAutoDefault(false);
   next_button_->setAutoDefault(false);
   last_button_->setAutoDefault(false);
 
   // Set fixed width for navigation buttons
   first_button_->setFixedWidth(40);
   prev_button_->setFixedWidth(40);
+  play_pause_button_->setFixedWidth(40);
   next_button_->setFixedWidth(40);
   last_button_->setFixedWidth(40);
+
+  play_pause_button_->setToolTip("Play / Pause");
 
   slider_min_label_ = new QLabel("0");
   slider_max_label_ = new QLabel("0");
@@ -268,6 +276,7 @@ void PreviewDialog::setupUI() {
 
   sliderLayout->addWidget(first_button_);
   sliderLayout->addWidget(prev_button_);
+  sliderLayout->addWidget(play_pause_button_);
   sliderLayout->addWidget(next_button_);
   sliderLayout->addWidget(last_button_);
 
@@ -334,51 +343,6 @@ void PreviewDialog::setupUI() {
   mainLayout->addWidget(status_bar_);
 
   // -----------------------------------------------------------------------
-  // Live Preview Tweaks Dialog (Phase 6)
-  // Hosted in its own window and opened from View -> Live Tweaks.
-  // -----------------------------------------------------------------------
-  live_tweaks_dialog_ = new QDialog(this, Qt::Window);
-  live_tweaks_dialog_->setAttribute(Qt::WA_DeleteOnClose, false);
-  updateLiveTweaksWindowTitle();
-  live_tweaks_dialog_->resize(460, 520);
-
-  auto* tweak_dialog_layout = new QVBoxLayout(live_tweaks_dialog_);
-  tweak_panel_content_ = new QWidget(live_tweaks_dialog_);
-  tweak_form_layout_ = new QFormLayout(tweak_panel_content_);
-  tweak_form_layout_->setContentsMargins(8, 8, 8, 8);
-
-  tweak_panel_scroll_ = new QScrollArea(live_tweaks_dialog_);
-  tweak_panel_scroll_->setWidget(tweak_panel_content_);
-  tweak_panel_scroll_->setWidgetResizable(true);
-  tweak_panel_scroll_->setFrameShape(QFrame::NoFrame);
-  tweak_dialog_layout->addWidget(tweak_panel_scroll_);
-
-  auto* tweak_buttons_layout = new QHBoxLayout();
-  tweak_buttons_layout->addStretch();
-  tweak_reset_button_ =
-      new QPushButton("Reset to stage parameters", live_tweaks_dialog_);
-  tweak_write_button_ =
-      new QPushButton("Write to stage parameters", live_tweaks_dialog_);
-  tweak_reset_button_->setEnabled(false);
-  tweak_write_button_->setEnabled(false);
-  tweak_buttons_layout->addWidget(tweak_reset_button_);
-  tweak_buttons_layout->addWidget(tweak_write_button_);
-  tweak_dialog_layout->addLayout(tweak_buttons_layout);
-
-  connect(tweak_reset_button_, &QPushButton::clicked, this,
-          &PreviewDialog::onResetLiveTweaksClicked);
-  connect(tweak_write_button_, &QPushButton::clicked, this,
-          &PreviewDialog::onWriteLiveTweaksClicked);
-
-  connect(live_tweaks_dialog_, &QDialog::finished, this, [this](int) {
-    if (show_live_tweaks_action_) {
-      QSignalBlocker blocker(show_live_tweaks_action_);
-      show_live_tweaks_action_->setChecked(false);
-    }
-    emit allLiveTweaksDismissed();
-  });
-
-  // -----------------------------------------------------------------------
   // Internal sync: keep spinbox display in step with slider (handles range-
   // clamping done by Qt when setRange is called, and also setIndex calls).
   // These connections do NOT emit navigation signals.
@@ -407,6 +371,17 @@ void PreviewDialog::setupUI() {
           [this]() { navigateToIndex(preview_slider_->value() + 1); });
   connect(last_button_, &QPushButton::clicked,
           [this]() { navigateToIndex(preview_slider_->maximum()); });
+
+  // Play / Pause button — toggle playback state
+  connect(play_pause_button_, &QPushButton::clicked, [this]() {
+    if (is_playing_) {
+      stopPlayback();
+    } else {
+      is_playing_ = true;
+      play_pause_button_->setText("⏸");  // ⏸ pause symbol
+      playback_timer_->start();
+    }
+  });
 
   // Slider drag — debounced for smooth scrubbing
   connect(preview_slider_, &QSlider::sliderMoved,
@@ -463,17 +438,30 @@ void PreviewDialog::setupUI() {
     preview_widget_->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
   });
 
-  // Create line scope dialog
-  line_scope_dialog_ = new LineScopeDialog(this);
+  // Create frame scope dialog (replaces LineScopeDialog)
+  frame_scope_dialog_ = new FrameScopeDialog(this);
 
-  // Create field timing dialog
-  field_timing_dialog_ = new FieldTimingDialog(this);
+  // Create frame timing dialog
+  frame_timing_dialog_ = new FrameTimingDialog(this);
+
+  // Create waveform monitor dialog
+  waveform_monitor_dialog_ = new WaveformMonitorDialog(this);
 
   // Connect to dialog hide/close events to disable cross-hairs
-  connect(line_scope_dialog_, &QDialog::finished, this,
+  connect(frame_scope_dialog_, &QDialog::finished, this,
           [this]() { preview_widget_->setCrosshairsEnabled(false); });
-  connect(line_scope_dialog_, &QDialog::rejected, this,
+  connect(frame_scope_dialog_, &QDialog::rejected, this,
           [this]() { preview_widget_->setCrosshairsEnabled(false); });
+
+  // Adapt FrameScopeDialog::lineNavigationRequested (size_t frame_line) to
+  // PreviewDialog::lineNavigationRequested (int current_line).
+  // Connected once here to avoid stacking lambda connections in showLineScope.
+  connect(
+      frame_scope_dialog_, &FrameScopeDialog::lineNavigationRequested, this,
+      [this](int dir, uint64_t frame_id, size_t frame_line, int sx, int pw) {
+        emit lineNavigationRequested(dir, frame_id,
+                                     static_cast<int>(frame_line), sx, pw);
+      });
 
   // Connect line clicked signal
   connect(preview_widget_, &FieldPreviewWidget::lineClicked,
@@ -487,6 +475,19 @@ void PreviewDialog::setupUI() {
           });
 }
 
+void PreviewDialog::setPlaybackFrameRateMs(int ms) {
+  playback_timer_->setInterval(ms);
+}
+
+void PreviewDialog::stopPlayback() {
+  if (!is_playing_) {
+    return;
+  }
+  playback_timer_->stop();
+  is_playing_ = false;
+  play_pause_button_->setText("▶");  // ▶ play symbol
+}
+
 void PreviewDialog::setCurrentNode(const QString& node_label,
                                    const QString& node_id) {
   Q_UNUSED(node_label);
@@ -495,11 +496,6 @@ void PreviewDialog::setCurrentNode(const QString& node_label,
 }
 
 void PreviewDialog::setCurrentNodeId(orc::NodeID node_id) {
-  if (tweak_node_id_ != node_id) {
-    clearTweakPanel();
-    tweak_node_id_ = node_id;
-    updateLiveTweaksWindowTitle();
-  }
   current_node_id_ = node_id;
 
   if (vectorscope_dialog_ && vectorscope_dialog_->isVisible() &&
@@ -517,24 +513,36 @@ void PreviewDialog::setAvailablePreviewViews(
   }
 
   const bool line_scope_available = hasAvailablePreviewView(kLineScopeViewId);
-  const bool field_timing_available =
-      hasAvailablePreviewView(kFieldTimingViewId);
+  const bool frame_timing_available =
+      hasAvailablePreviewView(kFrameTimingViewId);
+  const bool waveform_monitor_available =
+      hasAvailablePreviewView(kWaveformMonitorViewId);
   const bool component_vectorscope_available =
       hasAvailablePreviewView(kComponentVectorscopeViewId);
 
-  if (show_field_timing_action_) {
-    show_field_timing_action_->setVisible(field_timing_available);
-    show_field_timing_action_->setEnabled(field_timing_available);
+  if (show_frame_timing_action_) {
+    show_frame_timing_action_->setVisible(frame_timing_available);
+    show_frame_timing_action_->setEnabled(frame_timing_available);
   }
 
-  if (!line_scope_available && line_scope_dialog_ &&
-      line_scope_dialog_->isVisible()) {
-    line_scope_dialog_->close();
+  if (show_waveform_monitor_action_) {
+    show_waveform_monitor_action_->setVisible(waveform_monitor_available);
+    show_waveform_monitor_action_->setEnabled(waveform_monitor_available);
   }
 
-  if (!field_timing_available && field_timing_dialog_ &&
-      field_timing_dialog_->isVisible()) {
-    field_timing_dialog_->close();
+  if (!line_scope_available && frame_scope_dialog_ &&
+      frame_scope_dialog_->isVisible()) {
+    frame_scope_dialog_->close();
+  }
+
+  if (!frame_timing_available && frame_timing_dialog_ &&
+      frame_timing_dialog_->isVisible()) {
+    frame_timing_dialog_->close();
+  }
+
+  if (!waveform_monitor_available && waveform_monitor_dialog_ &&
+      waveform_monitor_dialog_->isVisible()) {
+    waveform_monitor_dialog_->close();
   }
 
   if (show_component_vectorscope_action_) {
@@ -546,6 +554,15 @@ void PreviewDialog::setAvailablePreviewViews(
 
   if (!component_vectorscope_available) {
     closeVectorscopeDialogs();
+  }
+
+  const bool histogram_available = hasAvailablePreviewView(kHistogramViewId);
+  if (show_histogram_action_) {
+    show_histogram_action_->setVisible(histogram_available);
+    show_histogram_action_->setEnabled(histogram_available);
+  }
+  if (!histogram_available) {
+    closeHistogramDialog();
   }
 }
 
@@ -641,350 +658,43 @@ void PreviewDialog::onSampleMarkerMoved(int sample_x) {
   emit sampleMarkerMovedInLineScope(sample_x);
 }
 
-// =============================================================================
-// Live Preview Tweak Panel (Phase 6)
-// =============================================================================
-
-void PreviewDialog::setTweakableParameters(
-    orc::NodeID node_id,
-    const std::vector<orc::LiveTweakableParameterView>& tweakable,
-    const std::vector<orc::ParameterDescriptor>& descriptors,
-    const std::map<std::string, orc::ParameterValue>& display_values,
-    bool has_unsaved_changes) {
-  clearTweakPanel();
-  tweak_node_id_ = node_id;
-  updateLiveTweaksWindowTitle();
-
-  if (tweakable.empty() || descriptors.empty()) {
-    tweak_form_layout_->addRow(
-        new QLabel("No live tweak parameters available for this stage.",
-                   tweak_panel_content_));
-    tweak_reset_button_->setEnabled(false);
-    tweak_write_button_->setEnabled(false);
-    return;
-  }
-
-  buildTweakPanel(tweakable, descriptors, display_values);
-
-  const bool has_live_tweaks = !tweak_widgets_.empty();
-  tweak_reset_button_->setEnabled(has_live_tweaks);
-  tweak_write_button_->setEnabled(has_live_tweaks);
-  if (!has_live_tweaks) {
-    tweak_form_layout_->addRow(
-        new QLabel("No live tweak parameters available for this stage.",
-                   tweak_panel_content_));
-  }
-
-  tweak_unsaved_changes_ = has_unsaved_changes && has_live_tweaks;
-  updateLiveTweaksWindowTitle();
-}
-
-void PreviewDialog::setLiveTweaksDirty(bool has_unsaved_changes) {
-  tweak_unsaved_changes_ = has_unsaved_changes && !tweak_widgets_.empty();
-  updateLiveTweaksWindowTitle();
-}
-
-void PreviewDialog::clearTweakPanel() {
-  tweak_debounce_timer_->stop();
-  tweak_widgets_.clear();
-  tweak_node_id_ = orc::NodeID{};
-  tweak_unsaved_changes_ = false;
-  updateLiveTweaksWindowTitle();
-  tweak_reset_button_->setEnabled(false);
-  tweak_write_button_->setEnabled(false);
-
-  // Remove all rows from the form
-  while (tweak_form_layout_->rowCount() > 0) {
-    tweak_form_layout_->removeRow(0);
-  }
-}
-
-void PreviewDialog::updateLiveTweaksWindowTitle() {
-  if (!live_tweaks_dialog_) {
-    return;
-  }
-
-  const QString dirty_marker = tweak_unsaved_changes_ ? "*" : "";
-
-  if (tweak_node_id_.is_valid()) {
-    live_tweaks_dialog_->setWindowTitle(
-        QString("Live Preview Tweaks%1 - Stage ID: %2")
-            .arg(dirty_marker)
-            .arg(QString::fromStdString(tweak_node_id_.to_string())));
-    return;
-  }
-
-  live_tweaks_dialog_->setWindowTitle(
-      QString("Live Preview Tweaks%1 - No stage selected").arg(dirty_marker));
-}
-
-void PreviewDialog::buildTweakPanel(
-    const std::vector<orc::LiveTweakableParameterView>& tweakable,
-    const std::vector<orc::ParameterDescriptor>& descriptors,
-    const std::map<std::string, orc::ParameterValue>& current_values) {
-  // Build lookup maps for quick access
-  std::map<std::string, const orc::ParameterDescriptor*> desc_map;
-  for (const auto& d : descriptors) {
-    desc_map[d.name] = &d;
-  }
-  std::map<std::string, orc::LiveTweakClass> tweak_class_map;
-  for (const auto& t : tweakable) {
-    tweak_class_map[t.parameter_name] = t.tweak_class;
-  }
-
-  for (const auto& tweak : tweakable) {
-    auto desc_it = desc_map.find(tweak.parameter_name);
-    if (desc_it == desc_map.end()) {
-      continue;  // Descriptor not provided — skip
-    }
-    const auto& desc = *desc_it->second;
-
-    const orc::ParameterValue value =
-        resolveTweakParameterValue(desc, current_values);
-
-    QWidget* widget = nullptr;
-    TweakWidgetEntry entry;
-    entry.type = desc.type;
-    entry.tweak_class = tweak.tweak_class;
-
-    switch (desc.type) {
-      case orc::ParameterType::INT32: {
-        auto* spin = new QSpinBox(tweak_panel_content_);
-        if (desc.constraints.min_value.has_value()) {
-          spin->setMinimum(std::get<int32_t>(*desc.constraints.min_value));
-        } else {
-          spin->setMinimum(std::numeric_limits<int32_t>::min());
-}
-        if (desc.constraints.max_value.has_value()) {
-          spin->setMaximum(std::get<int32_t>(*desc.constraints.max_value));
-        } else {
-          spin->setMaximum(std::numeric_limits<int32_t>::max());
-}
-        spin->setValue(std::get<int32_t>(value));
-        widget = spin;
-        const std::string pname = desc.name;
-        const orc::LiveTweakClass tc = tweak.tweak_class;
-        connect(spin, QOverload<int>::of(&QSpinBox::valueChanged),
-                [this, pname, tc](int) {
-                  last_tweak_class_ = tc;
-                  tweak_debounce_timer_->start();
-                });
-        break;
-      }
-      case orc::ParameterType::UINT32: {
-        auto* spin = new QSpinBox(tweak_panel_content_);
-        spin->setMinimum(0);
-        if (desc.constraints.min_value.has_value()) {
-          spin->setMinimum(static_cast<int>(
-              std::get<uint32_t>(*desc.constraints.min_value)));
-}
-        if (desc.constraints.max_value.has_value()) {
-          spin->setMaximum(static_cast<int>(
-              std::get<uint32_t>(*desc.constraints.max_value)));
-        } else {
-          spin->setMaximum(std::numeric_limits<int>::max());
-}
-        spin->setValue(static_cast<int>(std::get<uint32_t>(value)));
-        widget = spin;
-        const std::string pname = desc.name;
-        const orc::LiveTweakClass tc = tweak.tweak_class;
-        connect(spin, QOverload<int>::of(&QSpinBox::valueChanged),
-                [this, pname, tc](int) {
-                  last_tweak_class_ = tc;
-                  tweak_debounce_timer_->start();
-                });
-        break;
-      }
-      case orc::ParameterType::DOUBLE: {
-        auto* spin = new QDoubleSpinBox(tweak_panel_content_);
-        spin->setDecimals(4);
-        if (desc.constraints.min_value.has_value()) {
-          spin->setMinimum(std::get<double>(*desc.constraints.min_value));
-        } else {
-          spin->setMinimum(-std::numeric_limits<double>::max());
-}
-        if (desc.constraints.max_value.has_value()) {
-          spin->setMaximum(std::get<double>(*desc.constraints.max_value));
-        } else {
-          spin->setMaximum(std::numeric_limits<double>::max());
-}
-        spin->setValue(std::get<double>(value));
-        widget = spin;
-        const std::string pname = desc.name;
-        const orc::LiveTweakClass tc = tweak.tweak_class;
-        connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-                [this, pname, tc](double) {
-                  last_tweak_class_ = tc;
-                  tweak_debounce_timer_->start();
-                });
-        break;
-      }
-      case orc::ParameterType::BOOL: {
-        auto* check = new QCheckBox(tweak_panel_content_);
-        check->setChecked(std::get<bool>(value));
-        widget = check;
-        const std::string pname = desc.name;
-        const orc::LiveTweakClass tc = tweak.tweak_class;
-        connect(check, &QCheckBox::toggled, [this, pname, tc](bool) {
-          last_tweak_class_ = tc;
-          tweak_debounce_timer_->start();
-        });
-        break;
-      }
-      case orc::ParameterType::STRING: {
-        if (!desc.constraints.allowed_strings.empty()) {
-          auto* combo = new QComboBox(tweak_panel_content_);
-          for (const auto& s : desc.constraints.allowed_strings) {
-            combo->addItem(QString::fromStdString(s));
-          }
-          combo->setCurrentText(
-              QString::fromStdString(std::get<std::string>(value)));
-          widget = combo;
-          const std::string pname = desc.name;
-          const orc::LiveTweakClass tc = tweak.tweak_class;
-          connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                  [this, pname, tc](int) {
-                    last_tweak_class_ = tc;
-                    tweak_debounce_timer_->start();
-                  });
-        }
-        // Free-form strings and FILE_PATH are not shown in the tweak panel
-        break;
-      }
-      case orc::ParameterType::FILE_PATH:
-        // Output file paths are never tweak-panel items; skip.
-        break;
-    }
-
-    if (widget) {
-      entry.widget = widget;
-      tweak_widgets_[desc.name] = std::move(entry);
-      const QString label = QString::fromStdString(
-          desc.display_name.empty() ? desc.name : desc.display_name);
-      tweak_form_layout_->addRow(label + ":", widget);
-    }
-  }
-}
-
-std::map<std::string, orc::ParameterValue> PreviewDialog::collectTweakValues()
-    const {
-  std::map<std::string, orc::ParameterValue> result;
-  for (const auto& [name, entry] : tweak_widgets_) {
-    if (!entry.widget) {
-      continue;
-    }
-    switch (entry.type) {
-      case orc::ParameterType::INT32: {
-        if (auto* spin = qobject_cast<QSpinBox*>(entry.widget)) {
-          result[name] = static_cast<int32_t>(spin->value());
-        }
-        break;
-      }
-      case orc::ParameterType::UINT32: {
-        if (auto* spin = qobject_cast<QSpinBox*>(entry.widget)) {
-          result[name] = static_cast<uint32_t>(spin->value());
-        }
-        break;
-      }
-      case orc::ParameterType::DOUBLE: {
-        if (auto* spin = qobject_cast<QDoubleSpinBox*>(entry.widget)) {
-          result[name] = spin->value();
-        }
-        break;
-      }
-      case orc::ParameterType::BOOL: {
-        if (auto* check = qobject_cast<QCheckBox*>(entry.widget)) {
-          result[name] = check->isChecked();
-        }
-        break;
-      }
-      case orc::ParameterType::STRING: {
-        if (auto* combo = qobject_cast<QComboBox*>(entry.widget)) {
-          result[name] = combo->currentText().toStdString();
-        }
-        break;
-      }
-      case orc::ParameterType::FILE_PATH:
-        break;
-    }
-  }
-  return result;
-}
-
-orc::LiveTweakClass PreviewDialog::dominantTweakClass(
-    const std::string& changed_param_name) const {
-  auto it = tweak_widgets_.find(changed_param_name);
-  if (it != tweak_widgets_.end()) {
-    return it->second.tweak_class;
-  }
-  return orc::LiveTweakClass::DecodePhase;
-}
-
-void PreviewDialog::onShowLiveTweaksToggled(bool checked) {
-  if (!live_tweaks_dialog_) {
-    return;
-  }
-
-  if (!checked) {
-    live_tweaks_dialog_->hide();
-    status_bar_->showMessage("Live tweaks hidden", 1500);
-    return;
-  }
-
-  live_tweaks_dialog_->show();
-  live_tweaks_dialog_->raise();
-  live_tweaks_dialog_->activateWindow();
-
-  if (tweak_widgets_.empty() && tweak_form_layout_ &&
-      tweak_form_layout_->rowCount() == 0) {
-    tweak_form_layout_->addRow(
-        new QLabel("No live tweak parameters available for this stage.",
-                   tweak_panel_content_));
-  }
-
-  status_bar_->showMessage("Live tweaks shown", 1500);
-}
-
-void PreviewDialog::onResetLiveTweaksClicked() {
-  if (!tweak_node_id_.is_valid()) {
-    status_bar_->showMessage("No selected stage for reset", 2000);
-    return;
-  }
-  emit resetLiveTweaksRequested(tweak_node_id_);
-}
-
-void PreviewDialog::onWriteLiveTweaksClicked() {
-  if (!tweak_node_id_.is_valid()) {
-    status_bar_->showMessage("No selected stage for write", 2000);
-    return;
-  }
-  emit writeLiveTweaksRequested(tweak_node_id_, collectTweakValues());
-}
-
 void PreviewDialog::closeEvent(QCloseEvent* event) {
-  if (live_tweaks_dialog_) {
-    live_tweaks_dialog_->hide();
-  }
+  stopPlayback();
   closeChildDialogs();
   QDialog::closeEvent(event);
 }
 
 void PreviewDialog::closeChildDialogs() {
-  // Close line scope dialog if open
-  if (line_scope_dialog_ && line_scope_dialog_->isVisible()) {
-    line_scope_dialog_->close();
+  if (frame_scope_dialog_ && frame_scope_dialog_->isVisible()) {
+    frame_scope_dialog_->close();
   }
 
-  // Close field timing dialog if open
-  if (field_timing_dialog_ && field_timing_dialog_->isVisible()) {
-    field_timing_dialog_->close();
+  if (frame_timing_dialog_ && frame_timing_dialog_->isVisible()) {
+    frame_timing_dialog_->close();
+  }
+
+  if (waveform_monitor_dialog_ && waveform_monitor_dialog_->isVisible()) {
+    waveform_monitor_dialog_->close();
   }
 
   closeVectorscopeDialogs();
+  closeHistogramDialog();
 
   // Disable cross-hairs when closing
   if (preview_widget_) {
     preview_widget_->setCrosshairsEnabled(false);
+  }
+}
+
+void PreviewDialog::forwardAmplitudeUnit(orc::AmplitudeDisplayUnit unit) {
+  if (frame_scope_dialog_) {
+    frame_scope_dialog_->setAmplitudeUnit(unit);
+  }
+  if (frame_timing_dialog_) {
+    frame_timing_dialog_->setAmplitudeUnit(unit);
+  }
+  if (waveform_monitor_dialog_) {
+    waveform_monitor_dialog_->setAmplitudeUnit(unit);
   }
 }
 
@@ -995,61 +705,99 @@ void PreviewDialog::closeVectorscopeDialogs() {
   vectorscope_node_id_ = orc::NodeID{};
 }
 
+void PreviewDialog::showHistogramForNode(orc::NodeID node_id) {
+  if (!node_id.is_valid()) {
+    return;
+  }
+
+  if (!histogram_dialog_) {
+    histogram_dialog_ = new HistogramDialog(this);
+    histogram_dialog_->setAttribute(Qt::WA_DeleteOnClose, false);
+
+    connect(histogram_dialog_, &QObject::destroyed, this, [this]() {
+      histogram_dialog_ = nullptr;
+      histogram_node_id_ = orc::NodeID{};
+    });
+  }
+
+  histogram_node_id_ = node_id;
+  histogram_dialog_->show();
+  histogram_dialog_->raise();
+  histogram_dialog_->activateWindow();
+}
+
+void PreviewDialog::updateHistogram(
+    orc::NodeID node_id, const std::optional<orc::VideoHistogramData>& data) {
+  Q_UNUSED(node_id);
+
+  if (!histogram_dialog_ || !histogram_dialog_->isVisible()) {
+    return;
+  }
+
+  if (data.has_value()) {
+    histogram_dialog_->updateHistogram(*data);
+  } else {
+    histogram_dialog_->clearDisplay();
+  }
+}
+
+bool PreviewDialog::isHistogramVisibleForNode(orc::NodeID node_id) const {
+  Q_UNUSED(node_id);
+  return histogram_dialog_ && histogram_dialog_->isVisible();
+}
+
+void PreviewDialog::closeHistogramDialog() {
+  if (histogram_dialog_) {
+    histogram_dialog_->close();
+  }
+  histogram_node_id_ = orc::NodeID{};
+}
+
 bool PreviewDialog::isLineScopeVisible() const {
-  return line_scope_dialog_ && line_scope_dialog_->isVisible();
+  return frame_scope_dialog_ && frame_scope_dialog_->isVisible();
 }
 void PreviewDialog::showLineScope(
     const QString& node_id, int stage_index, uint64_t field_index,
-    int line_number, int sample_x, const std::vector<uint16_t>& samples,
+    int line_number, int sample_x, const std::vector<int16_t>& samples,
     const std::optional<orc::presenters::VideoParametersView>& video_params,
     int preview_image_width, int original_sample_x, int original_image_y,
-    orc::PreviewOutputType preview_mode, const std::vector<uint16_t>& y_samples,
-    const std::vector<uint16_t>& c_samples) {
-  if (line_scope_dialog_) {
-    // Store line scope context for cross-hair updates
+    orc::PreviewOutputType /*preview_mode*/,
+    const std::vector<int16_t>& y_samples,
+    const std::vector<int16_t>& c_samples) {
+  if (frame_scope_dialog_) {
     current_line_scope_preview_width_ = preview_image_width;
     current_line_scope_samples_count_ = static_cast<int>(samples.size());
     if (current_line_scope_samples_count_ == 0 && !y_samples.empty()) {
-      // Use Y samples size if no composite
       current_line_scope_samples_count_ = static_cast<int>(y_samples.size());
     }
-    // Note: We don't know the image_y here directly, but MainWindow will update
-    // cross-hairs
 
-    // Connect navigation signal if not already connected
-    connect(line_scope_dialog_, &LineScopeDialog::lineNavigationRequested, this,
-            &PreviewDialog::lineNavigationRequested, Qt::UniqueConnection);
-
-    // Connect refresh signal if not already connected
-    connect(line_scope_dialog_, &LineScopeDialog::refreshRequested, this,
+    connect(frame_scope_dialog_, &FrameScopeDialog::refreshRequested, this,
             &PreviewDialog::lineScopeRequested, Qt::UniqueConnection);
 
-    // Connect sample marker moved signal to update cross-hairs
-    connect(line_scope_dialog_, &LineScopeDialog::sampleMarkerMoved, this,
+    connect(frame_scope_dialog_, &FrameScopeDialog::sampleMarkerMoved, this,
             &PreviewDialog::onSampleMarkerMoved, Qt::UniqueConnection);
 
-    // Only enable cross-hairs if there's actual data to display
-    // For stages like FFmpeg video sync that don't have line data, hide
-    // cross-hairs
     if (samples.empty() && y_samples.empty() && c_samples.empty()) {
       preview_widget_->setCrosshairsEnabled(false);
     } else {
       preview_widget_->setCrosshairsEnabled(true);
     }
 
-    line_scope_dialog_->setLineSamples(
-        node_id, stage_index, field_index, line_number, sample_x, samples,
-        video_params, preview_image_width, original_sample_x, original_image_y,
-        preview_mode, y_samples, c_samples);
+    // field_index is used as frame_id; line_number (1-based) → frame_line
+    // (0-based)
+    const size_t frame_line = static_cast<size_t>(std::max(0, line_number - 1));
 
-    const bool was_visible = line_scope_dialog_->isVisible();
-    // Only show if not already visible to avoid position resets
+    frame_scope_dialog_->setFrameLineSamples(
+        node_id, stage_index, field_index, frame_line, sample_x, samples,
+        video_params, preview_image_width, original_sample_x, original_image_y,
+        y_samples, c_samples);
+
+    const bool was_visible = frame_scope_dialog_->isVisible();
     if (!was_visible) {
-      // Position line scope beside preview if possible
       const int margin = 12;
       const QRect preview_geom = frameGeometry();
-      QSize scope_size = line_scope_dialog_->size();
-      const QSize hint_size = line_scope_dialog_->sizeHint();
+      QSize scope_size = frame_scope_dialog_->size();
+      const QSize hint_size = frame_scope_dialog_->sizeHint();
       if (hint_size.isValid()) {
         scope_size = hint_size;
       }
@@ -1090,13 +838,12 @@ void PreviewDialog::showLineScope(
         target_y = clamp(target_y, screen_top, screen_bottom);
       }
 
-      line_scope_dialog_->move(target_x, target_y);
-      line_scope_dialog_->show();
+      frame_scope_dialog_->move(target_x, target_y);
+      frame_scope_dialog_->show();
     }
 
-    // Only raise when first shown to avoid stealing focus on updates
     if (!was_visible) {
-      line_scope_dialog_->raise();
+      frame_scope_dialog_->raise();
     }
   }
 }
@@ -1121,4 +868,25 @@ void PreviewDialog::onComponentVectorscopeActionTriggered() {
   }
 
   emit vectorscopeRequested(coordinate);
+}
+
+void PreviewDialog::onHistogramActionTriggered() {
+  if (!hasAvailablePreviewView(kHistogramViewId) ||
+      !current_node_id_.is_valid()) {
+    return;
+  }
+
+  showHistogramForNode(current_node_id_);
+
+  orc::PreviewCoordinate coordinate;
+  if (shared_preview_coordinate_.has_value() &&
+      shared_preview_coordinate_->is_valid()) {
+    coordinate = *shared_preview_coordinate_;
+  } else {
+    coordinate.field_index = static_cast<uint64_t>(currentIndex());
+    coordinate.line_index = 0;
+    coordinate.sample_offset = 0;
+  }
+
+  emit histogramRequested(coordinate);
 }

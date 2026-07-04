@@ -59,21 +59,117 @@ struct OrcPluginServices;
 ///   3 — Added OrcPluginServices table; orc_register_stage_plugin now receives
 ///        a const OrcPluginServices* as its first parameter. Plugins must use
 ///        the services table for logging instead of resolving host symbols
-///        directly.
-inline constexpr uint32_t kStagePluginHostAbiVersion = 3;
+///        directly. The table later gained the appended stage_services field
+///        (IStageServices; guarded by services_size).
+///   4 — Decode-Orc 2.0: VideoFrameRepresentation replaces
+///        VideoFieldRepresentation as the primary frame-data contract. All
+///        stage plugins must be rebuilt against the v2.0 SDK.
+///   5 — StagePluginDescriptor gains the appended toolchain_tag field
+///        (populate with ORC_SDK_TOOLCHAIN_TAG). The loader requires the
+///        plugin's tag to equal the host's tag exactly, rejecting binaries
+///        built with a different compiler family/major version, C++ standard
+///        library, or (Windows) CRT flavour.
+inline constexpr uint32_t kStagePluginHostAbiVersion = 5;
 
 /// Preprocessor alias for kStagePluginHostAbiVersion.  Allows plugin code to
 /// use conditional compilation:
-///   #if ORC_SDK_ABI_VERSION >= 3
-///     // use OrcPluginServices
+///   #if ORC_SDK_ABI_VERSION >= 4
+///     // use VideoFrameRepresentation
 ///   #endif
-#define ORC_SDK_ABI_VERSION 3
+#define ORC_SDK_ABI_VERSION 5
+
+static_assert(kStagePluginHostAbiVersion == ORC_SDK_ABI_VERSION,
+              "ORC_SDK_ABI_VERSION must be kept in sync with "
+              "kStagePluginHostAbiVersion; update both when bumping the ABI");
 
 /// Plugin API version — stage contract compatibility boundary.
 ///
 /// History:
 ///   1 — Initial public API surface (Phase 4).
-inline constexpr uint32_t kStagePluginApiVersion = 1;
+///   2 — Decode-Orc 2.0: DAGStage execute() receives
+///   VideoFrameRepresentationPtr
+///        (frame-based) instead of VideoFieldRepresentationPtr (field-based).
+///        DropoutRegion replaced by DropoutRun. FieldID/FieldIDRange removed;
+///        FrameID/FrameIDRange are the canonical navigation types.
+inline constexpr uint32_t kStagePluginApiVersion = 2;
+
+// =============================================================================
+// Toolchain tag
+// =============================================================================
+//
+// The plugin boundary is a C++ ABI: std::shared_ptr, std::string, exceptions,
+// and vtables cross it. Matching version numbers are therefore necessary but
+// not sufficient — the plugin must also be built with a compatible toolchain.
+// ORC_SDK_TOOLCHAIN_TAG encodes the ABI-relevant build environment as a
+// string literal at compile time:
+//
+//   <compiler-family><major> "/" <standard-library> [ "/" <crt-flavour> ]
+//
+// Examples: "gcc14/libstdc++", "clang17/libc++", "msvc19/msvc-stl/release-crt"
+//
+// Plugins populate StagePluginDescriptor::toolchain_tag with this macro; the
+// loader requires exact string equality with the host's own tag (a
+// deliberately conservative policy, consistent with the exact-match rule for
+// the version numbers above).
+
+#define ORC_SDK_TOOLCHAIN_STR_IMPL(x) #x
+#define ORC_SDK_TOOLCHAIN_STR(x) ORC_SDK_TOOLCHAIN_STR_IMPL(x)
+
+// Compiler family and major version. __clang__ is tested first because clang
+// also defines __GNUC__ (and clang-cl defines _MSC_VER).
+#if defined(__clang__)
+#define ORC_SDK_TOOLCHAIN_COMPILER \
+  "clang" ORC_SDK_TOOLCHAIN_STR(__clang_major__)
+#elif defined(__GNUC__)
+#define ORC_SDK_TOOLCHAIN_COMPILER "gcc" ORC_SDK_TOOLCHAIN_STR(__GNUC__)
+#elif defined(_MSC_VER)
+// MSVC guarantees binary compatibility across the v14x toolset family
+// (_MSC_VER 19xx), so only the compiler major version is encoded.
+#if _MSC_VER >= 2000 && _MSC_VER < 2100
+#define ORC_SDK_TOOLCHAIN_COMPILER "msvc20"
+#elif _MSC_VER >= 1900 && _MSC_VER < 2000
+#define ORC_SDK_TOOLCHAIN_COMPILER "msvc19"
+#else
+#define ORC_SDK_TOOLCHAIN_COMPILER "msvc" ORC_SDK_TOOLCHAIN_STR(_MSC_VER)
+#endif
+#else
+#define ORC_SDK_TOOLCHAIN_COMPILER "unknown-compiler"
+#endif
+
+// C++ standard library. The <memory> include above guarantees the library's
+// identification macros are visible here. libstdc++'s debug mode
+// (_GLIBCXX_DEBUG) changes container layouts, so it is a distinct library
+// flavour for ABI purposes.
+#if defined(_LIBCPP_VERSION)
+#define ORC_SDK_TOOLCHAIN_STDLIB "libc++"
+#elif defined(__GLIBCXX__)
+#if defined(_GLIBCXX_DEBUG)
+#define ORC_SDK_TOOLCHAIN_STDLIB "libstdc++-dbg"
+#else
+#define ORC_SDK_TOOLCHAIN_STDLIB "libstdc++"
+#endif
+#elif defined(_MSC_VER)
+#define ORC_SDK_TOOLCHAIN_STDLIB "msvc-stl"
+#else
+#define ORC_SDK_TOOLCHAIN_STDLIB "unknown-stdlib"
+#endif
+
+// CRT flavour is ABI-relevant only with the MSVC runtime: a Debug-CRT plugin
+// cannot be loaded by a Release-CRT host. On Itanium-ABI platforms the
+// Debug/Release build type does not change the C++ ABI, so no configuration
+// component is encoded there.
+#if defined(_MSC_VER)
+#if defined(_DEBUG)
+#define ORC_SDK_TOOLCHAIN_TAG \
+  ORC_SDK_TOOLCHAIN_COMPILER "/" ORC_SDK_TOOLCHAIN_STDLIB "/debug-crt"
+#else
+#define ORC_SDK_TOOLCHAIN_TAG \
+  ORC_SDK_TOOLCHAIN_COMPILER "/" ORC_SDK_TOOLCHAIN_STDLIB "/release-crt"
+#endif
+#else
+#define ORC_SDK_TOOLCHAIN_TAG \
+  ORC_SDK_TOOLCHAIN_COMPILER "/" ORC_SDK_TOOLCHAIN_STDLIB
+#endif
 
 // =============================================================================
 // Plugin entrypoint symbol names
@@ -110,6 +206,9 @@ struct StagePluginDescriptor {
       license_spdx;     ///< SPDX license expression, e.g. "GPL-3.0-or-later"
   bool is_core_plugin;  ///< true only for stages bundled with the Decode-Orc
                         ///< distribution
+  const char* toolchain_tag;  ///< Build-environment tag; populate with
+                              ///< ORC_SDK_TOOLCHAIN_TAG. Must equal the
+                              ///< host's tag exactly at load time (ABI v5).
 };
 
 // =============================================================================

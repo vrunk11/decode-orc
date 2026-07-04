@@ -12,7 +12,11 @@
 // Stage and plugin implementations may use this header for DAG execution.
 // GUI/CLI code must NOT include this directly; use presenters instead.
 
-#include <node_id.h>
+#include <orc/stage/artifact.h>
+#include <orc/stage/lru_cache.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/stage.h>
 
 #include <functional>
 #include <map>
@@ -21,22 +25,11 @@
 #include <string>
 #include <vector>
 
-#include "../stages/stage.h"
-#include "artifact.h"
-#include "lru_cache.h"
-#include "observation_context.h"
-
 namespace orc {
 
 /**
  * @brief Exception thrown during DAG execution
  */
-class DAGExecutionError : public std::runtime_error {
- public:
-  explicit DAGExecutionError(const std::string& msg)
-      : std::runtime_error(msg) {}
-};
-
 /**
  * @brief Represents a node in the processing DAG
  */
@@ -160,7 +153,7 @@ class DAGExecutor {
 
   /// LRU cache for artifact results
   /// Limit cache size to prevent unbounded memory growth during batch
-  /// processing Each cached entry can be ~1-2MB (VideoFieldRepresentation), so
+  /// processing Each cached entry can be ~1-2MB (VideoFrameRepresentation), so
   /// 500 entries ≈ 500-1000MB max
   static constexpr size_t MAX_CACHED_ARTIFACTS = 500;
   LRUCache<ArtifactID, std::vector<ArtifactPtr>> artifact_cache_;

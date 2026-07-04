@@ -16,14 +16,13 @@
 #endif
 
 // Core uses public API types
-#include <orc_vectorscope.h>
+#include <orc/stage/orc_vectorscope.h>
 
 namespace orc {
 
 // Type aliases for convenience in core code
 using UVSample = orc::UVSample;
 using VectorscopeData = orc::VectorscopeData;
-using orc::rgb_to_uv;
 
 }  // namespace orc
 

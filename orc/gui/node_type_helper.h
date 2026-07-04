@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <node_type.h>
+#include <orc/stage/node_type.h>
 
 #include <QPointF>
 #include <QString>

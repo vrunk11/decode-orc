@@ -16,8 +16,11 @@ function(orc_add_core_unit_tests target labels)
 
     add_executable(${target} ${ARGN})
         target_include_directories(${target} PRIVATE
+                ${CMAKE_SOURCE_DIR}/orc/plugins/stages/audio_sink
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/daphne_vbi_sink
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/ld_sink
+                ${CMAKE_SOURCE_DIR}/orc/plugins/stages/raw_efm_sink
+                ${CMAKE_SOURCE_DIR}/orc/plugins/stages/tbc_source
                 ${CMAKE_SOURCE_DIR}/orc/sdk/include
         )
     target_link_libraries(
@@ -41,14 +44,10 @@ function(orc_add_core_unit_tests target labels)
         # Dedicated functional tests cover the runtime dlopen/LoadLibrary path
         # (ABI matching, missing symbols, etc.) alongside these registry links.
         foreach(_orc_stage_plugin_target
-                        orc-stage-plugin-ntsc-comp-source
-                        orc-stage-plugin-ntsc-yc-source
-                        orc-stage-plugin-pal-comp-source
-                        orc-stage-plugin-pal-yc-source
+                        orc-stage-plugin-tbc-source
                         orc-stage-plugin-cvbs-source
                         orc-stage-plugin-stacker
-                        orc-stage-plugin-field-invert
-                        orc-stage-plugin-field-map
+                        orc-stage-plugin-frame-map
                         orc-stage-plugin-video-params
                         orc-stage-plugin-dropout-correct
                         orc-stage-plugin-dropout-map
@@ -62,11 +61,11 @@ function(orc_add_core_unit_tests target labels)
                         orc-stage-plugin-ld-sink
                         orc-stage-plugin-efm-sink
                         orc-stage-plugin-raw-efm-sink
-                        orc-stage-plugin-hackdac-sink
                         orc-stage-plugin-ac3rf-sink
                         orc-stage-plugin-dropout-analysis-sink
                         orc-stage-plugin-snr-analysis-sink
-                        orc-stage-plugin-burst-level-analysis-sink)
+                        orc-stage-plugin-burst-level-analysis-sink
+                        orc-stage-plugin-cvbs-sink)
                 if(TARGET ${_orc_stage_plugin_target})
                         target_link_libraries(${target} ${_orc_stage_plugin_target})
                 endif()
@@ -88,10 +87,9 @@ orc_add_core_unit_tests(
         "unit;sources"
 
         stages/source_common/source_stage_contract_test.cpp
-        stages/ntsc_comp_source/ntsc_comp_source_stage_test.cpp
-        stages/ntsc_yc_source/ntsc_yc_source_stage_test.cpp
-        stages/pal_comp_source/pal_comp_source_stage_test.cpp
-        stages/pal_yc_source/pal_yc_source_stage_test.cpp
+        stages/tbc_source/tbc_source_stage_test.cpp
+        stages/tbc_source/pal_tbc_converter_test.cpp
+        stages/tbc_source/ntsc_tbc_converter_test.cpp
         stages/cvbs_source/cvbs_source_stage_test.cpp
 )
 
@@ -100,8 +98,7 @@ orc_add_core_unit_tests(
         "unit;transforms"
 
         stages/stacker/stacker_stage_test.cpp
-        stages/field_invert/field_invert_stage_test.cpp
-        stages/field_map/field_map_stage_test.cpp
+        stages/frame_map/frame_map_stage_test.cpp
         stages/video_params/video_params_stage_test.cpp
         stages/dropout_correct/dropout_correct_stage_test.cpp
         stages/dropout_map/dropout_map_stage_test.cpp
@@ -117,7 +114,6 @@ orc_add_core_unit_tests(
         stages/chroma_sink/vectorscope_analysis_test.cpp
         stages/chroma_sink/chroma_sink_stage_defaults_test.cpp
         stages/chroma_sink/chroma_sink_stage_safety_test.cpp
-        stages/chroma_sink/chroma_sink_tweak_panel_test.cpp
         stages/chroma_sink/comb_test.cpp
         stages/chroma_sink/ffmpeg_video_sink_stage_test.cpp
         stages/chroma_sink/monodecoder_test.cpp
@@ -129,13 +125,15 @@ orc_add_core_unit_tests(
         stages/daphne_vbi_sink/daphne_vbi_sink_stage_deps_test.cpp
         stages/daphne_vbi_sink/daphne_vbi_sink_stage_test.cpp
         stages/audio_sink/audio_sink_stage_test.cpp
+        stages/audio_sink/audio_sink_stage_deps_test.cpp
         stages/ac3rf_sink/ac3rf_sink_stage_test.cpp
         stages/cc_sink/cc_sink_stage_test.cpp
         stages/ld_sink/ld_sink_stage_test.cpp
         stages/ld_sink/ld_sink_stage_deps_test.cpp
         stages/efm_sink/efm_sink_stage_test.cpp
         stages/raw_efm_sink/raw_efm_sink_stage_test.cpp
-        stages/hackdac_sink/hackdac_sink_stage_test.cpp
+        stages/raw_efm_sink/raw_efm_sink_stage_deps_test.cpp
+        stages/cvbs_sink/cvbs_sink_stage_test.cpp
         stages/dropout_analysis_sink/dropout_analysis_sink_stage_test.cpp
         stages/snr_analysis_sink/snr_analysis_sink_stage_test.cpp
         stages/burst_level_analysis_sink/burst_level_analysis_sink_stage_test.cpp
@@ -149,6 +147,7 @@ orc_add_core_unit_tests(
         contracts/stage_registry_contract_test.cpp
         contracts/project_to_dag_contract_test.cpp
         contracts/plugin_safe_call_test.cpp
+        contracts/video_frame_representation_wrapper_contract_test.cpp
 )
 
 # ---------------------------------------------------------------------------
@@ -156,7 +155,8 @@ orc_add_core_unit_tests(
 # ---------------------------------------------------------------------------
 set(ORC_TEST_FIXTURE_PLUGIN_BUILD_DIR "${CMAKE_BINARY_DIR}/lib/orc-test-fixture-plugins")
 
-foreach(_fixture_name bad_abi_version bad_api_version)
+foreach(_fixture_name bad_abi_version bad_api_version abi_v4 bad_toolchain_tag
+        compatible)
         set(_target "orc-test-fixture-${_fixture_name}")
         add_library(${_target} SHARED
                 contracts/test_fixtures/${_fixture_name}_plugin.cpp)
@@ -178,11 +178,21 @@ target_compile_definitions(orc-core-unit-tests-loader-rejection PRIVATE
         ORC_TEST_FIXTURE_PLUGIN_BUILD_DIR="${ORC_TEST_FIXTURE_PLUGIN_BUILD_DIR}")
 add_dependencies(orc-core-unit-tests-loader-rejection
         orc-test-fixture-bad_abi_version
-        orc-test-fixture-bad_api_version)
+        orc-test-fixture-bad_api_version
+        orc-test-fixture-abi_v4
+        orc-test-fixture-bad_toolchain_tag
+        orc-test-fixture-compatible)
 gtest_discover_tests(orc-core-unit-tests-loader-rejection
         DISCOVERY_MODE POST_BUILD
         DISCOVERY_TIMEOUT 30
         PROPERTIES LABELS "unit\;contracts")
+
+orc_add_core_unit_tests(
+        orc-core-unit-tests-plugin-keepalive
+        "unit;contracts"
+
+        contracts/stage_plugin_keepalive_test.cpp
+)
 
 orc_add_core_unit_tests(
         orc-core-unit-tests-metadata
@@ -191,8 +201,37 @@ orc_add_core_unit_tests(
         metadata/video_system_parsing_test.cpp
         metadata/project_plugin_metadata_test.cpp
         metadata/stage_plugin_registry_test.cpp
+        metadata/stage_registry_trust_test.cpp
         metadata/plugin_remote_loader_test.cpp
+        metadata/sha256_hash_test.cpp
         metadata/skeleton_plugin_registry_test.cpp
+        metadata/dropout_util_test.cpp
+)
+
+# Phase 11: project format version 2.0 enforcement tests (label: unit)
+orc_add_core_unit_tests(
+        orc-core-unit-tests-project-format
+        "unit"
+
+        project/project_format_test.cpp
+)
+
+# Phase 1: core type and signal constant tests (label: unit)
+orc_add_core_unit_tests(
+        orc-core-unit-tests-types
+        "unit"
+
+        types/frame_id_test.cpp
+        types/cvbs_signal_constants_test.cpp
+        types/line_numbering_test.cpp
+        types/amplitude_conversion_test.cpp
+)
+
+orc_add_core_unit_tests(
+        orc-core-unit-tests-observers
+        "unit"
+
+        observers/colour_frame_phase_observer_test.cpp
 )
 
         orc_add_core_unit_tests(
@@ -201,6 +240,6 @@ orc_add_core_unit_tests(
 
                 preview_types/preview_types_test.cpp
                 preview_types/preview_carrier_conversion_test.cpp
+                preview_types/preview_helpers_test.cpp
                 preview_types/preview_view_registry_test.cpp
-                preview_types/preview_helpers_yc_combine_test.cpp
         )

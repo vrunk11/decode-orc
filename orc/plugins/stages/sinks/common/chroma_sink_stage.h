@@ -15,17 +15,19 @@
     "GUI code cannot include core/stages/chroma_sink/chroma_sink_stage.h. Use VectorscopePresenter or RenderPresenter instead."
 #endif
 
-#include <node_type.h>
-#include <orc_source_parameters.h>
+#include <orc/plugin/orc_stage_preview.h>
+#include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/orc_rendering.h>  // For PreviewImage definition
+#include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <atomic>
+#include <mutex>
 #include <optional>
 #include <thread>
-
-#include "../../../../sdk/include/orc/plugin/orc_stage_preview.h"
-#include "../../../../sdk/include/orc/plugin/orc_stage_runtime.h"
-#include "preview_renderer.h"  // For PreviewImage definition
-#include "stage_parameter.h"
 
 // Forward declarations for decoder classes
 struct SourceField;
@@ -76,7 +78,6 @@ namespace orc {
 class ChromaSinkStage : public DAGStage,
                         public ParameterizedStage,
                         public TriggerableStage,
-                        public PreviewableStage,
                         public IStagePreviewCapability,
                         public IColourPreviewProvider {
  public:
@@ -121,12 +122,6 @@ class ChromaSinkStage : public DAGStage,
 
   void cancel_trigger() override { cancel_requested_.store(true); }
 
-  // PreviewableStage interface
-  bool supports_preview() const override { return true; }
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
-
   // IStagePreviewCapability interface
   StagePreviewCapability get_preview_capability() const override;
 
@@ -137,7 +132,7 @@ class ChromaSinkStage : public DAGStage,
  private:
   mutable std::mutex
       cached_input_mutex_;  // Protects cached_input_ from race conditions
-  mutable std::shared_ptr<const VideoFieldRepresentation>
+  mutable std::shared_ptr<const orc::VideoFrameRepresentation>
       cached_input_;  // For preview
 
   // Cached decoder for preview (avoid recreating expensive FFTW plans)
@@ -210,7 +205,8 @@ class ChromaSinkStage : public DAGStage,
   bool embed_audio_;            // Embed analogue audio in output (MP4/MKV only)
   bool embed_closed_captions_;  // Embed closed captions in MP4 output (MP4
                                 // only, converted to mov_text)
-  bool embed_chapter_metadata_;  // Write chapter markers from VBI data (MKV/MP4/MOV)
+  bool embed_chapter_metadata_;  // Write chapter markers from VBI data
+                                 // (MKV/MP4/MOV)
 
   // Encoder quality parameters (for FFmpeg output)
   std::string encoder_preset_;    // "fast", "medium", "slow", "veryslow"
@@ -236,13 +232,18 @@ class ChromaSinkStage : public DAGStage,
       const orc::SourceParameters& videoParams) const;
 
   // Helper methods for integration
-  SourceField convertToSourceField(const VideoFieldRepresentation* vfr,
-                                   FieldID field_id) const;
+
+  // Build a non-owning SourceField view into the VFrameR frame buffer.
+  // For PAL, populates line_ptrs (and luma/chroma_line_ptrs for YC sources)
+  // to handle non-uniform 1135/1136-sample lines.
+  SourceField convertToSourceField(
+      const orc::VideoFrameRepresentation* vfr, orc::FrameID frame_id,
+      bool is_first_field, const orc::SourceParameters& videoParams) const;
 
   bool writeOutputFile(
       const std::string& output_path, const std::string& format,
       const std::vector<::ComponentFrame>& frames, const void* videoParams,
-      const VideoFieldRepresentation* vfr, uint64_t start_field_index,
+      const orc::VideoFrameRepresentation* vfr, uint64_t start_field_index,
       uint64_t num_fields,
       std::string& error_message  // Output parameter for detailed error
   ) const;

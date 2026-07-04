@@ -7,14 +7,14 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include <node_type.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/node_type.h>
 
 #include <limits>
 #include <unordered_map>
 #include <vector>
 
 #include "include/stage_registry.h"
-#include "logging.h"
 
 namespace orc {
 
@@ -132,9 +132,14 @@ bool is_stage_compatible_with_format(const std::string& stage_name,
     return format == VideoSystem::NTSC;
   }
 
-  // PAL_ONLY is compatible with PAL and PAL-M
+  // PAL_ONLY is compatible with PAL (625-line) only
   if (info->compatible_formats == VideoFormatCompatibility::PAL_ONLY) {
-    return format == VideoSystem::PAL || format == VideoSystem::PAL_M;
+    return format == VideoSystem::PAL;
+  }
+
+  // PAL_M_ONLY is compatible with PAL-M only
+  if (info->compatible_formats == VideoFormatCompatibility::PAL_M_ONLY) {
+    return format == VideoSystem::PAL_M;
   }
 
   // Unknown format or Unknown compatibility - allow it

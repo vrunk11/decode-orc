@@ -125,6 +125,7 @@ Minimum definition of done for stage work:
 - Add the matching suite under `orc-tests/core/unit/stages/<stage_id>` in the same PR.
 - Register the suite with `gtest_discover_tests(... PROPERTIES LABELS ...)` using `unit` plus the appropriate family label.
 - Preserve shared contract coverage for registry, node discovery, parameter/default parity, and project-to-DAG wiring.
+- Update stage documentation (see §9.1): update `instructions.md` in the same PR whenever parameters, tools, or stage behaviour change.
 
 ### 4.5 orc-gui Expectations
 
@@ -374,7 +375,7 @@ Plugin architecture and SDK documentation are published in `docs/technical/plugi
 | Change | Doc to update |
 |--------|---------------|
 | `kStagePluginHostAbiVersion` or `kStagePluginApiVersion` bumped | Both files — update version tables and compatibility sections |
-| New or removed public SDK header (`orc/sdk/include/orc/plugin/`) | `plugin-sdk.md` — SDK Headers table |
+| New or removed public SDK header (`orc/sdk/include/orc/plugin/` or `orc/sdk/include/orc/stage/`) | `plugin-sdk.md` — SDK Headers section, and the allowlist in `cmake/check_plugin_private_includes.sh` |
 | `StagePluginDescriptor`, entrypoint signatures, or callback contract changed | `plugin-architecture.md` — Compatibility Gating section |
 | Registry YAML schema fields added or removed | `plugin-architecture.md` — Plugin Registry table |
 | Artifact naming convention changed | Both files |
@@ -383,7 +384,26 @@ Plugin architecture and SDK documentation are published in `docs/technical/plugi
 | Plugin cache path or download behaviour changed | `plugin-architecture.md` — Plugin Registry section |
 | `orc_add_stage_plugin()` macro signature changed | `plugin-sdk.md` — CMake Integration section |
 
-### 9.1 SDK-Only Enforcement Gates (Active)
+### 9.1 Stage Self-Documentation (Non-Negotiable)
+
+Every stage plugin documents itself with a single artifact:
+
+- `instructions.md` — human-readable Markdown, located in the stage's plugin directory (e.g. `orc/plugins/stages/<stage_id>/instructions.md`). This is the single source of truth and is what the GUI help dialog renders. The stage class exposes it via the `ORC_STAGE_INSTRUCTIONS_MD` macro (in `orc_stage_tooling.h`), which reads the file from alongside the plugin shared library at runtime; `orc_add_stage_plugin()` copies the file next to the built plugin automatically.
+
+**Any PR that changes stage functionality, parameters, tools, or UX must update `instructions.md` in the same PR.** Specifically:
+
+| Change | Required documentation update |
+|--------|-------------------------------|
+| Parameter added, removed, or renamed | `instructions.md` Parameters section |
+| Parameter behaviour, range, or default changed | Same |
+| Stage tool added, removed, or renamed | `instructions.md` Tools section |
+| Stage tool behaviour or UX changed | Same |
+| Stage's core behaviour or purpose changed | `instructions.md` What it does / When to use sections |
+| New stage created | Create `instructions.md`; add `ORC_STAGE_INSTRUCTIONS_MD` to the class body |
+
+Third-party plugin authors should follow the same pattern. External plugins that cannot ship an `instructions.md` beside their shared library may instead embed the content inline via the legacy `ORC_STAGE_INSTRUCTIONS(kInstructions_)` macro; when both a file and inline content exist they must be kept identical.
+
+### 9.2 SDK-Only Enforcement Gates (Active)
 
 **SDK-only compliance is enforced with hard-fail gates in CI/CD.**
 

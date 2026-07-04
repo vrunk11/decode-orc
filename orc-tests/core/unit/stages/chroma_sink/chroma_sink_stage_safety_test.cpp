@@ -13,7 +13,7 @@
 #include "../../../../orc/plugins/stages/sinks/common/ffmpeg_video_sink_stage.h"
 #include "../../../../orc/plugins/stages/sinks/common/raw_video_sink_stage.h"
 #include "../../include/observation_context_interface_mock.h"
-#include "../../include/video_field_representation_mock.h"
+#include "../../include/video_frame_representation_artifact_mock.h"
 
 namespace orc_unit_test {
 using testing::HasSubstr;
@@ -24,18 +24,11 @@ namespace {
 orc::SourceParameters make_too_narrow_ntsc_params() {
   orc::SourceParameters params;
   params.system = orc::VideoSystem::NTSC;
-  params.field_width = 8;
-  params.field_height = 4;
+  params.frame_width_nominal = 8;
   params.active_video_start = 0;
   params.active_video_end = 8;
   params.first_active_frame_line = 0;
   params.last_active_frame_line = 6;
-  params.colour_burst_start = 0;
-  params.colour_burst_end = 2;
-  params.black_16b_ire = 0;
-  params.white_16b_ire = 100;
-  params.sample_rate = 4.0;
-  params.fsc = 1.0;
   return params;
 }
 
@@ -49,12 +42,10 @@ orc::SourceParameters make_too_narrow_pal_params() {
 TEST(ChromaSinkStageSafetyTest, RawSinkTrigger_RejectsInvalidNtscGeometry) {
   orc::RawVideoSinkStage stage;
   MockObservationContext observation_context;
-  auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*vfr, get_video_parameters())
       .WillRepeatedly(Return(make_too_narrow_ntsc_params()));
-  EXPECT_CALL(*vfr, get_active_line_hint())
-      .WillRepeatedly(Return(std::nullopt));
 
   const bool result =
       stage.trigger({vfr},
@@ -72,12 +63,10 @@ TEST(ChromaSinkStageSafetyTest, RawSinkTrigger_RejectsInvalidNtscGeometry) {
 TEST(ChromaSinkStageSafetyTest, FfmpegSinkTrigger_RejectsInvalidPalGeometry) {
   orc::FFmpegVideoSinkStage stage;
   MockObservationContext observation_context;
-  auto vfr = std::make_shared<NiceMock<MockVideoFieldRepresentation>>();
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*vfr, get_video_parameters())
       .WillRepeatedly(Return(make_too_narrow_pal_params()));
-  EXPECT_CALL(*vfr, get_active_line_hint())
-      .WillRepeatedly(Return(std::nullopt));
 
   const bool result =
       stage.trigger({vfr},

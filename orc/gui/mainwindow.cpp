@@ -9,8 +9,8 @@
 
 #include "mainwindow.h"
 
-#include <common_types.h>
-#include <node_type.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/node_type.h>
 
 #include "burstlevelanalysisdialog.h"
 #include "dropout_editor_dialog.h"
@@ -18,39 +18,37 @@
 #include "ffmpegpresetdialog.h"
 #include "field_frame_presentation.h"
 #include "fieldpreviewwidget.h"
-#include "fieldtimingdialog.h"
-#include "fieldtimingwidget.h"
+#include "framescopedialog.h"
+#include "frametimingdialog.h"
+#include "frametimingwidget.h"
 #include "generic_analysis_dialog.h"
-#include "hintsdialog.h"
-#include "inspection_dialog.h"
 #include "line_navigation_mapper.h"
-#include "linescopedialog.h"
 #include "logging.h"
 #include "masklineconfigdialog.h"
 #include "ntscobserverdialog.h"
 #include "orcgraphicsview.h"
 #include "pluginmanagerdialog.h"
 #include "presenters/include/analysis_presenter.h"
-#include "presenters/include/hints_presenter.h"
-#include "presenters/include/hints_view_models.h"
 #include "presenters/include/ntsc_observation_presenter.h"
 #include "presenters/include/project_presenter.h"
 #include "presenters/include/render_presenter.h"
 #include "presenters/include/vbi_presenter.h"
+#include "presenters/include/video_parameter_observation_presenter.h"
 #include "previewdialog.h"
 #include "projectpropertiesdialog.h"
-#include "qualitymetricsdialog.h"
 #include "render_coordinator.h"
 #include "snranalysisdialog.h"
+#include "stage_help_dialog.h"
 #include "stageparameterdialog.h"
 #include "vbidialog.h"
 #include "version.h"
+#include "videoparameterobserverdialog.h"
+#include "waveformmonitordialog.h"
 
 // Forward declarations for core types used via opaque pointers
 namespace orc {
 class DAG;
 class Project;
-class VideoFieldRepresentation;
 class ObservationContext;
 }  // namespace orc
 
@@ -62,11 +60,14 @@ class ObservationContext;
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -95,15 +96,17 @@ class ObservationContext;
 namespace {
 
 constexpr const char* kLineScopeViewId = "preview.linescope";
-constexpr const char* kFieldTimingViewId = "preview.field_timing";
+constexpr const char* kFrameTimingViewId = "preview.frame_timing";
+constexpr const char* kWaveformMonitorViewId = "preview.frame_timing";
 
 orc::presenters::VideoFormat toPresenterVideoFormat(orc::VideoSystem system) {
   switch (system) {
     case orc::VideoSystem::NTSC:
       return orc::presenters::VideoFormat::NTSC;
     case orc::VideoSystem::PAL:
-    case orc::VideoSystem::PAL_M:
       return orc::presenters::VideoFormat::PAL;
+    case orc::VideoSystem::PAL_M:
+      return orc::presenters::VideoFormat::PAL_M;
     case orc::VideoSystem::Unknown:
       return orc::presenters::VideoFormat::Unknown;
   }
@@ -124,14 +127,21 @@ orc::presenters::SourceType toPresenterSourceType(orc::SourceType type) {
 
 std::map<std::string, orc::ParameterValue>
 sourceParametersToVideoParamsStageValues(const orc::SourceParameters& params) {
-  return {{"colourBurstStart", params.colour_burst_start},
-          {"colourBurstEnd", params.colour_burst_end},
+  // Colour burst range and IRE levels derived from system constants.
+  // EBU Tech. 3280-E §1.1 (PAL) / SMPTE 244M-2003 §4.1 (NTSC) /
+  // ITU-R BT.1700-1 Annex 1 Part B (PAL_M).
+  // Colour burst sample range: EBU Tech. 3280-E Table 1 (PAL) /
+  // SMPTE 244M-2003 Table 1 (NTSC/PAL_M).
+  const int32_t cb_start = (params.system == orc::VideoSystem::PAL) ? 98 : 72;
+  const int32_t cb_end = (params.system == orc::VideoSystem::PAL) ? 138 : 108;
+  return {{"colourBurstStart", cb_start},
+          {"colourBurstEnd", cb_end},
           {"activeVideoStart", params.active_video_start},
           {"activeVideoEnd", params.active_video_end},
-          {"firstActiveFieldLine", params.first_active_field_line},
-          {"lastActiveFieldLine", params.last_active_field_line},
-          {"white16bIRE", params.white_16b_ire},
-          {"black16bIRE", params.black_16b_ire}};
+          {"firstActiveFieldLine", params.first_active_frame_line / 2},
+          {"lastActiveFieldLine", params.last_active_frame_line / 2},
+          {"whiteLevel", params.white_level},
+          {"blackLevel", params.blanking_level}};
 }
 
 orc::ParameterValue resolveEffectiveParameterValue(
@@ -259,12 +269,13 @@ MainWindow::MainWindow(QWidget* parent)
       current_view_node_id_(),
       last_dropout_node_id_(),
       last_dropout_mode_(orc::DropoutAnalysisMode::FULL_FIELD),
-      last_dropout_output_type_(orc::PreviewOutputType::Frame),
+      last_dropout_output_type_(orc::PreviewOutputType::Frame_Field1_First),
       last_snr_node_id_(),
       last_snr_mode_(orc::SNRAnalysisMode::WHITE),
-      last_snr_output_type_(orc::PreviewOutputType::Frame),
-      current_output_type_(orc::PreviewOutputType::Frame),
-      current_option_id_("frame")  // Default to "Frame (Y)" option
+      last_snr_output_type_(orc::PreviewOutputType::Frame_Field1_First),
+      current_output_type_(orc::PreviewOutputType::Frame_Field1_First),
+      current_option_id_(
+          "interlaced_clamped")  // Default to "Interlaced Clamped" option
       ,
       current_aspect_ratio_mode_(
           orc::AspectRatioMode::DAR_4_3)  // Default to 4:3
@@ -276,12 +287,6 @@ MainWindow::MainWindow(QWidget* parent)
       last_line_scope_image_y_(-1) {
   // Create and start render coordinator
   render_coordinator_ = std::make_unique<RenderCoordinator>(this);
-
-  // Presenter for hint data (uses DAG provider to fetch hints via core
-  // renderer)
-  hints_presenter_ = std::make_unique<orc::presenters::HintsPresenter>(
-      std::function<std::shared_ptr<void>()>(
-          [this]() -> std::shared_ptr<void> { return project_.getDAG(); }));
 
   // Presenter for VBI observations
   vbi_presenter_ = std::make_unique<orc::presenters::VbiPresenter>(
@@ -301,8 +306,11 @@ MainWindow::MainWindow(QWidget* parent)
           this, &MainWindow::onAvailableOutputsReady, Qt::QueuedConnection);
   connect(render_coordinator_.get(), &RenderCoordinator::lineSamplesReady, this,
           &MainWindow::onLineSamplesReady, Qt::QueuedConnection);
-  connect(render_coordinator_.get(), &RenderCoordinator::fieldTimingDataReady,
-          this, &MainWindow::onFieldTimingDataReady, Qt::QueuedConnection);
+  connect(render_coordinator_.get(), &RenderCoordinator::frameTimingDataReady,
+          this, &MainWindow::onFrameTimingDataReady, Qt::QueuedConnection);
+  connect(render_coordinator_.get(),
+          &RenderCoordinator::waveformMonitorDataReady, this,
+          &MainWindow::onWaveformMonitorDataReady, Qt::QueuedConnection);
   connect(render_coordinator_.get(), &RenderCoordinator::dropoutDataReady, this,
           &MainWindow::onDropoutDataReady, Qt::QueuedConnection);
   connect(render_coordinator_.get(), &RenderCoordinator::dropoutProgress, this,
@@ -322,8 +330,6 @@ MainWindow::MainWindow(QWidget* parent)
   connect(render_coordinator_.get(),
           &RenderCoordinator::frameLineNavigationReady, this,
           &MainWindow::onFrameLineNavigationReady, Qt::QueuedConnection);
-  connect(render_coordinator_.get(), &RenderCoordinator::stageParametersApplied,
-          this, &MainWindow::onStageParametersApplied, Qt::QueuedConnection);
   connect(render_coordinator_.get(), &RenderCoordinator::error, this,
           &MainWindow::onCoordinatorError, Qt::QueuedConnection);
 
@@ -441,8 +447,8 @@ void MainWindow::setupUI() {
   // Create VBI dialog (initially hidden)
   vbi_dialog_ = new VBIDialog(this);
 
-  // Create hints dialog (initially hidden)
-  hints_dialog_ = new HintsDialog(this);
+  // Create video parameter observer dialog (initially hidden)
+  video_parameter_observer_dialog_ = new VideoParameterObserverDialog(this);
 
   // Create NTSC observer dialog (initially hidden)
   ntsc_observer_dialog_ = new NtscObserverDialog(this);
@@ -450,11 +456,6 @@ void MainWindow::setupUI() {
   // Note: Dropout, SNR, and Burst Level analysis dialogs are now created
   // per-stage in runAnalysisForNode() to allow each stage to have its own
   // independent dialog
-
-  // Create quality metrics dialog (initially hidden)
-  quality_metrics_dialog_ = new QualityMetricsDialog(this);
-  quality_metrics_dialog_->setWindowTitle("Field/Frame Quality Metrics");
-  quality_metrics_dialog_->setAttribute(Qt::WA_DeleteOnClose, false);
 
   // Connect preview dialog signals.
   // PreviewDialog owns all navigation state (position, clamping, debouncing).
@@ -490,10 +491,9 @@ void MainWindow::setupUI() {
           });
   connect(preview_dialog_, &PreviewDialog::showVBIDialogRequested, this,
           &MainWindow::onShowVBIDialog);
-  connect(preview_dialog_, &PreviewDialog::showHintsDialogRequested, this,
-          &MainWindow::onShowHintsDialog);
-  connect(preview_dialog_, &PreviewDialog::showQualityMetricsDialogRequested,
-          this, &MainWindow::onShowQualityMetricsDialog);
+  connect(preview_dialog_,
+          &PreviewDialog::showVideoParameterObserverDialogRequested, this,
+          &MainWindow::onShowVideoParameterObserverDialog);
   connect(preview_dialog_, &PreviewDialog::showNtscObserverDialogRequested,
           this, &MainWindow::onShowNtscObserverDialog);
   connect(preview_dialog_, &PreviewDialog::lineScopeRequested, this,
@@ -502,45 +502,51 @@ void MainWindow::setupUI() {
           &MainWindow::onLineNavigation);
   connect(preview_dialog_, &PreviewDialog::sampleMarkerMovedInLineScope, this,
           &MainWindow::onSampleMarkerMoved);
-  connect(preview_dialog_, &PreviewDialog::fieldTimingRequested, this,
-          &MainWindow::onFieldTimingRequested);
+  connect(preview_dialog_, &PreviewDialog::frameTimingRequested, this,
+          &MainWindow::onFrameTimingRequested);
+  connect(preview_dialog_, &PreviewDialog::waveformMonitorRequested, this,
+          &MainWindow::onWaveformMonitorRequested);
   connect(preview_dialog_, &PreviewDialog::vectorscopeRequested, this,
           &MainWindow::onPreviewVectorscopeRequested);
-  connect(preview_dialog_, &PreviewDialog::tweakParameterChanged, this,
-          &MainWindow::onTweakParameterChanged);
-  connect(preview_dialog_, &PreviewDialog::resetLiveTweaksRequested, this,
-          &MainWindow::onResetLiveTweaksRequested);
-  connect(preview_dialog_, &PreviewDialog::allLiveTweaksDismissed, this,
-          &MainWindow::onAllLiveTweaksDismissed);
-  connect(preview_dialog_, &PreviewDialog::writeLiveTweaksRequested, this,
-          &MainWindow::onWriteLiveTweaksRequested);
-
+  connect(preview_dialog_, &PreviewDialog::histogramRequested, this,
+          &MainWindow::onPreviewHistogramRequested);
   // Connect preview frame changed signal to line scope
   // When frame changes, line scope should refresh samples at its current
   // field/line
-  auto line_scope = preview_dialog_->lineScopeDialog();
-  if (line_scope) {
+  auto frame_scope = preview_dialog_->frameScopeDialog();
+  if (frame_scope) {
     connect(preview_dialog_, &PreviewDialog::previewFrameChanged, this,
             &MainWindow::onLineScopeRefreshAtFieldLine);
-    connect(line_scope, &LineScopeDialog::dialogClosed, this,
-            &MainWindow::onLineScopeDialogClosed);
+    connect(frame_scope, &FrameScopeDialog::dialogClosed, this,
+            &MainWindow::onFrameScopeDialogClosed);
   }
 
-  // Connect preview frame changed signal to field timing
-  // When frame changes, field timing should refresh if visible
-  auto field_timing = preview_dialog_->fieldTimingDialog();
-  if (field_timing) {
+  // Connect preview frame changed signal to frame timing
+  auto frame_timing = preview_dialog_->frameTimingDialog();
+  if (frame_timing) {
     connect(preview_dialog_, &PreviewDialog::previewFrameChanged, this,
             [this]() {
-              auto* dialog = preview_dialog_->fieldTimingDialog();
+              auto* dialog = preview_dialog_->frameTimingDialog();
               if (dialog && dialog->isVisible()) {
-                onFieldTimingRequested();
+                onFrameTimingRequested();
               }
             });
-    connect(field_timing, &FieldTimingDialog::refreshRequested, this,
-            &MainWindow::onFieldTimingRequested);
-    connect(field_timing, &FieldTimingDialog::setCrosshairsRequested, this,
-            &MainWindow::onSetCrosshairsFromFieldTiming);
+    connect(frame_timing, &FrameTimingDialog::refreshRequested, this,
+            &MainWindow::onFrameTimingRequested);
+    connect(frame_timing, &FrameTimingDialog::setCrosshairsRequested, this,
+            &MainWindow::onSetCrosshairsFromFrameTiming);
+  }
+
+  // Connect preview frame changed signal to waveform monitor
+  auto waveform_monitor = preview_dialog_->waveformMonitorDialog();
+  if (waveform_monitor) {
+    connect(preview_dialog_, &PreviewDialog::previewFrameChanged, this,
+            [this]() {
+              auto* dialog = preview_dialog_->waveformMonitorDialog();
+              if (dialog && dialog->isVisible()) {
+                onWaveformMonitorRequested();
+              }
+            });
   }
 
   // Create QtNodes DAG editor
@@ -771,6 +777,18 @@ void MainWindow::setupMenus() {
   // Help menu
   auto* help_menu = menuBar()->addMenu("&Help");
 
+  auto* user_guide_action = help_menu->addAction("&User Guide...");
+  connect(user_guide_action, &QAction::triggered, this, [this]() {
+    QFile f(":/orc-gui/docs/main_window.md");
+    const QString md = f.open(QIODevice::ReadOnly)
+                           ? QString::fromUtf8(f.readAll())
+                           : QString{};
+    auto* dlg = new StageHelpDialog("Main Window", md, this);
+    dlg->show();
+  });
+
+  help_menu->addSeparator();
+
   auto* about_action = help_menu->addAction("&About Orc GUI...");
   connect(about_action, &QAction::triggered, this, &MainWindow::onAbout);
 }
@@ -794,8 +812,6 @@ void MainWindow::connectDAGSignals() {
           &MainWindow::onEditParameters);
   connect(dag_scene_, &OrcGraphicsScene::triggerStageRequested, this,
           &MainWindow::onTriggerStage);
-  connect(dag_scene_, &OrcGraphicsScene::inspectStageRequested, this,
-          &MainWindow::onInspectStage);
   connect(dag_scene_, &OrcGraphicsScene::runAnalysisRequested, this,
           &MainWindow::runAnalysisForNode);
   connect(dag_scene_, &QtNodes::BasicGraphicsScene::nodeDoubleClicked, this,
@@ -860,6 +876,7 @@ void MainWindow::onEditProject() {
       QString::fromStdString(project_.presenter()->getProjectName()));
   dialog.setProjectDescription(
       QString::fromStdString(project_.presenter()->getProjectDescription()));
+  dialog.setAmplitudeUnit(project_.presenter()->getAmplitudeUnit());
 
   if (dialog.exec() == QDialog::Accepted) {
     // Update project with new values
@@ -875,6 +892,8 @@ void MainWindow::onEditProject() {
     // Update project using presenter
     project_.presenter()->setProjectName(new_name.toStdString());
     project_.presenter()->setProjectDescription(new_description.toStdString());
+    project_.presenter()->setAmplitudeUnit(dialog.amplitudeUnit());
+    propagateAmplitudeUnit();
 
     ORC_LOG_INFO("Project properties updated: name='{}', description='{}'",
                  new_name.toStdString(), new_description.toStdString());
@@ -887,11 +906,13 @@ void MainWindow::onEditProject() {
 }
 
 void MainWindow::onQuickProject() {
-  // Open file dialog to select TBC/TBCC/TBCY file
+  // Open file dialog to select TBC, TBCC, TBCY, or CVBS file
   QString filename = QFileDialog::getOpenFileName(
       this, "Quick Project - Select Video File", getLastSourceDirectory(),
-      "Video Files (*.tbc *.tbcc *.tbcy);;TBC Files (*.tbc);;TBCC Files "
-      "(*.tbcc);;TBCY Files (*.tbcy);;All Files (*)");
+      "Video Files (*.tbc *.tbcc *.tbcy *.composite *.y *.c);;"
+      "TBC Files (*.tbc);;TBCC Files (*.tbcc);;TBCY Files (*.tbcy);;"
+      "CVBS Composite Files (*.composite);;"
+      "CVBS YC Files (*.y *.c);;All Files (*)");
 
   if (filename.isEmpty()) {
     ORC_LOG_DEBUG("Quick project creation cancelled");
@@ -914,14 +935,12 @@ void MainWindow::closeAllDialogs() {
   if (vbi_dialog_ && vbi_dialog_->isVisible()) {
     vbi_dialog_->hide();
   }
-  if (hints_dialog_ && hints_dialog_->isVisible()) {
-    hints_dialog_->hide();
+  if (video_parameter_observer_dialog_ &&
+      video_parameter_observer_dialog_->isVisible()) {
+    video_parameter_observer_dialog_->hide();
   }
   if (ntsc_observer_dialog_ && ntsc_observer_dialog_->isVisible()) {
     ntsc_observer_dialog_->hide();
-  }
-  if (quality_metrics_dialog_ && quality_metrics_dialog_->isVisible()) {
-    quality_metrics_dialog_->hide();
   }
 
   // Close and delete all per-node analysis dialogs
@@ -1022,6 +1041,7 @@ void MainWindow::newProject(orc::VideoSystem video_format,
 
   // Show dialog to choose project name and type if not specified
   QString project_name = "Untitled";
+  std::optional<orc::AmplitudeDisplayUnit> unit_override;
   if (video_format == orc::VideoSystem::Unknown ||
       source_format == orc::SourceType::Unknown) {
     QDialog dialog(this);
@@ -1032,12 +1052,24 @@ void MainWindow::newProject(orc::VideoSystem video_format,
     name_edit->selectAll();
 
     QComboBox* type_combo = new QComboBox(&dialog);
-    type_combo->addItems(
-        {"NTSC Composite", "NTSC YC", "PAL Composite", "PAL YC"});
+    type_combo->addItems({"NTSC Composite", "NTSC YC", "PAL Composite",
+                          "PAL YC", "PAL-M Composite", "PAL-M YC"});
+
+    QComboBox* unit_combo = new QComboBox(&dialog);
+    unit_combo->addItem("IRE",
+                        static_cast<int>(orc::AmplitudeDisplayUnit::IRE));
+    unit_combo->addItem(
+        "mV (millivolts)",
+        static_cast<int>(orc::AmplitudeDisplayUnit::Millivolts));
+    unit_combo->addItem(
+        "10-bit samples",
+        static_cast<int>(orc::AmplitudeDisplayUnit::Samples10Bit));
+    unit_combo->setCurrentIndex(2);  // default: 10-bit samples
 
     QFormLayout* form = new QFormLayout;
     form->addRow(tr("Project name:"), name_edit);
     form->addRow(tr("Project type:"), type_combo);
+    form->addRow(tr("Amplitude units:"), unit_combo);
 
     QDialogButtonBox* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
@@ -1069,7 +1101,16 @@ void MainWindow::newProject(orc::VideoSystem video_format,
     } else if (item == "PAL YC") {
       video_format = orc::VideoSystem::PAL;
       source_format = orc::SourceType::YC;
+    } else if (item == "PAL-M Composite") {
+      video_format = orc::VideoSystem::PAL_M;
+      source_format = orc::SourceType::Composite;
+    } else if (item == "PAL-M YC") {
+      video_format = orc::VideoSystem::PAL_M;
+      source_format = orc::SourceType::YC;
     }
+
+    unit_override = static_cast<orc::AmplitudeDisplayUnit>(
+        unit_combo->currentData().toInt());
   }
 
   ORC_LOG_INFO("Creating new project");
@@ -1079,6 +1120,7 @@ void MainWindow::newProject(orc::VideoSystem video_format,
 
   // Clear existing project state
   project_.clear();
+  preview_dialog_->stopPlayback();
   preview_dialog_->previewWidget()->clearImage();
   preview_dialog_->previewSlider()->setEnabled(false);
   preview_dialog_->frameJumpSpinBox()->setEnabled(false);
@@ -1101,6 +1143,13 @@ void MainWindow::newProject(orc::VideoSystem video_format,
   if (dag_model_) {
     recreateDAGModelScene();
   }
+
+  // Apply user-selected amplitude unit (dialog path); newEmptyProject already
+  // set a convention default, this overrides it if the user chose explicitly.
+  if (unit_override.has_value()) {
+    project_.presenter()->setAmplitudeUnit(*unit_override);
+  }
+  propagateAmplitudeUnit();
 
   // Don't set a project path - leave it empty so user must use "Save As"
   // Project is marked as modified by create_empty_project()
@@ -1127,6 +1176,7 @@ void MainWindow::openProject(const QString& filename) {
 
   // Clear existing project state
   project_.clear();
+  preview_dialog_->stopPlayback();
   preview_dialog_->previewWidget()->clearImage();
   preview_dialog_->previewSlider()->setEnabled(false);
   preview_dialog_->frameJumpSpinBox()->setEnabled(false);
@@ -1170,6 +1220,9 @@ void MainWindow::openProject(const QString& filename) {
   // Load DAG into embedded viewer
   loadProjectDAG();
 
+  // Push the loaded project's amplitude unit to all open dialogs
+  propagateAmplitudeUnit();
+
   // Automatically select the source stage with the lowest node ID
   selectLowestSourceStage();
 
@@ -1199,6 +1252,7 @@ void MainWindow::quickProject(const QString& filename) {
   orc::SourceType source_type = orc::SourceType::Unknown;
   std::string primary_file = filename.toStdString();
   std::string secondary_file;
+  bool is_cvbs = false;
 
   if (ext == "tbc") {
     source_type = orc::SourceType::Composite;
@@ -1248,88 +1302,172 @@ void MainWindow::quickProject(const QString& filename) {
       return;
     }
     secondary_file = tbcc_path.toStdString();
+  } else if (ext == "composite") {
+    is_cvbs = true;
+    source_type = orc::SourceType::Composite;
+  } else if (ext == "y") {
+    is_cvbs = true;
+    source_type = orc::SourceType::YC;
+    QString c_path = base_path + ".c";
+    if (!QFileInfo::exists(c_path)) {
+      QMessageBox::warning(
+          this, "Missing File",
+          QString("Could not find corresponding C (chroma) file: %1")
+              .arg(c_path));
+      return;
+    }
+    secondary_file = c_path.toStdString();
+  } else if (ext == "c") {
+    is_cvbs = true;
+    source_type = orc::SourceType::YC;
+    QString y_path = base_path + ".y";
+    if (!QFileInfo::exists(y_path)) {
+      QMessageBox::warning(
+          this, "Missing File",
+          QString("Could not find corresponding Y (luma) file: %1")
+              .arg(y_path));
+      return;
+    }
+    secondary_file = y_path.toStdString();
   } else {
     QMessageBox::warning(
         this, "Invalid File",
-        QString("Please provide a .tbc, .tbcc, or .tbcy file. Got: %1")
+        QString("Please provide a .tbc, .tbcc, .tbcy, .composite, .y, or .c "
+                "file. Got: %1")
             .arg(ext));
     return;
   }
 
-  // Determine metadata file
-  QString db_path = base_path + ".tbc.db";
-  if (!QFileInfo::exists(db_path)) {
-    // Check for legacy JSON metadata produced by older ld-decode/vhs-decode
-    QString json_path = base_path + ".tbc.json";
-    if (QFileInfo::exists(json_path)) {
-      const QString filename = QFileInfo(json_path).fileName();
-      QMessageBox msgBox(this);
-      msgBox.setWindowTitle("Legacy Metadata Format");
-      msgBox.setIcon(QMessageBox::Warning);
-      msgBox.setText(QString("The TBC source '%1' has legacy JSON metadata. This is just "
-                          "a warning - the source will load regardless.\n\n"
-                          "For best long-term results, consider re-decoding with a "
-                          "current version of ld-decode/vhs-decode.")
-                         .arg(filename));
-      QPushButton* continueBtn =
-          msgBox.addButton("Continue", QMessageBox::AcceptRole);
-      msgBox.addButton("Cancel", QMessageBox::RejectRole);
-      msgBox.setDefaultButton(continueBtn);
-      msgBox.exec();
-      if (msgBox.clickedButton() != continueBtn) return;
-      // User chose Continue; fall through to load with JSON backend
+  // Determine metadata file and read video format
+  QString db_path;  // TBC only: set when a .tbc.db SQLite sidecar is present
+  orc::VideoSystem video_format = orc::VideoSystem::Unknown;
+  std::string source_stage_name;
+
+  if (!is_cvbs) {
+    db_path = base_path + ".tbc.db";
+    if (!QFileInfo::exists(db_path)) {
+      // Check for legacy JSON metadata produced by older ld-decode/vhs-decode
+      QString json_path = base_path + ".tbc.json";
+      if (QFileInfo::exists(json_path)) {
+        const QString json_filename = QFileInfo(json_path).fileName();
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle("Legacy Metadata Format");
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setText(
+            QString(
+                "The TBC source '%1' has legacy JSON metadata. This is just "
+                "a warning - the source will load regardless.\n\n"
+                "For best long-term results, consider re-decoding with a "
+                "current version of ld-decode/vhs-decode.")
+                .arg(json_filename));
+        QPushButton* continueBtn =
+            msgBox.addButton("Continue", QMessageBox::AcceptRole);
+        msgBox.addButton("Cancel", QMessageBox::RejectRole);
+        msgBox.setDefaultButton(continueBtn);
+        msgBox.exec();
+        if (msgBox.clickedButton() != continueBtn) return;
+
+        // Read video system from the legacy JSON file.
+        QFile jf(json_path);
+        if (jf.open(QIODevice::ReadOnly)) {
+          const QJsonDocument doc = QJsonDocument::fromJson(jf.readAll());
+          jf.close();
+          if (!doc.isNull() && doc.isObject()) {
+            const QString sys = doc["videoParameters"]["system"].toString();
+            video_format = orc::video_system_from_string(sys.toStdString());
+          }
+        }
+        if (video_format == orc::VideoSystem::Unknown) {
+          QMessageBox::critical(
+              this, "Error",
+              QString("Failed to read video system from legacy metadata: %1")
+                  .arg(json_path));
+          return;
+        }
+        ORC_LOG_INFO("Read video system from legacy JSON: {}",
+                     orc::video_system_to_string(video_format));
+        db_path.clear();  // no .tbc.db available; stage will use legacy JSON
+      } else {
+        QMessageBox::warning(
+            this, "Missing Metadata File",
+            QString("Metadata file not found:\n%1\n\nRe-run the decoder to "
+                    "generate a .tbc.db metadata file.")
+                .arg(db_path));
+        return;
+      }
     } else {
+      ORC_LOG_INFO("Reading TBC metadata from: {}", db_path.toStdString());
+      auto video_params_opt =
+          orc::presenters::ProjectPresenter::readVideoParameters(
+              db_path.toStdString());
+      if (!video_params_opt) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to read video parameters from metadata file: %1")
+                .arg(db_path));
+        return;
+      }
+      video_format = video_params_opt->system;
+    }
+
+    ORC_LOG_INFO(
+        "Detected format: {}, Source type: {}",
+        (video_format == orc::VideoSystem::NTSC ? "NTSC" : "PAL"),
+        (source_type == orc::SourceType::Composite ? "Composite" : "YC"));
+
+    source_stage_name = "tbc_source";
+  } else {
+    // CVBS: metadata is in <basename>.meta
+    QString meta_path = base_path + ".meta";
+    if (!QFileInfo::exists(meta_path)) {
       QMessageBox::warning(
           this, "Missing Metadata File",
-          QString("Metadata file not found:\n%1\n\nRe-run the decoder to "
-                  "generate a .tbc.db metadata file.")
-              .arg(db_path));
+          QString("CVBS metadata file not found:\n%1\n\nRe-run the decoder to "
+                  "generate a .meta metadata file.")
+              .arg(meta_path));
       return;
     }
+
+    ORC_LOG_INFO("Reading CVBS metadata from: {}", meta_path.toStdString());
+    auto cvbs_params_opt =
+        orc::presenters::ProjectPresenter::readCVBSVideoParameters(
+            meta_path.toStdString());
+    if (!cvbs_params_opt) {
+      QMessageBox::critical(
+          this, "Error",
+          QString("Failed to read video parameters from CVBS metadata file: %1")
+              .arg(meta_path));
+      return;
+    }
+    video_format = cvbs_params_opt->system;
+
+    const std::string fmt_name =
+        (video_format == orc::VideoSystem::NTSC    ? "NTSC"
+         : video_format == orc::VideoSystem::PAL_M ? "PAL-M"
+                                                   : "PAL");
+    ORC_LOG_INFO(
+        "Detected format: {}, Source type: {}", fmt_name,
+        (source_type == orc::SourceType::Composite ? "Composite" : "YC"));
+
+    if (video_format == orc::VideoSystem::NTSC) {
+      source_stage_name = "NTSC_CVBS_Source";
+    } else if (video_format == orc::VideoSystem::PAL_M) {
+      source_stage_name = "PAL_M_CVBS_Source";
+    } else {
+      source_stage_name = "PAL_CVBS_Source";
+    }
   }
-
-  // Read metadata to determine video format (NTSC or PAL)
-  ORC_LOG_INFO("Reading metadata from: {}", db_path.toStdString());
-
-  auto video_params_opt =
-      orc::presenters::ProjectPresenter::readVideoParameters(
-          db_path.toStdString());
-  if (!video_params_opt) {
-    QMessageBox::critical(
-        this, "Error",
-        QString("Failed to read video parameters from metadata file: %1")
-            .arg(db_path));
-    return;
-  }
-
-  orc::VideoSystem video_format = video_params_opt->system;
-
-  ORC_LOG_INFO(
-      "Detected format: {}, Source type: {}",
-      (video_format == orc::VideoSystem::NTSC ? "NTSC" : "PAL"),
-      (source_type == orc::SourceType::Composite ? "Composite" : "YC"));
 
   // Close all dialogs before clearing project
   closeAllDialogs();
 
   // Clear existing project state
   project_.clear();
+  preview_dialog_->stopPlayback();
   preview_dialog_->previewWidget()->clearImage();
   preview_dialog_->previewSlider()->setEnabled(false);
   preview_dialog_->frameJumpSpinBox()->setEnabled(false);
   preview_dialog_->previewSlider()->setValue(0);
-
-  // Determine stage names based on format and source type
-  std::string source_stage_name;
-  if (video_format == orc::VideoSystem::NTSC) {
-    source_stage_name = (source_type == orc::SourceType::Composite)
-                            ? "NTSC_Comp_Source"
-                            : "NTSC_YC_Source";
-  } else {
-    source_stage_name = (source_type == orc::SourceType::Composite)
-                            ? "PAL_Comp_Source"
-                            : "PAL_YC_Source";
-  }
 
   // Create empty project
   QString project_name = file_info.completeBaseName();
@@ -1347,95 +1485,198 @@ void MainWindow::quickProject(const QString& filename) {
   // recreated)
   render_coordinator_->setProject(project_.presenter()->getCoreProjectHandle());
 
-  // Add source stage
-  ORC_LOG_INFO("Adding source stage: {}", source_stage_name);
-  orc::NodeID source_node_id;
-  try {
-    // Use same spacing as DAG alignment function
-    const double grid_offset_x = 50.0;
-    const double grid_offset_y = 50.0;
-    source_node_id = project_.presenter()->addNode(
-        source_stage_name, grid_offset_x, grid_offset_y);
-  } catch (const std::exception& e) {
-    QMessageBox::critical(
-        this, "Error", QString("Failed to add source stage: %1").arg(e.what()));
-    return;
-  }
+  // Add source stage(s), sink, parameters, and connections
+  const double grid_offset_x = 50.0;
+  const double grid_offset_y = 50.0;
+  const double grid_spacing_x = 225.0;
+  const double grid_spacing_y = 125.0;
 
-  // Add FFmpeg video sink stage
-  ORC_LOG_INFO("Adding FFmpeg video sink stage");
-  orc::NodeID sink_node_id;
-  try {
-    // Use same spacing as DAG alignment function
-    const double grid_spacing_x = 225.0;
-    const double grid_offset_x = 50.0;
-    const double grid_offset_y = 50.0;
-    sink_node_id = project_.presenter()->addNode(
-        "ffmpeg_video_sink", grid_offset_x + grid_spacing_x, grid_offset_y);
-  } catch (const std::exception& e) {
-    QMessageBox::critical(
-        this, "Error", QString("Failed to add sink stage: %1").arg(e.what()));
-    return;
-  }
-
-  // Set parameters on source stage based on source type
-  std::map<std::string, orc::ParameterValue> source_params;
-
-  if (source_type == orc::SourceType::Composite) {
-    // Composite source
-    source_params["input_path"] = primary_file;
-    source_params["db_path"] = db_path.toStdString();
-
-    // Check for optional pcm and efm files
-    QString pcm_path = base_path + ".pcm";
-    if (QFileInfo::exists(pcm_path)) {
-      source_params["pcm_path"] = pcm_path.toStdString();
+  if (!is_cvbs) {
+    // TBC path: single source stage → sink
+    ORC_LOG_INFO("Adding TBC source stage: {}", source_stage_name);
+    orc::NodeID source_node_id;
+    try {
+      source_node_id = project_.presenter()->addNode(
+          source_stage_name, grid_offset_x, grid_offset_y);
+    } catch (const std::exception& e) {
+      QMessageBox::critical(
+          this, "Error",
+          QString("Failed to add source stage: %1").arg(e.what()));
+      return;
     }
 
-    QString efm_path = base_path + ".efm";
-    if (QFileInfo::exists(efm_path)) {
-      source_params["efm_path"] = efm_path.toStdString();
+    ORC_LOG_INFO("Adding FFmpeg video sink stage");
+    orc::NodeID sink_node_id;
+    try {
+      sink_node_id = project_.presenter()->addNode(
+          "ffmpeg_video_sink", grid_offset_x + grid_spacing_x, grid_offset_y);
+    } catch (const std::exception& e) {
+      QMessageBox::critical(
+          this, "Error", QString("Failed to add sink stage: %1").arg(e.what()));
+      return;
+    }
+
+    std::map<std::string, orc::ParameterValue> source_params;
+    if (source_type == orc::SourceType::Composite) {
+      source_params["input_path"] = primary_file;
+      if (!db_path.isEmpty()) {
+        source_params["db_path"] = db_path.toStdString();
+      }
+
+      QString pcm_path = base_path + ".pcm";
+      if (QFileInfo::exists(pcm_path)) {
+        source_params["pcm_path"] = pcm_path.toStdString();
+      }
+      QString efm_path = base_path + ".efm";
+      if (QFileInfo::exists(efm_path)) {
+        source_params["efm_path"] = efm_path.toStdString();
+      }
+    } else {
+      if (ext == "tbcy") {
+        source_params["y_path"] = primary_file;
+        source_params["c_path"] = secondary_file;
+      } else {
+        source_params["y_path"] = secondary_file;
+        source_params["c_path"] = primary_file;
+      }
+      if (!db_path.isEmpty()) {
+        source_params["db_path"] = db_path.toStdString();
+      }
+
+      QString pcm_path = base_path + ".pcm";
+      if (QFileInfo::exists(pcm_path)) {
+        source_params["pcm_path"] = pcm_path.toStdString();
+      }
+      QString efm_path = base_path + ".efm";
+      if (QFileInfo::exists(efm_path)) {
+        source_params["efm_path"] = efm_path.toStdString();
+      }
+    }
+
+    try {
+      project_.presenter()->setNodeParameters(source_node_id, source_params);
+    } catch (const std::exception& e) {
+      QMessageBox::critical(
+          this, "Error",
+          QString("Failed to set parameters on source stage: %1")
+              .arg(e.what()));
+      return;
+    }
+    ORC_LOG_INFO("Source stage parameters set successfully");
+
+    ORC_LOG_INFO("Connecting source stage to sink stage");
+    try {
+      project_.presenter()->addEdge(source_node_id, sink_node_id);
+    } catch (const std::exception& e) {
+      QMessageBox::critical(
+          this, "Error", QString("Failed to connect stages: %1").arg(e.what()));
+      return;
     }
   } else {
-    // YC source
-    if (ext == "tbcy") {
-      source_params["y_path"] = primary_file;
-      source_params["c_path"] = secondary_file;
+    // CVBS path: CVBS source stage(s) → sink
+    // For composite: one source stage.
+    // For YC: two source stages (one for Y, one for C), both wired to sink.
+    if (source_type == orc::SourceType::Composite) {
+      ORC_LOG_INFO("Adding CVBS composite source stage: {}", source_stage_name);
+      orc::NodeID source_node_id;
+      try {
+        source_node_id = project_.presenter()->addNode(
+            source_stage_name, grid_offset_x, grid_offset_y);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to add source stage: %1").arg(e.what()));
+        return;
+      }
+
+      ORC_LOG_INFO("Adding FFmpeg video sink stage");
+      orc::NodeID sink_node_id;
+      try {
+        sink_node_id = project_.presenter()->addNode(
+            "ffmpeg_video_sink", grid_offset_x + grid_spacing_x, grid_offset_y);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to add sink stage: %1").arg(e.what()));
+        return;
+      }
+
+      std::map<std::string, orc::ParameterValue> source_params;
+      source_params["input_path"] = primary_file;
+
+      try {
+        project_.presenter()->setNodeParameters(source_node_id, source_params);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to set parameters on CVBS source stage: %1")
+                .arg(e.what()));
+        return;
+      }
+      ORC_LOG_INFO("CVBS source stage parameters set successfully");
+
+      ORC_LOG_INFO("Connecting CVBS source stage to sink stage");
+      try {
+        project_.presenter()->addEdge(source_node_id, sink_node_id);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to connect stages: %1").arg(e.what()));
+        return;
+      }
     } else {
-      source_params["y_path"] = secondary_file;
-      source_params["c_path"] = primary_file;
+      // CVBS YC: single source stage with both y_path and c_path, wired to sink
+      const std::string y_file = (ext == "y") ? primary_file : secondary_file;
+      const std::string c_file = (ext == "c") ? primary_file : secondary_file;
+
+      ORC_LOG_INFO("Adding CVBS YC source stage: {}", source_stage_name);
+      orc::NodeID source_node_id;
+      try {
+        source_node_id = project_.presenter()->addNode(
+            source_stage_name, grid_offset_x, grid_offset_y);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to add YC source stage: %1").arg(e.what()));
+        return;
+      }
+
+      ORC_LOG_INFO("Adding FFmpeg video sink stage");
+      orc::NodeID sink_node_id;
+      try {
+        sink_node_id = project_.presenter()->addNode(
+            "ffmpeg_video_sink", grid_offset_x + grid_spacing_x, grid_offset_y);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to add sink stage: %1").arg(e.what()));
+        return;
+      }
+
+      std::map<std::string, orc::ParameterValue> yc_params;
+      yc_params["y_path"] = y_file;
+      yc_params["c_path"] = c_file;
+      try {
+        project_.presenter()->setNodeParameters(source_node_id, yc_params);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to set parameters on YC source stage: %1")
+                .arg(e.what()));
+        return;
+      }
+      ORC_LOG_INFO("CVBS YC source stage parameters set successfully");
+
+      ORC_LOG_INFO("Connecting CVBS YC source stage to sink stage");
+      try {
+        project_.presenter()->addEdge(source_node_id, sink_node_id);
+      } catch (const std::exception& e) {
+        QMessageBox::critical(
+            this, "Error",
+            QString("Failed to connect stages: %1").arg(e.what()));
+        return;
+      }
     }
-    source_params["db_path"] = db_path.toStdString();
-
-    // Check for optional pcm and efm files
-    QString pcm_path = base_path + ".pcm";
-    if (QFileInfo::exists(pcm_path)) {
-      source_params["pcm_path"] = pcm_path.toStdString();
-    }
-
-    QString efm_path = base_path + ".efm";
-    if (QFileInfo::exists(efm_path)) {
-      source_params["efm_path"] = efm_path.toStdString();
-    }
-  }
-
-  // Set parameters on the source stage using presenter
-  if (!project_.presenter()->setNodeParameters(source_node_id, source_params)) {
-    QMessageBox::critical(this, "Error",
-                          "Failed to set parameters on source stage. Check "
-                          "that the file paths are valid.");
-    return;
-  }
-  ORC_LOG_INFO("Source stage parameters set successfully");
-
-  // Connect source to sink
-  ORC_LOG_INFO("Connecting source stage to sink stage");
-  try {
-    project_.presenter()->addEdge(source_node_id, sink_node_id);
-  } catch (const std::exception& e) {
-    QMessageBox::critical(
-        this, "Error", QString("Failed to connect stages: %1").arg(e.what()));
-    return;
   }
 
   // Rebuild DAG from the newly created project structure
@@ -1461,6 +1702,9 @@ void MainWindow::quickProject(const QString& filename) {
   updatePreviewRenderer();
   reportPluginRuntimeDiagnostics(false);
   loadProjectDAG();
+
+  // Push the project's amplitude unit to any open dialogs
+  propagateAmplitudeUnit();
 
   // Automatically select the source stage with the lowest node ID
   selectLowestSourceStage();
@@ -1596,7 +1840,7 @@ void MainWindow::onNavigatePreview(int delta) {
   // In frame view modes, keyboard arrows skip 2 slider positions at a time
   // so one keypress = one frame; in field mode one keypress = one field.
   const int step =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed)
           ? 2
           : 1;
@@ -1636,16 +1880,20 @@ void MainWindow::onPreviewModeChanged(int index) {
   uint64_t new_position = current_position;
 
   // Determine if previous and new types are field-based or frame-based
-  bool previous_is_field = (previous_type == orc::PreviewOutputType::Field ||
-                            previous_type == orc::PreviewOutputType::Luma);
-  bool new_is_field = (current_output_type_ == orc::PreviewOutputType::Field ||
-                       current_output_type_ == orc::PreviewOutputType::Luma);
+  bool previous_is_field =
+      (previous_type == orc::PreviewOutputType::Frame_Field1 ||
+       previous_type == orc::PreviewOutputType::Frame_Field2 ||
+       previous_type == orc::PreviewOutputType::Luma);
+  bool new_is_field =
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+       current_output_type_ == orc::PreviewOutputType::Frame_Field2 ||
+       current_output_type_ == orc::PreviewOutputType::Luma);
 
   // Get first_field_offset - this is the same for all frame-based outputs
   // (determined by field 0 parity) We can get it from any frame-based output
   uint64_t first_field_offset = 0;
   for (const auto& output : available_outputs_) {
-    if (output.type == orc::PreviewOutputType::Frame ||
+    if (output.type == orc::PreviewOutputType::Frame_Field1_First ||
         output.type == orc::PreviewOutputType::Frame_Reversed ||
         output.type == orc::PreviewOutputType::Split) {
       first_field_offset = output.first_field_offset;
@@ -1668,7 +1916,8 @@ void MainWindow::onPreviewModeChanged(int index) {
   } else if (!previous_is_field && new_is_field) {
     // Converting from frame to field: select first field of current frame
     // Frame F maps to first field at: F*2 + offset
-    new_position = (static_cast<uint64_t>(current_position * 2)) + first_field_offset;
+    new_position =
+        (static_cast<uint64_t>(current_position * 2)) + first_field_offset;
     ORC_LOG_DEBUG("Frame->Field conversion: frame {} -> field {} (offset: {})",
                   current_position, new_position, first_field_offset);
   }
@@ -1734,6 +1983,45 @@ void MainWindow::updateWindowTitle() {
   QString project_name = project_.projectName();
   if (!project_name.isEmpty()) {
     title = project_name;
+
+    // Append video format label when known.
+    const auto fmt = project_.presenter()->getVideoFormat();
+    QString fmt_label;
+    switch (fmt) {
+      case orc::presenters::VideoFormat::PAL:
+        fmt_label = "PAL";
+        break;
+      case orc::presenters::VideoFormat::NTSC:
+        fmt_label = "NTSC";
+        break;
+      case orc::presenters::VideoFormat::PAL_M:
+        fmt_label = "PAL-M";
+        break;
+      default:
+        break;
+    }
+
+    // Append source type (Composite / Y/C) when known.
+    const auto src = project_.presenter()->getSourceType();
+    QString src_label;
+    switch (src) {
+      case orc::presenters::SourceType::Composite:
+        src_label = "Composite";
+        break;
+      case orc::presenters::SourceType::YC:
+        src_label = "Y/C";
+        break;
+      default:
+        break;
+    }
+
+    if (!fmt_label.isEmpty() || !src_label.isEmpty()) {
+      QString bracket;
+      if (!fmt_label.isEmpty()) bracket += fmt_label;
+      if (!fmt_label.isEmpty() && !src_label.isEmpty()) bracket += " - ";
+      if (!src_label.isEmpty()) bracket += src_label;
+      title += " [" + bracket + "]";
+    }
 
     // Add source name if available
     if (project_.hasSource()) {
@@ -1815,6 +2103,13 @@ void MainWindow::updatePreviewInfo() {
   bool is_ntsc = (video_format_presenter == orc::presenters::VideoFormat::NTSC);
   preview_dialog_->ntscObserverAction()->setEnabled(is_ntsc);
 
+  // ITU-R BT.470-6 §5.1 (PAL 25 fps) / SMPTE 170M-2004 §2 (NTSC ~29.97 fps).
+  // ITU-R BT.1700-1 Annex 1 Part B (PAL-M 29.97 fps, same rate as NTSC).
+  // Keep playback timer interval in sync with the detected video standard.
+  const bool is_palm =
+      (video_format_presenter == orc::presenters::VideoFormat::PAL_M);
+  preview_dialog_->setPlaybackFrameRateMs((is_ntsc || is_palm) ? 33 : 40);
+
   // Get detailed display info from core
   int current_index = preview_dialog_->previewSlider()->value();
   int total = preview_dialog_->previewSlider()->maximum() + 1;
@@ -1839,7 +2134,8 @@ void MainWindow::updatePreviewInfo() {
   QString slider_min_text;
   QString slider_max_text;
 
-  if (current_output_type_ == orc::PreviewOutputType::Field) {
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+      current_output_type_ == orc::PreviewOutputType::Frame_Field2) {
     // Field mode: show 1-indexed field numbers
     uint64_t field_id = static_cast<uint64_t>(current_index);
     uint64_t min_field_id = 0;
@@ -1852,7 +2148,8 @@ void MainWindow::updatePreviewInfo() {
 
     slider_min_text = QString::number(min_field_id + 1);  // 1-indexed
     slider_max_text = QString::number(max_field_id + 1);  // 1-indexed
-  } else if (current_output_type_ == orc::PreviewOutputType::Frame ||
+  } else if (current_output_type_ ==
+                 orc::PreviewOutputType::Frame_Field1_First ||
              current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
     // Frame mode: show 1-indexed frame numbers with constituent field numbers
     uint64_t frame_index = static_cast<uint64_t>(current_index);
@@ -2479,11 +2776,15 @@ void MainWindow::updatePreview() {
 }
 
 orc::VideoDataType MainWindow::inferCurrentVideoDataType() const {
-  const bool is_pal =
-      project_.presenter() && project_.presenter()->getVideoFormat() ==
-                                  orc::presenters::VideoFormat::PAL;
+  // PAL-M uses PAL colour encoding, so it maps to the PAL data types.
+  // ITU-R BT.1700-1 Annex 1 Part B.
+  const auto infer_fmt = project_.presenter()
+                             ? project_.presenter()->getVideoFormat()
+                             : orc::presenters::VideoFormat::Unknown;
+  const bool is_pal = (infer_fmt == orc::presenters::VideoFormat::PAL ||
+                       infer_fmt == orc::presenters::VideoFormat::PAL_M);
 
-  if (current_output_type_ == orc::PreviewOutputType::Frame ||
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
       current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
       current_output_type_ == orc::PreviewOutputType::Split) {
     return is_pal ? orc::VideoDataType::ColourPAL
@@ -2595,313 +2896,64 @@ void MainWindow::onPreviewVectorscopeRequested(
   refreshVectorscopeForCurrentCoordinate();
 }
 
-std::optional<MainWindow::LiveTweakStageContext>
-MainWindow::buildLiveTweakStageContext(orc::NodeID node_id) {
-  if (!render_coordinator_ || !node_id.is_valid()) {
-    return std::nullopt;
-  }
-
-  LiveTweakStageContext context;
-  context.tweakable = render_coordinator_->getStageTweakableParameters(node_id);
-  if (context.tweakable.empty()) {
-    return std::nullopt;
-  }
-
-  auto* presenter = project_.presenter();
-  const auto nodes = presenter->getNodes();
-  auto node_it = std::find_if(nodes.begin(), nodes.end(),
-                              [node_id](const orc::presenters::NodeInfo& node) {
-                                return node.node_id == node_id;
-                              });
-  if (node_it == nodes.end()) {
-    return std::nullopt;
-  }
-
-  context.descriptors = presenter->getStageParameters(node_it->stage_name);
-  context.persisted_values = presenter->getNodeParameters(node_id);
-
-  auto baseline_it = live_tweak_baseline_values_by_node_.find(node_id);
-  if (baseline_it == live_tweak_baseline_values_by_node_.end()) {
-    auto baseline_values =
-        render_coordinator_->getStageCurrentParameters(node_id);
-    if (baseline_values.empty()) {
-      baseline_values =
-          buildEffectiveStageParameters(context, context.persisted_values);
-    }
-    baseline_it = live_tweak_baseline_values_by_node_
-                      .emplace(node_id, std::move(baseline_values))
-                      .first;
-  }
-  context.baseline_values = baseline_it->second;
-
-  auto live_values_it = live_tweak_values_by_node_.find(node_id);
-  if (live_values_it != live_tweak_values_by_node_.end()) {
-    context.display_values = live_values_it->second;
-  } else {
-    context.display_values = context.baseline_values;
-  }
-
-  return context;
-}
-
-std::map<std::string, orc::ParameterValue>
-MainWindow::buildEffectiveStageParameters(
-    const LiveTweakStageContext& context,
-    const std::map<std::string, orc::ParameterValue>& values) const {
-  std::map<std::string, orc::ParameterValue> effective_values;
-  for (const auto& tweak : context.tweakable) {
-    auto descriptor_it =
-        std::find_if(context.descriptors.begin(), context.descriptors.end(),
-                     [&tweak](const auto& descriptor) {
-                       return descriptor.name == tweak.parameter_name;
-                     });
-    if (descriptor_it == context.descriptors.end()) {
-      continue;
-    }
-
-    auto value_it = values.find(descriptor_it->name);
-    if (value_it != values.end()) {
-      effective_values[descriptor_it->name] = value_it->second;
-      continue;
-    }
-
-    effective_values[descriptor_it->name] =
-        resolveEffectiveParameterValue(*descriptor_it, context.baseline_values);
-  }
-  return effective_values;
-}
-
-bool MainWindow::computeLiveTweakDirty(
-    const LiveTweakStageContext& context,
-    const std::map<std::string, orc::ParameterValue>& current_values) const {
-  for (const auto& tweak : context.tweakable) {
-    auto desc_it =
-        std::find_if(context.descriptors.begin(), context.descriptors.end(),
-                     [&tweak](const auto& desc) {
-                       return desc.name == tweak.parameter_name;
-                     });
-    if (desc_it == context.descriptors.end()) {
-      continue;
-    }
-
-    const auto baseline = normalizeEffectiveParameterValue(
-        *desc_it,
-        resolveEffectiveParameterValue(*desc_it, context.baseline_values));
-    const auto current = normalizeEffectiveParameterValue(
-        *desc_it, resolveEffectiveParameterValue(*desc_it, current_values));
-    if (baseline != current) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-void MainWindow::showLiveTweakValues(
-    orc::NodeID node_id,
-    const std::map<std::string, orc::ParameterValue>& display_values,
-    bool dirty) {
-  if (!preview_dialog_) {
-    return;
-  }
-
-  const auto context = buildLiveTweakStageContext(node_id);
-  if (!context.has_value()) {
-    preview_dialog_->setTweakableParameters(node_id, {}, {}, {}, false);
-    return;
-  }
-
-  preview_dialog_->setTweakableParameters(
-      node_id, context->tweakable, context->descriptors, display_values, dirty);
-}
-
-void MainWindow::dispatchLiveTweakApply(
-    orc::NodeID node_id, std::map<std::string, orc::ParameterValue> params,
-    orc::LiveTweakClass tweak_class) {
-  if (!render_coordinator_ || !node_id.is_valid() ||
-      node_id != current_view_node_id_) {
-    return;
-  }
-
-  ORC_LOG_DEBUG(
-      "MainWindow: applying {} tweak parameters for node '{}' (class={})",
-      params.size(), node_id.to_string(), static_cast<int>(tweak_class));
-
-  bool dirty = false;
-  if (const auto context = buildLiveTweakStageContext(node_id);
-      context.has_value()) {
-    params = buildEffectiveStageParameters(*context, params);
-    dirty = computeLiveTweakDirty(*context, params);
-    if (dirty) {
-      setStoredLiveTweakValues(node_id, params);
-    } else {
-      clearLiveTweakState(node_id);
-    }
-  } else {
-    clearLiveTweakState(node_id);
-  }
-
-  if (preview_dialog_ && current_view_node_id_ == node_id) {
-    preview_dialog_->setLiveTweaksDirty(dirty);
-  }
-
-  const uint64_t output_index = static_cast<uint64_t>(
-      preview_dialog_ ? preview_dialog_->currentIndex() : 0);
-  pending_render_index_ = static_cast<int>(output_index);
-  beginPreviewRenderInFlight();
-
-  pending_preview_request_id_ =
-      render_coordinator_->requestApplyStageParameters(
-          node_id, current_output_type_, output_index, current_option_id_,
-          std::move(params));
-}
-
-bool MainWindow::hasStoredLiveTweakValues(orc::NodeID node_id) const {
-  return live_tweak_values_by_node_.find(node_id) !=
-         live_tweak_values_by_node_.end();
-}
-
-void MainWindow::setStoredLiveTweakValues(
-    orc::NodeID node_id, std::map<std::string, orc::ParameterValue> values) {
-  if (!node_id.is_valid()) {
-    return;
-  }
-
-  live_tweak_values_by_node_[node_id] = std::move(values);
-}
-
-void MainWindow::clearLiveTweakState(orc::NodeID node_id) {
-  if (!node_id.is_valid()) {
-    return;
-  }
-
-  live_tweak_values_by_node_.erase(node_id);
-
-  if (preview_dialog_ && current_view_node_id_ == node_id) {
-    preview_dialog_->setLiveTweaksDirty(false);
-  }
-}
-
-void MainWindow::clearAllLiveTweakState() {
-  live_tweak_baseline_values_by_node_.clear();
-  live_tweak_values_by_node_.clear();
-  if (preview_dialog_) {
-    preview_dialog_->setLiveTweaksDirty(false);
-  }
-}
-
-void MainWindow::refreshTweakPanel() {
+void MainWindow::refreshHistogramForCurrentCoordinate() {
   if (!preview_dialog_ || !render_coordinator_ ||
       !current_view_node_id_.is_valid()) {
-    if (preview_dialog_) {
-      preview_dialog_->setTweakableParameters(orc::NodeID{}, {}, {}, {}, false);
-    }
     return;
   }
 
-  const auto context = buildLiveTweakStageContext(current_view_node_id_);
-  if (!context.has_value()) {
-    preview_dialog_->setTweakableParameters(current_view_node_id_, {}, {}, {},
-                                            false);
+  const std::string histogram_view_id = PreviewDialog::kHistogramViewIdRef();
+  if (!preview_dialog_->hasAvailablePreviewView(histogram_view_id)) {
+    preview_dialog_->updateHistogram(current_view_node_id_, std::nullopt);
     return;
   }
 
-  showLiveTweakValues(current_view_node_id_, context->display_values,
-                      computeLiveTweakDirty(*context, context->display_values));
-}
-
-void MainWindow::onTweakParameterChanged(
-    orc::NodeID node_id, std::map<std::string, orc::ParameterValue> params,
-    orc::LiveTweakClass tweak_class) {
-  dispatchLiveTweakApply(node_id, std::move(params), tweak_class);
-}
-
-void MainWindow::onResetLiveTweaksRequested(orc::NodeID node_id) {
-  if (!node_id.is_valid() || node_id != current_view_node_id_) {
+  if (preview_render_in_flight_) {
     return;
   }
 
-  try {
-    const auto context = buildLiveTweakStageContext(node_id);
-    const auto persisted_params =
-        project_.presenter()->getNodeParameters(node_id);
-
-    std::map<std::string, orc::ParameterValue> reset_params = persisted_params;
-    if (context.has_value()) {
-      reset_params = buildEffectiveStageParameters(*context, persisted_params);
-    }
-
-    clearLiveTweakState(node_id);
-    showLiveTweakValues(
-        node_id,
-        context.has_value() ? context->baseline_values : persisted_params,
-        false);
-    dispatchLiveTweakApply(node_id, std::move(reset_params),
-                           orc::LiveTweakClass::DecodePhase);
-    statusBar()->showMessage("Live tweaks reset to stage parameters", 2500);
-  } catch (const std::exception& e) {
-    ORC_LOG_ERROR("onResetLiveTweaksRequested failed: {}", e.what());
-    statusBar()->showMessage(QString("Failed to reset live tweaks: %1")
-                                 .arg(QString::fromStdString(e.what())),
-                             4000);
-  }
-}
-
-void MainWindow::onAllLiveTweaksDismissed() {
-  // Detect non-current nodes that had tweaks applied in the worker DAG before
-  // clearing maps.
-  bool has_noncurrent_dirty = false;
-  for (const auto& [nid, _] : live_tweak_values_by_node_) {
-    if (nid != current_view_node_id_) {
-      has_noncurrent_dirty = true;
-      break;
-    }
-  }
-
-  // Reset the currently viewed node's render parameters if it has unsaved
-  // tweaks
-  if (current_view_node_id_.is_valid() &&
-      hasStoredLiveTweakValues(current_view_node_id_)) {
-    onResetLiveTweaksRequested(current_view_node_id_);
-  }
-  // Discard stored tweaks for all remaining nodes (not actively applied in
-  // render coordinator)
-  clearAllLiveTweakState();
-
-  // Non-current nodes' stage state in the worker DAG was applied during
-  // navigation but never reversed.  Re-build the DAG from persisted parameters
-  // to purge stale stage state.
-  if (has_noncurrent_dirty) {
-    project_.rebuildDAG();
-    updatePreviewRenderer();
-  }
-}
-
-void MainWindow::onWriteLiveTweaksRequested(
-    orc::NodeID node_id, std::map<std::string, orc::ParameterValue> params) {
-  if (!node_id.is_valid() || node_id != current_view_node_id_) {
+  if (!preview_dialog_->isHistogramVisibleForNode(current_view_node_id_)) {
     return;
   }
 
-  try {
-    const auto persisted_params =
-        project_.presenter()->getNodeParameters(node_id);
-    auto merged_params = mergeParameterValues(persisted_params, params);
-    project_.presenter()->setNodeParameters(node_id, merged_params);
+  orc::PreviewCoordinate coordinate =
+      preview_dialog_->sharedPreviewCoordinate().has_value()
+          ? *preview_dialog_->sharedPreviewCoordinate()
+          : buildCurrentPreviewCoordinate();
 
-    // Keep the DAG-backed renderer consistent with persisted stage parameters.
-    project_.rebuildDAG();
-    updatePreviewRenderer();
-    dag_model_->refresh();
-    refreshTweakPanel();
-
-    statusBar()->showMessage("Live tweaks written to stage parameters", 2500);
-  } catch (const std::exception& e) {
-    ORC_LOG_ERROR("onWriteLiveTweaksRequested failed: {}", e.what());
-    statusBar()->showMessage(QString("Failed to write stage parameters: %1")
-                                 .arg(QString::fromStdString(e.what())),
-                             4000);
+  coordinate.field_index =
+      static_cast<uint64_t>(preview_dialog_->currentIndex());
+  coordinate.data_type_context = inferCurrentVideoDataType();
+  if (!coordinate.is_valid()) {
+    return;
   }
+
+  const auto result = render_coordinator_->requestPreviewViewData(
+      current_view_node_id_, histogram_view_id, coordinate.data_type_context,
+      coordinate);
+
+  if (!result.success ||
+      result.payload_kind != orc::PreviewViewPayloadKind::Histogram) {
+    preview_dialog_->updateHistogram(current_view_node_id_, std::nullopt);
+    ORC_LOG_DEBUG("refreshHistogramForCurrentCoordinate: {}",
+                  result.error_message.empty() ? "no histogram payload"
+                                               : result.error_message);
+    return;
+  }
+
+  preview_dialog_->updateHistogram(current_view_node_id_, result.histogram);
+}
+
+void MainWindow::onPreviewHistogramRequested(
+    const orc::PreviewCoordinate& coordinate) {
+  if (!current_view_node_id_.is_valid()) {
+    return;
+  }
+
+  orc::PreviewCoordinate updated = coordinate;
+  updated.data_type_context = inferCurrentVideoDataType();
+  preview_dialog_->setSharedPreviewCoordinate(updated);
+  refreshHistogramForCurrentCoordinate();
 }
 
 void MainWindow::updatePreviewModeCombo() {
@@ -3076,13 +3128,10 @@ void MainWindow::refreshViewerControls(bool skip_preview) {
   if (!skip_preview) {
     updateAllPreviewComponents();
   }
-
-  refreshTweakPanel();
 }
 
 void MainWindow::updatePreviewRenderer() {
   ORC_LOG_DEBUG("Updating preview renderer");
-  clearAllLiveTweakState();
 
   // Get the DAG - could be null for empty projects, that's fine
   auto dag = project_.hasSource() ? project_.getDAG() : nullptr;
@@ -3330,50 +3379,6 @@ void MainWindow::onQtNodeSelected(QtNodes::NodeId nodeId) {
   }
 }
 
-void MainWindow::onInspectStage(const NodeID& node_id) {
-  ORC_LOG_DEBUG("Inspect stage requested for node: {}", node_id);
-
-  // Find the node in the project
-  const auto nodes = project_.presenter()->getNodes();
-  auto node_it = std::find_if(nodes.begin(), nodes.end(),
-                              [&node_id](const orc::presenters::NodeInfo& n) {
-                                return n.node_id == node_id;
-                              });
-
-  if (node_it == nodes.end()) {
-    ORC_LOG_ERROR("Stage '{}' not found in project", node_id);
-    QMessageBox::warning(this, "Inspection Failed",
-                         QString("Stage '%1' not found.")
-                             .arg(QString::fromStdString(node_id.to_string())));
-    return;
-  }
-
-  const std::string& stage_name = node_it->stage_name;
-
-  // Use presenter to get inspection report (handles DAG vs fresh stage
-  // internally)
-  try {
-    auto inspection_view = project_.presenter()->getNodeInspection(node_id);
-
-    if (!inspection_view.has_value()) {
-      QMessageBox::information(
-          this, "Stage Inspection",
-          QString("Stage '%1' does not support inspection reporting.")
-              .arg(QString::fromStdString(stage_name)));
-      return;
-    }
-
-    // Show inspection dialog with presenter view model
-    orc::InspectionDialog dialog(inspection_view.value(), this);
-    dialog.exec();
-
-  } catch (const std::exception& e) {
-    ORC_LOG_ERROR("Failed to inspect stage '{}': {}", stage_name, e.what());
-    QMessageBox::warning(this, "Inspection Failed",
-                         QString("Failed to inspect stage: %1").arg(e.what()));
-  }
-}
-
 void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
                                     const orc::NodeID& node_id,
                                     const std::string& stage_name) {
@@ -3426,6 +3431,21 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
 
     // Create and show the config dialog
     MaskLineConfigDialog dialog(this);
+
+    // Provide amplitude unit and video parameters for unit-aware display.
+    dialog.setAmplitudeUnit(project_.presenter()->getAmplitudeUnit());
+    {
+      auto* core_project = project_.presenter()->getCoreProjectHandle();
+      if (core_project) {
+        orc::presenters::RenderPresenter rp(core_project);
+        rp.setDAG(project_.getDAG());
+        auto vp = rp.getVideoParameters(node_id);
+        if (vp.has_value()) {
+          dialog.setVideoParameters(
+              orc::presenters::toVideoParametersView(*vp));
+        }
+      }
+    }
 
     // Load current parameters from presenter
     auto current_params = project_.presenter()->getNodeParameters(node_id);
@@ -3572,7 +3592,7 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
       return;
     }
 
-    // Execute DAG to get the VideoFieldRepresentation for the input node
+    // Execute DAG to get the VideoFrameRepresentation for the input node
     // Find the input edge to this node
     const auto edges = project_.presenter()->getEdges();
     orc::NodeID input_node_id;
@@ -3605,14 +3625,9 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     orc::presenters::RenderPresenter render_presenter(core_project);
     render_presenter.setDAG(project_.getDAG());
 
-    std::shared_ptr<const orc::VideoFieldRepresentation> source_repr;
+    std::shared_ptr<const void> source_repr;
     try {
-      auto output_void = render_presenter.executeToNode(input_node_id);
-      if (output_void) {
-        source_repr =
-            std::static_pointer_cast<const orc::VideoFieldRepresentation>(
-                output_void);
-      }
+      source_repr = render_presenter.executeToNode(input_node_id);
     } catch (const std::exception& e) {
       QMessageBox::warning(this, "Error",
                            QString("Failed to execute DAG: %1").arg(e.what()));
@@ -3622,7 +3637,7 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     if (!source_repr) {
       QMessageBox::warning(
           this, "Error",
-          "Could not get video field data from input. "
+          "Could not get video frame data from input. "
           "Ensure the dropout_map stage has a valid video source connected.");
       return;
     }
@@ -3632,37 +3647,26 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
                                            source_repr, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
 
-    // Connect to handle the accepted signal
-    connect(dialog, &QDialog::accepted, this, [this, node_id, dialog]() {
-      // Get the edited dropout map
+    auto apply_dropout_map = [this, node_id, dialog]() {
       auto edited_map = dialog->getDropoutMap();
 
-      ORC_LOG_DEBUG("Dropout editor returned map with {} field entries",
+      ORC_LOG_DEBUG("Dropout editor returned map with {} frame entries",
                     edited_map.size());
 
-      // Save the dropout map via presenter
       if (dropout_presenter_->setDropoutMap(node_id, edited_map)) {
-        // Mark project as modified
         project_.setModified(true);
-
-        // Update UI to reflect modified state
         updateUIState();
-
-        // Rebuild DAG
         project_.rebuildDAG();
-
-        // Update the preview renderer with the new DAG (contains updated
-        // parameters)
         updatePreviewRenderer();
-
         ORC_LOG_DEBUG("Dropout map updated for node '{}'", node_id.to_string());
-
-        // Trigger preview update to show the changes
         updatePreview();
       } else {
         QMessageBox::warning(this, "Error", "Failed to save dropout map");
       }
-    });
+    };
+
+    connect(dialog, &QDialog::accepted, this, apply_dropout_map);
+    connect(dialog, &DropoutEditorDialog::applied, this, apply_dropout_map);
 
     // Show as non-modal window
     dialog->show();
@@ -3908,7 +3912,7 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
   }
 
   // Default path: Generic analysis dialog for all other tools
-  // This handles tools like Field Corruption Generator using auto-generated UI
+  // This handles tools like Frame Corruption Generator using auto-generated UI
 
   // Create an AnalysisPresenter to get tool parameters and run the analysis
   auto* analysis_presenter = new orc::presenters::AnalysisPresenter(
@@ -4006,32 +4010,16 @@ void MainWindow::onShowVBIDialog() {
   updateVBIDialog();
 }
 
-void MainWindow::onShowHintsDialog() {
-  if (!hints_dialog_) {
+void MainWindow::onShowVideoParameterObserverDialog() {
+  if (!video_parameter_observer_dialog_) {
     return;
   }
 
-  // Show the dialog first
-  hints_dialog_->show();
-  hints_dialog_->raise();
-  hints_dialog_->activateWindow();
+  video_parameter_observer_dialog_->show();
+  video_parameter_observer_dialog_->raise();
+  video_parameter_observer_dialog_->activateWindow();
 
-  // Update hints information after showing
-  updateHintsDialog();
-}
-
-void MainWindow::onShowQualityMetricsDialog() {
-  if (!quality_metrics_dialog_) {
-    return;
-  }
-
-  // Show the dialog first
-  quality_metrics_dialog_->show();
-  quality_metrics_dialog_->raise();
-  quality_metrics_dialog_->activateWindow();
-
-  // Update quality metrics information after showing
-  updateQualityMetricsDialog();
+  updateVideoParameterObserverDialog();
 }
 
 void MainWindow::onShowNtscObserverDialog() {
@@ -4048,29 +4036,33 @@ void MainWindow::onShowNtscObserverDialog() {
   updateNtscObserverDialog();
 }
 
-void MainWindow::onFieldTimingRequested() {
+void MainWindow::onFrameTimingRequested() {
   if (!current_view_node_id_.is_valid()) {
     ORC_LOG_WARN("No node selected for field timing view");
     return;
   }
 
   if (!preview_dialog_ ||
-      !preview_dialog_->hasAvailablePreviewView(kFieldTimingViewId)) {
+      !preview_dialog_->hasAvailablePreviewView(kFrameTimingViewId)) {
     ORC_LOG_DEBUG("Field timing view is not available for the selected stage");
     return;
   }
 
   // Request field timing data for current preview frame/field
   int current_index = preview_dialog_->previewSlider()->value();
-  pending_field_timing_request_id_ =
-      render_coordinator_->requestFieldTimingData(
+  pending_frame_timing_request_id_ =
+      render_coordinator_->requestFrameTimingData(
           current_view_node_id_, current_output_type_, current_index);
 
   ORC_LOG_DEBUG("Requested field timing data (request_id={})",
-                pending_field_timing_request_id_);
+                pending_frame_timing_request_id_);
 }
 
-void MainWindow::onLineScopeDialogClosed() {
+void MainWindow::onFrameScopeDialogClosed() {
+  ORC_LOG_DEBUG(
+      "onFrameScopeDialogClosed: resetting line scope state (was line={}, "
+      "field={})",
+      last_line_scope_line_number_, last_line_scope_field_index_);
   // Clear the marker state when line scope is closed
   last_line_scope_field_index_ = std::numeric_limits<uint64_t>::max();
   last_line_scope_line_number_ = -1;
@@ -4078,15 +4070,15 @@ void MainWindow::onLineScopeDialogClosed() {
   last_line_scope_image_y_ = -1;
 
   // Update field timing dialog if it's visible to remove the marker
-  auto* field_timing_dialog = preview_dialog_->fieldTimingDialog();
-  if (field_timing_dialog && field_timing_dialog->isVisible()) {
-    onFieldTimingRequested();
+  auto* frame_timing_dialog = preview_dialog_->frameTimingDialog();
+  if (frame_timing_dialog && frame_timing_dialog->isVisible()) {
+    onFrameTimingRequested();
   }
 }
 
-void MainWindow::onSetCrosshairsFromFieldTiming() {
-  auto* field_timing_dialog = preview_dialog_->fieldTimingDialog();
-  if (!field_timing_dialog) {
+void MainWindow::onSetCrosshairsFromFrameTiming() {
+  auto* frame_timing_dialog = preview_dialog_->frameTimingDialog();
+  if (!frame_timing_dialog) {
     return;
   }
 
@@ -4104,26 +4096,25 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
     }
   }
 
-  if (!video_params.has_value() || video_params->field_width <= 0 ||
-      video_params->field_height <= 0) {
+  if (!video_params.has_value() || video_params->frame_width_nominal <= 0) {
     ORC_LOG_WARN("No video parameters available for set crosshairs");
     return;
   }
 
   // Get center sample from timing widget
-  int center_sample = field_timing_dialog->timingWidget()->getCenterSample();
+  int center_sample = frame_timing_dialog->timingWidget()->getCenterSample();
   if (center_sample < 0) {
     ORC_LOG_WARN("No valid center sample position");
     return;
   }
 
-  const int fw = video_params->field_width;
+  const int fw = video_params->frame_width_nominal;
 
   // Get the actual field heights from the dialog (these come from VFR
   // descriptors) This is important for PAL where first field = 312 lines,
   // second field = 313 lines
-  const int first_fh = field_timing_dialog->firstFieldHeight();
-  const int second_fh = field_timing_dialog->secondFieldHeight();
+  const int first_fh = frame_timing_dialog->firstFieldHeight();
+  const int second_fh = frame_timing_dialog->secondFieldHeight();
 
   if (first_fh == 0 || fw == 0) {
     ORC_LOG_WARN("Invalid field dimensions");
@@ -4137,7 +4128,7 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
   int field_height_for_sample = first_fh;
 
   // Check if we're showing two fields (frame mode)
-  if (current_output_type_ == orc::PreviewOutputType::Frame ||
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
       current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
       current_output_type_ == orc::PreviewOutputType::Split) {
     // Determine which field based on sample position
@@ -4169,7 +4160,7 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
   // Clamp to valid range using the actual field height for this specific field
   if (line_number >= field_height_for_sample) {
     line_number = field_height_for_sample - 1;
-}
+  }
   if (sample_x >= fw) sample_x = fw - 1;
 
   ORC_LOG_DEBUG(
@@ -4194,12 +4185,12 @@ void MainWindow::onSetCrosshairsFromFieldTiming() {
   onLineScopeRequested(sample_x, mapping.image_y);
 }
 
-void MainWindow::onFieldTimingDataReady(
+void MainWindow::onFrameTimingDataReady(
     uint64_t request_id, uint64_t field_index,
-    std::optional<uint64_t> field_index_2, std::vector<uint16_t> samples,
-    std::vector<uint16_t> samples_2, std::vector<uint16_t> y_samples,
-    std::vector<uint16_t> c_samples, std::vector<uint16_t> y_samples_2,
-    std::vector<uint16_t> c_samples_2, int first_field_height,
+    std::optional<uint64_t> field_index_2, std::vector<int16_t> samples,
+    std::vector<int16_t> samples_2, std::vector<int16_t> y_samples,
+    std::vector<int16_t> c_samples, std::vector<int16_t> y_samples_2,
+    std::vector<int16_t> c_samples_2, int first_field_height,
     int second_field_height) {
   Q_UNUSED(request_id);
 
@@ -4211,8 +4202,8 @@ void MainWindow::onFieldTimingDataReady(
                                 : "",
       samples.size(), y_samples.size(), c_samples.size());
 
-  auto* field_timing_dialog = preview_dialog_->fieldTimingDialog();
-  if (!field_timing_dialog) {
+  auto* frame_timing_dialog = preview_dialog_->frameTimingDialog();
+  if (!frame_timing_dialog) {
     ORC_LOG_WARN("No field timing dialog available!");
     return;
   }
@@ -4236,11 +4227,25 @@ void MainWindow::onFieldTimingDataReady(
 
   // Set the field data and show the dialog
   std::optional<int> marker_sample;
-  if (video_params.has_value() && video_params->field_width > 0 &&
+  if (video_params.has_value() && video_params->frame_width_nominal > 0 &&
       last_line_scope_field_index_ != std::numeric_limits<uint64_t>::max() &&
       last_line_scope_image_x_ >= 0 && last_line_scope_line_number_ >= 0) {
-    const int fw = video_params->field_width;
-    const int fallback_fh = video_params->field_height;
+    const int fw = video_params->frame_width_nominal;
+    // Derive the fallback field height from the video system.
+    const auto vp_sys = [&]() -> orc::VideoSystem {
+      switch (video_params->system) {
+        case orc::presenters::VideoSystem::PAL:
+          return orc::VideoSystem::PAL;
+        case orc::presenters::VideoSystem::NTSC:
+          return orc::VideoSystem::NTSC;
+        case orc::presenters::VideoSystem::PAL_M:
+          return orc::VideoSystem::PAL_M;
+        default:
+          return orc::VideoSystem::Unknown;
+      }
+    }();
+    const int fallback_fh =
+        static_cast<int>(orc::calculate_padded_field_height(vp_sys));
     const int first_fh =
         (first_field_height > 0) ? first_field_height : fallback_fh;
     const int second_fh =
@@ -4279,105 +4284,77 @@ void MainWindow::onFieldTimingDataReady(
     }
   }
 
-  field_timing_dialog->setFieldData(
+  frame_timing_dialog->setFieldData(
       QString::fromStdString(current_view_node_id_.to_string()), field_index,
       samples, field_index_2, samples_2, y_samples, c_samples, y_samples_2,
       c_samples_2, video_params, marker_sample, first_field_height,
       second_field_height);
 
-  // Only show/raise/activate if not already visible
-  // This prevents stealing focus when the dialog is already open
-  if (!field_timing_dialog->isVisible()) {
-    field_timing_dialog->show();
-    field_timing_dialog->raise();
-    field_timing_dialog->activateWindow();
+  // Only show/raise/activate if not already visible, and only if the parent
+  // preview dialog is still open. Guards against pending async callbacks
+  // re-opening the dialog after the user has closed the preview window.
+  if (!frame_timing_dialog->isVisible() && preview_dialog_->isVisible()) {
+    frame_timing_dialog->show();
+    frame_timing_dialog->raise();
+    frame_timing_dialog->activateWindow();
   }
 }
 
-void MainWindow::updateQualityMetricsDialog() {
-  // Only update if dialog is visible
-  if (!quality_metrics_dialog_ || !quality_metrics_dialog_->isVisible()) {
-    return;
-  }
-
-  // Get current field/frame being displayed
+void MainWindow::onWaveformMonitorRequested() {
   if (!current_view_node_id_.is_valid()) {
-    quality_metrics_dialog_->clearMetrics();
+    ORC_LOG_WARN("No node selected for waveform monitor view");
     return;
   }
 
-  // Get the current index from the preview slider
-  int current_index = preview_dialog_->previewSlider()->value();
-
-  // Check if we're in frame mode (any mode that shows two fields)
-  bool is_frame_mode =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
-       current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
-       current_output_type_ == orc::PreviewOutputType::Split);
-
-  // Get field IDs from core library (handles field ordering correctly)
-  orc::FieldID field1_id;
-  orc::FieldID field2_id;
-
-  if (is_frame_mode) {
-    // Use core library to determine which fields make up this frame
-    auto frame_fields = render_coordinator_->getFrameFields(
-        current_view_node_id_, current_index);
-    if (!frame_fields.is_valid) {
-      quality_metrics_dialog_->clearMetrics();
-      return;
-    }
-    field1_id = orc::FieldID(frame_fields.first_field);
-    field2_id = orc::FieldID(frame_fields.second_field);
-  } else {
-    // Field mode - simple mapping
-    field1_id = orc::FieldID(current_index);
-    field2_id = orc::FieldID(0);
+  if (!preview_dialog_ ||
+      !preview_dialog_->hasAvailablePreviewView(kWaveformMonitorViewId)) {
+    ORC_LOG_DEBUG("Waveform monitor is not available for the selected stage");
+    return;
   }
 
-  // Get quality metrics using presenter (no direct DAGFieldRenderer access)
-  try {
-    // Create temporary RenderPresenter for metrics extraction
+  const int current_index = preview_dialog_->previewSlider()->value();
+  pending_waveform_monitor_request_id_ =
+      render_coordinator_->requestWaveformMonitorData(
+          current_view_node_id_, current_output_type_, current_index);
+
+  ORC_LOG_DEBUG("Requested waveform monitor data (request_id={})",
+                pending_waveform_monitor_request_id_);
+}
+
+void MainWindow::onWaveformMonitorDataReady(
+    uint64_t request_id, std::vector<int16_t> composite_samples,
+    std::vector<int16_t> y_samples, std::vector<int16_t> c_samples,
+    int first_field_height, int second_field_height) {
+  Q_UNUSED(request_id);
+
+  ORC_LOG_DEBUG(
+      "Waveform monitor data ready: {} composite samples, {} Y samples, {} C "
+      "samples",
+      composite_samples.size(), y_samples.size(), c_samples.size());
+
+  auto* wm_dialog = preview_dialog_->waveformMonitorDialog();
+  if (!wm_dialog) {
+    ORC_LOG_WARN("No waveform monitor dialog available!");
+    return;
+  }
+
+  // Get video parameters for mV conversion and level markers
+  std::optional<orc::presenters::VideoParametersView> video_params;
+  if (current_view_node_id_.is_valid()) {
     auto* core_project = project_.presenter()->getCoreProjectHandle();
-    if (!core_project) {
-      quality_metrics_dialog_->clearMetrics();
-      return;
-    }
-
-    orc::presenters::RenderPresenter render_presenter(core_project);
-    render_presenter.setDAG(project_.getDAG());
-
-    if (is_frame_mode) {
-      // Render both fields to populate observation context, then update dialog
-      // with both fields and frame averages
-      (void)render_presenter.getObservationContext(current_view_node_id_,
-                                                   field1_id);
-      (void)render_presenter.getObservationContext(current_view_node_id_,
-                                                   field2_id);
-      const void* ctx_ptr = render_presenter.getObservationContext(
-          current_view_node_id_, field1_id);
-      if (!ctx_ptr) {
-        quality_metrics_dialog_->clearMetrics();
-        return;
+    if (core_project) {
+      orc::presenters::RenderPresenter render_presenter(core_project);
+      render_presenter.setDAG(project_.getDAG());
+      auto vp = render_presenter.getVideoParameters(current_view_node_id_);
+      if (vp.has_value()) {
+        video_params = orc::presenters::toVideoParametersView(*vp);
       }
-      quality_metrics_dialog_->updateMetricsForFrameFromContext(
-          field1_id, field2_id, ctx_ptr);
-    } else {
-      // Single field mode: render field to populate observation context, then
-      // update dialog
-      const void* ctx_ptr = render_presenter.getObservationContext(
-          current_view_node_id_, field1_id);
-      if (!ctx_ptr) {
-        quality_metrics_dialog_->clearMetrics();
-        return;
-      }
-      quality_metrics_dialog_->updateMetricsFromContext(field1_id, ctx_ptr);
     }
-
-  } catch (const std::exception& e) {
-    ORC_LOG_ERROR("Failed to update quality metrics: {}", e.what());
-    quality_metrics_dialog_->clearMetrics();
   }
+
+  wm_dialog->setData(std::move(composite_samples), std::move(y_samples),
+                     std::move(c_samples), first_field_height,
+                     second_field_height, video_params);
 }
 
 // Vectorscope is preview-owned and refreshed through the registry request
@@ -4409,8 +4386,7 @@ void MainWindow::updateAllPreviewComponents() {
   // 4. Frame changes - line scope updates via its own connection to
   // previewFrameChanged signal
   updateVBIDialog();
-  updateHintsDialog();
-  updateQualityMetricsDialog();
+  updateVideoParameterObserverDialog();
   updateNtscObserverDialog();
 
   // Notify line scope dialog that preview frame has changed
@@ -4468,7 +4444,7 @@ void MainWindow::updateVBIDialog() {
 
   // Check if we're in frame mode (any mode that shows two fields)
   bool is_frame_mode =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
        current_output_type_ == orc::PreviewOutputType::Split);
 
@@ -4499,68 +4475,83 @@ void MainWindow::updateVBIDialog() {
   }
 }
 
-void MainWindow::updateHintsDialog() {
-  // Only update if hints dialog is visible
-  if (!hints_dialog_ || !hints_dialog_->isVisible()) {
+void MainWindow::updateVideoParameterObserverDialog() {
+  if (!video_parameter_observer_dialog_ ||
+      !video_parameter_observer_dialog_->isVisible()) {
     return;
   }
 
-  // Get current field being displayed
   if (!current_view_node_id_.is_valid()) {
-    hints_dialog_->clearHints();
+    video_parameter_observer_dialog_->clearObservations();
     return;
   }
 
-  // Get the current index from the preview slider
   int current_index = preview_dialog_->previewSlider()->value();
 
-  // Check if we're in frame mode (any mode that shows two fields)
   bool is_frame_mode =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
        current_output_type_ == orc::PreviewOutputType::Split);
 
-  // Get field ID from core library (handles field ordering correctly)
-  orc::FieldID field_id;
-  orc::FieldID second_field_id;
+  orc::FieldID field1_id;
+  orc::FieldID field2_id;
   if (is_frame_mode) {
-    // Use core library to determine first field of frame
     auto frame_fields = render_coordinator_->getFrameFields(
         current_view_node_id_, current_index);
     if (!frame_fields.is_valid) {
-      hints_dialog_->clearHints();
+      video_parameter_observer_dialog_->clearObservations();
       return;
     }
-    field_id = orc::FieldID(frame_fields.first_field);
-    second_field_id = orc::FieldID(frame_fields.second_field);
+    field1_id = orc::FieldID(frame_fields.first_field);
+    field2_id = orc::FieldID(frame_fields.second_field);
   } else {
-    // Field mode - simple mapping
-    field_id = orc::FieldID(current_index);
+    field1_id = orc::FieldID(current_index);
+    field2_id = orc::FieldID(0);
   }
 
-  // Get hints from the current DAG/node
-  // Note: This is a synchronous access - we'll create a temporary renderer
-  if (!hints_presenter_) {
-    hints_dialog_->clearHints();
-    return;
+  try {
+    auto* core_project = project_.presenter()->getCoreProjectHandle();
+    if (!core_project) {
+      video_parameter_observer_dialog_->clearObservations();
+      return;
+    }
+
+    orc::presenters::RenderPresenter render_presenter(core_project);
+    render_presenter.setDAG(project_.getDAG());
+
+    auto video_params =
+        render_presenter.getVideoParameters(current_view_node_id_);
+
+    if (is_frame_mode) {
+      const auto* ctx1 = render_presenter.getObservationContext(
+          current_view_node_id_, field1_id);
+      const auto* ctx2 = render_presenter.getObservationContext(
+          current_view_node_id_, field2_id);
+      if (!ctx1 || !ctx2) {
+        video_parameter_observer_dialog_->clearObservations();
+        return;
+      }
+      auto obs1 = orc::presenters::VideoParameterObservationPresenter::
+          extractObservations(field1_id, ctx1, video_params);
+      auto obs2 = orc::presenters::VideoParameterObservationPresenter::
+          extractObservations(field2_id, ctx2, video_params);
+      video_parameter_observer_dialog_->updateObservationsForFrame(
+          field1_id, obs1, field2_id, obs2);
+    } else {
+      const auto* ctx = render_presenter.getObservationContext(
+          current_view_node_id_, field1_id);
+      if (!ctx) {
+        video_parameter_observer_dialog_->clearObservations();
+        return;
+      }
+      auto obs = orc::presenters::VideoParameterObservationPresenter::
+          extractObservations(field1_id, ctx, video_params);
+      video_parameter_observer_dialog_->updateObservations(field1_id, obs);
+    }
+  } catch (const std::exception& e) {
+    ORC_LOG_ERROR("Failed to get video parameter observations: {}", e.what());
+    video_parameter_observer_dialog_->clearObservations();
   }
-
-  auto hints =
-      hints_presenter_->getHintsForField(current_view_node_id_, field_id);
-  hints_dialog_->updateFieldParityHint(hints.parity);
-
-  // Update phase hint based on mode
-  if (is_frame_mode) {
-    auto second_hints = hints_presenter_->getHintsForField(
-        current_view_node_id_, second_field_id);
-    hints_dialog_->updateFieldPhaseHintForFrame(hints.phase,
-                                                second_hints.phase);
-  } else {
-    hints_dialog_->updateFieldPhaseHint(hints.phase);
-  }
-
-  hints_dialog_->updateActiveLineHint(hints.active_line);
-  hints_dialog_->updateVideoParameters(hints.video_params);
 }
 
 void MainWindow::updateNtscObserverDialog() {
@@ -4580,7 +4571,7 @@ void MainWindow::updateNtscObserverDialog() {
 
   // Check if we're in frame mode (any mode that shows two fields)
   bool is_frame_mode =
-      (current_output_type_ == orc::PreviewOutputType::Frame ||
+      (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
        current_output_type_ == orc::PreviewOutputType::Frame_Reversed ||
        current_output_type_ == orc::PreviewOutputType::Split);
 
@@ -4604,7 +4595,7 @@ void MainWindow::updateNtscObserverDialog() {
     field2_id = orc::FieldID(0);
   }
 
-  // Get NTSC observations using presenter (no direct DAGFieldRenderer access)
+  // Get NTSC observations using presenter (no direct DAGFrameRenderer access)
   try {
     // Create temporary RenderPresenter for observation extraction
     auto* core_project = project_.presenter()->getCoreProjectHandle();
@@ -4699,6 +4690,13 @@ void MainWindow::onLineScopeRequested(int image_x, int image_y) {
   int field_line_0based = mapping.field_line;
   int field_line_1based = field_line_0based + 1;
 
+  // Store the clicked field/line immediately so that
+  // onLineScopeRefreshAtFieldLine can use the correct position before the async
+  // response arrives. Responses must not overwrite these — only user actions
+  // (click or up/down) should.
+  last_line_scope_field_index_ = field_index;
+  last_line_scope_line_number_ = field_line_0based;
+
   orc::PreviewCoordinate coordinate;
   coordinate.field_index = field_index;
   coordinate.line_index = static_cast<uint32_t>(std::max(field_line_0based, 0));
@@ -4726,16 +4724,16 @@ void MainWindow::onLineScopeRequested(int image_x, int image_y) {
   // Request line samples from the coordinator using Field output type
   // Note: Core API expects 0-based line numbers
   pending_line_sample_request_id_ = render_coordinator_->requestLineSamples(
-      current_view_node_id_, orc::PreviewOutputType::Field, field_index,
+      current_view_node_id_, orc::PreviewOutputType::Frame_Field1, field_index,
       field_line_0based,  // Core API uses 0-based
       sample_x, preview_image_width);
 }
 
 void MainWindow::onLineSamplesReady(
     uint64_t request_id, uint64_t field_index, int line_number, int sample_x,
-    std::vector<uint16_t> samples,
+    std::vector<int16_t> samples,
     std::optional<orc::SourceParameters> video_params,
-    std::vector<uint16_t> y_samples, std::vector<uint16_t> c_samples) {
+    std::vector<int16_t> y_samples, std::vector<int16_t> c_samples) {
   Q_UNUSED(request_id);
 
   // Core API returns 0-based line numbers, convert to 1-based for display
@@ -4767,9 +4765,11 @@ void MainWindow::onLineSamplesReady(
   int preview_image_height =
       preview_dialog_->previewWidget()->originalImageSize().height();
 
-  // Store the actual field/line being displayed (0-based for core API)
-  last_line_scope_field_index_ = field_index;
-  last_line_scope_line_number_ = line_number_0based;
+  // NOTE: last_line_scope_field_index_ and last_line_scope_line_number_ are
+  // intentionally NOT updated here. They represent user intent (set by click
+  // or up/down navigation) and must not be overwritten by async responses,
+  // which would cause in-flight refresh responses to cancel navigation during
+  // playback.
 
   // Store context for sample marker updates
   last_line_scope_preview_width_ = preview_image_width;
@@ -4781,18 +4781,39 @@ void MainWindow::onLineSamplesReady(
     last_line_scope_samples_count_ = static_cast<int>(y_samples.size());
   }
 
-  // Use orc-core to map the current field/line to image coordinates for display
-  // This ensures we always have the correct visual position for the current
-  // frame
   uint64_t current_index = preview_dialog_->previewSlider()->value();
+
+  // The response's field_index may be from a past frame when the decoder is
+  // slow. Resolve to the current frame's matching-parity field so that
+  // mapFieldToImage always receives a field belonging to current_index.
+  uint64_t effective_field_for_mapping = field_index;
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
+      current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
+    auto frame_fields = render_coordinator_->getFrameFields(
+        current_view_node_id_, current_index);
+    if (frame_fields.is_valid) {
+      bool is_odd = (field_index % 2) == 1;
+      bool first_is_odd = (frame_fields.first_field % 2) == 1;
+      effective_field_for_mapping = (is_odd == first_is_odd)
+                                        ? frame_fields.first_field
+                                        : frame_fields.second_field;
+    }
+  } else if (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+             current_output_type_ == orc::PreviewOutputType::Frame_Field2) {
+    effective_field_for_mapping = current_index;
+  } else if (current_output_type_ == orc::PreviewOutputType::Split) {
+    bool is_odd = (field_index % 2) == 1;
+    effective_field_for_mapping =
+        is_odd ? (current_index * 2 + 1) : (current_index * 2);
+  }
+
   auto mapping = render_coordinator_->mapFieldToImage(
-      current_view_node_id_, current_output_type_, current_index, field_index,
-      line_number_0based, preview_image_height);
+      current_view_node_id_, current_output_type_, current_index,
+      effective_field_for_mapping, line_number_0based, preview_image_height);
 
   int image_y = 0;
   if (mapping.is_valid) {
     image_y = mapping.image_y;
-    // Update cross-hairs using the correctly mapped position for this frame
     preview_dialog_->previewWidget()->updateCrosshairsPosition(
         last_line_scope_image_x_, image_y);
     last_line_scope_image_y_ = image_y;
@@ -4800,33 +4821,12 @@ void MainWindow::onLineSamplesReady(
     ORC_LOG_WARN(
         "Failed to map field coordinates to image - not updating cross-hairs "
         "to avoid jumping");
-    // Don't update cross-hairs if mapping fails - keep them at the last valid
-    // position This prevents the cross-hairs from jumping to an incorrect
-    // position during navigation
-    image_y = line_number_0based;  // Fallback for dialog display, but not for
-                                   // cross-hairs
+    image_y = line_number_0based;
   }
 
-  // Use the stored original image_x to avoid rounding errors from
-  // reverse-mapping
   int original_sample_x = last_line_scope_image_x_;
-
-  // Convert preview-space coordinate to sample index for the marker position
-  // The core returns sample_x which is clamped to the actual samples array
-  // We should use the core's clamped value as the sample index
   int sample_index = sample_x;
-
-  // Calculate image_y from field/line using orc-core
-  int image_height =
-      preview_dialog_->previewWidget()->originalImageSize().height();
-  auto image_coords = render_coordinator_->mapFieldToImage(
-      current_view_node_id_, current_output_type_,
-      preview_dialog_->previewSlider()->value(), field_index,
-      line_number_0based, image_height);
-  int calculated_image_y = image_coords.is_valid ? image_coords.image_y : 0;
-  if (image_coords.is_valid) {
-    last_line_scope_image_y_ = image_coords.image_y;
-  }
+  int calculated_image_y = image_y;
 
   // Store field/line for later navigation (already stored above)
   // last_line_scope_field_index_ = field_index;
@@ -4855,19 +4855,29 @@ void MainWindow::onLineSamplesReady(
     }
   }
 
+  const bool scope_was_visible = preview_dialog_->isLineScopeVisible();
   preview_dialog_->showLineScope(
       node_id_str, stage_index, field_index, line_number_1based, sample_index,
       samples, view_params, preview_image_width, original_sample_x,
       calculated_image_y, current_output_type_, y_samples, c_samples);
 
+  // If the dialog just became visible, navigation may have occurred while the
+  // initial line samples were in-flight (onLineScopeRefreshAtFieldLine skips
+  // when the dialog is not yet visible). Trigger a refresh now so the scope
+  // shows the current frame rather than the frame that was clicked on.
+  if (!scope_was_visible && preview_dialog_->isLineScopeVisible()) {
+    onLineScopeRefreshAtFieldLine();
+  }
+
   // Update field timing dialog if it's visible (to update the marker position)
-  if (preview_dialog_->fieldTimingDialog() &&
-      preview_dialog_->fieldTimingDialog()->isVisible()) {
+  if (preview_dialog_->frameTimingDialog() &&
+      preview_dialog_->frameTimingDialog()->isVisible()) {
     ORC_LOG_DEBUG("Refreshing field timing dialog to update marker position");
-    onFieldTimingRequested();
+    onFrameTimingRequested();
   }
 
   refreshVectorscopeForCurrentCoordinate();
+  refreshHistogramForCurrentCoordinate();
 }
 
 void MainWindow::onFrameLineNavigationReady(
@@ -4900,6 +4910,11 @@ void MainWindow::requestLineSamplesForNavigation(uint64_t field_index,
   // This ensures all modes (Field, Frame, Split) handle updates consistently
   // Update stored field/line BEFORE requesting so they're available when
   // samples arrive
+  ORC_LOG_DEBUG(
+      "requestLineSamplesForNavigation: storing field={}, line={} (was "
+      "field={}, line={})",
+      field_index, line_number, last_line_scope_field_index_,
+      last_line_scope_line_number_);
   last_line_scope_field_index_ = field_index;
   last_line_scope_line_number_ = line_number;
 
@@ -4914,7 +4929,7 @@ void MainWindow::requestLineSamplesForNavigation(uint64_t field_index,
       sample_x, preview_image_width);
 
   pending_line_sample_request_id_ = render_coordinator_->requestLineSamples(
-      current_view_node_id_, orc::PreviewOutputType::Field, field_index,
+      current_view_node_id_, orc::PreviewOutputType::Frame_Field1, field_index,
       line_number, sample_x, preview_image_width);
 
   ORC_LOG_DEBUG("requestLineSamplesForNavigation: request_id={}",
@@ -4956,12 +4971,12 @@ void MainWindow::onSampleMarkerMoved(int sample_x) {
     last_line_scope_image_x_ = preview_x;
     last_line_scope_image_y_ = image_y;
 
-    if (preview_dialog_->fieldTimingDialog() &&
-        preview_dialog_->fieldTimingDialog()->isVisible()) {
+    if (preview_dialog_->frameTimingDialog() &&
+        preview_dialog_->frameTimingDialog()->isVisible()) {
       ORC_LOG_DEBUG(
           "Refreshing field timing dialog to update marker after sample marker "
           "move");
-      onFieldTimingRequested();
+      onFrameTimingRequested();
     }
   } else {
     ORC_LOG_WARN(
@@ -4983,7 +4998,7 @@ void MainWindow::refreshLineScopeForCurrentStage() {
     // Show empty line scope
     QString node_id_str = "(none)";
     preview_dialog_->showLineScope(node_id_str, 0, 0, 0, 0,
-                                   std::vector<uint16_t>(),  // Empty samples
+                                   std::vector<int16_t>(),  // Empty samples
                                    std::nullopt, 0, 0, 0, current_output_type_);
     return;
   }
@@ -5031,7 +5046,7 @@ void MainWindow::refreshLineScopeForCurrentStage() {
   QString node_id_str =
       QString::fromStdString(current_view_node_id_.to_string());
   preview_dialog_->showLineScope(node_id_str, 0, 0, 0, 0,
-                                 std::vector<uint16_t>(),  // Empty samples
+                                 std::vector<int16_t>(),  // Empty samples
                                  std::nullopt, 0, 0, 0, current_output_type_);
 }
 
@@ -5060,16 +5075,18 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
 
   // If we don't have a valid stored field, try to initialize from current
   // slider position
-  if (last_line_scope_field_index_ < 0) {
+  if (last_line_scope_field_index_ == std::numeric_limits<uint64_t>::max()) {
     ORC_LOG_DEBUG("No stored field index, initializing from current mode");
 
-    if (current_output_type_ == orc::PreviewOutputType::Field) {
+    if (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+        current_output_type_ == orc::PreviewOutputType::Frame_Field2) {
       last_line_scope_field_index_ = preview_dialog_->previewSlider()->value();
     } else if (current_output_type_ == orc::PreviewOutputType::Split) {
       // For split mode, use first field of the pair
       uint64_t pair_index = preview_dialog_->previewSlider()->value();
       last_line_scope_field_index_ = pair_index * 2;
-    } else if (current_output_type_ == orc::PreviewOutputType::Frame ||
+    } else if (current_output_type_ ==
+                   orc::PreviewOutputType::Frame_Field1_First ||
                current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
       // For frame mode, get fields from frame and use first one
       auto frame_fields = render_coordinator_->getFrameFields(
@@ -5092,7 +5109,7 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
 
   // If in Frame mode, get which fields are in the current frame and pick the
   // one with same parity
-  if (current_output_type_ == orc::PreviewOutputType::Frame ||
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
       current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
     uint64_t frame_index = preview_dialog_->previewSlider()->value();
     auto frame_fields =
@@ -5118,7 +5135,8 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
     }
   }
   // In Field or Split mode, just use the current field index from the slider
-  else if (current_output_type_ == orc::PreviewOutputType::Field) {
+  else if (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+           current_output_type_ == orc::PreviewOutputType::Frame_Field2) {
     new_field_index = preview_dialog_->previewSlider()->value();
     ORC_LOG_DEBUG("Field mode: using field {} from slider", new_field_index);
   } else if (current_output_type_ == orc::PreviewOutputType::Split) {
@@ -5150,16 +5168,15 @@ void MainWindow::onLineScopeRefreshAtFieldLine() {
                 new_field_index, last_line_scope_line_number_, sample_x);
 
   pending_line_sample_request_id_ = render_coordinator_->requestLineSamples(
-      current_view_node_id_, orc::PreviewOutputType::Field, new_field_index,
-      last_line_scope_line_number_, sample_x, preview_width);
+      current_view_node_id_, orc::PreviewOutputType::Frame_Field1,
+      new_field_index, last_line_scope_line_number_, sample_x, preview_width);
 }
 
-void MainWindow::onLineNavigation(int direction, uint64_t current_field,
-                                  int current_line, int sample_x,
+void MainWindow::onLineNavigation(int direction, uint64_t /*current_field*/,
+                                  int /*current_line*/, int sample_x,
                                   int preview_image_width) {
-  ORC_LOG_DEBUG(
-      "Line navigation requested: direction={}, field={}, line={}, sample_x={}",
-      direction, current_field, current_line, sample_x);
+  ORC_LOG_DEBUG("Line navigation requested: direction={}, sample_x={}",
+                direction, sample_x);
 
   if (!current_view_node_id_.is_valid() || !preview_dialog_) {
     return;
@@ -5169,14 +5186,54 @@ void MainWindow::onLineNavigation(int direction, uint64_t current_field,
   // navigation.
   last_line_scope_image_x_ = sample_x;
 
+  if (last_line_scope_line_number_ < 0 ||
+      last_line_scope_field_index_ == std::numeric_limits<uint64_t>::max()) {
+    ORC_LOG_DEBUG("Line navigation skipped: no valid stored field/line state");
+    return;
+  }
+
+  const uint64_t output_index = preview_dialog_->previewSlider()->value();
+
+  // The dialog's current_field may be from a past frame when the decoder is
+  // slow (e.g. chroma/FFmpeg). Recompute the effective field from our stored
+  // parity intent and the *current* slider position, matching the same logic
+  // as onLineScopeRefreshAtFieldLine, so that mapFieldToImage always receives
+  // a field that belongs to the current output frame.
+  uint64_t effective_field = last_line_scope_field_index_;
+
+  if (current_output_type_ == orc::PreviewOutputType::Frame_Field1_First ||
+      current_output_type_ == orc::PreviewOutputType::Frame_Reversed) {
+    auto frame_fields = render_coordinator_->getFrameFields(
+        current_view_node_id_, output_index);
+    if (frame_fields.is_valid) {
+      bool was_odd = (last_line_scope_field_index_ % 2) == 1;
+      bool first_is_odd = (frame_fields.first_field % 2) == 1;
+      effective_field = (was_odd == first_is_odd) ? frame_fields.first_field
+                                                  : frame_fields.second_field;
+      ORC_LOG_DEBUG("Frame {}: fields [{},{}], using field {} for navigation",
+                    output_index, frame_fields.first_field,
+                    frame_fields.second_field, effective_field);
+    } else {
+      ORC_LOG_WARN("Failed to get frame fields for navigation");
+      return;
+    }
+  } else if (current_output_type_ == orc::PreviewOutputType::Frame_Field1 ||
+             current_output_type_ == orc::PreviewOutputType::Frame_Field2) {
+    effective_field = output_index;
+  } else if (current_output_type_ == orc::PreviewOutputType::Split) {
+    bool was_odd = (last_line_scope_field_index_ % 2) == 1;
+    effective_field = was_odd ? (output_index * 2 + 1) : (output_index * 2);
+  }
+
+  const int effective_line = last_line_scope_line_number_;
+
   const int image_height =
       preview_dialog_->previewWidget()->originalImageSize().height();
-  const uint64_t output_index = preview_dialog_->previewSlider()->value();
   const auto navigation_target = orc::gui::computeLineNavigationTarget(
       {
           direction,
-          current_field,
-          current_line,
+          effective_field,
+          effective_line,
           image_height,
       },
       [this, output_index](uint64_t field_index, int line_number,
@@ -5202,4 +5259,23 @@ void MainWindow::onLineNavigation(int direction, uint64_t current_field,
   requestLineSamplesForNavigation(navigation_target.field_index,
                                   navigation_target.line_number, sample_x,
                                   preview_image_width);
+}
+
+void MainWindow::propagateAmplitudeUnit() {
+  if (!project_.presenter()) {
+    return;
+  }
+  const orc::AmplitudeDisplayUnit unit =
+      project_.presenter()->getAmplitudeUnit();
+  if (video_parameter_observer_dialog_) {
+    video_parameter_observer_dialog_->setAmplitudeUnit(unit);
+    // Re-render with the new unit if the dialog is currently visible.
+    updateVideoParameterObserverDialog();
+  }
+  for (auto& [id, dlg] : burst_level_analysis_dialogs_) {
+    if (dlg) dlg->setAmplitudeUnit(unit);
+  }
+  if (preview_dialog_) {
+    preview_dialog_->forwardAmplitudeUnit(unit);
+  }
 }

@@ -10,15 +10,15 @@
 #ifndef ORC_CORE_VBI_DECODER_H
 #define ORC_CORE_VBI_DECODER_H
 
-#include <field_id.h>
-#include <node_id.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/lru_cache.h>
+#include <orc/stage/node_id.h>
 
 #include <array>
 #include <memory>
 #include <optional>
 #include <string>
 
-#include "lru_cache.h"
 #include "vbi_types.h"
 
 namespace orc {

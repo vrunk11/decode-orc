@@ -10,10 +10,11 @@
 #ifndef ORC_CORE_AC3RF_SINK_STAGE_DEPS_H
 #define ORC_CORE_AC3RF_SINK_STAGE_DEPS_H
 
+#include <orc/stage/triggerable_stage.h>
+
 #include <atomic>
 
 #include "ac3rf_sink_stage_deps_interface.h"
-#include "triggerable_stage.h"
 
 namespace orc {
 class AC3RFSinkStageDeps : public IAC3RFSinkStageDeps {
@@ -24,7 +25,7 @@ class AC3RFSinkStageDeps : public IAC3RFSinkStageDeps {
             std::atomic<bool>* cancel_requested);
 
   AC3RFSinkDecodeResult decode_and_write_ac3(
-      const VideoFieldRepresentation* representation,
+      const VideoFrameRepresentation* representation,
       const std::string& output_path) override;
 
  private:

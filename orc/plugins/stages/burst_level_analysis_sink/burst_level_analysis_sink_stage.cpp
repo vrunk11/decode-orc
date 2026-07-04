@@ -9,16 +9,19 @@
 
 #include "burst_level_analysis_sink_stage.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
+
 #include <memory>
 #include <stdexcept>
 
 #include "burst_level_analysis_sink_deps.h"
-#include "logging.h"
-#include "preview_helpers.h"
 
 namespace orc {
 
-BurstLevelAnalysisSinkStage::BurstLevelAnalysisSinkStage() = default;
+BurstLevelAnalysisSinkStage::BurstLevelAnalysisSinkStage() {
+  set_configuration_status(orc::ConfigurationStatus::Yellow);
+}
 
 NodeTypeInfo BurstLevelAnalysisSinkStage::get_node_type_info() const {
   return NodeTypeInfo{NodeType::ANALYSIS_SINK,
@@ -41,12 +44,17 @@ std::vector<ArtifactPtr> BurstLevelAnalysisSinkStage::execute(
     ObservationContext& observation_context) {
   (void)parameters;
   (void)observation_context;
-  // Cache input for preview rendering (pass-through preview of upstream output)
+  cached_input_ = nullptr;
   if (!inputs.empty()) {
     cached_input_ =
-        std::dynamic_pointer_cast<const VideoFieldRepresentation>(inputs[0]);
+        std::dynamic_pointer_cast<const VideoFrameRepresentation>(inputs[0]);
   }
   return {};
+}
+
+StagePreviewCapability BurstLevelAnalysisSinkStage::get_preview_capability()
+    const {
+  return PreviewHelpers::make_signal_preview_capability(cached_input_);
 }
 
 std::vector<ParameterDescriptor>
@@ -76,18 +84,6 @@ BurstLevelAnalysisSinkStage::get_parameter_descriptors(
                            false,
                            std::nullopt}});
 
-  descriptors.push_back(
-      ParameterDescriptor{"max_frames", "Max Frames",
-                          "Deprecated: data is automatically binned to ~1000 "
-                          "points based on total fields (0 = auto).",
-                          ParameterType::UINT32,
-                          ParameterConstraints{ParameterValue(0U),
-                                               std::nullopt,
-                                               ParameterValue(0U),
-                                               {},
-                                               false,
-                                               std::nullopt}});
-
   return descriptors;
 }
 
@@ -99,6 +95,14 @@ BurstLevelAnalysisSinkStage::get_parameters() const {
 bool BurstLevelAnalysisSinkStage::set_parameters(
     const std::map<std::string, ParameterValue>& params) {
   parameters_ = params;
+
+  const auto it = params.find("output_path");
+  const bool has_path =
+      (it != params.end() && std::holds_alternative<std::string>(it->second) &&
+       !std::get<std::string>(it->second).empty());
+
+  set_configuration_status(has_path ? orc::ConfigurationStatus::Green
+                                    : orc::ConfigurationStatus::Yellow);
   return true;
 }
 
@@ -117,12 +121,6 @@ BurstLevelAnalysisSinkStage::parse_config(
   if (csv_it != parameters.end() &&
       std::holds_alternative<bool>(csv_it->second)) {
     cfg.write_csv = std::get<bool>(csv_it->second);
-  }
-
-  auto max_it = parameters.find("max_frames");
-  if (max_it != parameters.end() &&
-      std::holds_alternative<uint32_t>(max_it->second)) {
-    cfg.max_frames = static_cast<size_t>(std::get<uint32_t>(max_it->second));
   }
 
   return cfg;
@@ -144,9 +142,9 @@ bool BurstLevelAnalysisSinkStage::trigger(
       throw std::runtime_error("No input connected");
     }
 
-    auto vfr = std::dynamic_pointer_cast<VideoFieldRepresentation>(inputs[0]);
+    auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
     if (!vfr) {
-      throw std::runtime_error("Input is not a VideoFieldRepresentation");
+      throw std::runtime_error("Input is not a VideoFrameRepresentation");
     }
 
     ParsedConfig cfg = parse_config(parameters);
@@ -160,7 +158,6 @@ bool BurstLevelAnalysisSinkStage::trigger(
     BurstAnalysisComputeOptions compute_options;
     compute_options.output_path = cfg.output_path;
     compute_options.write_csv = cfg.write_csv;
-    compute_options.max_frames = cfg.max_frames;
 
     const BurstAnalysisComputeResult compute_result = deps->compute_and_analyze(
         vfr.get(), observation_context, compute_options);
@@ -198,19 +195,6 @@ bool BurstLevelAnalysisSinkStage::trigger(
     is_processing_.store(false);
     return false;
   }
-}
-
-std::vector<PreviewOption> BurstLevelAnalysisSinkStage::get_preview_options()
-    const {
-  return PreviewHelpers::get_standard_preview_options(cached_input_);
-}
-
-PreviewImage BurstLevelAnalysisSinkStage::render_preview(
-    const std::string& option_id, uint64_t index,
-    PreviewNavigationHint hint) const {
-  (void)hint;
-  return PreviewHelpers::render_standard_preview(cached_input_, option_id,
-                                                 index);
 }
 
 }  // namespace orc

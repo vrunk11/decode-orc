@@ -15,13 +15,13 @@
 #ifndef RENDER_COORDINATOR_H
 #define RENDER_COORDINATOR_H
 
-#include <common_types.h>
-#include <field_id.h>
-#include <node_id.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_rendering.h>  // Public API rendering types (includes mapping result types)
+#include <orc/stage/orc_source_parameters.h>  // Public API VideoParameters
+#include <orc/stage/parameter_types.h>        // ParameterValue
 #include <orc_preview_views.h>
-#include <orc_rendering.h>  // Public API rendering types (includes mapping result types)
-#include <orc_source_parameters.h>  // Public API VideoParameters
-#include <parameter_types.h>        // ParameterValue
 
 #include <QObject>
 #include <QString>
@@ -49,22 +49,21 @@ class GUIProject;
  * @brief Request types for the render coordinator
  */
 enum class RenderRequestType {
-  UpdateDAG,             // Update the DAG being rendered
-  RenderPreview,         // Render a preview image
-  GetVBIData,            // Decode VBI data for a field
-  GetDropoutData,        // Get dropout analysis data
-  GetSNRData,            // Get SNR analysis data
-  GetBurstLevelData,     // Get burst level analysis data
-  TriggerStage,          // Trigger a stage (batch processing)
-  CancelTrigger,         // Cancel ongoing trigger
-  GetAvailableOutputs,   // Query available preview outputs
-  GetLineSamples,        // Get 16-bit samples for a line
-  GetFieldTiming,        // Get all field samples for timing view
-  SavePNG,               // Save preview as PNG file
-  NavigateFrameLine,     // Navigate to next/previous line in frame mode
-  ApplyStageParameters,  // Apply parameter update to live stage without DAG
-                         // rebuild
-  Shutdown               // Shutdown the worker thread
+  UpdateDAG,            // Update the DAG being rendered
+  RenderPreview,        // Render a preview image
+  GetVBIData,           // Decode VBI data for a field
+  GetDropoutData,       // Get dropout analysis data
+  GetSNRData,           // Get SNR analysis data
+  GetBurstLevelData,    // Get burst level analysis data
+  TriggerStage,         // Trigger a stage (batch processing)
+  CancelTrigger,        // Cancel ongoing trigger
+  GetAvailableOutputs,  // Query available preview outputs
+  GetLineSamples,       // Get 16-bit samples for a line
+  GetFrameTiming,       // Get all frame samples for timing view
+  GetWaveformMonitor,   // Get all frame samples for waveform monitor
+  SavePNG,              // Save preview as PNG file
+  NavigateFrameLine,    // Navigate to next/previous line in frame mode
+  Shutdown              // Shutdown the worker thread
 };
 
 /**
@@ -232,43 +231,33 @@ struct GetLineSamplesRequest : public RenderRequest {
 /**
  * @brief Request to get field timing data
  */
-struct GetFieldTimingRequest : public RenderRequest {
+struct GetFrameTimingRequest : public RenderRequest {
   orc::NodeID node_id;
   orc::PreviewOutputType output_type;
   uint64_t output_index;
 
-  GetFieldTimingRequest(uint64_t id, orc::NodeID node,
+  GetFrameTimingRequest(uint64_t id, orc::NodeID node,
                         orc::PreviewOutputType type, uint64_t index)
-      : RenderRequest(RenderRequestType::GetFieldTiming, id),
+      : RenderRequest(RenderRequestType::GetFrameTiming, id),
         node_id(std::move(node)),
         output_type(type),
         output_index(index) {}
 };
 
 /**
- * @brief Request to apply stage parameters without rebuilding the DAG.
- *
- * The worker thread finds the live stage, calls set_parameters(), and
- * then immediately re-renders the current field/frame so the preview
- * updates to reflect the change.
+ * @brief Request to get waveform monitor data
  */
-struct ApplyStageParametersRequest : public RenderRequest {
+struct GetWaveformMonitorRequest : public RenderRequest {
   orc::NodeID node_id;
-  std::map<std::string, orc::ParameterValue> params;
   orc::PreviewOutputType output_type;
   uint64_t output_index;
-  std::string option_id;
 
-  ApplyStageParametersRequest(uint64_t id, orc::NodeID node,
-                              std::map<std::string, orc::ParameterValue> p,
-                              orc::PreviewOutputType type, uint64_t index,
-                              std::string opt_id = "")
-      : RenderRequest(RenderRequestType::ApplyStageParameters, id),
+  GetWaveformMonitorRequest(uint64_t id, orc::NodeID node,
+                            orc::PreviewOutputType type, uint64_t index)
+      : RenderRequest(RenderRequestType::GetWaveformMonitor, id),
         node_id(std::move(node)),
-        params(std::move(p)),
         output_type(type),
-        output_index(index),
-        option_id(std::move(opt_id)) {}
+        output_index(index) {}
 };
 
 /**
@@ -419,9 +408,9 @@ class IRenderPresenter {
       std::function<void(int, int, const std::string&)>;
 
   struct LineSampleData {
-    std::vector<uint16_t> composite_samples;
-    std::vector<uint16_t> y_samples;
-    std::vector<uint16_t> c_samples;
+    std::vector<int16_t> composite_samples;
+    std::vector<int16_t> y_samples;
+    std::vector<int16_t> c_samples;
     bool has_separate_channels;
     int first_field_height = 0;
     int second_field_height = 0;
@@ -469,6 +458,9 @@ class IRenderPresenter {
 
   virtual uint64_t triggerStage(NodeID node_id,
                                 TriggerProgressCallback callback) = 0;
+  virtual uint64_t triggerStage(
+      NodeID node_id, TriggerProgressCallback callback,
+      std::map<std::string, orc::ParameterValue> parameter_overrides) = 0;
   virtual void cancelTrigger() = 0;
 
   virtual bool savePNG(NodeID node_id, orc::PreviewOutputType output_type,
@@ -493,14 +485,6 @@ class IRenderPresenter {
   virtual orc::PreviewViewDataResult requestPreviewViewData(
       NodeID node_id, const std::string& view_id, orc::VideoDataType data_type,
       const orc::PreviewCoordinate& coordinate) = 0;
-
-  virtual bool applyStageParameters(
-      NodeID node_id, const std::map<std::string, ParameterValue>& params) = 0;
-
-  virtual std::vector<orc::LiveTweakableParameterView>
-  getStageTweakableParameters(NodeID node_id) = 0;
-  virtual std::map<std::string, ParameterValue> getStageCurrentParameters(
-      NodeID node_id) = 0;
 };
 
 }  // namespace orc::presenters
@@ -509,7 +493,7 @@ class IRenderPresenter {
  * @brief Coordinator that owns all core rendering state in a worker thread
  *
  * Architecture:
- * - Worker thread owns: DAG, PreviewRenderer, DAGFieldRenderer, all decoders
+ * - Worker thread owns: DAG, PreviewRenderer, DAGFrameRenderer, all decoders
  * - GUI thread sends requests via thread-safe queue
  * - Worker thread processes requests serially (no races possible)
  * - Responses sent back via Qt signals (thread-safe)
@@ -519,7 +503,8 @@ class IRenderPresenter {
  * - Worker thread methods are private and run on worker thread only
  * - No shared mutable state between threads
  */
-// Thread-safe: all public methods are safe to call from the GUI thread; worker-thread state is fully private.
+// Thread-safe: all public methods are safe to call from the GUI thread;
+// worker-thread state is fully private.
 class RenderCoordinator : public QObject {
   Q_OBJECT
 
@@ -666,16 +651,30 @@ class RenderCoordinator : public QObject {
   /**
    * @brief Request field timing data (async)
    *
-   * Result will be emitted via fieldTimingDataReady signal.
+   * Result will be emitted via frameTimingDataReady signal.
    *
    * @param node_id Node to get samples from
    * @param output_type Type of output (field/frame)
    * @param output_index Which field/frame
    * @return Request ID for matching response
    */
-  uint64_t requestFieldTimingData(const orc::NodeID& node_id,
+  uint64_t requestFrameTimingData(const orc::NodeID& node_id,
                                   orc::PreviewOutputType output_type,
                                   uint64_t output_index);
+
+  /**
+   * @brief Request waveform monitor data (async)
+   *
+   * Result will be emitted via waveformMonitorDataReady signal.
+   *
+   * @param node_id Node to get samples from
+   * @param output_type Type of output (field/frame)
+   * @param output_index Which field/frame
+   * @return Request ID for matching response
+   */
+  uint64_t requestWaveformMonitorData(const orc::NodeID& node_id,
+                                      orc::PreviewOutputType output_type,
+                                      uint64_t output_index);
 
   /**
    * @brief Request frame line navigation (async)
@@ -769,41 +768,6 @@ class RenderCoordinator : public QObject {
                           double aspect_correction = 1.0);
 
   /**
-   * @brief Apply stage parameters without rebuilding the DAG (async).
-   *
-   * Enqueues an ApplyStageParametersRequest. The worker thread applies the
-   * parameters to the live stage instance and immediately re-renders the
-   * current field/frame. The resulting preview is emitted via previewReady.
-   *
-   * @param node_id      Node whose stage to update.
-   * @param output_type  Current output type for the re-render.
-   * @param output_index Current output index for the re-render.
-   * @param option_id    Option ID string for the re-render (may be empty).
-   * @param params       Parameters to apply to the stage.
-   * @return Request ID (matched by previewReady signal).
-   */
-  uint64_t requestApplyStageParameters(
-      const orc::NodeID& node_id, orc::PreviewOutputType output_type,
-      uint64_t output_index, const std::string& option_id,
-      std::map<std::string, orc::ParameterValue> params);
-
-  /**
-   * @brief Query a node's live-tweakable parameter declarations (synchronous).
-   *
-   * Returns the view-model list needed to build a preview tweak panel.
-   * Returns an empty vector when the stage has no tweakable parameters or
-   * has not yet loaded any data.
-   *
-   * @param node_id Node to query.
-   * @return Tweakable parameter view-models (may be empty).
-   */
-  std::vector<orc::LiveTweakableParameterView> getStageTweakableParameters(
-      const orc::NodeID& node_id);
-
-  std::map<std::string, orc::ParameterValue> getStageCurrentParameters(
-      const orc::NodeID& node_id);
-
-  /**
    * @brief Trigger a stage for batch processing (async)
    *
    * Progress updates emitted via triggerProgress signal.
@@ -890,23 +854,33 @@ class RenderCoordinator : public QObject {
    */
   void lineSamplesReady(uint64_t request_id, uint64_t field_index,
                         int line_number, int sample_x,
-                        std::vector<uint16_t> samples,
+                        std::vector<int16_t> samples,
                         std::optional<orc::SourceParameters> video_params,
-                        std::vector<uint16_t> y_samples,
-                        std::vector<uint16_t> c_samples);
+                        std::vector<int16_t> y_samples,
+                        std::vector<int16_t> c_samples);
 
   /**
    * @brief Emitted when field timing data is ready
    */
-  void fieldTimingDataReady(uint64_t request_id, uint64_t field_index,
+  void frameTimingDataReady(uint64_t request_id, uint64_t field_index,
                             std::optional<uint64_t> field_index_2,
-                            std::vector<uint16_t> samples,
-                            std::vector<uint16_t> samples_2,
-                            std::vector<uint16_t> y_samples,
-                            std::vector<uint16_t> c_samples,
-                            std::vector<uint16_t> y_samples_2,
-                            std::vector<uint16_t> c_samples_2,
+                            std::vector<int16_t> samples,
+                            std::vector<int16_t> samples_2,
+                            std::vector<int16_t> y_samples,
+                            std::vector<int16_t> c_samples,
+                            std::vector<int16_t> y_samples_2,
+                            std::vector<int16_t> c_samples_2,
                             int first_field_height, int second_field_height);
+
+  /**
+   * @brief Emitted when waveform monitor data is ready
+   */
+  void waveformMonitorDataReady(uint64_t request_id,
+                                std::vector<int16_t> composite_samples,
+                                std::vector<int16_t> y_samples,
+                                std::vector<int16_t> c_samples,
+                                int first_field_height,
+                                int second_field_height);
 
   /**
    * @brief Emitted during trigger progress
@@ -923,15 +897,6 @@ class RenderCoordinator : public QObject {
    */
   void frameLineNavigationReady(uint64_t request_id,
                                 orc::FrameLineNavigationResult result);
-
-  /**
-   * @brief Emitted when an ApplyStageParameters request completes.
-   *
-   * A successful apply is always followed by a previewReady signal carrying
-   * the freshly re-rendered frame so callers typically only need to handle
-   * previewReady.
-   */
-  void stageParametersApplied(uint64_t request_id, bool success);
 
   /**
    * @brief Emitted on any error
@@ -994,9 +959,14 @@ class RenderCoordinator : public QObject {
   void handleGetLineSamples(const GetLineSamplesRequest& req);
 
   /**
-   * @brief Handle GetFieldTiming request
+   * @brief Handle GetFrameTiming request
    */
-  void handleGetFieldTiming(const GetFieldTimingRequest& req);
+  void handleGetFrameTiming(const GetFrameTimingRequest& req);
+
+  /**
+   * @brief Handle GetWaveformMonitor request
+   */
+  void handleGetWaveformMonitor(const GetWaveformMonitorRequest& req);
 
   /**
    * @brief Handle NavigateFrameLine request
@@ -1004,11 +974,6 @@ class RenderCoordinator : public QObject {
   void handleNavigateFrameLine(const NavigateFrameLineRequest& req);
 
   void handleSavePNG(const SavePNGRequest& req);
-
-  /**
-   * @brief Handle ApplyStageParameters request
-   */
-  void handleApplyStageParameters(const ApplyStageParametersRequest& req);
 
   /**
    * @brief Handle TriggerStage request

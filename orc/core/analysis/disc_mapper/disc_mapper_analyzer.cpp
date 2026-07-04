@@ -9,6 +9,9 @@
 
 #include "disc_mapper_analyzer.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -16,8 +19,6 @@
 #include <set>
 #include <sstream>
 
-#include "../../include/logging.h"
-#include "../../include/observation_context.h"
 #include "../analysis_progress.h"
 
 namespace orc {
@@ -31,7 +32,7 @@ namespace orc {
  */
 struct NormalizedField {
   FieldID field_id;
-  FieldParity parity;
+  bool is_first_field = false;  // true = field 0 of frame, false = field 1
   VideoFormat format;
 
   // VBI-derived picture number (source of truth)
@@ -110,23 +111,32 @@ static bool decode_bcd(uint32_t bcd, int32_t& output) {
 static std::optional<int32_t> decode_cav_picture_number(int32_t vbi17,
                                                         int32_t vbi18) {
   // IEC 60857-1986 - 10.1.3 Picture numbers (CAV discs)
-  // Check for CAV picture number on lines 17 and 18
+  // Lines 17 and 18 carry redundant copies of the picture number.
+  // Cross-validate: if both decode successfully but disagree, one is corrupted
+  // and we cannot trust either — return nullopt so the other field of the frame
+  // can supply the picture number instead.
+
+  std::optional<int32_t> pn17, pn18;
 
   if ((vbi17 & 0xF00000) == 0xF00000) {
     int32_t pic_no;
     if (decode_bcd(vbi17 & 0x07FFFF, pic_no)) {
-      return pic_no;
+      pn17 = pic_no;
     }
   }
 
   if ((vbi18 & 0xF00000) == 0xF00000) {
     int32_t pic_no;
     if (decode_bcd(vbi18 & 0x07FFFF, pic_no)) {
-      return pic_no;
+      pn18 = pic_no;
     }
   }
 
-  return std::nullopt;
+  if (pn17 && pn18) {
+    return (*pn17 == *pn18) ? pn17 : std::nullopt;
+  }
+
+  return pn17 ? pn17 : pn18;
 }
 
 /**
@@ -204,29 +214,17 @@ static bool is_lead_in_out(int32_t vbi17, int32_t vbi18) {
 
 /**
  * @brief Normalize a single field's metadata using VBI bytes from
- * ObservationContext
+ * ObservationContext. Parity and format are derived from the parent frame.
+ * Phase hints are not available from VideoFrameRepresentation; the VFR pipeline
+ * already guarantees correct field pairing so phase validation is skipped.
  */
-static NormalizedField normalize_field(const VideoFieldRepresentation& source,
-                                       const ObservationContext& obs_context,
-                                       FieldID field_id) {
+static NormalizedField normalize_field(const ObservationContext& obs_context,
+                                       FieldID field_id, bool is_first_field,
+                                       VideoFormat format) {
   NormalizedField nf;
   nf.field_id = field_id;
-
-  // Get basic descriptor
-  auto desc = source.get_descriptor(field_id);
-  if (!desc) {
-    nf.is_invalid = true;
-    return nf;
-  }
-
-  nf.parity = desc->parity;
-  nf.format = desc->format;
-
-  // Get phase hint
-  auto phase_hint = source.get_field_phase_hint(field_id);
-  if (phase_hint && phase_hint->field_phase_id > 0) {
-    nf.phase = phase_hint->field_phase_id;
-  }
+  nf.is_first_field = is_first_field;
+  nf.format = format;
 
   // Get VBI bytes from ObservationContext (populated by observers)
   auto vbi16_opt = obs_context.get(field_id, "biphase", "vbi_line_16");
@@ -422,7 +420,10 @@ static std::string generate_frame_map(const std::vector<MappedFrame>& frames,
 
     // Handle consecutive picture number sequences
     const auto& ipn = entries[i].pn;
-    if (!ipn.has_value()) { ++i; continue; }
+    if (!ipn.has_value()) {
+      ++i;
+      continue;
+    }
     int32_t start_pn = *ipn;
     int32_t end_pn = start_pn;
     size_t j = i + 1;
@@ -450,7 +451,9 @@ static std::string generate_frame_map(const std::vector<MappedFrame>& frames,
         for (size_t k = i; k < j; k++) {
           if (k > i) result << ",";
           const auto& kpn = entries[k].pn;
-          if (kpn.has_value()) result << picture_number_to_timecode(*kpn, format);
+          if (kpn.has_value()) {
+            result << picture_number_to_timecode(*kpn, format);
+          }
         }
       }
     } else {
@@ -538,8 +541,8 @@ static std::optional<CandidateFrame> pair_fields(const NormalizedField& f1,
   // Check phase validity
   frame.phase_valid = is_phase_valid(f1.phase, f2.phase, f1.format);
 
-  // Check parity
-  frame.parity_valid = (f1.parity != f2.parity);
+  // Check parity: valid frame pair has one first_field and one second_field
+  frame.parity_valid = (f1.is_first_field != f2.is_first_field);
 
   // Combine quality scores
   frame.quality_score = (f1.quality_score + f2.quality_score) / 2.0;
@@ -557,15 +560,16 @@ static std::optional<CandidateFrame> pair_fields(const NormalizedField& f1,
 // ============================================================================
 
 FieldMappingDecision DiscMapperAnalyzer::analyze(
-    const VideoFieldRepresentation& source,
+    const VideoFrameRepresentation& source,
     const ObservationContext& observation_context, const Options& options,
     AnalysisProgress* progress) {
   FieldMappingDecision decision;
   std::ostringstream rationale;
 
-  // Get field range
-  auto range = source.field_range();
-  size_t total_fields = range.size();
+  // Derive field range from frame range (each frame contributes 2 fields)
+  auto frame_range = source.frame_range();
+  size_t total_frames = frame_range.count();
+  size_t total_fields = total_frames * 2;
 
   decision.stats.total_fields = total_fields;
 
@@ -576,7 +580,8 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
   }
 
   rationale << "=== Disc Mapping Analysis ===\n\n";
-  rationale << "Input: " << total_fields << " fields\n\n";
+  rationale << "Input: " << total_fields << " fields (" << total_frames
+            << " frames)\n\n";
 
   // ========================================================================
   // Stage 1: Per-field VBI normalization
@@ -597,23 +602,33 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
   {
     size_t norm_idx = 0;
     size_t norm_interval = std::max(static_cast<size_t>(1), total_fields / 100);
-    for (FieldID fid = range.start; fid < range.end;
-         fid = FieldID(fid.value() + 1)) {
-      auto nf = normalize_field(source, observation_context, fid);
-
-      if (nf.picture_number) {
-        fields_with_pn++;
-        if (nf.is_cav) {
-          cav_fields++;
-        } else {
-          clv_fields++;
-}
+    for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
+         ++frame_id) {
+      VideoFormat format = VideoFormat::Unknown;
+      auto frame_desc = source.get_frame_descriptor(frame_id);
+      if (frame_desc) {
+        format = video_format_from_system(frame_desc->system);
       }
+      for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+        FieldID fid(frame_id * 2 + field_idx);
+        bool is_first = (field_idx == 0);
+        auto nf = normalize_field(observation_context, fid, is_first, format);
 
-      normalized_fields.push_back(nf);
-      ++norm_idx;
-      if (progress && norm_idx % norm_interval == 0) {
-        progress->setProgress(static_cast<int>(norm_idx * 100 / total_fields));
+        if (nf.picture_number) {
+          fields_with_pn++;
+          if (nf.is_cav) {
+            cav_fields++;
+          } else {
+            clv_fields++;
+          }
+        }
+
+        normalized_fields.push_back(nf);
+        ++norm_idx;
+        if (progress && norm_idx % norm_interval == 0) {
+          progress->setProgress(
+              static_cast<int>(norm_idx * 100 / total_fields));
+        }
       }
     }
     if (progress) progress->setProgress(100);
@@ -622,10 +637,114 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
   // Determine disc type
   decision.is_cav = (cav_fields > clv_fields);
 
-  // Determine video format
-  auto first_desc = source.get_descriptor(range.start);
-  if (first_desc) {
-    decision.is_pal = (first_desc->format == VideoFormat::PAL);
+  // Determine video format from first frame
+  auto first_frame_desc = source.get_frame_descriptor(frame_range.first);
+  if (first_frame_desc) {
+    decision.is_pal = (first_frame_desc->system == VideoSystem::PAL);
+  }
+
+  // ========================================================================
+  // Stage 1b: Sequence-based resolution of CAV VBI line disagreements
+  // ========================================================================
+  // When lines 17 and 18 of the same field decode to different picture
+  // numbers, Stage 1 leaves picture_number unset (cannot trust either value
+  // in isolation).  Here we re-decode both lines for each such field and
+  // check whether exactly one candidate is consistent with the sequence of
+  // confirmed picture numbers from neighbouring fields.  If so, we promote
+  // that candidate with reduced confidence.
+  //
+  // Expected PN at field index i, given confirmed neighbour at index j:
+  //   expected = pn_j + (i/2) - (j/2)
+  // Each PN increments once per frame (every 2 field indices).
+
+  size_t pn_resolved_count = 0;
+
+  if (decision.is_cav) {
+    for (size_t i = 0; i < normalized_fields.size(); ++i) {
+      auto& nf = normalized_fields[i];
+      if (nf.picture_number) continue;
+
+      auto vbi17_opt =
+          observation_context.get(nf.field_id, "biphase", "vbi_line_17");
+      auto vbi18_opt =
+          observation_context.get(nf.field_id, "biphase", "vbi_line_18");
+      if (!vbi17_opt || !vbi18_opt) continue;
+
+      int32_t vbi17 = std::get<int32_t>(*vbi17_opt);
+      int32_t vbi18 = std::get<int32_t>(*vbi18_opt);
+
+      std::optional<int32_t> pn_a, pn_b;
+      if ((vbi17 & 0xF00000) == 0xF00000) {
+        int32_t n;
+        if (decode_bcd(vbi17 & 0x07FFFF, n)) pn_a = n;
+      }
+      if ((vbi18 & 0xF00000) == 0xF00000) {
+        int32_t n;
+        if (decode_bcd(vbi18 & 0x07FFFF, n)) pn_b = n;
+      }
+
+      // Only handle the disagreement case: both decoded to different values
+      if (!pn_a || !pn_b || *pn_a == *pn_b) continue;
+
+      // Find the nearest confirmed PN before index i
+      std::optional<int32_t> prev_pn;
+      size_t prev_idx = 0;
+      for (size_t j = i; j-- > 0;) {
+        if (normalized_fields[j].picture_number) {
+          prev_pn = normalized_fields[j].picture_number;
+          prev_idx = j;
+          break;
+        }
+      }
+
+      // Find the nearest confirmed PN after index i
+      std::optional<int32_t> next_pn;
+      size_t next_idx = 0;
+      for (size_t j = i + 1; j < normalized_fields.size(); ++j) {
+        if (normalized_fields[j].picture_number) {
+          next_pn = normalized_fields[j].picture_number;
+          next_idx = j;
+          break;
+        }
+      }
+
+      // Returns the expected PN at field index field_i given a confirmed
+      // neighbour at field index field_j with picture number pn_j.
+      auto expected_pn = [](size_t field_i, size_t field_j,
+                            int32_t pn_j) -> int32_t {
+        return pn_j + static_cast<int32_t>(field_i / 2) -
+               static_cast<int32_t>(field_j / 2);
+      };
+
+      auto fits_sequence = [&](int32_t candidate) -> bool {
+        if (prev_pn && expected_pn(i, prev_idx, *prev_pn) == candidate) {
+          return true;
+        }
+        if (next_pn && expected_pn(i, next_idx, *next_pn) == candidate) {
+          return true;
+        }
+        return false;
+      };
+
+      const bool a_fits = fits_sequence(*pn_a);
+      const bool b_fits = fits_sequence(*pn_b);
+
+      if (a_fits == b_fits) continue;  // Both or neither fit — leave unresolved
+
+      const int32_t resolved = a_fits ? *pn_a : *pn_b;
+      ++pn_resolved_count;
+
+      // Do NOT promote nf.picture_number here. A field whose two VBI lines
+      // disagree indicates a dropout that likely also corrupted the picture
+      // data. Leaving picture_number unset causes the frame to fall into
+      // frames_without_pn in Stage 4, and Stage 5 will insert a PAD frame at
+      // the correct disc-picture position — which is the right outcome for
+      // multi-source stacking (other sources will provide the picture instead).
+      ORC_LOG_DEBUG(
+          "Field {}: VBI disagreement ({} vs {}), likely PN {} — treating "
+          "frame as PAD (other sources will supply this disc picture)",
+          nf.field_id.value(), *pn_a, *pn_b, resolved);
+    }
   }
 
   rationale << "Stage 1: VBI Normalization\n";
@@ -633,6 +752,10 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
             << total_fields << "\n";
   rationale << "  CAV fields: " << cav_fields << "\n";
   rationale << "  CLV fields: " << clv_fields << "\n";
+  if (pn_resolved_count > 0) {
+    rationale << "  VBI disagreements (will be padded): " << pn_resolved_count
+              << "\n";
+  }
   rationale << "  Detected format: " << (decision.is_pal ? "PAL" : "NTSC")
             << "\n";
   rationale << "  Detected disc type: " << (decision.is_cav ? "CAV" : "CLV")
@@ -765,7 +888,7 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
             // Priority: confidence > phase_valid > quality
             if (a.pn_confidence != b.pn_confidence) {
               return a.pn_confidence < b.pn_confidence;
-}
+            }
             if (a.phase_valid != b.phase_valid) return !a.phase_valid;
             return a.quality_score < b.quality_score;
           });
@@ -881,49 +1004,40 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
     progress->setProgress(0);
   }
 
-  // First, flatten frames into a list of field IDs or PAD markers
-  std::vector<std::string> field_list;
+  // Build a list of source FrameIDs or PAD markers — one entry per output
+  // frame. frame_map operates at frame granularity (not field granularity):
+  // the FieldID convention is FieldID = FrameID * 2 + field_index, so the
+  // source FrameID is recovered as first_field / 2.
+  std::vector<std::string> frame_list;
   for (const auto& frame : final_frames) {
     if (frame.is_pad) {
-      // Each PAD frame represents 2 fields
-      field_list.push_back("PAD");
-      field_list.push_back("PAD");
-      ORC_LOG_DEBUG("Adding PAD frame to field list (picture_number={})",
-                    frame.picture_number ? std::to_string(*frame.picture_number)
-                                         : "none");
-    } else {
-      if (frame.first_field) {
-        field_list.push_back(std::to_string(frame.first_field->value()));
-      }
-      if (frame.second_field) {
-        field_list.push_back(std::to_string(frame.second_field->value()));
-      }
+      frame_list.push_back("PAD");
+    } else if (frame.first_field) {
+      uint64_t src_frame_id = frame.first_field->value() / 2;
+      frame_list.push_back(std::to_string(src_frame_id));
     }
   }
 
-  ORC_LOG_DEBUG("Field list size: {}, final_frames size: {}", field_list.size(),
+  ORC_LOG_DEBUG("Frame list size: {}, final_frames size: {}", frame_list.size(),
                 final_frames.size());
 
-  // Now collapse consecutive sequences into ranges
+  // Collapse consecutive sequences into ranges
   std::ostringstream spec;
   size_t i = 0;
-  while (i < field_list.size()) {
-    const auto& current = field_list[i];
+  while (i < frame_list.size()) {
+    const auto& current = frame_list[i];
 
-    // Handle PAD sequences
+    // Handle PAD sequences — always emit PAD_N (including N=1) because the
+    // frame_map parser only recognises the PAD_<count> form.
     if (current == "PAD") {
       size_t pad_count = 1;
-      while (i + pad_count < field_list.size() &&
-             field_list[i + pad_count] == "PAD") {
+      while (i + pad_count < frame_list.size() &&
+             frame_list[i + pad_count] == "PAD") {
         pad_count++;
       }
 
       if (i > 0) spec << ",";
-      if (pad_count == 1) {
-        spec << "PAD";
-      } else {
-        spec << "PAD_" << pad_count;
-      }
+      spec << "PAD_" << pad_count;
 
       i += pad_count;
       continue;
@@ -935,8 +1049,8 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
     size_t j = i + 1;
 
     // Look ahead for consecutive numbers
-    while (j < field_list.size() && field_list[j] != "PAD") {
-      int next_num = std::stoi(field_list[j]);
+    while (j < frame_list.size() && frame_list[j] != "PAD") {
+      int next_num = std::stoi(frame_list[j]);
       if (next_num == end_num + 1) {
         end_num = next_num;
         j++;
@@ -954,7 +1068,7 @@ FieldMappingDecision DiscMapperAnalyzer::analyze(
       // Output individual numbers
       for (size_t k = i; k < j; k++) {
         if (k > i) spec << ",";
-        spec << field_list[k];
+        spec << frame_list[k];
       }
     }
 

@@ -9,9 +9,9 @@
 
 #include "../include/ntsc_observation_presenter.h"
 
-#include <variant>
+#include <orc/stage/observation_context.h>
 
-#include "../../core/include/observation_context.h"
+#include <variant>
 
 namespace orc::presenters {
 

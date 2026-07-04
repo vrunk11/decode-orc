@@ -9,13 +9,14 @@
 
 #include "orcgraphicsscene.h"
 
-#include <common_types.h>  // For VideoSystem, SourceType
-#include <node_type.h>
+#include <orc/stage/common_types.h>  // For VideoSystem, SourceType
+#include <orc/stage/node_type.h>
 
 #include "logging.h"
 #include "orcnodepainter.h"
 #include "presenters/include/analysis_presenter.h"
 #include "presenters/include/project_presenter.h"
+#include "stage_help_dialog.h"
 // Removed: #include "analysis_registry.h"  // Phase 2.4: Now using
 // AnalysisPresenter
 #include <QGraphicsView>
@@ -60,6 +61,11 @@ OrcGraphicsScene::~OrcGraphicsScene() {
   // This prevents Qt from trying to call methods on partially-destructed
   // objects
   disconnect();
+}
+
+void OrcGraphicsScene::onModelReset() {
+  resetDraftConnection();
+  BasicGraphicsScene::onModelReset();
 }
 
 void OrcGraphicsScene::selectNode(QtNodes::NodeId nodeId) {
@@ -137,6 +143,8 @@ QMenu* OrcGraphicsScene::createSceneMenu(QPointF const scenePos) {
             ? VideoSystem::NTSC
         : (project_format_enum == orc::presenters::VideoFormat::PAL)
             ? VideoSystem::PAL
+        : (project_format_enum == orc::presenters::VideoFormat::PAL_M)
+            ? VideoSystem::PAL_M
             : VideoSystem::Unknown;
     SourceType project_source_type =
         (project_source_enum == orc::presenters::SourceType::Composite)
@@ -157,14 +165,21 @@ QMenu* OrcGraphicsScene::createSceneMenu(QPointF const scenePos) {
       switch (stage.node_type) {
         case NodeType::SOURCE: {
           // Filter source stages by source type when the project source is
-          // constrained.
+          // constrained. Dual-mode stages (tbc_source and CVBS sources) are
+          // compatible with any source format and are never filtered out.
           if (project_source_type != SourceType::Unknown) {
-            bool is_yc_stage = (stage.name.find("YC") != std::string::npos);
-            SourceType stage_type =
-                is_yc_stage ? SourceType::YC : SourceType::Composite;
+            bool is_dual_mode = (stage.name == "tbc_source" ||
+                                 stage.name == "NTSC_CVBS_Source" ||
+                                 stage.name == "PAL_CVBS_Source" ||
+                                 stage.name == "PAL_M_CVBS_Source");
+            if (!is_dual_mode) {
+              bool is_yc_stage = (stage.name.find("YC") != std::string::npos);
+              SourceType stage_type =
+                  is_yc_stage ? SourceType::YC : SourceType::Composite;
 
-            if (stage_type != project_source_type) {
-              continue;
+              if (stage_type != project_source_type) {
+                continue;
+              }
             }
           }
           break;
@@ -214,11 +229,28 @@ QMenu* OrcGraphicsScene::createSceneMenu(QPointF const scenePos) {
           }
         };
 
+    const std::vector<std::string> kCategoryOrder = {
+        "Source", "Transform", "Sink (Core)", "Sink (Analysis)",
+        "Sink (3rd party)"};
+
+    for (const auto& category : kCategoryOrder) {
+      auto it = stages_by_category.find(category);
+      if (it == stages_by_category.end() || it->second.empty()) {
+        continue;
+      }
+      QMenu* category_menu =
+          add_node_menu->addMenu(QString::fromStdString(category));
+      add_stages_to_menu(category_menu, it->second);
+    }
+
     for (const auto& [category, category_stages] : stages_by_category) {
       if (category_stages.empty()) {
         continue;
       }
-
+      if (std::find(kCategoryOrder.begin(), kCategoryOrder.end(), category) !=
+          kCategoryOrder.end()) {
+        continue;
+      }
       QMenu* category_menu =
           add_node_menu->addMenu(QString::fromStdString(category));
       add_stages_to_menu(category_menu, category_stages);
@@ -264,11 +296,6 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
                      ? ""
                      : QString("- %1").arg(
                            QString::fromStdString(node_info.trigger_reason)));
-    qDebug() << "  Can inspect:" << node_info.can_inspect
-             << (node_info.can_inspect
-                     ? ""
-                     : QString("- %1").arg(
-                           QString::fromStdString(node_info.inspect_reason)));
 
     // Create context menu (with view as parent to ensure proper cleanup)
     QMenu* menu = new QMenu(views().isEmpty() ? nullptr : views().first());
@@ -315,19 +342,6 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
       });
     });
 
-    // Inspect Stage action
-    auto* inspect_action = menu->addAction("Inspect Stage...");
-    inspect_action->setEnabled(node_info.can_inspect);
-    if (!node_info.can_inspect && !node_info.inspect_reason.empty()) {
-      inspect_action->setToolTip(
-          QString::fromStdString(node_info.inspect_reason));
-    }
-    connect(inspect_action, &QAction::triggered, [this, orc_node_id]() {
-      QTimer::singleShot(0, this, [this, orc_node_id]() {
-        Q_EMIT inspectStageRequested(orc_node_id);
-      });
-    });
-
     menu->addSeparator();
 
     // Run Analysis submenu - populate with tools applicable to this stage
@@ -338,9 +352,17 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
         graph_model_.presenter().getCoreProjectHandle());
     auto tool_infos = analysis_presenter.getToolsForStage(node_info.stage_name);
 
+    // Exclude batch_analysis tools: those are launched automatically after a
+    // stage trigger and must not appear as standalone menu entries.
+    tool_infos.erase(std::remove_if(tool_infos.begin(), tool_infos.end(),
+                                    [](const orc::AnalysisToolInfo& t) {
+                                      return t.stage_tool_kind ==
+                                             "batch_analysis";
+                                    }),
+                     tool_infos.end());
+
     if (tool_infos.empty()) {
-      analysis_menu->addAction("(No analysis tools available for this stage)")
-          ->setEnabled(false);
+      analysis_menu->setEnabled(false);
     } else {
       // Tools are already sorted by priority in getToolsForStage()
       for (const auto& tool_info : tool_infos) {
@@ -350,7 +372,9 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
         auto* tool_action = analysis_menu->addAction(tool_name);
         tool_action->setToolTip(tool_desc);
 
-        // Pass tool_info to signal instead of raw pointer
+        // Pass tool_info to signal instead of raw pointer.
+        // NOLINTBEGIN(bugprone-exception-escape): Qt slots — exceptions must
+        // not propagate through Qt's event loop.
         connect(tool_action, &QAction::triggered,
                 [this, tool_info, orc_node_id,
                  stage_name = node_info.stage_name]() {
@@ -361,6 +385,31 @@ void OrcGraphicsScene::onNodeContextMenu(QtNodes::NodeId nodeId,
                       0, this, [this, tool_info, orc_node_id, stage_name]() {
                         Q_EMIT runAnalysisRequested(tool_info, orc_node_id,
                                                     stage_name);
+                      });
+                });
+        // NOLINTEND(bugprone-exception-escape)
+      }
+    }
+
+    menu->addSeparator();
+
+    // Help action — shows stage instructions (Markdown) rendered in a dialog.
+    auto* help_action = menu->addAction("Help...");
+    {
+      std::string instructions =
+          graph_model_.presenter().getStageInstructions(node_info.stage_name);
+      help_action->setEnabled(!instructions.empty());
+      if (!instructions.empty()) {
+        QString stage_label = QString::fromStdString(
+            node_info.label.empty() ? node_info.stage_name : node_info.label);
+        connect(help_action, &QAction::triggered,
+                [this, stage_label, instructions]() {
+                  QTimer::singleShot(
+                      0, this, [this, stage_label, instructions]() {
+                        auto* dlg = new StageHelpDialog(
+                            stage_label, QString::fromStdString(instructions),
+                            views().isEmpty() ? nullptr : views().first());
+                        dlg->exec();
                       });
                 });
       }

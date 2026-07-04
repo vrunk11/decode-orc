@@ -9,23 +9,26 @@
 
 #include "dropout_presenter.h"
 
+#include <orc/stage/artifact.h>
+#include <orc/stage/frame_line_util.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <algorithm>
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
 
-#include "../core/include/logging.h"
 #include "../core/include/project.h"
-#include "../core/include/video_field_representation.h"
 #include "i_project_presenter.h"
 
 namespace orc::presenters {
 
 namespace {
 
-std::map<uint64_t, FieldDropoutMap> parse_dropout_map_string(
+std::map<uint64_t, FrameDropoutMap> parse_dropout_map_string(
     const std::string& map_str) {
-  std::map<uint64_t, FieldDropoutMap> result;
+  std::map<uint64_t, FrameDropoutMap> result;
 
   if (map_str.empty() || map_str == "[]") {
     return result;
@@ -126,7 +129,7 @@ std::map<uint64_t, FieldDropoutMap> parse_dropout_map_string(
       break;
     }
 
-    FieldDropoutMap field_map;
+    FrameDropoutMap frame_map;
 
     while (pos < map_str.length() && map_str[pos] != '}') {
       skip_whitespace();
@@ -141,19 +144,19 @@ std::map<uint64_t, FieldDropoutMap> parse_dropout_map_string(
         break;
       }
 
-      if (key == "field") {
-        field_map.field_id = FieldID(parse_uint());
+      if (key == "frame") {
+        frame_map.frame_id = static_cast<FrameID>(parse_uint());
       } else if (key == "add") {
-        field_map.additions = parse_dropout_list();
+        frame_map.additions = parse_dropout_list();
       } else if (key == "remove") {
-        field_map.removals = parse_dropout_list();
+        frame_map.removals = parse_dropout_list();
       }
 
       expect_char(',');
     }
 
     expect_char('}');
-    result[field_map.field_id.value()] = field_map;
+    result[frame_map.frame_id] = frame_map;
     expect_char(',');
   }
 
@@ -161,7 +164,7 @@ std::map<uint64_t, FieldDropoutMap> parse_dropout_map_string(
 }
 
 std::string encode_dropout_map_string(
-    const std::map<uint64_t, FieldDropoutMap>& map) {
+    const std::map<uint64_t, FrameDropoutMap>& map) {
   if (map.empty()) {
     return "[]";
   }
@@ -169,19 +172,19 @@ std::string encode_dropout_map_string(
   std::ostringstream oss;
   oss << "[";
 
-  bool first_field = true;
-  for (const auto& [field_num, field_map] : map) {
-    if (!first_field) {
+  bool first_frame = true;
+  for (const auto& [frame_num, frame_map] : map) {
+    if (!first_frame) {
       oss << ",";
     }
-    first_field = false;
+    first_frame = false;
 
-    oss << "{field:" << field_num;
+    oss << "{frame:" << frame_num;
 
-    if (!field_map.additions.empty()) {
+    if (!frame_map.additions.empty()) {
       oss << ",add:[";
       bool first_region = true;
-      for (const auto& region : field_map.additions) {
+      for (const auto& region : frame_map.additions) {
         if (!first_region) {
           oss << ",";
         }
@@ -192,10 +195,10 @@ std::string encode_dropout_map_string(
       oss << "]";
     }
 
-    if (!field_map.removals.empty()) {
+    if (!frame_map.removals.empty()) {
       oss << ",remove:[";
       bool first_region = true;
-      for (const auto& region : field_map.removals) {
+      for (const auto& region : frame_map.removals) {
         if (!first_region) {
           oss << ",";
         }
@@ -221,7 +224,7 @@ class DropoutPresenter::Impl {
       : project_presenter_(project_presenter) {}
 
   orc::presenters::IProjectPresenter& project_presenter_;
-};  // DEBUG: Extra brace was needed here!
+};
 
 DropoutPresenter::DropoutPresenter(
     orc::presenters::IProjectPresenter& project_presenter)
@@ -234,189 +237,238 @@ DropoutPresenter& DropoutPresenter::operator=(DropoutPresenter&&) noexcept =
     default;
 
 std::vector<DetectedDropout> DropoutPresenter::detectDropouts(
-    NodeID node_id, FieldID field_id) {
+    NodeID node_id, FrameID frame_id) {
+  (void)node_id;
+  (void)frame_id;
   return {};
 }
 
 std::vector<DetectedDropout> DropoutPresenter::getDetectedDropouts(
-    NodeID node_id, FieldID field_id) const {
+    NodeID node_id, FrameID frame_id) const {
+  (void)node_id;
+  (void)frame_id;
   return {};
 }
 
-void DropoutPresenter::clearDetections(NodeID node_id, FieldID field_id) {}
+void DropoutPresenter::clearDetections(NodeID node_id, FrameID frame_id) {
+  (void)node_id;
+  (void)frame_id;
+}
 
 void DropoutPresenter::updateDropoutDecision(
-    NodeID node_id, FieldID field_id, int line, int pixel_start,
-    DropoutDecision decision, const std::string& correction_method) {}
+    NodeID node_id, FrameID frame_id, int line, int pixel_start,
+    DropoutDecision decision, const std::string& correction_method) {
+  (void)node_id;
+  (void)frame_id;
+  (void)line;
+  (void)pixel_start;
+  (void)decision;
+  (void)correction_method;
+}
 
 std::vector<DropoutCorrection> DropoutPresenter::getCorrections(
-    NodeID node_id, FieldID field_id) const {
+    NodeID node_id, FrameID frame_id) const {
+  (void)node_id;
+  (void)frame_id;
   return {};
 }
 
-void DropoutPresenter::removeCorrection(NodeID node_id, FieldID field_id,
-                                        int line, int pixel_start) {}
-
-void DropoutPresenter::clearCorrections(NodeID node_id, FieldID field_id) {}
-
-FieldDropoutStats DropoutPresenter::getFieldStats(NodeID node_id,
-                                                  FieldID field_id) const {
-  return FieldDropoutStats{};
+void DropoutPresenter::removeCorrection(NodeID node_id, FrameID frame_id,
+                                        int line, int pixel_start) {
+  (void)node_id;
+  (void)frame_id;
+  (void)line;
+  (void)pixel_start;
 }
 
-std::map<FieldID, FieldDropoutStats> DropoutPresenter::getAllStats(
+void DropoutPresenter::clearCorrections(NodeID node_id, FrameID frame_id) {
+  (void)node_id;
+  (void)frame_id;
+}
+
+FrameDropoutStats DropoutPresenter::getFrameStats(NodeID node_id,
+                                                  FrameID frame_id) const {
+  (void)node_id;
+  (void)frame_id;
+  return FrameDropoutStats{};
+}
+
+std::map<FrameID, FrameDropoutStats> DropoutPresenter::getAllStats(
     NodeID node_id) const {
+  (void)node_id;
   return {};
 }
 
 int DropoutPresenter::applyDecisionToSimilar(
-    NodeID node_id, FieldID field_id, const DetectedDropout& reference_dropout,
+    NodeID node_id, FrameID frame_id, const DetectedDropout& reference_dropout,
     DropoutDecision decision) {
+  (void)node_id;
+  (void)frame_id;
+  (void)reference_dropout;
+  (void)decision;
   return 0;
 }
 
-int DropoutPresenter::autoDecideDropouts(NodeID node_id, FieldID field_id,
+int DropoutPresenter::autoDecideDropouts(NodeID node_id, FrameID frame_id,
                                          double severity_threshold) {
+  (void)node_id;
+  (void)frame_id;
+  (void)severity_threshold;
   return 0;
 }
 
 bool DropoutPresenter::exportCorrections(NodeID node_id,
                                          const std::string& file_path) const {
+  (void)node_id;
+  (void)file_path;
   return false;
 }
 
 bool DropoutPresenter::importCorrections(NodeID node_id,
                                          const std::string& file_path) {
+  (void)node_id;
+  (void)file_path;
   return false;
 }
 
-std::vector<uint8_t> DropoutPresenter::getFieldData(
-    const std::shared_ptr<void>& field_repr_handle, FieldID field_id,
-    int& width, int& height) {
-  auto field_repr =
-      std::static_pointer_cast<const orc::VideoFieldRepresentation>(
-          field_repr_handle);
+std::vector<uint8_t> DropoutPresenter::getFrameData(
+    const std::shared_ptr<void>& vfr_handle, FrameID frame_id, int& width,
+    int& height) {
   width = 0;
   height = 0;
 
-  if (!field_repr) {
+  auto artifact_base =
+      std::static_pointer_cast<const orc::Artifact>(vfr_handle);
+  auto vfr = std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
+      artifact_base);
+  if (!vfr) {
     ORC_LOG_ERROR(
-        "DropoutPresenter::getFieldData: field_repr cast returned null");
+        "DropoutPresenter::getFrameData: no VideoFrameRepresentation found");
     return {};
   }
 
   try {
-    if (!field_repr->has_field(field_id)) {
+    if (!vfr->has_frame(frame_id)) {
       ORC_LOG_WARN(
-          "DropoutPresenter::getFieldData: field {} doesn't exist in "
-          "representation",
-          field_id.value());
+          "DropoutPresenter::getFrameData: frame {} not in representation",
+          frame_id);
       return {};
     }
 
-    auto descriptor = field_repr->get_descriptor(field_id);
-    if (!descriptor) {
+    auto desc = vfr->get_frame_descriptor(frame_id);
+    if (!desc) {
       ORC_LOG_ERROR(
-          "DropoutPresenter::getFieldData: get_descriptor returned null for "
-          "field {}",
-          field_id.value());
+          "DropoutPresenter::getFrameData: no descriptor for frame {}",
+          frame_id);
       return {};
     }
 
-    width = static_cast<int>(descriptor->width);
-    height = static_cast<int>(descriptor->height);
-    ORC_LOG_DEBUG(
-        "DropoutPresenter::getFieldData: field {} has dimensions {}x{}",
-        field_id.value(), width, height);
+    size_t frame_height = desc->height;
+    size_t samples_per_line = desc->samples_per_line_nominal;
 
-    // Get full field data - handle both composite and YC representations
-    std::vector<uint16_t> field_data;
+    width = static_cast<int>(samples_per_line);
+    height = static_cast<int>(frame_height);
 
-    if (field_repr->has_separate_channels()) {
-      // YC source - combine Y+C for visualization
-      auto y_data = field_repr->get_field_luma(field_id);
-      auto c_data = field_repr->get_field_chroma(field_id);
+    ORC_LOG_DEBUG("DropoutPresenter::getFrameData: frame {} dims {}x{}",
+                  frame_id, width, height);
 
-      if (y_data.size() != c_data.size()) {
-        ORC_LOG_ERROR(
-            "DropoutPresenter::getFieldData: Y and C channel sizes mismatch "
-            "for field {}",
-            field_id.value());
-        return {};
+    // Extract all lines of the frame and convert int16_t CVBS_U10_4FSC to
+    // 8-bit grayscale. Displayed width is samples_per_line_nominal; the rare
+    // PAL lines with one extra sample are truncated to nominal width.
+    std::vector<uint8_t> grayscale;
+    grayscale.reserve(frame_height * samples_per_line);
+
+    bool use_luma = vfr->has_separate_channels();
+
+    for (size_t line = 0; line < frame_height; ++line) {
+      const orc::VideoFrameRepresentation::sample_type* line_data =
+          use_luma ? vfr->get_line_luma(frame_id, line)
+                   : vfr->get_line(frame_id, line);
+      if (!line_data) {
+        for (size_t s = 0; s < samples_per_line; ++s) {
+          grayscale.push_back(0);
+        }
+        continue;
       }
-
-      // Combine Y and C for display (simple averaging or just use Y)
-      // For dropout map editing, we use Y channel as main reference
-      field_data = std::move(y_data);
-      ORC_LOG_DEBUG(
-          "DropoutPresenter::getFieldData: Combined YC data for field {} ({} "
-          "samples)",
-          field_id.value(), field_data.size());
-    } else {
-      // Composite source
-      field_data = field_repr->get_field(field_id);
-      ORC_LOG_DEBUG(
-          "DropoutPresenter::getFieldData: Composite data for field {} ({} "
-          "samples)",
-          field_id.value(), field_data.size());
-    }
-
-    if (field_data.empty()) {
-      ORC_LOG_ERROR(
-          "DropoutPresenter::getFieldData: got {} bytes of field data for "
-          "field {}",
-          field_data.size(), field_id.value());
-      return {};
-    }
-
-    // Convert to 8-bit grayscale (scale 16-bit to 8-bit)
-    std::vector<uint8_t> grayscale(field_data.size());
-    for (size_t i = 0; i < field_data.size(); ++i) {
-      grayscale[i] = static_cast<uint8_t>(field_data[i] >> 8);
+      for (size_t s = 0; s < samples_per_line; ++s) {
+        int16_t sample = line_data[s];
+        int32_t clamped = (sample < 0) ? 0 : (sample > 1023 ? 1023 : sample);
+        grayscale.push_back(static_cast<uint8_t>(clamped >> 2));
+      }
     }
 
     ORC_LOG_DEBUG(
-        "DropoutPresenter::getFieldData: converted {} samples to 8-bit "
-        "grayscale for field {}",
-        field_data.size(), field_id.value());
+        "DropoutPresenter::getFrameData: {} samples extracted for frame {}",
+        grayscale.size(), frame_id);
     return grayscale;
   } catch (const std::exception& e) {
-    ORC_LOG_ERROR("Error getting field data: {}", e.what());
+    ORC_LOG_ERROR("Error getting frame data: {}", e.what());
     return {};
   }
 }
 
 std::vector<DropoutRegion> DropoutPresenter::getSourceDropouts(
-    const std::shared_ptr<void>& field_repr_handle, FieldID field_id) {
-  auto field_repr =
-      std::static_pointer_cast<const orc::VideoFieldRepresentation>(
-          field_repr_handle);
-  if (!field_repr) {
+    const std::shared_ptr<void>& vfr_handle, FrameID frame_id) {
+  auto artifact_base =
+      std::static_pointer_cast<const orc::Artifact>(vfr_handle);
+  auto vfr = std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
+      artifact_base);
+  if (!vfr) {
     return {};
   }
 
   try {
-    if (!field_repr->has_field(field_id)) {
+    if (!vfr->has_frame(frame_id)) {
       return {};
     }
 
-    // Get dropout hints from TBC
-    std::vector<orc::DropoutRegion> core_dropouts =
-        field_repr->get_dropout_hints(field_id);
+    auto desc = vfr->get_frame_descriptor(frame_id);
+    if (!desc) {
+      return {};
+    }
 
-    // DropoutRegion is aliased to public_api::DropoutRegion, so just return
-    // directly
-    return core_dropouts;
+    auto params = vfr->get_video_parameters();
+    if (!params) {
+      return {};
+    }
+
+    // Get frame-flat dropout hints and convert to frame-flat DropoutRegions.
+    // Coordinates match DropoutEntrySpec: line = frame-flat 0-based line index,
+    // start_sample/end_sample = sample within that line.
+    auto runs = vfr->get_dropout_hints(frame_id);
+    std::vector<DropoutRegion> regions;
+    regions.reserve(runs.size());
+
+    for (const auto& run : runs) {
+      auto [flat_line, start_sample] = frame_flat_offset_to_line_sample(
+          params->system, static_cast<size_t>(desc->samples_per_line_nominal),
+          run.sample_start);
+
+      uint32_t end_sample =
+          static_cast<uint32_t>(start_sample) + run.sample_count;
+      uint32_t spl = static_cast<uint32_t>(desc->samples_per_line_nominal);
+      if (end_sample > spl) {
+        end_sample = spl;
+      }
+
+      DropoutRegion region;
+      region.line = static_cast<uint32_t>(flat_line);
+      region.start_sample = static_cast<uint32_t>(start_sample);
+      region.end_sample = end_sample;
+      region.basis = DropoutRegion::DetectionBasis::HINT_DERIVED;
+      regions.push_back(region);
+    }
+
+    return regions;
   } catch (const std::exception& e) {
     ORC_LOG_ERROR("Error getting source dropouts: {}", e.what());
     return {};
   }
 }
 
-std::map<uint64_t, FieldDropoutMap> DropoutPresenter::getDropoutMap(
+std::map<uint64_t, FrameDropoutMap> DropoutPresenter::getDropoutMap(
     NodeID node_id) {
   try {
-    // Find the node in the project
     const auto& nodes = impl_->project_presenter_.getNodes();
     auto node_it = std::find_if(nodes.begin(), nodes.end(),
                                 [&node_id](const orc::presenters::NodeInfo& n) {
@@ -428,14 +480,12 @@ std::map<uint64_t, FieldDropoutMap> DropoutPresenter::getDropoutMap(
       return {};
     }
 
-    // Check if it's a dropout_map stage
     if (node_it->stage_name != "dropout_map") {
       ORC_LOG_WARN("Node {} is not a dropout_map stage (it's {})",
                    node_id.to_string(), node_it->stage_name);
       return {};
     }
 
-    // Get parameters
     auto params = impl_->project_presenter_.getNodeParameters(node_id);
     auto it = params.find("dropout_map");
     if (it == params.end()) {
@@ -443,7 +493,6 @@ std::map<uint64_t, FieldDropoutMap> DropoutPresenter::getDropoutMap(
     }
 
     std::string map_str = std::get<std::string>(it->second);
-
     return parse_dropout_map_string(map_str);
   } catch (const std::exception& e) {
     ORC_LOG_ERROR("Error getting dropout map: {}", e.what());
@@ -452,11 +501,10 @@ std::map<uint64_t, FieldDropoutMap> DropoutPresenter::getDropoutMap(
 }
 
 bool DropoutPresenter::setDropoutMap(
-    NodeID node_id, const std::map<uint64_t, FieldDropoutMap>& dropout_map) {
+    NodeID node_id, const std::map<uint64_t, FrameDropoutMap>& dropout_map) {
   try {
     std::string map_str = encode_dropout_map_string(dropout_map);
 
-    // Set parameter using ProjectPresenter
     std::map<std::string, orc::ParameterValue> params;
     params["dropout_map"] = map_str;
 
@@ -469,15 +517,16 @@ bool DropoutPresenter::setDropoutMap(
   }
 }
 
-size_t DropoutPresenter::getFieldCount(
-    const std::shared_ptr<void>& field_repr_handle) {
-  auto field_repr =
-      std::static_pointer_cast<const orc::VideoFieldRepresentation>(
-          field_repr_handle);
-  if (!field_repr) {
+size_t DropoutPresenter::getFrameCount(
+    const std::shared_ptr<void>& vfr_handle) {
+  auto artifact_base =
+      std::static_pointer_cast<const orc::Artifact>(vfr_handle);
+  auto vfr = std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
+      artifact_base);
+  if (!vfr) {
     return 0;
   }
-  return field_repr->field_count();
+  return vfr->frame_count();
 }
 
 }  // namespace orc::presenters

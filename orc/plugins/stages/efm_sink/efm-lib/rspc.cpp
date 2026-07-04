@@ -8,10 +8,11 @@
 
 #include "rspc.h"
 
+#include <orc/stage/logging.h>
+
 #include <cstdlib>
 
 #include "ezpwd_compat.h"
-#include "logging.h"
 
 // ECMA-130 Q and P specific CIRC configuration for Reed-Solomon forward error
 // correction

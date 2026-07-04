@@ -10,19 +10,18 @@
 #ifndef ORC_CORE_LD_SINK_STAGE_H
 #define ORC_CORE_LD_SINK_STAGE_H
 
-#include <node_type.h>
+#include <orc/plugin/orc_stage_preview.h>
+#include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/observation_schema.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
-
-#include "../../../sdk/include/orc/plugin/orc_stage_preview.h"
-#include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
-#include "observation_schema.h"
-#include "stage_parameter.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 
@@ -47,7 +46,7 @@ class ILDSinkStageDeps;
 class LDSinkStage : public DAGStage,
                     public ParameterizedStage,
                     public TriggerableStage,
-                    public PreviewableStage {
+                    public IStagePreviewCapability {
  public:
   explicit LDSinkStage(IStageServices* stage_services);
 
@@ -60,6 +59,7 @@ class LDSinkStage : public DAGStage,
 
   // DAGStage interface
   std::string version() const override { return "1.0"; }
+  ORC_STAGE_INSTRUCTIONS_MD
   NodeTypeInfo get_node_type_info() const override;
   std::vector<ObservationKey> get_provided_observations() const override {
     return {ObservationKey{"export", "seq_no", ObservationType::INT64,
@@ -100,16 +100,13 @@ class LDSinkStage : public DAGStage,
 
   void cancel_trigger() override { cancel_requested_.store(true); }
 
-  // PreviewableStage interface
-  bool supports_preview() const override { return true; }
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
 
  private:
   std::string output_path_;
   std::string trigger_status_;
-  mutable std::shared_ptr<const VideoFieldRepresentation>
+  mutable std::shared_ptr<const VideoFrameRepresentation>
       cached_input_;  // For preview
   TriggerProgressCallback
       progress_callback_;  // Progress callback for trigger operations

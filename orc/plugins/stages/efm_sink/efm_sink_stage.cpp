@@ -10,17 +10,19 @@
 
 #include "efm_sink_stage.h"
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/logging.h>
 
 #include <stdexcept>
 
 #include "efm_sink_stage_deps.h"
 #include "efm_sink_stage_deps_interface.h"
-#include "logging.h"
 
 namespace orc {
 
-EFMSinkStage::EFMSinkStage() = default;
+EFMSinkStage::EFMSinkStage() {
+  set_configuration_status(orc::ConfigurationStatus::Red);
+}
 
 NodeTypeInfo EFMSinkStage::get_node_type_info() const {
   return NodeTypeInfo{
@@ -182,6 +184,14 @@ std::map<std::string, ParameterValue> EFMSinkStage::get_parameters() const {
 bool EFMSinkStage::set_parameters(
     const std::map<std::string, ParameterValue>& params) {
   parameters_ = params;
+
+  const auto it = params.find("output_path");
+  const bool has_path =
+      (it != params.end() && std::holds_alternative<std::string>(it->second) &&
+       !std::get<std::string>(it->second).empty());
+
+  set_configuration_status(has_path ? orc::ConfigurationStatus::Green
+                                    : orc::ConfigurationStatus::Red);
   return true;
 }
 
@@ -226,16 +236,16 @@ bool EFMSinkStage::trigger(
     // ------------------------------------------------------------------
     if (inputs.empty()) {
       throw std::runtime_error(
-          "EFMSink requires one input (VideoFieldRepresentation)");
+          "EFMSink requires one input (VideoFrameRepresentation)");
     }
-    auto vfr = std::dynamic_pointer_cast<VideoFieldRepresentation>(inputs[0]);
+    auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
     if (!vfr) {
       throw std::runtime_error(
-          "EFMSink input must be a VideoFieldRepresentation");
+          "EFMSink input must be a VideoFrameRepresentation");
     }
     if (!vfr->has_efm()) {
       throw std::runtime_error(
-          "EFMSink: input VFR has no EFM data (no EFM file in source?)");
+          "EFMSink: input VFrameR has no EFM data (no EFM file in source?)");
     }
 
     // ------------------------------------------------------------------

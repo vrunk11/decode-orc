@@ -13,7 +13,7 @@
 #include <QString>
 
 // Include headers from their installed locations
-#include <node_type.h>
+#include <orc/stage/node_type.h>
 
 #include "node_type_helper.h"
 

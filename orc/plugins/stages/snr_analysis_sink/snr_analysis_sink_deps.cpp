@@ -9,9 +9,12 @@
 
 #include "snr_analysis_sink_deps.h"
 
+#include <orc/stage/field_id.h>
+
 #include <cmath>
 #include <fstream>
 #include <utility>
+#include <variant>
 
 namespace orc {
 void SNRAnalysisSinkStageDeps::init(TriggerProgressCallback progress_callback,
@@ -21,14 +24,13 @@ void SNRAnalysisSinkStageDeps::init(TriggerProgressCallback progress_callback,
 }
 
 SNRAnalysisComputeResult SNRAnalysisSinkStageDeps::compute_and_analyze(
-    VideoFieldRepresentation* representation,
+    VideoFrameRepresentation* representation,
     IObservationContext& observation_context,
     SNRAnalysisComputeOptions options) {
   if (!representation) {
     return {false, "Input representation is null", {}, 0};
   }
 
-  (void)options.max_frames;
   (void)options.output_path;
   (void)options.write_csv;
 
@@ -36,43 +38,34 @@ SNRAnalysisComputeResult SNRAnalysisSinkStageDeps::compute_and_analyze(
   result.success = true;
   result.message = "SNR analysis complete";
 
-  auto range = representation->field_range();
-  if (range.size() == 0) {
-    logger_.warn("SNRAnalysisSinkDeps: No fields available");
+  const auto frame_rng = representation->frame_range();
+  const uint64_t total_frames = frame_rng.count();
+
+  if (total_frames == 0) {
+    logger_.warn("SNRAnalysisSinkDeps: No frames available");
     result.total_frames = 0;
     return result;
   }
 
-  const size_t total_fields = range.size();
-
-  const size_t TARGET_DATA_POINTS = 1000;
-  size_t fields_per_bin = 2;
-  if (total_fields > TARGET_DATA_POINTS * 2) {
-    fields_per_bin =
-        (total_fields + TARGET_DATA_POINTS - 1) / TARGET_DATA_POINTS;
-    if (fields_per_bin % 2 != 0) {
-      fields_per_bin++;
-    }
-  }
+  // Bucket-sampled analysis: divide the recording into at most kDefaultBuckets
+  // display points and, within each bucket, analyze at most kSamplesPerBucket
+  // evenly-spaced frames.  For small sources (bucket size <= kSamplesPerBucket)
+  // every frame in the bucket is analyzed.  This keeps wall-clock time near-
+  // constant regardless of recording length.
+  constexpr uint64_t kDefaultBuckets = 1000;
+  constexpr uint64_t kSamplesPerBucket = 1;
+  const uint64_t bucket_count =
+      (total_frames < kDefaultBuckets) ? total_frames : kDefaultBuckets;
 
   logger_.debug(
-      "SNRAnalysisSinkDeps: {} total fields, binning by {} fields per data "
-      "point",
-      total_fields, fields_per_bin);
+      "SNRAnalysisSinkDeps: {} frames → {} buckets (~{} samples/bucket)",
+      total_frames, bucket_count, kSamplesPerBucket);
 
-  FrameSNRStats current_bin{};
-  size_t fields_in_bin = 0;
-  [[maybe_unused]] size_t first_field_in_bin = 0;
-  size_t last_field_in_bin = 0;
+  result.frame_stats.reserve(static_cast<size_t>(bucket_count));
 
-  const bool include_white = options.snr_mode == SNRAnalysisMode::WHITE ||
-                             options.snr_mode == SNRAnalysisMode::BOTH;
-  const bool include_black = options.snr_mode == SNRAnalysisMode::BLACK ||
-                             options.snr_mode == SNRAnalysisMode::BOTH;
-
-  for (size_t i = 0; i < total_fields; ++i) {
+  for (uint64_t b = 0; b < bucket_count; ++b) {
     if (cancel_requested_ && cancel_requested_->load()) {
-      logger_.warn("SNRAnalysisSinkDeps: Cancel requested at field {}", i);
+      logger_.warn("SNRAnalysisSinkDeps: Cancel requested at bucket {}", b);
       result.success = false;
       result.message = "Cancelled by user";
       result.frame_stats.clear();
@@ -80,140 +73,91 @@ SNRAnalysisComputeResult SNRAnalysisSinkStageDeps::compute_and_analyze(
       return result;
     }
 
-    FieldID fid(range.start.value() + i);
-    auto descriptor = representation->get_descriptor(fid);
-    if (!descriptor) {
-      continue;
-    }
+    // Inclusive frame range for this bucket (no frame is missed or counted
+    // twice across adjacent buckets).
+    const FrameID bucket_start =
+        frame_rng.first + (b * total_frames) / bucket_count;
+    const FrameID bucket_end =
+        frame_rng.first + ((b + 1) * total_frames) / bucket_count - 1;
+    const uint64_t bucket_size = bucket_end - bucket_start + 1;
+    const uint64_t n_samples =
+        (kSamplesPerBucket < bucket_size) ? kSamplesPerBucket : bucket_size;
 
-    if (fields_in_bin == 0) {
-      first_field_in_bin = i;
-    }
-    last_field_in_bin = i;
+    double white_sum = 0.0;
+    double black_sum = 0.0;
+    size_t white_count = 0;
+    size_t black_count = 0;
 
-    if (include_white) {
-      white_snr_observer_.process_field(*representation, fid,
-                                        observation_context);
-    }
-    if (include_black) {
-      black_psnr_observer_.process_field(*representation, fid,
-                                         observation_context);
-    }
+    for (uint64_t s = 0; s < n_samples; ++s) {
+      // Evenly distribute sample frames across the bucket so the first and last
+      // frames are always included.
+      const FrameID fid =
+          (n_samples == 1U)
+              ? bucket_start
+              : bucket_start + (s * (bucket_size - 1U)) / (n_samples - 1U);
 
-    try {
-      if (include_white) {
-        auto white_snr_opt =
-            observation_context.get(fid, "white_snr", "snr_db");
-        if (white_snr_opt) {
-          try {
-            double val = std::get<double>(*white_snr_opt);
-            current_bin.white_snr += val;
-            current_bin.has_white_snr = true;
-            current_bin.white_snr_count++;
-          } catch (const std::exception& e) {
-            logger_.trace(
-                "SNRAnalysisSinkDeps: Failed to extract white_snr: {}",
-                e.what());
-          }
-        }
+      if (options.snr_mode == SNRAnalysisMode::WHITE ||
+          options.snr_mode == SNRAnalysisMode::BOTH) {
+        white_snr_observer_.process_frame(*representation, fid,
+                                          observation_context);
+      }
+      if (options.snr_mode == SNRAnalysisMode::BLACK ||
+          options.snr_mode == SNRAnalysisMode::BOTH) {
+        black_psnr_observer_.process_frame(*representation, fid,
+                                           observation_context);
       }
 
-      if (include_black) {
-        auto black_psnr_opt =
-            observation_context.get(fid, "black_psnr", "psnr_db");
-        if (black_psnr_opt) {
-          try {
-            double val = std::get<double>(*black_psnr_opt);
-            current_bin.black_psnr += val;
-            current_bin.has_black_psnr = true;
-            current_bin.black_psnr_count++;
-          } catch (const std::exception& e) {
-            logger_.trace(
-                "SNRAnalysisSinkDeps: Failed to extract black_psnr: {}",
-                e.what());
-          }
-        }
-      }
-    } catch (const std::exception& e) {
-      logger_.trace(
-          "SNRAnalysisSinkDeps: Exception reading observations for field {}: "
-          "{}",
-          fid.value(), e.what());
-    }
+      const FieldID frame_fid(fid * 2U);
 
-    fields_in_bin++;
-
-    if (fields_in_bin >= fields_per_bin) {
-      if (current_bin.has_white_snr || current_bin.has_black_psnr) {
-        if (current_bin.has_white_snr && current_bin.white_snr_count > 0) {
-          current_bin.white_snr /= static_cast<double>(current_bin.white_snr_count);
-        }
-        if (current_bin.has_black_psnr && current_bin.black_psnr_count > 0) {
-          current_bin.black_psnr /= static_cast<double>(current_bin.black_psnr_count);
-        }
-
-        FieldID last_fid(range.start.value() + last_field_in_bin);
-        int32_t bin_frame_number =
-            static_cast<int32_t>((last_fid.value() / 2) + 1);
-        current_bin.frame_number = bin_frame_number;
-        current_bin.has_data = true;
-        logger_.debug(
-            "SNRAnalysisSinkDeps: Bucket {} - field indices {}-{}, field IDs "
-            "{}-{}, frame {}: white_snr={:.2f}dB ({} fields), "
-            "black_psnr={:.2f}dB ({} fields)",
-            result.frame_stats.size(), first_field_in_bin, last_field_in_bin,
-            range.start.value() + first_field_in_bin,
-            range.start.value() + last_field_in_bin, bin_frame_number,
-            current_bin.has_white_snr ? current_bin.white_snr : 0.0,
-            current_bin.white_snr_count,
-            current_bin.has_black_psnr ? current_bin.black_psnr : 0.0,
-            current_bin.black_psnr_count);
-        result.frame_stats.push_back(current_bin);
+      auto white_val =
+          observation_context.get(frame_fid, "white_snr", "snr_db");
+      if (white_val && std::holds_alternative<double>(*white_val)) {
+        white_sum += std::get<double>(*white_val);
+        ++white_count;
       }
 
-      current_bin = FrameSNRStats();
-      fields_in_bin = 0;
+      auto black_val =
+          observation_context.get(frame_fid, "black_psnr", "psnr_db");
+      if (black_val && std::holds_alternative<double>(*black_val)) {
+        black_sum += std::get<double>(*black_val);
+        ++black_count;
+      }
+
+      observation_context.clear_field(frame_fid);
     }
 
-    if (progress_callback_) {
-      progress_callback_(i + 1, total_fields,
-                         "Processing field " + std::to_string(i));
+    FrameSNRStats frame_stat;
+    // Use the center frame of the bucket as the representative frame number
+    // (1-based for display).
+    frame_stat.frame_number =
+        static_cast<int32_t>(bucket_start + (bucket_end - bucket_start) / 2U) +
+        1;
+
+    if (white_count > 0) {
+      frame_stat.white_snr = white_sum / static_cast<double>(white_count);
+      frame_stat.white_snr_count = white_count;
+      frame_stat.has_white_snr = true;
+    }
+    if (black_count > 0) {
+      frame_stat.black_psnr = black_sum / static_cast<double>(black_count);
+      frame_stat.black_psnr_count = black_count;
+      frame_stat.has_black_psnr = true;
+    }
+    frame_stat.has_data = frame_stat.has_white_snr || frame_stat.has_black_psnr;
+    frame_stat.field_count = std::max(white_count, black_count);
+
+    result.frame_stats.push_back(frame_stat);
+
+    if (progress_callback_ && (b % 50 == 0 || b + 1 == bucket_count)) {
+      progress_callback_(b + 1, bucket_count,
+                         "Analysing bucket " + std::to_string(b + 1) + "/" +
+                             std::to_string(bucket_count));
     }
   }
 
-  if (fields_in_bin > 0 &&
-      (current_bin.has_white_snr || current_bin.has_black_psnr)) {
-    if (current_bin.has_white_snr && current_bin.white_snr_count > 0) {
-      current_bin.white_snr /= static_cast<double>(current_bin.white_snr_count);
-    }
-    if (current_bin.has_black_psnr && current_bin.black_psnr_count > 0) {
-      current_bin.black_psnr /= static_cast<double>(current_bin.black_psnr_count);
-    }
-
-    FieldID last_fid(range.start.value() + last_field_in_bin);
-    int32_t bin_frame_number = static_cast<int32_t>((last_fid.value() / 2) + 1);
-    current_bin.frame_number = bin_frame_number;
-    current_bin.has_data = true;
-    logger_.debug(
-        "SNRAnalysisSinkDeps: Final bucket {} - field indices {}-{}, field IDs "
-        "{}-{}, frame {}: white_snr={:.2f}dB ({} fields), black_psnr={:.2f}dB "
-        "({} fields)",
-        result.frame_stats.size(), first_field_in_bin, last_field_in_bin,
-        range.start.value() + first_field_in_bin,
-        range.start.value() + last_field_in_bin, bin_frame_number,
-        current_bin.has_white_snr ? current_bin.white_snr : 0.0,
-        current_bin.white_snr_count,
-        current_bin.has_black_psnr ? current_bin.black_psnr : 0.0,
-        current_bin.black_psnr_count);
-    result.frame_stats.push_back(current_bin);
-  }
-
-  result.total_frames = static_cast<int32_t>((total_fields + 1) / 2);
-
-  logger_.debug(
-      "SNRAnalysisSinkDeps: Computed {} data buckets from {} total fields ({} "
-      "total frames)",
-      result.frame_stats.size(), total_fields, result.total_frames);
+  result.total_frames = static_cast<int32_t>(total_frames);
+  logger_.debug("SNRAnalysisSinkDeps: Complete — {} buckets from {} frames",
+                result.frame_stats.size(), total_frames);
 
   return result;
 }

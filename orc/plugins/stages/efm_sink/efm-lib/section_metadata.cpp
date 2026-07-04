@@ -8,12 +8,13 @@
 
 #include "section_metadata.h"
 
+#include <orc/stage/logging.h>
+
 #include <cstdlib>
 #include <iomanip>
 #include <sstream>
 
 #include "hex_utils.h"
-#include "logging.h"
 
 // SectionType class
 // ---------------------------------------------------------------------------------------------------

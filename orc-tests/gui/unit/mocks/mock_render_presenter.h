@@ -65,6 +65,11 @@ class MockRenderPresenter : public IRenderPresenter {
 
   MOCK_METHOD(uint64_t, triggerStage,
               (NodeID node_id, TriggerProgressCallback callback), (override));
+  MOCK_METHOD(
+      uint64_t, triggerStage,
+      (NodeID node_id, TriggerProgressCallback callback,
+       (std::map<std::string, orc::ParameterValue> parameter_overrides)),
+      (override));
   MOCK_METHOD(void, cancelTrigger, (), (override));
 
   MOCK_METHOD(bool, savePNG,
@@ -96,16 +101,6 @@ class MockRenderPresenter : public IRenderPresenter {
                orc::VideoDataType data_type,
                const orc::PreviewCoordinate& coordinate),
               (override));
-
-  MOCK_METHOD(bool, applyStageParameters,
-              (NodeID node_id,
-               (const std::map<std::string, orc::ParameterValue>& params)),
-              (override));
-
-  MOCK_METHOD((std::vector<orc::LiveTweakableParameterView>),
-              getStageTweakableParameters, (NodeID node_id), (override));
-  MOCK_METHOD((std::map<std::string, orc::ParameterValue>),
-              getStageCurrentParameters, (NodeID node_id), (override));
 };
 
 }  // namespace orc::presenters::test

@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "observer.h"
+#include <orc/stage/observers/observer.h>
 
 #include <stdexcept>
 

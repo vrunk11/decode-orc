@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "observer.h"
+#include <orc/stage/observers/observer.h>
 
 namespace orc {
 
@@ -29,8 +29,8 @@ class FmCodeObserver : public Observer {
   std::string observer_name() const override { return "FmCodeObserver"; }
   std::string observer_version() const override { return "1.0.0"; }
 
-  void process_field(const VideoFieldRepresentation& representation,
-                     FieldID field_id, IObservationContext& context) override;
+  void process_frame(const VideoFrameRepresentation& representation,
+                     FrameID frame_id, IObservationContext& context) override;
 
   std::vector<ObservationKey> get_provided_observations() const override {
     return {
@@ -49,8 +49,8 @@ class FmCodeObserver : public Observer {
     bool field_flag = false;
   };
 
-  bool decode_line(const uint16_t* line_data, size_t sample_count,
-                   uint16_t zero_crossing, size_t active_start,
+  bool decode_line(const int16_t* line_data, size_t sample_count,
+                   int16_t zero_crossing, size_t active_start,
                    double jump_samples, DecodedFmCode& out) const;
 };
 

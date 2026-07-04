@@ -26,9 +26,15 @@
 #include "include/logging.h"
 
 #ifdef _WIN32
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
+// clang-format off
+// windows.h must precede dbghelp.h: dbghelp.h uses Win32 types (HANDLE,
+// BOOLEAN, ...) without including their definitions itself.
 #include <windows.h>
 #include <dbghelp.h>
+// clang-format on
 #endif
 
 // Unix/POSIX-specific headers (not available on Windows)
@@ -545,10 +551,10 @@ static std::vector<std::string> collect_log_files() {
  * @return Path to created ZIP file, or fallback text file on ZIP failure
  * @private
  */
-static std::string create_bundle_zip(
-    const std::string& crash_info_content, const std::string& coredump_path,
-    const std::vector<std::string>& log_files,
-    const std::string& coredump_note = "") {
+static std::string create_bundle_zip(const std::string& crash_info_content,
+                                     const std::string& coredump_path,
+                                     const std::vector<std::string>& log_files,
+                                     const std::string& coredump_note = "") {
   if (!ensure_output_directory_exists()) {
     return "";
   }

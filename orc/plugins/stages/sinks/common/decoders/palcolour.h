@@ -11,7 +11,8 @@
 #ifndef PALCOLOUR_H
 #define PALCOLOUR_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <cmath>
 #include <cstdint>
@@ -66,8 +67,9 @@ class PalColour {
                     int32_t startIndex, int32_t endIndex,
                     std::vector<ComponentFrame>& outputFrames);
 
-  // Maximum frame size, based on PAL
-  static constexpr int32_t MAX_WIDTH = 1135;
+  // EBU Tech. 3280-E §1.2: Maximum samples on any PAL line (non-orthogonal
+  // lines carry one extra sample).  All per-line arrays are sized to this.
+  static constexpr int32_t MAX_WIDTH = orc::kPalMaxSamplesPerLine;
 
  private:
   // Information about a line we're decoding.
@@ -87,14 +89,17 @@ class PalColour {
                    ComponentFrame& componentFrame);
   void decodeFieldYC(const SourceField& inputField,
                      ComponentFrame& componentFrame);
-  void detectBurst(LineInfo& line, const uint16_t* inputData);
+  // inputData is a pointer to the first sample of the field (composite or C
+  // channel); burst detection uses per-line access via SourceField::getLine or
+  // SourceField::getChromaLine depending on context.
+  void detectBurst(LineInfo& line, const SourceField& inputField,
+                   bool use_chroma_channel);
   template <typename ChromaSample, bool PREFILTERED_CHROMA>
   void decodeLine(const SourceField& inputField, const ChromaSample* chromaData,
                   const LineInfo& line, ComponentFrame& componentFrame);
-  void apply2DChromaFilter(const uint16_t* chromaData, const LineInfo& line,
-                           const SourceField& inputField, int32_t fieldLine,
-                           int32_t firstLine, int32_t lastLine, double* outU,
-                           double* outV);
+  void apply2DChromaFilter(const SourceField& inputField, const LineInfo& line,
+                           int32_t fieldLine, int32_t firstLine,
+                           int32_t lastLine, double* outU, double* outV);
   void doYNR(double* Yline);
 
   // Configuration parameters

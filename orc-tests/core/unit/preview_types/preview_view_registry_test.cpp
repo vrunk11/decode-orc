@@ -10,12 +10,11 @@
 #include "../../../orc/core/include/preview_view_registry.h"
 
 #include <gtest/gtest.h>
+#include <orc/stage/colour_preview_provider.h>
+#include <orc/stage/stage.h>
 
 #include <memory>
 #include <unordered_set>
-
-#include "../../../orc/core/include/colour_preview_provider.h"
-#include "../../../orc/core/stages/stage.h"
 
 namespace orc_unit_test {
 
@@ -130,8 +129,8 @@ class TestColourPreviewStage final : public orc::DAGStage,
     carrier.y_plane = {0.25, 0.5, 0.75, 1.0};
     carrier.u_plane = {0.0, 0.1, -0.1, 0.0};
     carrier.v_plane = {0.0, -0.1, 0.1, 0.0};
-    carrier.white_16b_ire = 65535.0;
-    carrier.black_16b_ire = 0.0;
+    carrier.cvbs_white = 65535.0;
+    carrier.cvbs_blanking = 0.0;
 
     orc::VectorscopeData vectorscope{};
     vectorscope.width = 2;
@@ -290,8 +289,8 @@ class TestColourPreviewStageNoVectorscope final
     carrier.y_plane = {0.25, 0.5, 0.75, 1.0};
     carrier.u_plane = {0.0, 0.0, 0.0, 0.0};
     carrier.v_plane = {0.0, 0.0, 0.0, 0.0};
-    carrier.white_16b_ire = 65535.0;
-    carrier.black_16b_ire = 0.0;
+    carrier.cvbs_white = 65535.0;
+    carrier.cvbs_blanking = 0.0;
     // vectorscope_data intentionally absent
     return carrier;
   }
@@ -673,7 +672,7 @@ TEST(PreviewViewRegistryTest, Default_ViewsIncludeGenericVfrVisualizations) {
   }
 
   EXPECT_TRUE(ids.find("preview.linescope") != ids.end());
-  EXPECT_TRUE(ids.find("preview.field_timing") != ids.end());
+  EXPECT_TRUE(ids.find("preview.frame_timing") != ids.end());
 }
 
 // =============================================================================

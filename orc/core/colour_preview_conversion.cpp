@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#include "include/colour_preview_conversion.h"
+#include <orc/stage/colour_preview_conversion.h>
 
 #include <algorithm>
 #include <cmath>
@@ -91,14 +91,20 @@ PreviewImage render_preview_from_colour_carrier(
       coefficients_for(carrier.colorimetry.matrix_coefficients);
   const double kg = 1.0 - matrix.kr - matrix.kb;
 
-  const double yuv_range = carrier.white_16b_ire - carrier.black_16b_ire;
+  // CVBS_U10_4FSC normative levels from carrier (set by chroma_sink).
+  // Y is normalized from picture-black (not blanking) so that sub-black content
+  // (below the setup pedestal on NTSC/PAL_M) clamps to zero rather than
+  // rendering as a dark visible level. U/V use the full active-video range
+  // (blanking→white) so chroma amplitude is unaffected by the pedestal.
+  const double y_range = carrier.cvbs_white - carrier.cvbs_black;
+  const double uv_range = carrier.cvbs_white - carrier.cvbs_blanking;
 
   const size_t samples =
       static_cast<size_t>(carrier.width) * static_cast<size_t>(carrier.height);
   for (size_t i = 0; i < samples; ++i) {
-    double y = (carrier.y_plane[i] - carrier.black_16b_ire) / yuv_range;
-    double u = carrier.u_plane[i] / yuv_range;
-    double v = carrier.v_plane[i] / yuv_range;
+    double y = (carrier.y_plane[i] - carrier.cvbs_black) / y_range;
+    double u = carrier.u_plane[i] / uv_range;
+    double v = carrier.v_plane[i] / uv_range;
 
     double r_nl = y + (2.0 - 2.0 * matrix.kr) * v;
     double b_nl = y + (2.0 - 2.0 * matrix.kb) * u;

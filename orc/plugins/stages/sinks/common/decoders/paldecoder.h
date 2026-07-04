@@ -11,7 +11,7 @@
 #ifndef PALDECODER_H
 #define PALDECODER_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <atomic>
 #include <iostream>

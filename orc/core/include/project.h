@@ -25,8 +25,9 @@
     "CLI code cannot include core/include/project.h. Use ProjectPresenter instead."
 #endif
 
-#include <node_id.h>
-#include <node_type.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/stage_parameter.h>
 
 #include <future>
 #include <map>
@@ -34,12 +35,9 @@
 #include <string>
 #include <vector>
 
-#include "stage_parameter.h"
-
 namespace orc {
 
 // Forward declarations
-class VideoFieldRepresentation;
 class Project;
 
 // Forward declare structs and project_io namespace functions
@@ -59,9 +57,6 @@ struct NodeCapabilities {
   bool can_trigger =
       false;  ///< Whether the node can be triggered (batch processing)
   std::string trigger_reason;  ///< Explanation if node cannot be triggered
-
-  bool can_inspect = false;    ///< Whether the node can be inspected
-  std::string inspect_reason;  ///< Explanation if node cannot be inspected
 
   NodeID node_id;          ///< Node identifier
   std::string stage_name;  ///< Stage type name
@@ -130,16 +125,17 @@ void set_project_name(Project& project, const std::string& name);
 void set_project_description(Project& project, const std::string& description);
 void set_video_format(Project& project, VideoSystem video_format);
 void set_source_format(Project& project, SourceType source_format);
+void set_amplitude_unit(Project& project, AmplitudeDisplayUnit unit);
 }  // namespace project_io
 
 /**
  * Node in a project DAG
- * All nodes are uniform - SOURCE nodes just use TBCSourceStage with tbc_path
+ * All nodes are uniform - SOURCE nodes use a source stage with input_path
  * parameter
  */
 struct ProjectDAGNode {
   NodeID node_id;
-  std::string stage_name;    // e.g., "TBCSource", "DropoutCorrect", etc.
+  std::string stage_name;    // e.g., "tbc_source", "dropout_correct", etc.
   NodeType node_type;        // Node type (SOURCE, SINK, TRANSFORM, etc.)
   std::string display_name;  // Display name for GUI (e.g., "Source: video.tbc",
                              // "Noise Filter")
@@ -148,7 +144,7 @@ struct ProjectDAGNode {
   double x_position;  // Position for GUI layout
   double y_position;
   std::map<std::string, ParameterValue>
-      parameters;  // Stage parameters (e.g., tbc_path/db_path for sources)
+      parameters;  // Stage parameters (e.g., input_path/db_path for sources)
 };
 
 /**
@@ -182,12 +178,12 @@ struct ProjectPluginRequirement {
  * - Project metadata (name, description, version)
  * - DAG structure (nodes, edges, parameters)
  * - Optional required_plugins metadata for third-party plugin-backed stages
- * - SOURCE nodes use TBCSourceStage with tbc_path in parameters
+ * - SOURCE nodes use the configured source stage with input_path in parameters
  *
  * The project file format is shared between orc-gui and orc-cli.
  * Both tools can load and save projects in the same format.
  *
- * The Project class owns and caches the source TBC representation,
+ * The Project class owns and caches the source representation,
  * ensuring a single source of truth for all consumers.
  *
  * ARCHITECTURE NOTE - STRICT ENCAPSULATION:
@@ -221,6 +217,7 @@ class Project {
   const std::string& get_version() const { return version_; }
   VideoSystem get_video_format() const { return video_format_; }
   SourceType get_source_format() const { return source_format_; }
+  AmplitudeDisplayUnit get_amplitude_unit() const { return amplitude_unit_; }
   const std::vector<ProjectDAGNode>& get_nodes() const { return nodes_; }
   const std::vector<ProjectDAGEdge>& get_edges() const { return edges_; }
   const std::vector<ProjectPluginRequirement>& get_required_plugins() const {
@@ -239,8 +236,8 @@ class Project {
 
   /**
    * Get the source type (Composite or YC) from the project's source nodes
-   * @return SourceType::Composite for composite sources (.tbc),
-   *         SourceType::YC for YC sources (.tbcy/.tbcc),
+   * @return SourceType::Composite for composite sources (e.g. .tbc),
+   *         SourceType::YC for YC sources (e.g. .tbcy/.tbcc),
    *         SourceType::Unknown if no sources or cannot determine
    */
   SourceType get_source_type() const;
@@ -253,6 +250,7 @@ class Project {
       project_root_;  // Absolute path to directory containing the YAML file
   VideoSystem video_format_ = VideoSystem::Unknown;  // NTSC or PAL
   SourceType source_format_ = SourceType::Unknown;   // Composite or YC
+  AmplitudeDisplayUnit amplitude_unit_ = AmplitudeDisplayUnit::Samples10Bit;
   std::vector<ProjectDAGNode> nodes_;
   std::vector<ProjectDAGEdge> edges_;
   std::vector<ProjectPluginRequirement> required_plugins_;
@@ -309,6 +307,8 @@ class Project {
                                            VideoSystem video_format);
   friend void project_io::set_source_format(Project& project,
                                             SourceType source_format);
+  friend void project_io::set_amplitude_unit(Project& project,
+                                             AmplitudeDisplayUnit unit);
 };
 
 /**
@@ -493,7 +493,7 @@ std::future<std::pair<bool, std::string>> trigger_node_async(
  * Find source file for a node by tracing back through the DAG
  * @param project Project to search
  * @param node_id ID of node to find source for
- * @return Path to source TBC file, or empty string if not found
+ * @return Path to source file, or empty string if not found
  */
 std::string find_source_file_for_node(const Project& project, NodeID node_id);
 }  // namespace project_io

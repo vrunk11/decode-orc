@@ -10,16 +10,17 @@
 #ifndef ORC_CORE_LD_SINK_STAGE_DEPS_H
 #define ORC_CORE_LD_SINK_STAGE_DEPS_H
 
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <utility>
 
 #include "ld_sink_stage_deps_interface.h"
-#include "observation_context_interface.h"
 #include "tbc_metadata_writer_interface.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 class IStageServices;
@@ -31,19 +32,12 @@ class LDSinkStageDeps : public ILDSinkStageDeps {
       : stage_services_(stage_services),
         metadata_writer_(std::move(metadata_writer)) {}
 
-  /**
-   * @brief Sets dependencies that aren't interfaces.
-   *
-   * @param progress_callback The progress callback
-   * @param pIsProcessing Pointer to is_processing atomic bool
-   * @param pCancelRequested Pointer to cancel_requested atomic bool
-   */
   void init(TriggerProgressCallback progress_callback,
             std::atomic<bool>* pIsProcessing,
             std::atomic<bool>* pCancelRequested);
 
   bool write_tbc_and_metadata(
-      const VideoFieldRepresentation* representation,
+      const VideoFrameRepresentation* representation,
       const std::string& tbc_path,
       IObservationContext& observation_context) override;
 

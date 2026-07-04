@@ -100,6 +100,7 @@ void DropoutAnalysisDialog::finishUpdate(int32_t currentFrameNumber) {
   plot_->setGridEnabled(true);
   plot_->setZoomEnabled(true);
   plot_->setPanEnabled(true);
+  plot_->setXAxisIntegerLabels(true);  // Frame numbers are whole numbers
   plot_->setYAxisIntegerLabels(true);  // Dropouts should be whole numbers
 
   // Set axis titles and ranges

@@ -9,6 +9,8 @@
 
 #include "linescopedialog.h"
 
+#include <orc/stage/cvbs_signal_constants.h>
+
 #include <QHBoxLayout>
 #include <QHideEvent>
 #include <QLabel>
@@ -18,6 +20,22 @@
 #include "field_frame_presentation.h"
 #include "logging.h"
 #include "theme_color_tokens.h"
+
+// Convert presenter-layer VideoSystem to the core orc::VideoSystem used by
+// sample_rate_from_system().  The two enums are mirrors; this keeps the GUI
+// layer decoupled from core types while avoiding a direct dependency on core.
+static orc::VideoSystem toOrcVideoSystem(orc::presenters::VideoSystem sys) {
+  switch (sys) {
+    case orc::presenters::VideoSystem::PAL:
+      return orc::VideoSystem::PAL;
+    case orc::presenters::VideoSystem::NTSC:
+      return orc::VideoSystem::NTSC;
+    case orc::presenters::VideoSystem::PAL_M:
+      return orc::VideoSystem::PAL_M;
+    default:
+      return orc::VideoSystem::Unknown;
+  }
+}
 
 LineScopeDialog::LineScopeDialog(QWidget* parent)
     : QDialog(parent),
@@ -340,7 +358,8 @@ void LineScopeDialog::updatePlotData() {
                !current_c_samples_.empty()) {  // Chroma (C) only
       display_samples = &current_c_samples_;
     } else if (channel_mode == 2 ||
-               channel_mode == 3) {  // Both (Y & C) or Y+C combined (simulated composite)
+               channel_mode ==
+                   3) {  // Both (Y & C) or Y+C combined (simulated composite)
       // Will handle separately below - don't set display_samples
     }
     // If none of the above conditions are met, display_samples stays nullptr
@@ -370,35 +389,32 @@ void LineScopeDialog::updatePlotData() {
       }
     }
 
-    // Calculate microseconds per sample (default to 1.0 if no sample rate
-    // available)
+    // Calculate microseconds per sample (default to 1.0 if no video params).
+    // sample_rate_from_system() derives the 4FSC rate from the video standard;
+    // deprecated SourceParameters::sample_rate is no longer available.
     double us_per_sample = 1.0;
-    if (current_video_params_.has_value() &&
-        current_video_params_->sample_rate > 0) {
-      // sample_rate is in Hz (samples per second)
-      // Convert to microseconds per sample: (1 / sample_rate) * 1,000,000
-      us_per_sample = 1000000.0 / current_video_params_->sample_rate;
+    if (current_video_params_.has_value()) {
+      const double sr = orc::sample_rate_from_system(
+          toOrcVideoSystem(current_video_params_->system));
+      if (sr > 0.0) {
+        us_per_sample = 1000000.0 / sr;
+      }
     }
 
     for (size_t i = 0; i < samples.size(); ++i) {
       double mv_value = static_cast<double>(samples[i]);
 
-      // Convert to mV via IRE if we have video parameters
-      if (current_video_params_.has_value()) {
-        const auto& vp = current_video_params_.value();
-        if (vp.blanking_ire >= 0 && vp.white_ire >= 0) {
-          // Use blanking as reference for 0 IRE, white as 100 IRE
-          double ire = (mv_value - vp.blanking_ire) * 100.0 /
-                       (vp.white_ire - vp.blanking_ire);
-          // Then convert IRE to mV
-          mv_value = ire * ire_to_mv;
-        } else if (vp.black_ire >= 0 && vp.white_ire >= 0) {
-          // Fallback to black level if blanking is not available
-          double ire =
-              (mv_value - vp.black_ire) * 100.0 / (vp.white_ire - vp.black_ire);
-          mv_value = ire * ire_to_mv;
-        }
-      }
+      // Samples are in the CVBS_U10_4FSC 10-bit domain.
+      const double level_blanking =
+          current_video_params_.has_value()
+              ? static_cast<double>(current_video_params_->blanking_level)
+              : static_cast<double>(orc::kNtscBlanking);
+      const double level_range =
+          current_video_params_.has_value()
+              ? static_cast<double>(current_video_params_->white_level -
+                                    current_video_params_->blanking_level)
+              : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
+      mv_value = (mv_value - level_blanking) * 100.0 / level_range * ire_to_mv;
 
       // X-axis: convert sample position to microseconds
       double time_us = static_cast<double>(i) * us_per_sample;
@@ -568,69 +584,29 @@ void LineScopeDialog::updatePlotData() {
   // Calculate Y-axis range
   double min_mv, max_mv, min_ire, max_ire;
 
-  if (current_video_params_.has_value()) {
-    const auto& vp = current_video_params_.value();
-    if (vp.blanking_ire >= 0 && vp.white_ire >= 0) {
-      // Convert 16-bit extremes (0 and 65535) to mV via IRE
-      // Using blanking as reference for 0 IRE
-      double raw_min_ire =
-          (0.0 - vp.blanking_ire) * 100.0 / (vp.white_ire - vp.blanking_ire);
-      double raw_max_ire = (65535.0 - vp.blanking_ire) * 100.0 /
-                           (vp.white_ire - vp.blanking_ire);
-      double raw_min_mv = raw_min_ire * ire_to_mv;
-      double raw_max_mv = raw_max_ire * ire_to_mv;
+  // Samples are in the CVBS_U10_4FSC 10-bit domain.
+  const double level_blanking =
+      current_video_params_.has_value()
+          ? static_cast<double>(current_video_params_->blanking_level)
+          : static_cast<double>(orc::kNtscBlanking);
+  const double level_range =
+      current_video_params_.has_value()
+          ? static_cast<double>(current_video_params_->white_level -
+                                current_video_params_->blanking_level)
+          : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
+  {
+    double raw_min_ire = (0.0 - level_blanking) * 100.0 / level_range;
+    double raw_max_ire = (1023.0 - level_blanking) * 100.0 / level_range;
+    double raw_min_mv = raw_min_ire * ire_to_mv;
+    double raw_max_mv = raw_max_ire * ire_to_mv;
 
-      // Find the range of tick marks that covers the data, anchored at 0
-      // For minimum: find the lowest tick that is <= raw_min_mv
-      min_mv = std::floor(raw_min_mv / mv_tick_step) * mv_tick_step;
-      // For maximum: find the highest tick that is >= raw_max_mv
-      max_mv = std::ceil(raw_max_mv / mv_tick_step) * mv_tick_step;
+    min_mv = std::floor(raw_min_mv / mv_tick_step) * mv_tick_step;
+    max_mv = std::ceil(raw_max_mv / mv_tick_step) * mv_tick_step;
+    if (min_mv < raw_min_mv) min_mv = raw_min_mv;
+    if (max_mv > raw_max_mv) max_mv = raw_max_mv;
 
-      // But don't extend beyond the actual data range
-      // The ticks will still be at nice intervals starting from 0
-      if (min_mv < raw_min_mv) {
-        min_mv = raw_min_mv;
-      }
-      if (max_mv > raw_max_mv) {
-        max_mv = raw_max_mv;
-      }
-
-      // Calculate corresponding IRE range
-      min_ire = min_mv / ire_to_mv;
-      max_ire = max_mv / ire_to_mv;
-    } else if (vp.black_ire >= 0 && vp.white_ire >= 0) {
-      // Fallback to black level if blanking not available
-      double raw_min_ire =
-          (0.0 - vp.black_ire) * 100.0 / (vp.white_ire - vp.black_ire);
-      double raw_max_ire =
-          (65535.0 - vp.black_ire) * 100.0 / (vp.white_ire - vp.black_ire);
-      double raw_min_mv = raw_min_ire * ire_to_mv;
-      double raw_max_mv = raw_max_ire * ire_to_mv;
-
-      min_mv = std::floor(raw_min_mv / mv_tick_step) * mv_tick_step;
-      max_mv = std::ceil(raw_max_mv / mv_tick_step) * mv_tick_step;
-
-      if (min_mv < raw_min_mv) {
-        min_mv = raw_min_mv;
-      }
-      if (max_mv > raw_max_mv) {
-        max_mv = raw_max_mv;
-      }
-
-      min_ire = min_mv / ire_to_mv;
-      max_ire = max_mv / ire_to_mv;
-    } else {
-      // Defaults when no video params
-      min_mv = -200;
-      max_mv = 1000;
-      min_ire = min_mv / ire_to_mv;
-      max_ire = max_mv / ire_to_mv;
-    }
-  } else {
-    min_mv = -200;
-    max_mv = 1000;
-    min_ire = -28.6;
-    max_ire = 142.9;
+    min_ire = min_mv / ire_to_mv;
+    max_ire = max_mv / ire_to_mv;
   }
 
   // Determine sample count for X-axis range
@@ -643,11 +619,16 @@ void LineScopeDialog::updatePlotData() {
     sample_count = current_y_samples_.size();
   }
 
-  // Calculate time duration in microseconds for X-axis range
+  // Calculate time duration in microseconds for X-axis range.
+  // Derive sample rate from the video system standard rather than the
+  // deprecated SourceParameters::sample_rate field.
   double us_per_sample = 1.0;
-  if (current_video_params_.has_value() &&
-      current_video_params_->sample_rate > 0) {
-    us_per_sample = 1000000.0 / current_video_params_->sample_rate;
+  if (current_video_params_.has_value()) {
+    const double sr = orc::sample_rate_from_system(
+        toOrcVideoSystem(current_video_params_->system));
+    if (sr > 0.0) {
+      us_per_sample = 1000000.0 / sr;
+    }
   }
   double max_time_us = static_cast<double>(sample_count - 1) * us_per_sample;
 
@@ -661,20 +642,11 @@ void LineScopeDialog::updatePlotData() {
   plot_widget_->setAxisTickStep(Qt::Horizontal, 2.0, 0.0);  // 2 µs tick marks
   plot_widget_->setAxisTickStep(Qt::Vertical, mv_tick_step, 0.0);
 
-  // Configure secondary Y-axis to show IRE values
-  if (current_video_params_.has_value()) {
-    const auto& vp = current_video_params_.value();
-    if (vp.black_ire >= 0 && vp.white_ire >= 0) {
-      plot_widget_->setSecondaryYAxisEnabled(true);
-      plot_widget_->setSecondaryYAxisTitle("IRE");
-      plot_widget_->setSecondaryYAxisRange(min_ire, max_ire);
-      plot_widget_->setSecondaryYAxisTickStep(ire_tick_step, 0.0);
-    } else {
-      plot_widget_->setSecondaryYAxisEnabled(false);
-    }
-  } else {
-    plot_widget_->setSecondaryYAxisEnabled(false);
-  }
+  // Configure secondary Y-axis to show IRE values.
+  plot_widget_->setSecondaryYAxisEnabled(true);
+  plot_widget_->setSecondaryYAxisTitle("IRE");
+  plot_widget_->setSecondaryYAxisRange(min_ire, max_ire);
+  plot_widget_->setSecondaryYAxisTickStep(ire_tick_step, 0.0);
 
   // Clear existing markers
   plot_widget_->clearMarkers();
@@ -686,10 +658,16 @@ void LineScopeDialog::updatePlotData() {
   if (current_video_params_.has_value()) {
     const auto& vp = current_video_params_.value();
 
-    // Convert sample positions to microseconds for X-axis
+    // Convert sample positions to microseconds for X-axis.
+    // Derive sample rate from the video system; deprecated sample_rate field
+    // removed from SourceParameters.
     double us_per_sample = 1.0;
-    if (vp.sample_rate > 0) {
-      us_per_sample = 1000000.0 / vp.sample_rate;
+    {
+      const double sr =
+          orc::sample_rate_from_system(toOrcVideoSystem(vp.system));
+      if (sr > 0.0) {
+        us_per_sample = 1000000.0 / sr;
+      }
     }
 
     // Color burst region (cyan)
@@ -740,51 +718,36 @@ void LineScopeDialog::updatePlotData() {
                           1, Qt::DashLine));
     }
 
-    // IRE level markers (horizontal lines) in mV
-    // 0 IRE (blanking level) - dark gray
-    // Black level - light gray (if different from blanking)
-    // 100 IRE (white level) - light gray
-    if (vp.blanking_ire >= 0 && vp.white_ire >= 0) {
-      // 0 IRE (blanking) = 0 mV by definition
-      auto* ire0 = plot_widget_->addMarker();
-      ire0->setStyle(PlotMarker::HLine);
-      ire0->setPosition(QPointF(0, 0.0));  // 0 IRE = 0 mV
-      ire0->setPen(
-          QPen(theme_tokens::neutralLine(palette(), 0.35), 1, Qt::DashLine));
+    // IRE level markers (horizontal lines) in mV using ld-decode reference
+    // levels. 0 IRE (blanking) = 0 mV by definition
+    auto* ire0 = plot_widget_->addMarker();
+    ire0->setStyle(PlotMarker::HLine);
+    ire0->setPosition(QPointF(0, 0.0));
+    ire0->setPen(
+        QPen(theme_tokens::neutralLine(palette(), 0.35), 1, Qt::DashLine));
 
-      // Black level marker (if different from blanking)
-      if (vp.black_ire >= 0 && vp.black_ire != vp.blanking_ire) {
-        double black_ire =
-            (static_cast<double>(vp.black_ire) - vp.blanking_ire) * 100.0 /
-            (vp.white_ire - vp.blanking_ire);
-        double black_mv = black_ire * ire_to_mv;
-        auto* black_marker = plot_widget_->addMarker();
-        black_marker->setStyle(PlotMarker::HLine);
-        black_marker->setPosition(QPointF(0, black_mv));
-        black_marker->setPen(QPen(theme_tokens::neutralLine(palette(), 0.5), 1,
-                                  Qt::DashDotLine));
-      }
-
-      // 100 IRE (white level)
-      auto* ire100 = plot_widget_->addMarker();
-      ire100->setStyle(PlotMarker::HLine);
-      ire100->setPosition(QPointF(0, 100.0 * ire_to_mv));  // 100 IRE in mV
-      ire100->setPen(
-          QPen(theme_tokens::neutralLine(palette(), 0.7), 1, Qt::DashLine));
-    } else if (vp.black_ire >= 0 && vp.white_ire >= 0) {
-      // Fallback: use black level as reference if blanking not available
-      auto* ire0 = plot_widget_->addMarker();
-      ire0->setStyle(PlotMarker::HLine);
-      ire0->setPosition(QPointF(0, 0.0));  // Reference point
-      ire0->setPen(
-          QPen(theme_tokens::neutralLine(palette(), 0.35), 1, Qt::DashLine));
-
-      auto* ire100 = plot_widget_->addMarker();
-      ire100->setStyle(PlotMarker::HLine);
-      ire100->setPosition(QPointF(0, 100.0 * ire_to_mv));
-      ire100->setPen(
-          QPen(theme_tokens::neutralLine(palette(), 0.7), 1, Qt::DashLine));
+    // Black level marker if different from blanking (NTSC 7.5 IRE pedestal).
+    if (vp.black_level >= 0 && vp.blanking_level >= 0 &&
+        vp.white_level > vp.blanking_level &&
+        vp.black_level != vp.blanking_level) {
+      double black_ire =
+          (static_cast<double>(vp.black_level - vp.blanking_level) /
+           (vp.white_level - vp.blanking_level)) *
+          100.0;
+      double black_mv = black_ire * ire_to_mv;
+      auto* black_marker = plot_widget_->addMarker();
+      black_marker->setStyle(PlotMarker::HLine);
+      black_marker->setPosition(QPointF(0, black_mv));
+      black_marker->setPen(
+          QPen(theme_tokens::neutralLine(palette(), 0.5), 1, Qt::DashDotLine));
     }
+
+    // 100 IRE (white level)
+    auto* ire100 = plot_widget_->addMarker();
+    ire100->setStyle(PlotMarker::HLine);
+    ire100->setPosition(QPointF(0, 100.0 * ire_to_mv));
+    ire100->setPen(
+        QPen(theme_tokens::neutralLine(palette(), 0.7), 1, Qt::DashLine));
   }
 }
 
@@ -828,11 +791,15 @@ void LineScopeDialog::updateSampleMarker(int sample_x) {
       sample_x < static_cast<int>(samples_for_marker->size())) {
     current_sample_x_ = sample_x;
 
-    // Calculate time position in microseconds
+    // Calculate time position in microseconds.
+    // Derive sample rate from the video system; deprecated sample_rate removed.
     double us_per_sample = 1.0;
-    if (current_video_params_.has_value() &&
-        current_video_params_->sample_rate > 0) {
-      us_per_sample = 1000000.0 / current_video_params_->sample_rate;
+    if (current_video_params_.has_value()) {
+      const double sr = orc::sample_rate_from_system(
+          toOrcVideoSystem(current_video_params_->system));
+      if (sr > 0.0) {
+        us_per_sample = 1000000.0 / sr;
+      }
     }
     double time_us = static_cast<double>(sample_x) * us_per_sample;
 
@@ -874,25 +841,21 @@ void LineScopeDialog::updateSampleMarker(int sample_x) {
                            (static_cast<int32_t>(c_val) - CHROMA_MID_CODE),
                        0, 65535));
 
-        if (current_video_params_.has_value()) {
-          const auto& vp = current_video_params_.value();
-          if (vp.blanking_ire >= 0 && vp.white_ire >= 0) {
-            double ire =
-                (static_cast<double>(combined_value) - vp.blanking_ire) *
-                100.0 / (vp.white_ire - vp.blanking_ire);
-            double mv = ire * ire_to_mv;
-            info_text += QString("\nmV: %1").arg(mv, 0, 'f', 1);
-            info_text += QString("\nIRE: %1").arg(ire, 0, 'f', 1);
-          } else if (vp.black_ire >= 0 && vp.white_ire >= 0) {
-            double ire = (static_cast<double>(combined_value) - vp.black_ire) *
-                         100.0 / (vp.white_ire - vp.black_ire);
-            double mv = ire * ire_to_mv;
-            info_text += QString("\nmV: %1").arg(mv, 0, 'f', 1);
-            info_text += QString("\nIRE: %1").arg(ire, 0, 'f', 1);
-          }
-        } else {
-          info_text += QString("\n16-bit: %1").arg(combined_value);
-        }
+        // Samples are in the CVBS_U10_4FSC 10-bit domain.
+        const double s_blanking =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscBlanking);
+        const double s_range =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->white_level -
+                                      current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
+        double ire = (static_cast<double>(combined_value) - s_blanking) *
+                     100.0 / s_range;
+        double mv = ire * ire_to_mv;
+        info_text += QString("\nmV: %1").arg(mv, 0, 'f', 1);
+        info_text += QString("\nIRE: %1").arg(ire, 0, 'f', 1);
       }
     } else if (is_yc_source_ && channel_selector_->currentIndex() == 2) {
       // Show both Y and C values
@@ -901,64 +864,46 @@ void LineScopeDialog::updateSampleMarker(int sample_x) {
         uint16_t y_value = current_y_samples_[sample_x];
         uint16_t c_value = current_c_samples_[sample_x];
 
-        if (current_video_params_.has_value()) {
-          const auto& vp = current_video_params_.value();
-          if (vp.blanking_ire >= 0 && vp.white_ire >= 0) {
-            double y_ire = (static_cast<double>(y_value) - vp.blanking_ire) *
-                           100.0 / (vp.white_ire - vp.blanking_ire);
-            double c_ire = (static_cast<double>(c_value) - vp.blanking_ire) *
-                           100.0 / (vp.white_ire - vp.blanking_ire);
-            double y_mv = y_ire * ire_to_mv;
-            double c_mv = c_ire * ire_to_mv;
-
-            info_text += QString("\nY: %1 mV (%2 IRE)")
-                             .arg(y_mv, 0, 'f', 1)
-                             .arg(y_ire, 0, 'f', 1);
-            info_text += QString("\nC: %1 mV (%2 IRE)")
-                             .arg(c_mv, 0, 'f', 1)
-                             .arg(c_ire, 0, 'f', 1);
-          } else if (vp.black_ire >= 0 && vp.white_ire >= 0) {
-            // Fallback if blanking not available
-            double y_ire = (static_cast<double>(y_value) - vp.black_ire) *
-                           100.0 / (vp.white_ire - vp.black_ire);
-            double c_ire = (static_cast<double>(c_value) - vp.black_ire) *
-                           100.0 / (vp.white_ire - vp.black_ire);
-            double y_mv = y_ire * ire_to_mv;
-            double c_mv = c_ire * ire_to_mv;
-
-            info_text += QString("\nY: %1 mV (%2 IRE)")
-                             .arg(y_mv, 0, 'f', 1)
-                             .arg(y_ire, 0, 'f', 1);
-            info_text += QString("\nC: %1 mV (%2 IRE)")
-                             .arg(c_mv, 0, 'f', 1)
-                             .arg(c_ire, 0, 'f', 1);
-          }
-        } else {
-          info_text += QString("\nY: %1").arg(y_value);
-          info_text += QString("\nC: %1").arg(c_value);
-        }
+        // Samples are in the CVBS_U10_4FSC 10-bit domain.
+        const double s_blanking =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscBlanking);
+        const double s_range =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->white_level -
+                                      current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
+        double y_ire =
+            (static_cast<double>(y_value) - s_blanking) * 100.0 / s_range;
+        double c_ire =
+            (static_cast<double>(c_value) - s_blanking) * 100.0 / s_range;
+        double y_mv = y_ire * ire_to_mv;
+        double c_mv = c_ire * ire_to_mv;
+        info_text += QString("\nY: %1 mV (%2 IRE)")
+                         .arg(y_mv, 0, 'f', 1)
+                         .arg(y_ire, 0, 'f', 1);
+        info_text += QString("\nC: %1 mV (%2 IRE)")
+                         .arg(c_mv, 0, 'f', 1)
+                         .arg(c_ire, 0, 'f', 1);
       }
     } else {
-      // Single channel mode - show mV and IRE if we have video parameters
-      if (current_video_params_.has_value()) {
-        const auto& vp = current_video_params_.value();
-        if (vp.blanking_ire >= 0 && vp.white_ire >= 0) {
-          double ire = (static_cast<double>(sample_value) - vp.blanking_ire) *
-                       100.0 / (vp.white_ire - vp.blanking_ire);
-          double mv = ire * ire_to_mv;
-          info_text += QString("\nmV: %1").arg(mv, 0, 'f', 1);
-          info_text += QString("\nIRE: %1").arg(ire, 0, 'f', 1);
-        } else if (vp.black_ire >= 0 && vp.white_ire >= 0) {
-          // Fallback if blanking not available
-          double ire = (static_cast<double>(sample_value) - vp.black_ire) *
-                       100.0 / (vp.white_ire - vp.black_ire);
-          double mv = ire * ire_to_mv;
-          info_text += QString("\nmV: %1").arg(mv, 0, 'f', 1);
-          info_text += QString("\nIRE: %1").arg(ire, 0, 'f', 1);
-        }
-      } else {
-        // If no video parameters, show raw 16-bit value
-        info_text += QString("\n16-bit: %1").arg(sample_value);
+      // Single channel mode — samples are in CVBS_U10_4FSC 10-bit domain.
+      {
+        const double s_blanking =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscBlanking);
+        const double s_range =
+            current_video_params_.has_value()
+                ? static_cast<double>(current_video_params_->white_level -
+                                      current_video_params_->blanking_level)
+                : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking);
+        double ire =
+            (static_cast<double>(sample_value) - s_blanking) * 100.0 / s_range;
+        double mv = ire * ire_to_mv;
+        info_text += QString("\nmV: %1").arg(mv, 0, 'f', 1);
+        info_text += QString("\nIRE: %1").arg(ire, 0, 'f', 1);
       }
     }
 
@@ -988,11 +933,15 @@ void LineScopeDialog::updateOriginalSampleXFromSampleIndex(int sample_index) {
 }
 
 void LineScopeDialog::onPlotClicked(const QPointF& dataPoint) {
-  // Convert X coordinate from microseconds to sample position
+  // Convert X coordinate from microseconds to sample position.
+  // Derive sample rate from the video system; deprecated sample_rate removed.
   double us_per_sample = 1.0;
-  if (current_video_params_.has_value() &&
-      current_video_params_->sample_rate > 0) {
-    us_per_sample = 1000000.0 / current_video_params_->sample_rate;
+  if (current_video_params_.has_value()) {
+    const double sr = orc::sample_rate_from_system(
+        toOrcVideoSystem(current_video_params_->system));
+    if (sr > 0.0) {
+      us_per_sample = 1000000.0 / sr;
+    }
   }
 
   // dataPoint.x() is in microseconds, convert to sample position

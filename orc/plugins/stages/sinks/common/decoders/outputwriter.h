@@ -11,7 +11,7 @@
 #ifndef OUTPUTWRITER_H
 #define OUTPUTWRITER_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <cstdint>
 #include <string>

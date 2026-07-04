@@ -11,7 +11,13 @@
 #ifndef ORC_CORE_DROPOUT_ANALYSIS_SINK_STAGE_H
 #define ORC_CORE_DROPOUT_ANALYSIS_SINK_STAGE_H
 
-#include <node_type.h>
+#include <orc/plugin/orc_stage_preview.h>
+#include <orc/plugin/orc_stage_runtime.h>
+#include <orc/plugin/orc_stage_tooling.h>
+#include <orc/stage/analysis_sink_results.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/triggerable_stage.h>
 
 #include <atomic>
 #include <map>
@@ -21,15 +27,8 @@
 #include <utility>
 #include <vector>
 
-#include "../../../sdk/include/orc/plugin/orc_stage_preview.h"
-#include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
-#include "../../../sdk/include/orc/plugin/orc_stage_tooling.h"
-#include "analysis_sink_results.h"
 #include "dropout_analysis_sink_deps_interface.h"
 #include "dropout_analysis_types.h"
-#include "stage_parameter.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 
@@ -44,7 +43,7 @@ class DropoutAnalysisSinkStage : public DAGStage,
                                  public ParameterizedStage,
                                  public TriggerableStage,
                                  public StageToolProvider,
-                                 public PreviewableStage,
+                                 public IStagePreviewCapability,
                                  public IDropoutAnalysisResults {
  public:
   DropoutAnalysisSinkStage();
@@ -56,6 +55,7 @@ class DropoutAnalysisSinkStage : public DAGStage,
 
   // DAGStage interface
   std::string version() const override { return "1.0"; }
+  ORC_STAGE_INSTRUCTIONS_MD
   NodeTypeInfo get_node_type_info() const override;
 
   std::vector<ArtifactPtr> execute(
@@ -87,12 +87,6 @@ class DropoutAnalysisSinkStage : public DAGStage,
   bool is_trigger_in_progress() const override { return is_processing_.load(); }
   void cancel_trigger() override { cancel_requested_.store(true); }
 
-  // PreviewableStage interface
-  bool supports_preview() const override { return true; }
-  std::vector<PreviewOption> get_preview_options() const override;
-  PreviewImage render_preview(const std::string& option_id, uint64_t index,
-                              PreviewNavigationHint hint) const override;
-
   // IDropoutAnalysisResults interface
   const std::vector<FrameDropoutStats>& frame_stats() const override {
     return frame_stats_;
@@ -100,6 +94,9 @@ class DropoutAnalysisSinkStage : public DAGStage,
   int32_t total_frames() const override { return total_frames_; }
   bool has_results() const override { return has_results_; }
   DropoutAnalysisMode last_mode() const { return last_mode_; }
+
+  // IStagePreviewCapability
+  StagePreviewCapability get_preview_capability() const override;
 
   std::vector<StageToolDescriptor> get_stage_tools() const override {
     return {
@@ -114,13 +111,11 @@ class DropoutAnalysisSinkStage : public DAGStage,
     std::string output_path;
     bool write_csv = false;
     DropoutAnalysisMode mode = DropoutAnalysisMode::FULL_FIELD;
-    size_t max_frames = 0;  // 0 = auto-bin to ~1000 points
   };
 
   ParsedConfig parse_config(
       const std::map<std::string, ParameterValue>& parameters) const;
 
-  mutable std::shared_ptr<const VideoFieldRepresentation> cached_input_;
   std::map<std::string, ParameterValue> parameters_;
   TriggerProgressCallback progress_callback_;
   std::atomic<bool> is_processing_{false};
@@ -132,6 +127,7 @@ class DropoutAnalysisSinkStage : public DAGStage,
   bool has_results_ = false;
   DropoutAnalysisMode last_mode_ = DropoutAnalysisMode::FULL_FIELD;
   std::shared_ptr<IDropoutAnalysisSinkStageDeps> deps_override_;
+  mutable std::shared_ptr<const VideoFrameRepresentation> cached_input_;
 };
 
 }  // namespace orc

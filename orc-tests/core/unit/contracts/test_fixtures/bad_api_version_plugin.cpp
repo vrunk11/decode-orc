@@ -18,9 +18,10 @@ constexpr orc::StagePluginDescriptor kDescriptor{
     "test.bad-api-version",  // plugin_id
     "0.0.1",                 // plugin_version
     orc::kStagePluginHostAbiVersion,
-    9999u,               // plugin_api_version — intentionally wrong
-    "GPL-3.0-or-later",  // license_spdx
-    false,               // is_core_plugin
+    9999u,                  // plugin_api_version — intentionally wrong
+    "GPL-3.0-or-later",     // license_spdx
+    false,                  // is_core_plugin
+    ORC_SDK_TOOLCHAIN_TAG,  // toolchain_tag
 };
 
 }  // namespace

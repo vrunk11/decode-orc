@@ -10,11 +10,11 @@
 #ifndef ORC_CORE_FFMPEG_OUTPUT_BACKEND_H
 #define ORC_CORE_FFMPEG_OUTPUT_BACKEND_H
 
-#include <field_id.h>
+#include <orc/stage/eia608_decoder.h>
+#include <orc/stage/field_id.h>
 
 #include <memory>
 
-#include "eia608_decoder.h"
 #include "output_backend.h"
 
 #ifdef HAVE_FFMPEG
@@ -61,7 +61,7 @@ class FFmpegOutputBackend : public OutputBackend {
   AVFrame* audio_frame_ = nullptr;
   AVPacket* audio_packet_ = nullptr;
   int64_t audio_pts_ = 0;
-  const VideoFieldRepresentation* vfr_ = nullptr;
+  const VideoFrameRepresentation* vfr_ = nullptr;
   uint64_t start_field_index_ = 0;
   uint64_t num_fields_ = 0;
   uint64_t current_field_for_audio_ = 0;

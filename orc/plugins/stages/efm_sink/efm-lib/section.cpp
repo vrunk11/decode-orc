@@ -8,9 +8,9 @@
 
 #include "section.h"
 
-#include <cstdlib>
+#include <orc/stage/logging.h>
 
-#include "logging.h"
+#include <cstdlib>
 
 F2Section::F2Section() { m_frames.reserve(98); }
 

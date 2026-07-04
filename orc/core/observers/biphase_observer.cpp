@@ -7,25 +7,26 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "biphase_observer.h"
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/observers/biphase_observer.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cstdio>
 #include <cstring>
 #include <optional>
 #include <string>
 
-#include "../include/field_id.h"
-#include "../include/logging.h"
-#include "../include/observation_context.h"
 #include "../include/vbi_types.h"
 #include "../include/vbi_utilities.h"
-#include "../include/video_field_representation.h"
 
 namespace orc {
 
 // Decode Manchester/biphase encoded VBI data from a video line
-static int32_t decode_manchester(const uint16_t* line_data, size_t sample_count,
-                                 uint16_t zero_crossing, size_t active_start,
+static int32_t decode_manchester(const int16_t* line_data, size_t sample_count,
+                                 int16_t zero_crossing, size_t active_start,
                                  double sample_rate) {
   if (!line_data || sample_count == 0) {
     return 0;
@@ -503,84 +504,81 @@ static void interpret_vbi_data(int32_t vbi16, int32_t vbi17, int32_t vbi18,
   }
 }
 
-void BiphaseObserver::process_field(
-    const VideoFieldRepresentation& representation, FieldID field_id,
+void BiphaseObserver::process_frame(
+    const VideoFrameRepresentation& representation, FrameID frame_id,
     IObservationContext& context) {
-  // Observers work by analyzing the rendered video data,
-  // NOT by reading source metadata hints
-
-  // Get the field descriptor to access video parameters
-  auto descriptor = representation.get_descriptor(field_id);
-  if (!descriptor) {
-    ORC_LOG_TRACE(
-        "BiphaseObserver: Could not get field descriptor for field {}",
-        field_id.value());
+  auto vp_opt = representation.get_video_parameters();
+  if (!vp_opt.has_value()) {
+    ORC_LOG_TRACE("BiphaseObserver: No video parameters for frame {}",
+                  frame_id);
     return;
   }
+  const auto& vp = vp_opt.value();
 
-  // Get video parameters for decoding
-  auto video_params_opt = representation.get_video_parameters();
-  if (!video_params_opt) {
-    ORC_LOG_TRACE(
-        "BiphaseObserver: Could not get video parameters for field {}",
-        field_id.value());
-    return;
-  }
+  // 4FSC sample rate is fully determined by the video system.
+  double sample_rate = sample_rate_from_system(vp.system);
+  size_t active_start = static_cast<size_t>(vp.active_video_start);
+  size_t line_width = static_cast<size_t>(vp.frame_width_nominal);
+  size_t f1_lines = field1_lines(vp.system);
 
-  const auto& video_params = video_params_opt.value();
+  // CVBS_U10_4FSC zero-crossing: midpoint between blanking and white.
+  int16_t zero_crossing =
+      static_cast<int16_t>((vp.white_level + vp.blanking_level) / 2);
 
-  // Calculate IRE zero-crossing point (midpoint between black and white)
-  uint16_t zero_crossing = static_cast<uint16_t>(
-      (video_params.white_16b_ire + video_params.black_16b_ire) / 2);
-  size_t active_start = video_params.active_video_start;
-  double sample_rate = static_cast<double>(video_params.sample_rate);
+  for (size_t field_idx = 0; field_idx < 2; ++field_idx) {
+    FieldID derived_fid(frame_id * 2 + field_idx);
+    size_t line_offset = (field_idx == 0) ? 0 : f1_lines;
+    size_t field_height = (field_idx == 0)
+                              ? f1_lines
+                              : static_cast<size_t>(vp.frame_height) - f1_lines;
 
-  // Decode lines 16, 17, 18 (VBI lines use 1-based numbering in specs, 0-based
-  // in code) Lines 15, 16, 17 in 0-based indexing
-  std::array<int32_t, 3> vbi_data = {0, 0, 0};
-  int lines_decoded = 0;
+    // Decode lines 16, 17, 18 (VBI lines; 0-based: positions 15, 16, 17)
+    std::array<int32_t, 3> vbi_data = {0, 0, 0};
+    int lines_decoded = 0;
 
-  for (int line_offset = 0; line_offset < 3; ++line_offset) {
-    size_t line_num = 15 + line_offset;  // Lines 15, 16, 17 (0-based)
-    if (line_num >= descriptor->height) {
-      vbi_data[line_offset] = -1;
-      continue;
+    for (int line_offset_vbi = 0; line_offset_vbi < 3; ++line_offset_vbi) {
+      size_t field_line = 15 + static_cast<size_t>(line_offset_vbi);
+      if (field_line >= field_height) {
+        vbi_data[line_offset_vbi] = -1;
+        continue;
+      }
+
+      const int16_t* line_data =
+          representation.has_separate_channels()
+              ? representation.get_line_luma(frame_id, line_offset + field_line)
+              : representation.get_line(frame_id, line_offset + field_line);
+      if (!line_data) {
+        vbi_data[line_offset_vbi] = -1;
+        continue;
+      }
+
+      vbi_data[line_offset_vbi] = decode_manchester(
+          line_data, line_width, zero_crossing, active_start, sample_rate);
+
+      if (vbi_data[line_offset_vbi] != 0 && vbi_data[line_offset_vbi] != -1) {
+        lines_decoded++;
+      }
     }
 
-    const uint16_t* line_data =
-        representation.has_separate_channels()
-            ? representation.get_line_luma(field_id, line_num)
-            : representation.get_line(field_id, line_num);
-    if (!line_data) {
-      vbi_data[line_offset] = -1;
-      continue;
+    // Store the decoded VBI data in observation context
+    if (lines_decoded > 0) {
+      context.set(derived_fid, "biphase", "vbi_line_16", vbi_data[0]);
+      context.set(derived_fid, "biphase", "vbi_line_17", vbi_data[1]);
+      context.set(derived_fid, "biphase", "vbi_line_18", vbi_data[2]);
+
+      ORC_LOG_DEBUG(
+          "BiphaseObserver: Decoded {} VBI lines for field {}: {:08x} {:08x} "
+          "{:08x}",
+          lines_decoded, derived_fid.value(), vbi_data[0], vbi_data[1],
+          vbi_data[2]);
+
+      // Interpret the VBI data according to IEC 60857 standard
+      interpret_vbi_data(vbi_data[0], vbi_data[1], vbi_data[2], derived_fid,
+                         context);
+    } else {
+      ORC_LOG_TRACE("BiphaseObserver: No biphase data decoded for field {}",
+                    derived_fid.value());
     }
-
-    vbi_data[line_offset] = decode_manchester(
-        line_data, descriptor->width, zero_crossing, active_start, sample_rate);
-
-    if (vbi_data[line_offset] != 0 && vbi_data[line_offset] != -1) {
-      lines_decoded++;
-    }
-  }
-
-  // Store the decoded VBI data in observation context
-  if (lines_decoded > 0) {
-    context.set(field_id, "biphase", "vbi_line_16", vbi_data[0]);
-    context.set(field_id, "biphase", "vbi_line_17", vbi_data[1]);
-    context.set(field_id, "biphase", "vbi_line_18", vbi_data[2]);
-
-    ORC_LOG_DEBUG(
-        "BiphaseObserver: Decoded {} VBI lines for field {}: {:08x} {:08x} "
-        "{:08x}",
-        lines_decoded, field_id.value(), vbi_data[0], vbi_data[1], vbi_data[2]);
-
-    // Interpret the VBI data according to IEC 60857 standard
-    interpret_vbi_data(vbi_data[0], vbi_data[1], vbi_data[2], field_id,
-                       context);
-  } else {
-    ORC_LOG_TRACE("BiphaseObserver: No biphase data decoded for field {}",
-                  field_id.value());
   }
 }
 

@@ -10,6 +10,8 @@
 
 #include "monodecoder.h"
 
+#include <orc/stage/cvbs_signal_constants.h>
+
 #include <cstddef>
 
 #include "../video_parameter_safety.h"
@@ -177,7 +179,6 @@ void MonoDecoder::decodeFrames(const std::vector<SourceField>& inputFields,
     const int32_t xOffset = videoParameters.active_area_cropping_applied
                                 ? videoParameters.active_video_start
                                 : 0;
-    const int32_t fieldWidth = videoParameters.field_width;
 
     // Check if this is a YC source
     bool is_yc_source = !inputFields.empty() && inputFields[0].is_yc;
@@ -206,24 +207,20 @@ void MonoDecoder::decodeFrames(const std::vector<SourceField>& inputFields,
           sourceField = secondField;
         }
 
-        const std::vector<uint16_t>* inputFieldData = nullptr;
-        if (sourceField) {
-          inputFieldData =
-              is_yc_source ? &sourceField->luma_data : &sourceField->data;
-        }
+        if (!sourceField) continue;
 
-        const int32_t fieldLine =
-            sourceField ? ((y - sourceField->getOffset()) / 2) : -1;
-        const int32_t availableLines =
-            inputFieldData
-                ? static_cast<int32_t>(inputFieldData->size() / fieldWidth)
-                : 0;
-        if (!inputFieldData || fieldLine < 0 || fieldLine >= availableLines) {
+        const int32_t fieldLine = (y - sourceField->getOffset()) / 2;
+        if (fieldLine < 0 ||
+            static_cast<size_t>(fieldLine) >= sourceField->line_count) {
           continue;
         }
 
-        const uint16_t* inputLine =
-            inputFieldData->data() + (static_cast<ptrdiff_t>(fieldLine * fieldWidth));
+        // Use non-owning SourceField accessors — no data copy.
+        const int16_t* inputLine =
+            is_yc_source
+                ? sourceField->getLumaLine(static_cast<size_t>(fieldLine))
+                : sourceField->getLine(static_cast<size_t>(fieldLine));
+
         for (int32_t x = videoParameters.active_video_start;
              x < videoParameters.active_video_end; x++) {
           outY[x - xOffset] = inputLine[x];
@@ -237,10 +234,25 @@ void MonoDecoder::decodeFrames(const std::vector<SourceField>& inputFields,
 void MonoDecoder::doYNR(ComponentFrame& componentFrame) {
   if (monoConfig.yNRLevel == 0.0) return;
 
-  // 1. Compute coring level (same formula in both existing routines)
-  double irescale = (monoConfig.videoParameters.white_16b_ire -
-                     monoConfig.videoParameters.black_16b_ire) /
-                    100.0;
+  // 1. Compute coring level using CVBS spec constants (10-bit domain).
+  // Use SourceParameters.white_level / blanking_level when available; fall
+  // back to system-specific spec constants otherwise.
+  double irescale;
+  if (monoConfig.videoParameters.white_level > 0 &&
+      monoConfig.videoParameters.blanking_level >= 0) {
+    irescale = static_cast<double>(monoConfig.videoParameters.white_level -
+                                   monoConfig.videoParameters.blanking_level) /
+               100.0;
+  } else {
+    const bool isPal =
+        monoConfig.videoParameters.system == orc::VideoSystem::PAL ||
+        monoConfig.videoParameters.system == orc::VideoSystem::PAL_M;
+    // EBU Tech. 3280-E (PAL) / SMPTE 244M-2003 (NTSC): 10-bit level ranges.
+    irescale =
+        isPal
+            ? static_cast<double>(orc::kPalWhite - orc::kPalBlanking) / 100.0
+            : static_cast<double>(orc::kNtscWhite - orc::kNtscBlanking) / 100.0;
+  }
   double nr_y = monoConfig.yNRLevel * irescale;
 
   // 2. Choose filter taps & descriptor based on system

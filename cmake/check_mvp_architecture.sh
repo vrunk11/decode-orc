@@ -161,6 +161,7 @@ EOF
     if ! "$COMPILER" -c /tmp/test_mvp_violation.cpp \
         -I orc/core/include \
         -I orc/common/include \
+        -I orc/sdk/include \
         -DORC_GUI_BUILD \
         2>&1 | grep -q "error.*GUI code cannot include"; then
         COMPILER_FAILURES=$((COMPILER_FAILURES + 1))
@@ -176,15 +177,18 @@ EOF
         -I orc/core/include \
         -I orc/common/include \
         -I orc/view-types \
+        -I orc/sdk/include \
         -DORC_GUI_BUILD \
         2>&1 | grep -q "error.*GUI code cannot include"; then
         COMPILER_FAILURES=$((COMPILER_FAILURES + 1))
     fi
     
     # Test 3.3: Public API should compile successfully
+    # (Shared DTO/vocabulary headers live in the plugin SDK contract tree
+    # <orc/stage/...>; they remain GUI-accessible.)
     cat > /tmp/test_mvp_valid.cpp << 'EOF'
-#include <orc_rendering.h>
-#include <parameter_types.h>
+#include <orc/stage/orc_rendering.h>
+#include <orc/stage/parameter_types.h>
 void test_function() {
     orc::PreviewImage img;
     orc::ParameterValue param = std::string("test");
@@ -202,6 +206,7 @@ EOF
     if ! "$COMPILER" -c /tmp/test_mvp_valid.cpp \
         -I orc/view-types \
         -I orc/common/include \
+        -I orc/sdk/include \
         $SPDLOG_INCLUDES \
         -DORC_GUI_BUILD \
         -std=c++17 \

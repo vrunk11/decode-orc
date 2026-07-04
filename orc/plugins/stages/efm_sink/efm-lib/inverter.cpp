@@ -8,9 +8,9 @@
 
 #include "inverter.h"
 
-#include <cstdlib>
+#include <orc/stage/logging.h>
 
-#include "logging.h"
+#include <cstdlib>
 
 Inverter::Inverter() {}
 

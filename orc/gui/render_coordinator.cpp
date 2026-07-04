@@ -10,7 +10,7 @@
 
 #include "render_coordinator.h"
 
-#include <common_types.h>  // For analysis result types
+#include <orc/stage/common_types.h>  // For analysis result types
 
 #include "logging.h"
 #include "render_presenter.h"
@@ -112,6 +112,13 @@ class RenderPresenterAdapter final : public orc::presenters::IRenderPresenter {
     return presenter_.triggerStage(node_id, std::move(callback));
   }
 
+  uint64_t triggerStage(
+      orc::NodeID node_id, TriggerProgressCallback callback,
+      std::map<std::string, orc::ParameterValue> parameter_overrides) override {
+    return presenter_.triggerStage(node_id, std::move(callback),
+                                   std::move(parameter_overrides));
+  }
+
   void cancelTrigger() override { presenter_.cancelTrigger(); }
 
   bool savePNG(orc::NodeID node_id, orc::PreviewOutputType output_type,
@@ -159,22 +166,6 @@ class RenderPresenterAdapter final : public orc::presenters::IRenderPresenter {
       const orc::PreviewCoordinate& coordinate) override {
     return presenter_.requestPreviewViewData(node_id, view_id, data_type,
                                              coordinate);
-  }
-
-  bool applyStageParameters(
-      orc::NodeID node_id,
-      const std::map<std::string, orc::ParameterValue>& params) override {
-    return presenter_.applyStageParameters(node_id, params);
-  }
-
-  std::vector<orc::LiveTweakableParameterView> getStageTweakableParameters(
-      orc::NodeID node_id) override {
-    return presenter_.getStageTweakableParameters(node_id);
-  }
-
-  std::map<std::string, orc::ParameterValue> getStageCurrentParameters(
-      orc::NodeID node_id) override {
-    return presenter_.getStageCurrentParameters(node_id);
   }
 
  private:
@@ -330,12 +321,22 @@ uint64_t RenderCoordinator::requestLineSamples(
   return id;
 }
 
-uint64_t RenderCoordinator::requestFieldTimingData(
+uint64_t RenderCoordinator::requestFrameTimingData(
     const orc::NodeID& node_id, orc::PreviewOutputType output_type,
     uint64_t output_index) {
   uint64_t id = nextRequestId();
-  auto req = std::make_unique<GetFieldTimingRequest>(id, node_id, output_type,
+  auto req = std::make_unique<GetFrameTimingRequest>(id, node_id, output_type,
                                                      output_index);
+  enqueueRequest(std::move(req));
+  return id;
+}
+
+uint64_t RenderCoordinator::requestWaveformMonitorData(
+    const orc::NodeID& node_id, orc::PreviewOutputType output_type,
+    uint64_t output_index) {
+  uint64_t id = nextRequestId();
+  auto req = std::make_unique<GetWaveformMonitorRequest>(
+      id, node_id, output_type, output_index);
   enqueueRequest(std::move(req));
   return id;
 }
@@ -443,39 +444,6 @@ void RenderCoordinator::cancelTrigger() {
   ORC_LOG_DEBUG("RenderCoordinator: Trigger cancellation requested");
 }
 
-uint64_t RenderCoordinator::requestApplyStageParameters(
-    const orc::NodeID& node_id, orc::PreviewOutputType output_type,
-    uint64_t output_index, const std::string& option_id,
-    std::map<std::string, orc::ParameterValue> params) {
-  uint64_t id = nextRequestId();
-  // Apply requests trigger an immediate preview render on the worker thread;
-  // mark this as the latest preview request so stale-response filtering keeps
-  // it.
-  latest_preview_request_id_.store(id);
-  auto req = std::make_unique<ApplyStageParametersRequest>(
-      id, node_id, std::move(params), output_type, output_index, option_id);
-  enqueueRequest(std::move(req));
-  return id;
-}
-
-std::vector<orc::LiveTweakableParameterView>
-RenderCoordinator::getStageTweakableParameters(const orc::NodeID& node_id) {
-  std::lock_guard<std::mutex> lock(queue_mutex_);
-  if (!worker_render_presenter_) {
-    return {};
-  }
-  return worker_render_presenter_->getStageTweakableParameters(node_id);
-}
-
-std::map<std::string, orc::ParameterValue>
-RenderCoordinator::getStageCurrentParameters(const orc::NodeID& node_id) {
-  std::lock_guard<std::mutex> lock(queue_mutex_);
-  if (!worker_render_presenter_) {
-    return {};
-  }
-  return worker_render_presenter_->getStageCurrentParameters(node_id);
-}
-
 // ============================================================================
 // Worker Thread Implementation
 // ============================================================================
@@ -558,8 +526,13 @@ void RenderCoordinator::processRequest(std::unique_ptr<RenderRequest> request) {
       handleGetLineSamples(*static_cast<GetLineSamplesRequest*>(request.get()));
       break;
 
-    case RenderRequestType::GetFieldTiming:
-      handleGetFieldTiming(*static_cast<GetFieldTimingRequest*>(request.get()));
+    case RenderRequestType::GetFrameTiming:
+      handleGetFrameTiming(*static_cast<GetFrameTimingRequest*>(request.get()));
+      break;
+
+    case RenderRequestType::GetWaveformMonitor:
+      handleGetWaveformMonitor(
+          *static_cast<GetWaveformMonitorRequest*>(request.get()));
       break;
 
     case RenderRequestType::SavePNG:
@@ -573,11 +546,6 @@ void RenderCoordinator::processRequest(std::unique_ptr<RenderRequest> request) {
 
     case RenderRequestType::TriggerStage:
       handleTriggerStage(*static_cast<TriggerStageRequest*>(request.get()));
-      break;
-
-    case RenderRequestType::ApplyStageParameters:
-      handleApplyStageParameters(
-          *static_cast<ApplyStageParametersRequest*>(request.get()));
       break;
 
     case RenderRequestType::Shutdown:
@@ -674,6 +642,10 @@ void RenderCoordinator::handleRenderPreview(const RenderPreviewRequest& req) {
       return;
     }
 
+    if (!result.success && !result.error_message.empty()) {
+      ORC_LOG_ERROR("RenderCoordinator: Preview render failed: {}",
+                    result.error_message);
+    }
     ORC_LOG_DEBUG("RenderCoordinator: Preview render complete, success={}",
                   result.success);
 
@@ -807,13 +779,13 @@ void RenderCoordinator::handleGetSNRData(const GetSNRDataRequest& req) {
           "RenderCoordinator: SNR stage has no results, triggering now "
           "(request {})",
           req.request_id);
-      worker_render_presenter_->triggerStage(
-          req.node_id,
-          [this](int current, int total, const std::string& message) {
-            emit snrProgress(static_cast<size_t>(current),
-                             static_cast<size_t>(total),
-                             QString::fromStdString(message));
-          });
+      auto progress_cb = [this](int current, int total,
+                                const std::string& message) {
+        emit snrProgress(static_cast<size_t>(current),
+                         static_cast<size_t>(total),
+                         QString::fromStdString(message));
+      };
+      worker_render_presenter_->triggerStage(req.node_id, progress_cb);
       if (!worker_render_presenter_->getSNRAnalysisData(req.node_id, data_ptr,
                                                         total_frames)) {
         emit error(req.request_id,
@@ -868,13 +840,13 @@ void RenderCoordinator::handleGetBurstLevelData(
           "RenderCoordinator: Burst level stage has no results, triggering now "
           "(request {})",
           req.request_id);
-      worker_render_presenter_->triggerStage(
-          req.node_id,
-          [this](int current, int total, const std::string& message) {
-            emit burstLevelProgress(static_cast<size_t>(current),
-                                    static_cast<size_t>(total),
-                                    QString::fromStdString(message));
-          });
+      auto progress_cb = [this](int current, int total,
+                                const std::string& message) {
+        emit burstLevelProgress(static_cast<size_t>(current),
+                                static_cast<size_t>(total),
+                                QString::fromStdString(message));
+      };
+      worker_render_presenter_->triggerStage(req.node_id, progress_cb);
       if (!worker_render_presenter_->getBurstLevelAnalysisData(
               req.node_id, data_ptr, total_frames)) {
         emit error(req.request_id,
@@ -989,7 +961,7 @@ void RenderCoordinator::handleGetLineSamples(const GetLineSamplesRequest& req) {
   }
 }
 
-void RenderCoordinator::handleGetFieldTiming(const GetFieldTimingRequest& req) {
+void RenderCoordinator::handleGetFrameTiming(const GetFrameTimingRequest& req) {
   ORC_LOG_DEBUG(
       "RenderCoordinator: Getting field timing data for node '{}', index {} "
       "(request {})",
@@ -1018,11 +990,11 @@ void RenderCoordinator::handleGetFieldTiming(const GetFieldTimingRequest& req) {
     // Determine field indices based on output type
     uint64_t field_index = req.output_index;
     std::optional<uint64_t> field_index_2;
-    std::vector<uint16_t> samples_2;
-    std::vector<uint16_t> y_samples_2;
-    std::vector<uint16_t> c_samples_2;
+    std::vector<int16_t> samples_2;
+    std::vector<int16_t> y_samples_2;
+    std::vector<int16_t> c_samples_2;
 
-    if (req.output_type == orc::PreviewOutputType::Frame ||
+    if (req.output_type == orc::PreviewOutputType::Frame_Field1_First ||
         req.output_type == orc::PreviewOutputType::Frame_Reversed ||
         req.output_type == orc::PreviewOutputType::Split) {
       // For frame modes, output_index is a frame number, so convert to field
@@ -1045,7 +1017,7 @@ void RenderCoordinator::handleGetFieldTiming(const GetFieldTimingRequest& req) {
         sample_data.composite_samples.size(), sample_data.y_samples.size(),
         sample_data.c_samples.size());
 
-    emit fieldTimingDataReady(
+    emit frameTimingDataReady(
         req.request_id, field_index, field_index_2,
         std::move(sample_data.composite_samples), std::move(samples_2),
         std::move(sample_data.y_samples), std::move(sample_data.c_samples),
@@ -1054,6 +1026,51 @@ void RenderCoordinator::handleGetFieldTiming(const GetFieldTimingRequest& req) {
 
   } catch (const std::exception& e) {
     ORC_LOG_DEBUG("RenderCoordinator: Get field timing failed: {}", e.what());
+    emit error(req.request_id, QString::fromStdString(e.what()));
+  }
+}
+
+void RenderCoordinator::handleGetWaveformMonitor(
+    const GetWaveformMonitorRequest& req) {
+  ORC_LOG_DEBUG(
+      "RenderCoordinator: Getting waveform monitor data for node '{}', index "
+      "{} (request {})",
+      req.node_id.to_string(), req.output_index, req.request_id);
+
+  if (!worker_render_presenter_) {
+    ORC_LOG_ERROR("RenderCoordinator: Render presenter not initialized");
+    emit error(req.request_id, "Render presenter not initialized");
+    return;
+  }
+
+  try {
+    auto sample_data = worker_render_presenter_->getFieldSamplesForTiming(
+        req.node_id, req.output_type, req.output_index);
+
+    if (sample_data.composite_samples.empty() &&
+        sample_data.y_samples.empty()) {
+      ORC_LOG_DEBUG(
+          "RenderCoordinator: Field data not available for node '{}' "
+          "(waveform monitor)",
+          req.node_id.to_string());
+      emit error(req.request_id, "Field data not available");
+      return;
+    }
+
+    ORC_LOG_DEBUG(
+        "RenderCoordinator: Emitting waveform monitor data ({} composite, {} "
+        "Y, {} C samples)",
+        sample_data.composite_samples.size(), sample_data.y_samples.size(),
+        sample_data.c_samples.size());
+
+    emit waveformMonitorDataReady(
+        req.request_id, std::move(sample_data.composite_samples),
+        std::move(sample_data.y_samples), std::move(sample_data.c_samples),
+        sample_data.first_field_height, sample_data.second_field_height);
+
+  } catch (const std::exception& e) {
+    ORC_LOG_DEBUG("RenderCoordinator: Get waveform monitor failed: {}",
+                  e.what());
     emit error(req.request_id, QString::fromStdString(e.what()));
   }
 }
@@ -1126,36 +1143,6 @@ void RenderCoordinator::setShowDropouts(bool show) {
   if (worker_render_presenter_) {
     worker_render_presenter_->setShowDropouts(show);
     ORC_LOG_DEBUG("RenderCoordinator: Show dropouts set to {}", show);
-  }
-}
-
-void RenderCoordinator::handleApplyStageParameters(
-    const ApplyStageParametersRequest& req) {
-  ORC_LOG_DEBUG(
-      "RenderCoordinator: ApplyStageParameters for node '{}' (request {})",
-      req.node_id.to_string(), req.request_id);
-
-  if (!worker_render_presenter_) {
-    ORC_LOG_ERROR("RenderCoordinator: Render presenter not initialized");
-    emit stageParametersApplied(req.request_id, false);
-    return;
-  }
-
-  bool ok =
-      worker_render_presenter_->applyStageParameters(req.node_id, req.params);
-  emit stageParametersApplied(req.request_id, ok);
-
-  if (ok) {
-    // Re-render the current field/frame so the preview widget updates
-    // immediately. We construct a synthetic RenderPreviewRequest and handle it
-    // directly on the worker thread (avoids re-queuing through the GUI thread).
-    RenderPreviewRequest render_req(req.request_id, req.node_id,
-                                    req.output_type, req.output_index,
-                                    req.option_id);
-    handleRenderPreview(render_req);
-  } else {
-    ORC_LOG_WARN("RenderCoordinator: applyStageParameters failed for node '{}'",
-                 req.node_id.to_string());
   }
 }
 

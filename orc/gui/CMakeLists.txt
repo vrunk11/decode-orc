@@ -46,8 +46,8 @@ set(ORC_GUI_LIB_SOURCES
     fieldpreviewwidget.h
     previewdialog.cpp
     previewdialog.h
-    linescopedialog.cpp
-    linescopedialog.h
+    framescopedialog.cpp
+    framescopedialog.h
     line_navigation_mapper.cpp
     line_navigation_mapper.h
     stageparameterdialog.cpp
@@ -65,28 +65,34 @@ set(ORC_GUI_LIB_SOURCES
     preview/vectorscope_dialog.cpp
     preview/vectorscope_dialog.h
     preview/vectorscope_geometry.h
+    preview/histogram_dialog.cpp
+    preview/histogram_dialog.h
     generic_analysis_dialog.cpp
     generic_analysis_dialog.h
-    
-    # Inspection dialog
-    inspection_dialog.cpp
-    inspection_dialog.h
     
     # VBI dialog
     vbidialog.cpp
     vbidialog.h
-    hintsdialog.cpp
-    hintsdialog.h
-    
+
+    # Video parameter observer dialog
+    videoparameterobserverdialog.cpp
+    videoparameterobserverdialog.h
+
     # NTSC observer dialog
     ntscobserverdialog.cpp
     ntscobserverdialog.h
     
-    # Field timing dialog
-    fieldtimingdialog.cpp
-    fieldtimingdialog.h
-    fieldtimingwidget.cpp
-    fieldtimingwidget.h
+    # Frame timing dialog
+    frametimingdialog.cpp
+    frametimingdialog.h
+    frametimingwidget.cpp
+    frametimingwidget.h
+
+    # Waveform monitor dialog
+    waveformmonitordialog.cpp
+    waveformmonitordialog.h
+    waveformmonitorwidget.cpp
+    waveformmonitorwidget.h
     
     # Plot widget
     plotwidget.cpp
@@ -127,13 +133,13 @@ set(ORC_GUI_LIB_SOURCES
     burstlevelanalysisdialog.cpp
     burstlevelanalysisdialog.h
     
-    # Quality metrics dialog
-    qualitymetricsdialog.cpp
-    qualitymetricsdialog.h
-
     # Plugin manager dialog
     pluginmanagerdialog.cpp
     pluginmanagerdialog.h
+
+    # Stage help dialog
+    stage_help_dialog.cpp
+    stage_help_dialog.h
 
     # Resources
     orc_gui_resources.qrc

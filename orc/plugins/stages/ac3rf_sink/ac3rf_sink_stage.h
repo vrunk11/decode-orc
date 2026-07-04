@@ -10,17 +10,15 @@
 #ifndef ORC_CORE_AC3RF_SINK_STAGE_H
 #define ORC_CORE_AC3RF_SINK_STAGE_H
 
-#include <node_type.h>
+#include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/triggerable_stage.h>
 
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
-
-#include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
-#include "stage_parameter.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 
@@ -29,7 +27,7 @@ class IAC3RFSinkStageDeps;
 /**
  * @brief AC3 RF Sink Stage
  *
- * Decodes AC3 RF samples from the VideoFieldRepresentation and writes the
+ * Decodes AC3 RF samples from the VideoFrameRepresentation and writes the
  * resulting AC3 frames to an output file.
  *
  * This is a SINK stage — it takes one VFR input and produces no outputs.
@@ -55,6 +53,7 @@ class AC3RFSinkStage : public DAGStage,
 
   // DAGStage interface
   std::string version() const override { return "1.0"; }
+  ORC_STAGE_INSTRUCTIONS_MD
   NodeTypeInfo get_node_type_info() const override;
 
   std::vector<ArtifactPtr> execute(

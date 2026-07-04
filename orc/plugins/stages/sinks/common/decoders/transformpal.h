@@ -13,7 +13,7 @@
 #define TRANSFORMPAL_H
 
 #include <fftw3.h>
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include "componentframe.h"
 #include "framecanvas.h"

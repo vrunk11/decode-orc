@@ -9,13 +9,14 @@
 
 #include "dag_executor.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 #include <queue>
 #include <set>
 #include <sstream>
 
 #include "include/pipeline_validator.h"
-#include "logging.h"
 
 namespace orc {
 

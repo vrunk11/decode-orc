@@ -10,6 +10,8 @@
 
 #include "transformpal3d.h"
 
+#include <orc/stage/cvbs_signal_constants.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -58,8 +60,10 @@ TransformPal3D::TransformPal3D() : TransformPal(XCOMPLEX, YCOMPLEX, ZCOMPLEX) {
   // Allocate buffers for FFTW. These must be allocated using FFTW's own
   // functions so they're properly aligned for SIMD operations.
   fftReal = fftw_alloc_real(static_cast<size_t>(ZTILE) * YTILE * XTILE);
-  fftComplexIn = fftw_alloc_complex(static_cast<size_t>(ZCOMPLEX) * YCOMPLEX * XCOMPLEX);
-  fftComplexOut = fftw_alloc_complex(static_cast<size_t>(ZCOMPLEX) * YCOMPLEX * XCOMPLEX);
+  fftComplexIn =
+      fftw_alloc_complex(static_cast<size_t>(ZCOMPLEX) * YCOMPLEX * XCOMPLEX);
+  fftComplexOut =
+      fftw_alloc_complex(static_cast<size_t>(ZCOMPLEX) * YCOMPLEX * XCOMPLEX);
 
   // Plan FFTW operations
   forwardPlan = fftw_plan_dft_r2c_3d(ZTILE, YTILE, XTILE, fftReal, fftComplexIn,
@@ -83,8 +87,11 @@ int32_t TransformPal3D::getThresholdsSize() {
 }
 
 int32_t TransformPal3D::getLookBehind() {
-  // We overlap at most half a tile (in frames) into the past...
-  return (HALFZTILE + 1) / 2;
+  // Design §8.7: In the VFrameR frame-based architecture, this decoder
+  // requires one frame of look-behind context.  Internally the 3D FFT tile
+  // extends up to HALFZTILE fields back; fields outside the provided range
+  // are filled with blanking in forwardFFTTile().
+  return 1;
 }
 
 int32_t TransformPal3D::getLookAhead() {
@@ -111,21 +118,25 @@ void TransformPal3D::filterFields(const std::vector<SourceField>& inputFields,
 
   // Check we have a valid vector of input fields, and a matching output vector
   assert((inputFields.size() % 2) == 0);
-  for (int32_t i = 0; i < inputFields.size(); i++) {
-    assert(!inputFields[i].data.empty());
+  for (int32_t i = 0; i < static_cast<int32_t>(inputFields.size()); i++) {
+    assert(inputFields[i].data != nullptr);
   }
   assert(outputFields.size() == (endIndex - startIndex));
 
-  // Check that we've been given enough surrounding fields to compute FFTs
-  // that overlap the fields we're actually interested in by half a tile
-  assert(startIndex >= HALFZTILE);
-  assert((inputFields.size() - endIndex) >= HALFZTILE);
+  // Check that we've been given at least getLookBehind() frames (= 2 fields)
+  // of surrounding context.  The 3D FFT tile may reach further than this;
+  // forwardFFTTile() fills missing fields with blanking.
+  assert(startIndex >= getLookBehind() * 2);
+  assert((static_cast<int32_t>(inputFields.size()) - endIndex) >=
+         getLookAhead() * 2);
 
   // Allocate and clear output buffers
   chromaBuf.resize(endIndex - startIndex);
   for (int32_t i = 0; i < static_cast<int32_t>(chromaBuf.size()); i++) {
-    chromaBuf[i].resize(static_cast<size_t>(videoParameters.field_width) *
-                        videoParameters.field_height);
+    chromaBuf[i].resize(
+        static_cast<size_t>(videoParameters.frame_width_nominal) *
+        static_cast<int32_t>(
+            calculate_padded_field_height(videoParameters.system)));
     std::fill(chromaBuf[i].begin(), chromaBuf[i].end(), 0.0);
     outputFields[i] = chromaBuf[i].data();
   }
@@ -170,33 +181,33 @@ void TransformPal3D::forwardFFTTile(
     // Bounds check to prevent out-of-bounds access
     if (fieldIndex < 0 ||
         fieldIndex >= static_cast<int32_t>(inputFields.size())) {
-      // Fill entire z-slice with black if field is out of bounds
+      // Fill entire z-slice with blanking if field is out of bounds.
+      // EBU Tech. 3280-E: blanking level = kPalBlanking in 10-bit domain.
       for (int32_t y = 0; y < YTILE; y++) {
         for (int32_t x = 0; x < XTILE; x++) {
           fftReal[(((z * YTILE) + y) * XTILE) + x] =
-              videoParameters.black_16b_ire * windowFunction[z][y][x];
+              orc::kPalBlanking * windowFunction[z][y][x];
         }
       }
       continue;
     }
 
-    const uint16_t* inputPtr = inputFields[fieldIndex].data.data();
-
     for (int32_t y = 0; y < YTILE; y++) {
-      // If this frame line is not available in the field
-      // we're reading from (either because it's above/below
-      // the active region, or because it's in the other
-      // field), fill it with black instead.
+      // If this frame line is not available in the field we're reading from
+      // (either outside the active region, or in the other field), fill with
+      // blanking instead.
       if (y < startY || y >= endY || ((tileY + y) % 2) != (fieldIndex % 2)) {
         for (int32_t x = 0; x < XTILE; x++) {
           fftReal[(((z * YTILE) + y) * XTILE) + x] =
-              videoParameters.black_16b_ire * windowFunction[z][y][x];
+              orc::kPalBlanking * windowFunction[z][y][x];
         }
         continue;
       }
 
       const int32_t fieldLine = (tileY + y) / 2;
-      const uint16_t* b = inputPtr + (static_cast<ptrdiff_t>(fieldLine * videoParameters.field_width));
+      // Use getLine() to handle PAL non-uniform line lengths correctly.
+      const int16_t* b =
+          inputFields[fieldIndex].getLine(static_cast<size_t>(fieldLine));
       for (int32_t x = 0; x < XTILE; x++) {
         fftReal[(((z * YTILE) + y) * XTILE) + x] =
             b[tileX + x] * windowFunction[z][y][x];
@@ -238,7 +249,9 @@ void TransformPal3D::inverseFFTTile(int32_t tileX, int32_t tileY, int32_t tileZ,
       }
 
       const int32_t outputLine = (tileY + y) / 2;
-      double* b = outputPtr + (static_cast<ptrdiff_t>(outputLine * videoParameters.field_width));
+      double* b =
+          outputPtr + (static_cast<ptrdiff_t>(
+                          outputLine * videoParameters.frame_width_nominal));
       for (int32_t x = startX; x < endX; x++) {
         b[tileX + x] +=
             fftReal[(((z * YTILE) + y) * XTILE) + x] / (ZTILE * YTILE * XTILE);
@@ -290,14 +303,20 @@ void TransformPal3D::applyFilter() {
       const int32_t y_ref = ((YTILE / 4) + YTILE - y) % YTILE;
 
       // Input data for this line and its reflection
-      const fftw_complex* bi = fftComplexIn + (static_cast<ptrdiff_t>(((z * YCOMPLEX) + y) * XCOMPLEX));
+      const fftw_complex* bi =
+          fftComplexIn +
+          (static_cast<ptrdiff_t>(((z * YCOMPLEX) + y) * XCOMPLEX));
       const fftw_complex* bi_ref =
-          fftComplexIn + (static_cast<ptrdiff_t>(((z_ref * YCOMPLEX) + y_ref) * XCOMPLEX));
+          fftComplexIn +
+          (static_cast<ptrdiff_t>(((z_ref * YCOMPLEX) + y_ref) * XCOMPLEX));
 
       // Output data for this line and its reflection
-      fftw_complex* bo = fftComplexOut + (static_cast<ptrdiff_t>(((z * YCOMPLEX) + y) * XCOMPLEX));
+      fftw_complex* bo =
+          fftComplexOut +
+          (static_cast<ptrdiff_t>(((z * YCOMPLEX) + y) * XCOMPLEX));
       fftw_complex* bo_ref =
-          fftComplexOut + (static_cast<ptrdiff_t>(((z_ref * YCOMPLEX) + y_ref) * XCOMPLEX));
+          fftComplexOut +
+          (static_cast<ptrdiff_t>(((z_ref * YCOMPLEX) + y_ref) * XCOMPLEX));
 
       // We only need to look at horizontal frequencies that might be chroma
       // (0.5fSC to 1.5fSC).
@@ -347,9 +366,13 @@ void TransformPal3D::overlayFFTFrame(
     const std::vector<SourceField>& inputFields, int32_t fieldIndex,
     ComponentFrame& componentFrame) {
   // Do nothing if the tile isn't within the frame
-  if (positionX < 0 || positionX + XTILE > videoParameters.field_width ||
+  if (positionX < 0 ||
+      positionX + XTILE > videoParameters.frame_width_nominal ||
       positionY < 0 ||
-      positionY + YTILE > (2 * videoParameters.field_height) + 1) {
+      positionY + YTILE >
+          (2 * static_cast<int32_t>(
+                   calculate_padded_field_height(videoParameters.system))) +
+              1) {
     return;
   }
 

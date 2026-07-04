@@ -8,7 +8,7 @@
 
 #include "writer_wav.h"
 
-#include "logging.h"
+#include <orc/stage/logging.h>
 
 // This writer class writes audio data to a file in WAV format
 // This is used when the output is stereo audio data
@@ -34,7 +34,8 @@ bool WriterWav::open(const std::string& filename) {
   // Add 44 bytes of blank header data to the file
   // (we will fill this in later once we know the size of the data)
   std::vector<uint8_t> header(44, 0);
-  m_file.write(reinterpret_cast<const char*>(header.data()), static_cast<std::streamsize>(header.size()));
+  m_file.write(reinterpret_cast<const char*>(header.data()),
+               static_cast<std::streamsize>(header.size()));
 
   return true;
 }
@@ -49,8 +50,9 @@ void WriterWav::write(const AudioSection& audioSection) {
   // file
   for (int index = 0; index < 98; ++index) {
     Audio audio = audioSection.frame(index);
-    m_file.write(reinterpret_cast<const char*>(audio.data().data()),
-                 static_cast<std::streamsize>(audio.frameSize() * sizeof(int16_t)));
+    m_file.write(
+        reinterpret_cast<const char*>(audio.data().data()),
+        static_cast<std::streamsize>(audio.frameSize() * sizeof(int16_t)));
   }
 }
 

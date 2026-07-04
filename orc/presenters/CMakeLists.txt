@@ -7,19 +7,19 @@ add_library(orc-presenters STATIC
     src/render_presenter.cpp
     src/analysis_presenter.cpp
     src/analysis_tool_presenter.cpp
-    src/field_corruption_presenter.cpp
+    src/frame_corruption_presenter.cpp
     src/source_alignment_presenter.cpp
     src/disc_mapper_presenter.cpp
-    src/field_map_range_presenter.cpp
+    src/frame_map_range_presenter.cpp
     src/mask_line_presenter.cpp
     src/ffmpeg_preset_presenter.cpp
     src/dropout_editor_presenter.cpp
-    src/hints_presenter.cpp
     src/hints_view_models.cpp
     src/dropout_presenter.cpp
     src/metrics_presenter.cpp
     src/vbi_presenter.cpp
     src/ntsc_observation_presenter.cpp
+    src/video_parameter_observation_presenter.cpp
     src/core_init.cpp
 )
 

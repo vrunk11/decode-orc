@@ -14,6 +14,13 @@ add_library(orc-common
 target_include_directories(orc-common PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/orc/common>
+    # Stage contract headers (<orc/stage/...>): shared vocabulary types
+    # (common_types.h, node_type.h, parameter_types.h, ...) are re-homed in
+    # the plugin SDK contract tree and consumed by every layer, so the SDK
+    # include directory is published from here (headers only; no link
+    # dependency on the SDK or core).
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/orc/sdk/include>
+    $<INSTALL_INTERFACE:include/decode-orc-plugin-sdk>
 )
 
 # Find and link spdlog (which includes fmt)
@@ -29,4 +36,13 @@ endif()
 install(DIRECTORY include/
     DESTINATION include/orc/common
     FILES_MATCHING PATTERN "*.h"
+)
+
+# orc-common sits in orc-core's PUBLIC link interface, so it must ship in the
+# decode-orc-plugin-sdk export set for out-of-tree plugin linking (the export
+# is installed by orc/sdk/CMakeLists.txt).
+install(TARGETS orc-common EXPORT decode-orc-plugin-sdkTargets
+    ARCHIVE DESTINATION lib COMPONENT Runtime
+    LIBRARY DESTINATION lib COMPONENT Runtime
+    RUNTIME DESTINATION bin COMPONENT Runtime
 )

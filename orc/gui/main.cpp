@@ -7,6 +7,7 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
+#include <orc/stage/error_types.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
@@ -27,7 +28,6 @@
 #include <sstream>
 
 #include "crash_handler.h"
-#include "error_types.h"
 #include "logging.h"
 #include "mainwindow.h"
 #include "plotwidget.h"
@@ -222,305 +222,315 @@ void qtMessageHandler(QtMsgType type, const QMessageLogContext& /*context*/,
 }
 
 int main(int argc, char* argv[]) {
-  // Enable high DPI scaling
-  QApplication::setHighDpiScaleFactorRoundingPolicy(
-      Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+  try {
+    // Enable high DPI scaling
+    QApplication::setHighDpiScaleFactorRoundingPolicy(
+        Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
-  QApplication app(argc, argv);
+    QApplication app(argc, argv);
 
-  // Ensure resources from orc-gui-lib are registered when linked statically.
-  Q_INIT_RESOURCE(orc_gui_resources);
+    // Ensure resources from orc-gui-lib are registered when linked statically.
+    Q_INIT_RESOURCE(orc_gui_resources);
 
-  app.setApplicationName("orc-gui");
-  app.setApplicationVersion(ORC_VERSION);
-  app.setOrganizationName("domesday86");
-  app.setDesktopFileName("io.github.simoninns.decode-orc");
-  app.setWindowIcon(QIcon(":/orc-gui/icon.png"));
+    app.setApplicationName("orc-gui");
+    app.setApplicationVersion(ORC_VERSION);
+    app.setOrganizationName("domesday86");
+    app.setDesktopFileName("io.github.simoninns.decode-orc");
+    app.setWindowIcon(QIcon(":/orc-gui/icon.png"));
 
-  // Command line parser
-  QCommandLineParser parser;
-  parser.setApplicationDescription("Decode Orc GUI");
-  parser.addHelpOption();
-  parser.addVersionOption();
+    // Command line parser
+    QCommandLineParser parser;
+    parser.setApplicationDescription("Decode Orc GUI");
+    parser.addHelpOption();
+    parser.addVersionOption();
 
-  QCommandLineOption logLevelOption(
-      QStringList{"l", "log-level"},
-      "Set log level (trace, debug, info, warn, error, critical, off) for both "
-      "GUI and core",
-      "level", "info");
-  parser.addOption(logLevelOption);
+    QCommandLineOption logLevelOption(QStringList{"l", "log-level"},
+                                      "Set log level (trace, debug, info, "
+                                      "warn, error, critical, off) for both "
+                                      "GUI and core",
+                                      "level", "info");
+    parser.addOption(logLevelOption);
 
-  QCommandLineOption themeOption(
-      "theme", "Set UI theme (auto, light, dark). Default: auto", "mode",
-      "auto");
-  parser.addOption(themeOption);
+    QCommandLineOption themeOption(
+        "theme", "Set UI theme (auto, light, dark). Default: auto", "mode",
+        "auto");
+    parser.addOption(themeOption);
 
-  // Single shared log file option
-  QCommandLineOption sharedLogFileOption(
-      QStringList{"f", "log-file"},
-      "Write both GUI and core logs to the specified file", "file");
-  parser.addOption(sharedLogFileOption);
+    // Single shared log file option
+    QCommandLineOption sharedLogFileOption(
+        QStringList{"f", "log-file"},
+        "Write both GUI and core logs to the specified file", "file");
+    parser.addOption(sharedLogFileOption);
 
-  QCommandLineOption quickProjectOption(
-      "quick", "Create a quick project from a TBC/TBCC/TBCY file", "filename");
-  parser.addOption(quickProjectOption);
+    QCommandLineOption quickProjectOption(
+        "quick", "Create a quick project from a TBC/TBCC/TBCY file",
+        "filename");
+    parser.addOption(quickProjectOption);
 
-  QCommandLineOption safeCorePluginsOption(
-      "safe-core-plugins",
-      "Clear user plugin registry and ignore ORC_STAGE_PLUGIN_PATHS for this "
-      "run (core plugins only)");
-  parser.addOption(safeCorePluginsOption);
+    QCommandLineOption safeCorePluginsOption(
+        "safe-core-plugins",
+        "Clear user plugin registry and ignore ORC_STAGE_PLUGIN_PATHS for this "
+        "run (core plugins only)");
+    parser.addOption(safeCorePluginsOption);
 
-  parser.addPositionalArgument("project", "Project file to open (optional)");
-  parser.process(app);
+    parser.addPositionalArgument("project", "Project file to open (optional)");
+    parser.process(app);
 
-  if (parser.isSet(safeCorePluginsOption)) {
-    // Ensure no external env-configured plugin search paths are used for this
-    // run.
-    qputenv("ORC_STAGE_PLUGIN_PATHS", "");
+    if (parser.isSet(safeCorePluginsOption)) {
+      // Ensure no external env-configured plugin search paths are used for this
+      // run.
+      qputenv("ORC_STAGE_PLUGIN_PATHS", "");
 
-    const auto reset_result =
-        orc::presenters::ProjectPresenter::clearPluginRegistryForSafeMode();
-    if (!reset_result.success) {
-      QMessageBox::critical(
-          nullptr, "Safe Startup Failed",
-          QString("Failed to clear plugin registry for safe startup:\n%1")
-              .arg(QString::fromStdString(reset_result.error_message)));
-      return 1;
-    }
-  }
-
-  // Initialize GUI and core logging
-  QString logLevel = parser.value(logLevelOption);
-  QString sharedLogFile = parser.value(sharedLogFileOption);
-
-  // Initialize GUI logging
-  orc::init_gui_logging(logLevel.toStdString(),
-                        "[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v",
-                        sharedLogFile.toStdString());
-
-  // Initialize core logging (same file) through presenters layer
-  orc::presenters::initCoreLogging(logLevel.toStdString(),
-                                   "[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v",
-                                   sharedLogFile.toStdString());
-
-  // Bridge Qt messages to spdlog
-  qInstallMessageHandler(qtMessageHandler);
-
-  ORC_LOG_INFO("orc-gui {} starting", ORC_VERSION);
-  if (parser.isSet(safeCorePluginsOption)) {
-    ORC_LOG_WARN(
-        "Safe startup mode enabled: plugin registry cleared and "
-        "ORC_STAGE_PLUGIN_PATHS ignored for this run");
-  }
-
-  ThemeManager themeManager(parser.value(themeOption));
-  if (themeManager.hadInvalidMode()) {
-    ORC_LOG_WARN("Unknown --theme value '{}', falling back to auto",
-                 themeManager.invalidMode().toStdString());
-  }
-
-  ThemeManager::Resolution resolution = themeManager.resolve(app);
-  applyResolvedTheme(app, resolution);
-
-  ORC_LOG_INFO(
-      "Theme mode '{}' resolved to '{}' via {}",
-      themeManager.modeName().toStdString(),
-      ThemeManager::colorSchemeToString(resolution.scheme).toStdString(),
-      resolution.source.toStdString());
-  if (resolution.usedPaletteFallback) {
-    ORC_LOG_WARN(
-        "Theme auto-detection fell back to palette heuristic because Qt "
-        "reported unknown color scheme");
-  }
-
-  if (themeManager.shouldTrackSystemChanges() && app.styleHints()) {
-    QObject::connect(
-        app.styleHints(), &QStyleHints::colorSchemeChanged, &app,
-        [&app, &themeManager](Qt::ColorScheme newScheme) {
-          ThemeManager::Resolution updatedResolution =
-              themeManager.resolve(app);
-          applyResolvedTheme(app, updatedResolution);
-          ORC_LOG_INFO(
-              "OS color scheme changed to '{}'; applied '{}' via {}",
-              ThemeManager::colorSchemeToString(newScheme).toStdString(),
-              ThemeManager::colorSchemeToString(updatedResolution.scheme)
-                  .toStdString(),
-              updatedResolution.source.toStdString());
-          if (updatedResolution.usedPaletteFallback) {
-            ORC_LOG_WARN(
-                "Runtime theme update used palette fallback because Qt "
-                "reported unknown color scheme");
-          }
-        });
-
-    ORC_LOG_DEBUG("Runtime OS theme tracking enabled (auto mode)");
-  } else {
-    ORC_LOG_DEBUG("Runtime OS theme tracking disabled (forced theme mode)");
-  }
-
-  // Initialize crash handler
-  orc::CrashHandlerConfig crash_config;
-  crash_config.application_name = "orc-gui";
-  crash_config.version = ORC_VERSION;
-
-  QString crashDir =
-      QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-  if (crashDir.isEmpty()) {
-    crashDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
-  }
-  if (!crashDir.isEmpty()) {
-    crashDir += "/decode-orc-crashes";
-    crash_config.output_directory = crashDir.toStdString();
-  } else {
-    crash_config.output_directory = fs::current_path().string();
-  }
-
-  crash_config.enable_coredump = true;
-  crash_config.auto_upload_info = true;
-  crash_config.primary_log_file = sharedLogFile.toStdString();
-  crash_config.custom_info_callback = []() -> std::string {
-    std::ostringstream info;
-    info << "Working directory: " << fs::current_path().string() << "\n";
-    info << "Qt version: " << qVersion() << "\n";
-    return info.str();
-  };
-
-  if (!orc::init_crash_handler(crash_config)) {
-    ORC_LOG_WARN("Failed to initialize crash handler");
-  } else {
-    ORC_LOG_DEBUG("Crash handler initialized - bundles will be saved to: {}",
-                  crash_config.output_directory);
-  }
-
-  MainWindow window;
-  window.show();
-  ORC_LOG_DEBUG("Main window shown");
-
-  auto load_startup_file = [&](const QString& file_path, bool quick_mode) {
-    const char* action = quick_mode ? "quick project creation" : "project open";
-
-    try {
-      if (quick_mode) {
-        window.quickProject(file_path);
-      } else {
-        window.openProject(file_path);
-      }
-    } catch (const orc::UserDataError& e) {
-      ORC_LOG_WARN("Startup {} failed for '{}': {}", action,
-                   file_path.toStdString(), e.what());
-      QMessageBox::warning(&window, "Startup Error",
-                           QString("%1 failed for '%2':\n%3")
-                               .arg(action)
-                               .arg(file_path)
-                               .arg(e.what()));
-    } catch (const std::exception& e) {
-      ORC_LOG_ERROR("Unhandled startup {} exception for '{}': {}", action,
-                    file_path.toStdString(), e.what());
-
-      std::string bundle_path =
-          orc::create_crash_bundle(std::string("Unhandled startup ") + action +
-                                   " exception: " + e.what());
-
-      QString message =
-          QString("An unexpected error occurred while processing '%1':\n%2")
-              .arg(file_path)
-              .arg(e.what());
-      if (!bundle_path.empty()) {
-        message += QString("\n\nDiagnostic bundle created:\n%1")
-                       .arg(QString::fromStdString(bundle_path));
-      }
-
-      QMessageBox::critical(&window, "Startup Error", message);
-    } catch (...) {
-      ORC_LOG_ERROR("Unknown startup {} exception for '{}'", action,
-                    file_path.toStdString());
-
-      std::string bundle_path = orc::create_crash_bundle(
-          std::string("Unknown startup ") + action + " exception");
-
-      QString message =
-          QString("An unknown error occurred while processing '%1'.")
-              .arg(file_path);
-      if (!bundle_path.empty()) {
-        message += QString("\n\nDiagnostic bundle created:\n%1")
-                       .arg(QString::fromStdString(bundle_path));
-      }
-
-      QMessageBox::critical(&window, "Startup Error", message);
-    }
-  };
-
-  if (parser.isSet(quickProjectOption)) {
-    QString quickFile = parser.value(quickProjectOption);
-    ORC_LOG_INFO("Loading quick project from command line: {}",
-                 quickFile.toStdString());
-    load_startup_file(quickFile, true);
-  } else {
-    const QStringList args = parser.positionalArguments();
-    if (!args.isEmpty()) {
-      QString filePath = args.first();
-      // Auto-detect file type by extension
-      if (filePath.endsWith(".tbc", Qt::CaseInsensitive) ||
-          filePath.endsWith(".tbcc", Qt::CaseInsensitive) ||
-          filePath.endsWith(".tbcy", Qt::CaseInsensitive)) {
-        ORC_LOG_INFO("Creating quick project from TBC file: {}",
-                     filePath.toStdString());
-        load_startup_file(filePath, true);
-      } else if (filePath.endsWith(".orcprj", Qt::CaseInsensitive)) {
-        ORC_LOG_INFO("Opening project from command line: {}",
-                     filePath.toStdString());
-        load_startup_file(filePath, false);
-      } else {
-        // Unknown file type - try opening as project (old behavior)
-        ORC_LOG_WARN(
-            "Unknown file extension for '{}', attempting to open as project "
-            "file",
-            filePath.toStdString());
-        load_startup_file(filePath, false);
+      const auto reset_result =
+          orc::presenters::ProjectPresenter::clearPluginRegistryForSafeMode();
+      if (!reset_result.success) {
+        QMessageBox::critical(
+            nullptr, "Safe Startup Failed",
+            QString("Failed to clear plugin registry for safe startup:\n%1")
+                .arg(QString::fromStdString(reset_result.error_message)));
+        return 1;
       }
     }
+
+    // Initialize GUI and core logging
+    QString logLevel = parser.value(logLevelOption);
+    QString sharedLogFile = parser.value(sharedLogFileOption);
+
+    // Initialize GUI logging
+    orc::init_gui_logging(logLevel.toStdString(),
+                          "[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v",
+                          sharedLogFile.toStdString());
+
+    // Initialize core logging (same file) through presenters layer
+    orc::presenters::initCoreLogging(logLevel.toStdString(),
+                                     "[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v",
+                                     sharedLogFile.toStdString());
+
+    // Bridge Qt messages to spdlog
+    qInstallMessageHandler(qtMessageHandler);
+
+    ORC_LOG_INFO("orc-gui {} starting", ORC_VERSION);
+    if (parser.isSet(safeCorePluginsOption)) {
+      ORC_LOG_WARN(
+          "Safe startup mode enabled: plugin registry cleared and "
+          "ORC_STAGE_PLUGIN_PATHS ignored for this run");
+    }
+
+    ThemeManager themeManager(parser.value(themeOption));
+    if (themeManager.hadInvalidMode()) {
+      ORC_LOG_WARN("Unknown --theme value '{}', falling back to auto",
+                   themeManager.invalidMode().toStdString());
+    }
+
+    ThemeManager::Resolution resolution = themeManager.resolve(app);
+    applyResolvedTheme(app, resolution);
+
+    ORC_LOG_INFO(
+        "Theme mode '{}' resolved to '{}' via {}",
+        themeManager.modeName().toStdString(),
+        ThemeManager::colorSchemeToString(resolution.scheme).toStdString(),
+        resolution.source.toStdString());
+    if (resolution.usedPaletteFallback) {
+      ORC_LOG_WARN(
+          "Theme auto-detection fell back to palette heuristic because Qt "
+          "reported unknown color scheme");
+    }
+
+    if (themeManager.shouldTrackSystemChanges() && app.styleHints()) {
+      QObject::connect(
+          app.styleHints(), &QStyleHints::colorSchemeChanged, &app,
+          [&app, &themeManager](Qt::ColorScheme newScheme) {
+            ThemeManager::Resolution updatedResolution =
+                themeManager.resolve(app);
+            applyResolvedTheme(app, updatedResolution);
+            ORC_LOG_INFO(
+                "OS color scheme changed to '{}'; applied '{}' via {}",
+                ThemeManager::colorSchemeToString(newScheme).toStdString(),
+                ThemeManager::colorSchemeToString(updatedResolution.scheme)
+                    .toStdString(),
+                updatedResolution.source.toStdString());
+            if (updatedResolution.usedPaletteFallback) {
+              ORC_LOG_WARN(
+                  "Runtime theme update used palette fallback because Qt "
+                  "reported unknown color scheme");
+            }
+          });
+
+      ORC_LOG_DEBUG("Runtime OS theme tracking enabled (auto mode)");
+    } else {
+      ORC_LOG_DEBUG("Runtime OS theme tracking disabled (forced theme mode)");
+    }
+
+    // Initialize crash handler
+    orc::CrashHandlerConfig crash_config;
+    crash_config.application_name = "orc-gui";
+    crash_config.version = ORC_VERSION;
+
+    QString crashDir =
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (crashDir.isEmpty()) {
+      crashDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    }
+    if (!crashDir.isEmpty()) {
+      crashDir += "/decode-orc-crashes";
+      crash_config.output_directory = crashDir.toStdString();
+    } else {
+      crash_config.output_directory = fs::current_path().string();
+    }
+
+    crash_config.enable_coredump = true;
+    crash_config.auto_upload_info = true;
+    crash_config.primary_log_file = sharedLogFile.toStdString();
+    crash_config.custom_info_callback = []() -> std::string {
+      std::ostringstream info;
+      info << "Working directory: " << fs::current_path().string() << "\n";
+      info << "Qt version: " << qVersion() << "\n";
+      return info.str();
+    };
+
+    if (!orc::init_crash_handler(crash_config)) {
+      ORC_LOG_WARN("Failed to initialize crash handler");
+    } else {
+      ORC_LOG_DEBUG("Crash handler initialized - bundles will be saved to: {}",
+                    crash_config.output_directory);
+    }
+
+    MainWindow window;
+    window.show();
+    ORC_LOG_DEBUG("Main window shown");
+
+    auto load_startup_file = [&](const QString& file_path, bool quick_mode) {
+      const char* action =
+          quick_mode ? "quick project creation" : "project open";
+
+      try {
+        if (quick_mode) {
+          window.quickProject(file_path);
+        } else {
+          window.openProject(file_path);
+        }
+      } catch (const orc::UserDataError& e) {
+        ORC_LOG_WARN("Startup {} failed for '{}': {}", action,
+                     file_path.toStdString(), e.what());
+        QMessageBox::warning(&window, "Startup Error",
+                             QString("%1 failed for '%2':\n%3")
+                                 .arg(action)
+                                 .arg(file_path)
+                                 .arg(e.what()));
+      } catch (const std::exception& e) {
+        ORC_LOG_ERROR("Unhandled startup {} exception for '{}': {}", action,
+                      file_path.toStdString(), e.what());
+
+        std::string bundle_path =
+            orc::create_crash_bundle(std::string("Unhandled startup ") +
+                                     action + " exception: " + e.what());
+
+        QString message =
+            QString("An unexpected error occurred while processing '%1':\n%2")
+                .arg(file_path)
+                .arg(e.what());
+        if (!bundle_path.empty()) {
+          message += QString("\n\nDiagnostic bundle created:\n%1")
+                         .arg(QString::fromStdString(bundle_path));
+        }
+
+        QMessageBox::critical(&window, "Startup Error", message);
+      } catch (...) {
+        ORC_LOG_ERROR("Unknown startup {} exception for '{}'", action,
+                      file_path.toStdString());
+
+        std::string bundle_path = orc::create_crash_bundle(
+            std::string("Unknown startup ") + action + " exception");
+
+        QString message =
+            QString("An unknown error occurred while processing '%1'.")
+                .arg(file_path);
+        if (!bundle_path.empty()) {
+          message += QString("\n\nDiagnostic bundle created:\n%1")
+                         .arg(QString::fromStdString(bundle_path));
+        }
+
+        QMessageBox::critical(&window, "Startup Error", message);
+      }
+    };
+
+    if (parser.isSet(quickProjectOption)) {
+      QString quickFile = parser.value(quickProjectOption);
+      ORC_LOG_INFO("Loading quick project from command line: {}",
+                   quickFile.toStdString());
+      load_startup_file(quickFile, true);
+    } else {
+      const QStringList args = parser.positionalArguments();
+      if (!args.isEmpty()) {
+        QString filePath = args.first();
+        // Auto-detect file type by extension
+        if (filePath.endsWith(".tbc", Qt::CaseInsensitive) ||
+            filePath.endsWith(".tbcc", Qt::CaseInsensitive) ||
+            filePath.endsWith(".tbcy", Qt::CaseInsensitive)) {
+          ORC_LOG_INFO("Creating quick project from TBC file: {}",
+                       filePath.toStdString());
+          load_startup_file(filePath, true);
+        } else if (filePath.endsWith(".orcprj", Qt::CaseInsensitive)) {
+          ORC_LOG_INFO("Opening project from command line: {}",
+                       filePath.toStdString());
+          load_startup_file(filePath, false);
+        } else {
+          // Unknown file type - try opening as project (old behavior)
+          ORC_LOG_WARN(
+              "Unknown file extension for '{}', attempting to open as project "
+              "file",
+              filePath.toStdString());
+          load_startup_file(filePath, false);
+        }
+      }
+    }
+
+    // Splash screen
+    QPixmap logoPixmap(":/orc-gui/decode-orc_logotype-1024x286.png");
+    QPixmap logoPixmapScaled = logoPixmap.scaled(512, 142, Qt::KeepAspectRatio,
+                                                 Qt::SmoothTransformation);
+    QPixmap splashPixmap(logoPixmapScaled.width(),
+                         logoPixmapScaled.height() + 60);
+    splashPixmap.fill(Qt::transparent);
+
+    QPainter painter(&splashPixmap);
+    painter.drawPixmap(0, 0, logoPixmapScaled);
+
+    QFont copyrightFont = painter.font();
+    copyrightFont.setPointSize(copyrightFont.pointSize());
+    copyrightFont.setBold(false);
+    painter.setFont(copyrightFont);
+    painter.setPen(Qt::white);
+    QRect copyrightRect(0, logoPixmapScaled.height() + 10, splashPixmap.width(),
+                        40);
+    painter.drawText(copyrightRect, Qt::AlignCenter, "(c) 2026 Simon Inns");
+    painter.end();
+
+    QSplashScreen splash(splashPixmap,
+                         Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint);
+    splash.show();
+    app.processEvents();
+    const QRect windowFrame = window.frameGeometry();
+    const QPoint centeredPos =
+        windowFrame.center() - QPoint(splash.width() / 2, splash.height() / 2);
+    splash.move(centeredPos);
+    app.processEvents();
+    ORC_LOG_DEBUG("Splash screen displayed");
+    QTimer::singleShot(3000, [&splash]() {
+      splash.close();
+      ORC_LOG_DEBUG("Splash screen closed");
+    });
+
+    int result = app.exec();
+    ORC_LOG_INFO("orc-gui exiting");
+
+    orc::cleanup_crash_handler();
+    return result;
+  } catch (const std::exception& e) {
+    std::cerr << "\nFATAL ERROR: " << e.what() << "\n";
+    return 1;
+  } catch (...) {
+    std::cerr << "\nFATAL ERROR: Unknown exception\n";
+    return 1;
   }
-
-  // Splash screen
-  QPixmap logoPixmap(":/orc-gui/decode-orc_logotype-1024x286.png");
-  QPixmap logoPixmapScaled = logoPixmap.scaled(512, 142, Qt::KeepAspectRatio,
-                                               Qt::SmoothTransformation);
-  QPixmap splashPixmap(logoPixmapScaled.width(),
-                       logoPixmapScaled.height() + 60);
-  splashPixmap.fill(Qt::transparent);
-
-  QPainter painter(&splashPixmap);
-  painter.drawPixmap(0, 0, logoPixmapScaled);
-
-  QFont copyrightFont = painter.font();
-  copyrightFont.setPointSize(copyrightFont.pointSize());
-  copyrightFont.setBold(false);
-  painter.setFont(copyrightFont);
-  painter.setPen(Qt::white);
-  QRect copyrightRect(0, logoPixmapScaled.height() + 10, splashPixmap.width(),
-                      40);
-  painter.drawText(copyrightRect, Qt::AlignCenter, "(c) 2026 Simon Inns");
-  painter.end();
-
-  QSplashScreen splash(splashPixmap,
-                       Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint);
-  splash.show();
-  app.processEvents();
-  const QRect windowFrame = window.frameGeometry();
-  const QPoint centeredPos =
-      windowFrame.center() - QPoint(splash.width() / 2, splash.height() / 2);
-  splash.move(centeredPos);
-  app.processEvents();
-  ORC_LOG_DEBUG("Splash screen displayed");
-  QTimer::singleShot(3000, [&splash]() {
-    splash.close();
-    ORC_LOG_DEBUG("Splash screen closed");
-  });
-
-  int result = app.exec();
-  ORC_LOG_INFO("orc-gui exiting");
-
-  orc::cleanup_crash_handler();
-  return result;
 }

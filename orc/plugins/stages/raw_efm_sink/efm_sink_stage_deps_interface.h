@@ -10,12 +10,12 @@
 #ifndef ORC_CORE_RAW_EFM_SINK_STAGE_DEPS_INTERFACE_H
 #define ORC_CORE_RAW_EFM_SINK_STAGE_DEPS_INTERFACE_H
 
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <cstdint>
 #include <string>
-
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 struct RawEFMSinkWriteResult {
@@ -32,7 +32,7 @@ class IRawEFMSinkStageDeps {
                     std::atomic<bool>* cancel_requested) = 0;
 
   virtual RawEFMSinkWriteResult write_raw_efm(
-      const VideoFieldRepresentation* representation,
+      const VideoFrameRepresentation* representation,
       const std::string& output_path) = 0;
 };
 }  // namespace orc

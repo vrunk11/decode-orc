@@ -373,40 +373,51 @@ void StageParameterDialog::build_ui(
                 QString current_path = edit->text();
                 if (current_path.isEmpty()) return;
 
-                // Get base path (remove .tbcy or .tbcc extension if present)
+                // Determine the extension pair and strip it to get the base
+                // path. tbc_source uses .tbcy/.tbcc; CVBS source uses .y/.c.
                 QString base_path = current_path;
+                QString y_ext, c_ext;
                 if (base_path.endsWith(".tbcy", Qt::CaseInsensitive) ||
                     base_path.endsWith(".tbcc", Qt::CaseInsensitive)) {
                   base_path = base_path.left(base_path.length() - 5);
+                  y_ext = ".tbcy";
+                  c_ext = ".tbcc";
+                } else if (base_path.endsWith(".y", Qt::CaseInsensitive) ||
+                           base_path.endsWith(".c", Qt::CaseInsensitive)) {
+                  base_path = base_path.left(base_path.length() - 2);
+                  y_ext = ".y";
+                  c_ext = ".c";
+                } else {
+                  y_ext = ".tbcy";
+                  c_ext = ".tbcc";
                 }
 
-                // Auto-populate the complementary YC file if it exists
+                // Always sync the complementary YC file to match the new base
+                // name
                 if (param_name == "y_path") {
-                  // We're setting the Y (luma) file, try to populate C (chroma)
+                  // Changing y_path: keep c_path in sync with the same base
+                  // name
                   auto c_it = parameter_widgets_.find("c_path");
                   if (c_it != parameter_widgets_.end()) {
                     QWidget* c_container = c_it->second.widget;
                     QLineEdit* c_edit =
                         c_container->findChild<QLineEdit*>("file_path_edit");
-                    if (c_edit && c_edit->text().isEmpty()) {
-                      QString c_path = base_path + ".tbcc";
-                      if (QFileInfo::exists(c_path)) {
-                        c_edit->setText(c_path);
-                      }
+                    if (c_edit) {
+                      QSignalBlocker blocker(c_edit);
+                      c_edit->setText(base_path + c_ext);
                     }
                   }
                 } else if (param_name == "c_path") {
-                  // We're setting the C (chroma) file, try to populate Y (luma)
+                  // Changing c_path: keep y_path in sync with the same base
+                  // name
                   auto y_it = parameter_widgets_.find("y_path");
                   if (y_it != parameter_widgets_.end()) {
                     QWidget* y_container = y_it->second.widget;
                     QLineEdit* y_edit =
                         y_container->findChild<QLineEdit*>("file_path_edit");
-                    if (y_edit && y_edit->text().isEmpty()) {
-                      QString y_path = base_path + ".tbcy";
-                      if (QFileInfo::exists(y_path)) {
-                        y_edit->setText(y_path);
-                      }
+                    if (y_edit) {
+                      QSignalBlocker blocker(y_edit);
+                      y_edit->setText(base_path + y_ext);
                     }
                   }
                 }
@@ -654,10 +665,11 @@ bool StageParameterDialog::validate_values() {
         msgBox.setWindowTitle("Legacy Metadata Format");
         msgBox.setIcon(QMessageBox::Warning);
         msgBox.setText(
-            QString("The TBC source '%1' has legacy JSON metadata. This is just "
-                    "a warning - the source will load regardless.\n\n"
-                    "For best long-term results, consider re-decoding with a "
-                    "current version of ld-decode/vhs-decode.")
+            QString(
+                "The TBC source '%1' has legacy JSON metadata. This is just "
+                "a warning - the source will load regardless.\n\n"
+                "For best long-term results, consider re-decoding with a "
+                "current version of ld-decode/vhs-decode.")
                 .arg(filename));
         QPushButton* continueBtn =
             msgBox.addButton("Continue", QMessageBox::AcceptRole);
@@ -674,11 +686,10 @@ bool StageParameterDialog::validate_values() {
     return false;
   };
 
-  // TBC composite source stages: db_path is derived from input_path at runtime
-  // as input_path + ".db". CVBS source stages also use input_path but do not
-  // require a .tbc.db sidecar.
-  const bool requires_derived_db_metadata =
-      (stage_name_ == "PAL_Comp_Source" || stage_name_ == "NTSC_Comp_Source");
+  // tbc_source derives db_path from input_path at runtime (input_path + ".db").
+  // CVBS source stages also use input_path but do not require a .tbc.db
+  // sidecar.
+  const bool requires_derived_db_metadata = (stage_name_ == "tbc_source");
 
   if (requires_derived_db_metadata) {
     auto input_it = parameter_widgets_.find("input_path");
@@ -741,8 +752,8 @@ bool StageParameterDialog::validate_values() {
   const auto active_video_end = get_int_param("activeVideoEnd");
   const auto first_active_field_line = get_int_param("firstActiveFieldLine");
   const auto last_active_field_line = get_int_param("lastActiveFieldLine");
-  const auto black_ire = get_int_param("black16bIRE");
-  const auto white_ire = get_int_param("white16bIRE");
+  const auto black_ire = get_int_param("blackLevel");
+  const auto white_ire = get_int_param("whiteLevel");
 
   if (!require_less_than_if_set(colour_burst_start, colour_burst_end)) {
     validation_errors

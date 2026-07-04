@@ -16,34 +16,22 @@
  *   #include "my_stage_implementation.h"   // Your DAGStage subclass
  *
  *   namespace {
- *   orc::DAGStagePtr create_my_stage() {
- *       return std::make_shared<MyStage>();
- *   }
- *   constexpr orc::StagePluginDescriptor kDescriptor{
- *       "com.example.stage.my_filter",
- *       "1.0.0",
- *       orc::kStagePluginHostAbiVersion,
- *       orc::kStagePluginApiVersion,
- *       "MIT",
- *       false,
- *   };
+ *   constexpr orc::StagePluginDescriptor kDescriptor =
+ *       ORC_STAGE_PLUGIN_DESCRIPTOR("com.example.stage.my_filter",  // id
+ *                                   "1.0.0",                        // version
+ *                                   "MIT",   // license (SPDX)
+ *                                   false);  // is_core_plugin
  *   } // namespace
  *
- *   ORC_STAGE_PLUGIN_EXPORT const orc::StagePluginDescriptor*
- * orc_get_stage_plugin_descriptor() { return &kDescriptor;
- *   }
+ *   // Expands to both required entrypoints. MyStage is registered under the
+ *   // stage name reported by its own get_node_type_info().stage_name; list
+ *   // additional stage types as further arguments to register more stages.
+ *   ORC_DEFINE_STAGE_PLUGIN(kDescriptor, MyStage)
  *
- *   ORC_STAGE_PLUGIN_EXPORT bool orc_register_stage_plugin(
- *       void* ctx,
- *       bool (*reg)(void*, const char*, orc::OrcStageFactoryFn),
- *       const char** err)
- *   {
- *       if (!reg) { if (err) *err = "null callback"; return false; }
- *       if (!reg(ctx, "my_filter", &create_my_stage)) {
- *           if (err) *err = "registration failed"; return false;
- *       }
- *       return true;
- *   }
+ *   Plugins that need custom registration logic can instead write the two
+ *   entrypoints by hand — see <orc/plugin/orc_plugin_abi.h> for the raw
+ *   entrypoint contract and <orc/plugin/orc_plugin_registration.h> for the
+ *   equivalent expanded form.
  *
  * CMAKE INTEGRATION:
  *   In your plugin's CMakeLists.txt:
@@ -77,9 +65,9 @@
 #include <orc/plugin/orc_stage_preview.h>
 
 // SDK Stage API includes key stage infrastructure: ParameterizedStage,
-// TriggerableStage, and access to PreviewableStage via includes for
-// preview-enabled stages. Consolidated stage services API: canonical host
-// services for sink/file output and related stage runtime helpers.
+// TriggerableStage, and preview interfaces. Consolidated stage services API:
+// canonical host services for sink/file output and related stage runtime
+// helpers.
 #include <orc/plugin/orc_stage_services.h>
 
 // Canonical stage helper/tooling descriptors used by GUI/CLI integrations.
@@ -90,8 +78,12 @@
 // types work.)
 #include <orc/plugin/orc_plugin_services.h>
 
-// Plugin service helpers: ORC_PLUGIN_LOG_* macros, render_colour_preview()
-// wrapper. (Must come after all other includes so that preview types are fully
-// defined when
-//  inline functions are instantiated.)
+// Plugin service helpers: ORC_PLUGIN_LOG_* logging macros.
+// (Must come after all other includes so that preview types are fully defined
+// when inline functions are instantiated.)
 #include <orc/plugin/orc_plugin_services_helpers.h>
+
+// Registration helpers: ORC_STAGE_PLUGIN_DESCRIPTOR and
+// ORC_DEFINE_STAGE_PLUGIN boilerplate expansion.
+// (Needs set_services() from orc_plugin_services.h above.)
+#include <orc/plugin/orc_plugin_registration.h>

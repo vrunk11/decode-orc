@@ -211,6 +211,17 @@
         "BUILD_GUI": "OFF",
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "windows-gui-release-ninja",
+      "displayName": "Windows GUI Release (Ninja)",
+      "description": "CI preset: orc-gui + orc-cli with Ninja using the compiler from the active VS Developer Shell (works with any installed Visual Studio version)",
+      "inherits": "windows-gui-release",
+      "generator": "Ninja",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      }
     }
   ],
   "buildPresets": [
@@ -301,6 +312,12 @@
       "displayName": "Build Windows GUI Release",
       "configurePreset": "windows-gui-release",
       "configuration": "Release",
+      "jobs": 0
+    },
+    {
+      "name": "build-windows-gui-release-ninja",
+      "displayName": "Build Windows GUI Release (Ninja)",
+      "configurePreset": "windows-gui-release-ninja",
       "jobs": 0
     },
     {

@@ -23,9 +23,12 @@ class VectorscopeDialogPrivate {
   uint64_t current_field_number = 0;
   std::optional<orc::VectorscopeData> last_data;
 
+  void drawColorZones(QPainter& painter, VectorscopeDialog* dialog,
+                      orc::VideoSystem system, int32_t cvbs_white,
+                      int32_t cvbs_blanking);
   void drawGraticule(QPainter& painter, VectorscopeDialog* dialog,
-                     orc::VideoSystem system, int32_t white_16b_ire,
-                     int32_t black_16b_ire);
+                     orc::VideoSystem system, int32_t cvbs_white,
+                     int32_t cvbs_blanking);
 };
 
 #include <QCloseEvent>
@@ -47,13 +50,16 @@ constexpr double kMajorMarkerLengthPixels = 18.0;
 constexpr double kMinorMarkerLengthPixels = 10.0;
 constexpr double kIqLabelOffsetPixels = 22.0;
 constexpr double kColorLabelOffsetPixels = 48.0;
-// Scope-angle convention in this renderer: +degrees rotate clockwise on screen.
-// Keep these in standard vectorscope degrees (0=right, 90=up,
-// counterclockwise).
-constexpr double kNtscIAxisStandardDegrees = 147.0;
-constexpr double kNtscNegIAxisStandardDegrees = -33.0;
-constexpr double kNtscQAxisStandardDegrees = 57.0;
-constexpr double kNtscNegQAxisStandardDegrees = -123.0;
+// NTSC I and Q axis angles in standard vectorscope degrees (0=right, 90=up,
+// counterclockwise positive).
+// SMPTE 170M-2004 §7.3: I and Q are rotated 33° from the V (R-Y) and U (B-Y)
+// axes respectively.  In (U,V) space the positive-I direction is
+// (-sin33°, cos33°) → atan2(cos33°, -sin33°) = 123°, and positive-Q is
+// (cos33°, sin33°) → atan2(sin33°, cos33°) = 33°.
+constexpr double kNtscIAxisStandardDegrees = 123.0;
+constexpr double kNtscNegIAxisStandardDegrees = -57.0;
+constexpr double kNtscQAxisStandardDegrees = 33.0;
+constexpr double kNtscNegQAxisStandardDegrees = -147.0;
 constexpr double kIqLabelAngularOffsetDegrees = 4.0;
 constexpr double kZoneHalfAngleDegrees = 13.0;
 constexpr double kZoneHalfRadialSpanPercent = 0.14;
@@ -223,6 +229,33 @@ void drawTargetBox(QPainter& painter,
   painter.restore();
 }
 
+// Bresenham line rasteriser — increments hit_count for every pixel on the
+// segment from (x0,y0) to (x1,y1), clamped to the canvas bounds.
+void accumulateLine(std::vector<uint32_t>& buf, int canvas_size, int x0, int y0,
+                    int x1, int y1) {
+  const int dx = std::abs(x1 - x0);
+  const int sx = (x0 < x1) ? 1 : -1;
+  const int dy = -std::abs(y1 - y0);
+  const int sy = (y0 < y1) ? 1 : -1;
+  int err = dx + dy;
+  for (;;) {
+    if (x0 >= 0 && x0 < canvas_size && y0 >= 0 && y0 < canvas_size) {
+      buf[static_cast<size_t>(y0) * static_cast<size_t>(canvas_size) +
+          static_cast<size_t>(x0)]++;
+    }
+    if (x0 == x1 && y0 == y1) break;
+    const int e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
 }  // namespace
 
 // ============================================================================
@@ -323,7 +356,8 @@ void VectorscopeDialog::setupUI() {
   QGroupBox* display_group = new QGroupBox("Display Options");
   QVBoxLayout* display_layout = new QVBoxLayout(display_group);
 
-  blend_color_checkbox_ = new QCheckBox("Blend");
+  blend_color_checkbox_ = new QCheckBox("Colorize");
+  blend_color_checkbox_->setChecked(true);
   defocus_checkbox_ = new QCheckBox("Defocus");
   draw_lines_checkbox_ = new QCheckBox("Draw Trace Lines");
   active_area_only_checkbox_ = new QCheckBox("Active Picture Area Only");
@@ -332,7 +366,7 @@ void VectorscopeDialog::setupUI() {
 
   // Point size spinbox
   QHBoxLayout* point_layout = new QHBoxLayout();
-  QLabel* point_label = new QLabel("Point Size:");
+  QLabel* point_label = new QLabel("Gain:");
   point_size_spinbox_ = new QSpinBox();
   point_size_spinbox_->setRange(1, 10);
   point_size_spinbox_->setValue(3);
@@ -377,18 +411,21 @@ void VectorscopeDialog::setupUI() {
   graticule_group_ = new QButtonGroup(this);
 
   graticule_none_radio_ = new QRadioButton("None");
-  graticule_full_radio_ = new QRadioButton("Full");
+  graticule_full_radio_ = new QRadioButton("100%");
   graticule_75_radio_ = new QRadioButton("75%");
+  graticule_both_radio_ = new QRadioButton("Both");
 
   graticule_75_radio_->setChecked(true);
 
   graticule_group_->addButton(graticule_none_radio_, 0);
   graticule_group_->addButton(graticule_full_radio_, 1);
   graticule_group_->addButton(graticule_75_radio_, 2);
+  graticule_group_->addButton(graticule_both_radio_, 3);
 
   graticule_layout->addWidget(graticule_none_radio_);
-  graticule_layout->addWidget(graticule_full_radio_);
   graticule_layout->addWidget(graticule_75_radio_);
+  graticule_layout->addWidget(graticule_full_radio_);
+  graticule_layout->addWidget(graticule_both_radio_);
 
   controls_layout->addWidget(graticule_group);
   controls_layout->addStretch();
@@ -456,9 +493,8 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
   const orc::gui::VectorscopePlotGeometry geometry;
   const int size = geometry.canvas_size;
 
-  // Check if this is mono/no-chroma data (all samples near origin)
-  // Mono decoders produce no chroma, so all U/V values will be ~0
-  constexpr double CHROMA_THRESHOLD = 1000.0;  // Small threshold for noise
+  // Check if this is mono/no-chroma data (all samples near origin).
+  constexpr double CHROMA_THRESHOLD = 1000.0;
   bool has_chroma = false;
   for (const auto& sample : data.samples) {
     if (std::abs(sample.u) > CHROMA_THRESHOLD ||
@@ -468,86 +504,64 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
     }
   }
 
-  int graticule_mode = graticule_group_->checkedId();
-  bool blend_mode = blend_color_checkbox_->isChecked();
-  bool defocus = defocus_checkbox_->isChecked();
-  int field_select = field_select_group_->checkedId();
+  const int graticule_mode = graticule_group_->checkedId();
+  const bool colorize = blend_color_checkbox_->isChecked();
+  const bool defocus = defocus_checkbox_->isChecked();
+  const bool draw_trace_lines = draw_lines_checkbox_->isChecked();
+  const int field_select = field_select_group_->checkedId();
+  // Gain 1–10 from the spinbox maps directly to the brightness knee formula.
+  const float gain = static_cast<float>(point_size_spinbox_->value());
 
-  // Calculate IRE range for debugging
-  double ire_range = data.white_16b_ire - data.black_16b_ire;
-  double black_percent = (data.black_16b_ire / 65535.0) * 100.0;
-  double white_percent = (data.white_16b_ire / 65535.0) * 100.0;
+  // Calculate IRE range for debug logging (CVBS_U10_4FSC 10-bit domain).
+  const double ire_range = data.cvbs_white - data.cvbs_blanking;
+  const double black_percent = (data.cvbs_blanking / 1023.0) * 100.0;
+  const double white_percent = (data.cvbs_white / 1023.0) * 100.0;
 
   ORC_LOG_DEBUG(
       "VectorscopeDialog: renderVectorscope field={} samples={} graticule={} "
-      "blend={} defocus={} field_select={} system={} white={} black={} "
+      "colorize={} defocus={} field_select={} system={} white={} blanking={} "
       "chroma_detected={}",
-      data.field_number, data.samples.size(), graticule_mode, blend_mode,
-      defocus, field_select, static_cast<int>(data.system), data.white_16b_ire,
-      data.black_16b_ire, has_chroma);
+      data.field_number, data.samples.size(), graticule_mode, colorize, defocus,
+      field_select, static_cast<int>(data.system), data.cvbs_white,
+      data.cvbs_blanking, has_chroma);
   ORC_LOG_DEBUG(
-      "VectorscopeDialog: IRE levels - black={:.2f}% ({}) white={:.2f}% ({}) "
-      "range={:.0f} ({}=NTSC, {}=PAL)",
-      black_percent, data.black_16b_ire, white_percent, data.white_16b_ire,
+      "VectorscopeDialog: CVBS levels - blanking={:.2f}% ({}) white={:.2f}% "
+      "({}) range={:.0f} ({}=NTSC, {}=PAL)",
+      black_percent, data.cvbs_blanking, white_percent, data.cvbs_white,
       ire_range, static_cast<int>(orc::VideoSystem::NTSC),
       static_cast<int>(orc::VideoSystem::PAL));
 
-  // Create image
+  // Create image; draw colour zones first so they sit behind the data plot.
   QImage image(size, size, QImage::Format_RGB888);
   image.fill(Qt::black);
-
-  QPainter painter(&image);
-
-  // Draw graticule first
-  if (graticule_mode != 0) {
-    d_->drawGraticule(painter, this, data.system, data.white_16b_ire,
-                      data.black_16b_ire);
+  {
+    QPainter painter(&image);
+    if (graticule_mode != 0) {
+      d_->drawColorZones(painter, this, data.system, data.cvbs_white,
+                         data.cvbs_blanking);
+    }
   }
 
-  // Set blend mode for transparency accumulation
-  if (blend_mode) {
-    painter.setCompositionMode(QPainter::CompositionMode_Plus);
-  } else {
-    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-  }
+  // -------------------------------------------------------------------------
+  // Pass 1 — accumulate sample hits into a 2-D count buffer.
+  //
+  // Consecutive samples within the same field are linked by Bresenham lines
+  // so the trace path between samples also accumulates hits, mimicking the
+  // continuous beam trace of an analogue vectorscope.
+  // -------------------------------------------------------------------------
+  const size_t buf_size = static_cast<size_t>(size) * static_cast<size_t>(size);
+  std::vector<uint32_t> hit_count(buf_size, 0);
 
-  // Cheap predictable PRNG for defocus
   std::minstd_rand random_engine(12345);
   std::normal_distribution<double> normal_dist(0.0, 100.0);
 
-  // Plot U/V samples - connect consecutive points like a real vectorscope
   std::optional<QPoint> prev_point;
-  QColor current_color = Qt::green;
+  uint8_t prev_field_id = 255;  // invalid sentinel
 
   for (const auto& sample : data.samples) {
-    // Filter samples based on field selection
-    if (field_select == 1 && sample.field_id != 0) {
-      continue;  // First field only
-}
-    if (field_select == 2 && sample.field_id != 1) {
-      continue;  // Second field only
-}
-    // field_select == 0: show all fields
+    if (field_select == 1 && sample.field_id != 0) continue;
+    if (field_select == 2 && sample.field_id != 1) continue;
 
-    // Determine color based on field selection, blend mode, and sample field_id
-    QColor color = Qt::green;  // Default
-
-    // If field_id is tracked and blend mode is on, use field colors
-    if (blend_mode && field_select == 0) {  // All fields with blend
-      color = (sample.field_id == 0)
-                  ? Qt::yellow
-                  : Qt::cyan;  // 0=first(yellow), 1=second(cyan)
-    } else if (blend_mode && field_select == 2) {
-      color = Qt::cyan;  // Second field only → cyan
-    } else if (blend_mode && field_select == 1) {
-      color = Qt::yellow;  // First field only → yellow
-    }
-    // else: no blend → all green
-
-    painter.setPen(color);
-    painter.setBrush(color);
-
-    // Apply defocus if enabled.
     double u = sample.u;
     double v = sample.v;
     if (defocus) {
@@ -555,52 +569,127 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
       v += normal_dist(random_engine);
     }
 
-    // Vectorscope: U is horizontal (positive right), V is vertical (positive
-    // up)
     const QPointF plot_point = geometry.mapUV(u, v);
 
     if (isPointWithinCanvas(plot_point, size)) {
-      const int x = static_cast<int>(plot_point.x());
-      const int y = static_cast<int>(plot_point.y());
-      QPoint current_point(x, y);
+      const int px = static_cast<int>(plot_point.x());
+      const int py = static_cast<int>(plot_point.y());
 
-      // Draw line from previous point if enabled (real vectorscope behavior)
-      if (draw_lines_checkbox_->isChecked() && prev_point.has_value() &&
-          current_color == color) {
-        painter.drawLine(*prev_point, current_point);
+      hit_count[static_cast<size_t>(py) * static_cast<size_t>(size) +
+                static_cast<size_t>(px)]++;
+
+      // Connect consecutive samples within the same field as a trace line.
+      if (draw_trace_lines && prev_point.has_value() &&
+          sample.field_id == prev_field_id) {
+        accumulateLine(hit_count, size, prev_point->x(), prev_point->y(), px,
+                       py);
       }
-
-      // Draw a filled circle at current location to simulate beam dwell
-      // Transparent circles accumulate to create bright spots where trace
-      // dwells
-      int point_radius = point_size_spinbox_->value();
-      painter.drawEllipse(current_point, point_radius, point_radius);
-
-      prev_point = current_point;
-      current_color = color;
+      prev_point = QPoint(px, py);
+      prev_field_id = sample.field_id;
     } else {
-      // Out of bounds - break the line
       prev_point.reset();
     }
   }
 
-  // Draw warning text if no chroma detected
+  // -------------------------------------------------------------------------
+  // Pass 2 — render each hit pixel with brightness from count and, when
+  // colorize is on, hue derived from the pixel's U/V canvas position.
+  //
+  // Brightness formula (matching WaveformMonitorWidget, ITU-R BT.601 norm):
+  //   brightness = min(count * 5 * gain + 128, 255) / 255
+  // A single hit → ~52% brightness; full saturation after ~26 hits at gain=1.
+  //
+  // Position color: for each pixel the U/V coordinates are recovered from the
+  // canvas geometry, then the BT.601 inverse matrix at Y=0.5 gives the RGB
+  // colour that would produce a signal at that chroma position (ITU-R
+  // BT.470-6 §1.1.2).  Max-component normalisation ensures every point has
+  // at least one full channel — achromatic samples near the origin render as
+  // white.
+  // -------------------------------------------------------------------------
+  const float k = 5.0f * gain;
+
+  for (int py = 0; py < size; ++py) {
+    for (int px = 0; px < size; ++px) {
+      const uint32_t count =
+          hit_count[static_cast<size_t>(py) * static_cast<size_t>(size) +
+                    static_cast<size_t>(px)];
+      if (count == 0) continue;
+
+      const float brightness =
+          std::min(1.0f, (static_cast<float>(count) * k + 128.0f) / 255.0f);
+
+      int cr, cg, cb;
+      if (colorize) {
+        // Recover U/V at this canvas pixel.
+        const double u_uv =
+            (px - geometry.centre_point.x()) / geometry.pixels_per_uv_unit;
+        const double v_uv =
+            -(py - geometry.centre_point.y()) / geometry.pixels_per_uv_unit;
+
+        // ITU-R BT.470-6 §1.1.2 / EBU Tech. 3280-E §2.1 inverse at Y=0.5:
+        //   B - Y = U / ku  (ku = 0.492111)
+        //   R - Y = V / kv  (kv = 0.877283)
+        //   G derived from BT.601 luminance equation
+        const double u_n = u_uv / orc::gui::kVectorscopeSignedFullScale;
+        const double v_n = v_uv / orc::gui::kVectorscopeSignedFullScale;
+        const double r_raw = 0.5 + v_n / 0.877283;
+        const double b_raw = 0.5 + u_n / 0.492111;
+        const double g_raw = (0.5 - 0.299 * r_raw - 0.114 * b_raw) / 0.587;
+
+        double r_c = std::clamp(r_raw, 0.0, 1.0);
+        double g_c = std::clamp(g_raw, 0.0, 1.0);
+        double b_c = std::clamp(b_raw, 0.0, 1.0);
+
+        // Normalise to max component so the hue direction is always vivid.
+        // The centre (U=V=0) gives equal components → normalises to white.
+        const double max_c = std::max({r_c, g_c, b_c});
+        if (max_c > 0.001) {
+          r_c /= max_c;
+          g_c /= max_c;
+          b_c /= max_c;
+        } else {
+          r_c = g_c = b_c = 1.0;
+        }
+
+        cr = static_cast<int>(r_c * brightness * 255.0f);
+        cg = static_cast<int>(g_c * brightness * 255.0f);
+        cb = static_cast<int>(b_c * brightness * 255.0f);
+      } else {
+        cr = 0;
+        cg = static_cast<int>(brightness * 255.0f);
+        cb = 0;
+      }
+
+      image.setPixel(px, py, qRgb(cr, cg, cb));
+    }
+  }
+
+  // Draw graticule overlay on top of the data plot (axes, circle, markers,
+  // target boxes and labels — colour zones were already drawn beneath the
+  // data).
+  {
+    QPainter painter(&image);
+    if (graticule_mode != 0) {
+      d_->drawGraticule(painter, this, data.system, data.cvbs_white,
+                        data.cvbs_blanking);
+    }
+  }
+
+  // Overlay "no chroma" warning when all samples are near the origin.
   if (!has_chroma) {
+    QPainter painter(&image);
     painter.setPen(Qt::yellow);
     QFont font = painter.font();
     font.setPointSize(16);
     font.setBold(true);
     painter.setFont(font);
     painter.drawText(QRect(0, size / 2 - 40, size, 80),
-                     Qt::AlignCenter | Qt::TextWordWrap,
-                     "NO CHROMA DATA\n(Using mono decoder?)");
+                     Qt::AlignCenter | Qt::TextWordWrap, "No chroma present");
   }
-
-  painter.end();
 
   scope_label_->setPixmap(QPixmap::fromImage(image));
 
-  // Update info with field selection
+  // Update info label.
   QString field_info;
   if (field_select == 0) {
     field_info = "Both fields";
@@ -614,7 +703,7 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
       isActiveAreaOnly() ? "active picture" : "full frame";
 
   info_label_->setText(QString("Field %1 - %2 samples (%3x%4 %5) - %6")
-                           .arg(data.field_number + 1)  // Convert to 1-based
+                           .arg(data.field_number + 1)
                            .arg(data.samples.size())
                            .arg(data.width)
                            .arg(data.height)
@@ -625,8 +714,8 @@ void VectorscopeDialog::renderVectorscope(const orc::VectorscopeData& data) {
 void VectorscopeDialogPrivate::drawGraticule(QPainter& painter,
                                              VectorscopeDialog* dialog,
                                              orc::VideoSystem system,
-                                             int32_t white_16b_ire,
-                                             int32_t black_16b_ire) {
+                                             int32_t cvbs_white,
+                                             int32_t cvbs_blanking) {
   const orc::gui::VectorscopePlotGeometry geometry;
 
   painter.setRenderHint(QPainter::Antialiasing, true);
@@ -654,58 +743,102 @@ void VectorscopeDialogPrivate::drawGraticule(QPainter& painter,
     drawNtcsIqLabels(painter, geometry);
   }
 
-  // 75% vs 100% targets scaling
+  // 75% vs 100% targets scaling (mode: 0=none, 1=100%, 2=75%, 3=both)
   const int graticule_mode = dialog->getGraticuleMode();
   const bool draw_graticule = (graticule_mode != 0);
   if (draw_graticule) {
-    const double percent = (graticule_mode == 2) ? 0.75 : 1.0;
-    const int32_t white = white_16b_ire;
-    const int32_t black = black_16b_ire;
-    const double ireRange = static_cast<double>(white - black);
+    const int32_t white = cvbs_white;
+    const int32_t black = cvbs_blanking;
 
     if (white > black) {
       // Color labels for the six colour bars
       // rgb values: 1=B, 2=G, 3=Cy, 4=R, 5=Mg, 6=Yl
       const char* color_labels[] = {"", "B", "G", "Cy", "R", "Mg", "Yl"};
+      const bool draw_both = (graticule_mode == 3);
 
-      // Draw targets for six colour bars (R'G'B' 001..110)
-      for (int rgb = 1; rgb < 7; rgb++) {
-        const orc::UVSample target = orc::gui::vectorscopeDisplayTargetUv(
-            rgb, percent, ireRange, system);
-        const double barTheta = std::atan2(-target.v, target.u);
-        const double barMagnitude = std::hypot(target.u, target.v);
-        const QPointF target_point = geometry.mapUV(target.u, target.v);
-        const QColor target_color = vectorscopeTargetColor(rgb);
+      // Draw targets for six colour bars (R'G'B' 001..110).
+      // Targets are in the ±32767 display scale (kVectorscopeSignedFullScale),
+      // matching the scale used for all UVSample data.
+      auto draw_targets_at_percent = [&](double percent, bool with_labels) {
+        for (int rgb = 1; rgb < 7; rgb++) {
+          const orc::UVSample target = orc::gui::vectorscopeDisplayTargetUv(
+              rgb, percent, orc::gui::kVectorscopeSignedFullScale, system);
+          const QPointF target_point = geometry.mapUV(target.u, target.v);
+          const QColor target_color = vectorscopeTargetColor(rgb);
 
-        drawColorZone(painter, geometry, barTheta, barMagnitude, target_color);
-        drawTargetBox(painter, geometry, target_point, target_color);
+          drawTargetBox(painter, geometry, target_point, target_color);
 
-        // Draw color label positioned just outside the target
-        const double label_distance =
-            barMagnitude + geometry.pixelsToMagnitude(kColorLabelOffsetPixels);
-        const QPointF label_position =
-            geometry.pointFromVectorscopeAngle(barTheta, label_distance);
+          if (with_labels) {
+            const double barTheta = std::atan2(-target.v, target.u);
+            const double barMagnitude = std::hypot(target.u, target.v);
+            const double label_distance =
+                barMagnitude +
+                geometry.pixelsToMagnitude(kColorLabelOffsetPixels);
+            const QPointF label_position =
+                geometry.pointFromVectorscopeAngle(barTheta, label_distance);
 
-        QFont font = painter.font();
-        font.setPointSize(14);
-        font.setBold(true);
-        painter.setFont(font);
-        QColor label_color = target_color;
-        label_color.setAlpha(255);
-        painter.setPen(
-            QPen(label_color, orc::gui::kVectorscopeAxisStrokeWidth));
+            QFont font = painter.font();
+            font.setPointSize(14);
+            font.setBold(true);
+            painter.setFont(font);
+            QColor label_color = target_color;
+            label_color.setAlpha(255);
+            painter.setPen(
+                QPen(label_color, orc::gui::kVectorscopeAxisStrokeWidth));
 
-        // Center the text at the label position
-        QFontMetrics fm(font);
-        QString label_text(color_labels[rgb]);
-        int text_width = fm.horizontalAdvance(label_text);
-        int text_height = fm.height();
+            QFontMetrics fm(font);
+            QString label_text(color_labels[rgb]);
+            int text_width = fm.horizontalAdvance(label_text);
+            int text_height = fm.height();
 
-        painter.drawText(static_cast<int>(label_position.x()) - text_width / 2,
-                         static_cast<int>(label_position.y()) + text_height / 4,
-                         label_text);
+            painter.drawText(
+                static_cast<int>(label_position.x()) - text_width / 2,
+                static_cast<int>(label_position.y()) + text_height / 4,
+                label_text);
+          }
+        }
+      };
+
+      // In "both" mode draw 75% targets first (no labels), then 100% (with
+      // labels so they sit at the outermost ring and don't overlap).
+      if (graticule_mode == 2 || draw_both) {
+        draw_targets_at_percent(0.75, !draw_both);
+      }
+      if (graticule_mode == 1 || draw_both) {
+        draw_targets_at_percent(1.0, true);
       }
     }
+  }
+}
+
+void VectorscopeDialogPrivate::drawColorZones(QPainter& painter,
+                                              VectorscopeDialog* dialog,
+                                              orc::VideoSystem system,
+                                              int32_t cvbs_white,
+                                              int32_t cvbs_blanking) {
+  const orc::gui::VectorscopePlotGeometry geometry;
+  const int graticule_mode = dialog->getGraticuleMode();
+  if (graticule_mode == 0) return;
+  if (cvbs_white <= cvbs_blanking) return;
+
+  painter.setRenderHint(QPainter::Antialiasing, true);
+
+  auto draw_zones_at_percent = [&](double percent) {
+    for (int rgb = 1; rgb < 7; rgb++) {
+      const orc::UVSample target = orc::gui::vectorscopeDisplayTargetUv(
+          rgb, percent, orc::gui::kVectorscopeSignedFullScale, system);
+      const double barTheta = std::atan2(-target.v, target.u);
+      const double barMagnitude = std::hypot(target.u, target.v);
+      drawColorZone(painter, geometry, barTheta, barMagnitude,
+                    vectorscopeTargetColor(rgb));
+    }
+  };
+
+  if (graticule_mode == 2 || graticule_mode == 3) {
+    draw_zones_at_percent(0.75);
+  }
+  if (graticule_mode == 1 || graticule_mode == 3) {
+    draw_zones_at_percent(1.0);
   }
 }
 
@@ -716,9 +849,11 @@ void VectorscopeDialog::clearDisplay() {
   {
     QPainter painter(&blank);
     if (d_->last_data.has_value()) {
-      d_->drawGraticule(painter, this, d_->last_data->system,
-                        d_->last_data->white_16b_ire,
-                        d_->last_data->black_16b_ire);
+      const auto& data = *d_->last_data;
+      d_->drawColorZones(painter, this, data.system, data.cvbs_white,
+                         data.cvbs_blanking);
+      d_->drawGraticule(painter, this, data.system, data.cvbs_white,
+                        data.cvbs_blanking);
     } else {
       const orc::gui::VectorscopePlotGeometry geometry;
       painter.setRenderHint(QPainter::Antialiasing, true);

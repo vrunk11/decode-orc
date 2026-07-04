@@ -9,12 +9,13 @@
 
 #include "burst_level_analysis_sink_deps.h"
 
+#include <orc/stage/field_id.h>
+#include <orc/stage/logging.h>
+
 #include <cmath>
 #include <fstream>
 #include <utility>
-
-#include "burst_level_observer.h"
-#include "logging.h"
+#include <variant>
 
 namespace orc {
 void BurstLevelAnalysisSinkStageDeps::init(
@@ -25,54 +26,46 @@ void BurstLevelAnalysisSinkStageDeps::init(
 }
 
 BurstAnalysisComputeResult BurstLevelAnalysisSinkStageDeps::compute_and_analyze(
-    VideoFieldRepresentation* representation,
+    VideoFrameRepresentation* representation,
     IObservationContext& observation_context,
     BurstAnalysisComputeOptions options) {
   if (!representation) {
     return {false, "Input representation is null", {}, 0};
   }
 
-  (void)options.max_frames;
-
   BurstAnalysisComputeResult result;
   result.success = true;
   result.message = "Burst level analysis complete";
 
-  auto range = representation->field_range();
-  if (range.size() == 0) {
-    logger_.warn("BurstLevelAnalysisSinkDeps: No fields available");
+  const auto frame_rng = representation->frame_range();
+  const uint64_t total_frames = frame_rng.count();
+
+  if (total_frames == 0) {
+    logger_.warn("BurstLevelAnalysisSinkDeps: No frames available");
     result.total_frames = 0;
     return result;
   }
 
-  size_t total_fields = range.size();
-
-  const size_t TARGET_DATA_POINTS = 1000;
-  size_t fields_per_bin = 2;
-  if (total_fields > TARGET_DATA_POINTS * 2) {
-    fields_per_bin =
-        (total_fields + TARGET_DATA_POINTS - 1) / TARGET_DATA_POINTS;
-    if (fields_per_bin % 2 != 0) {
-      fields_per_bin++;
-    }
-  }
+  // Bucket-sampled analysis: divide the recording into at most kDefaultBuckets
+  // display points and, within each bucket, analyze at most kSamplesPerBucket
+  // evenly-spaced frames.  For small sources (bucket size <= kSamplesPerBucket)
+  // every frame in the bucket is analyzed.  This keeps wall-clock time near-
+  // constant regardless of recording length.
+  constexpr uint64_t kDefaultBuckets = 1000;
+  constexpr uint64_t kSamplesPerBucket = 1;
+  const uint64_t bucket_count =
+      (total_frames < kDefaultBuckets) ? total_frames : kDefaultBuckets;
 
   logger_.debug(
-      "BurstLevelAnalysisSinkDeps: {} total fields, binning by {} fields per "
-      "data point",
-      total_fields, fields_per_bin);
+      "BurstLevelAnalysisSinkDeps: {} frames → {} buckets (~{} samples/bucket)",
+      total_frames, bucket_count, kSamplesPerBucket);
 
-  BurstLevelObserver burst_observer;
+  result.frame_stats.reserve(static_cast<size_t>(bucket_count));
 
-  FrameBurstLevelStats current_bin{};
-  size_t fields_in_bin = 0;
-  [[maybe_unused]] size_t first_field_in_bin = 0;
-  size_t last_field_in_bin = 0;
-
-  for (size_t i = 0; i < total_fields; ++i) {
+  for (uint64_t b = 0; b < bucket_count; ++b) {
     if (cancel_requested_ && cancel_requested_->load()) {
-      logger_.warn("BurstLevelAnalysisSinkDeps: Cancel requested at field {}",
-                   i);
+      logger_.warn("BurstLevelAnalysisSinkDeps: Cancel requested at bucket {}",
+                   b);
       result.success = false;
       result.message = "Cancelled by user";
       result.frame_stats.clear();
@@ -80,100 +73,71 @@ BurstAnalysisComputeResult BurstLevelAnalysisSinkStageDeps::compute_and_analyze(
       return result;
     }
 
-    FieldID fid(range.start.value() + i);
-    auto descriptor = representation->get_descriptor(fid);
-    if (!descriptor) {
-      continue;
-    }
+    // Inclusive frame range for this bucket (no frame is missed or counted
+    // twice across adjacent buckets).
+    const FrameID bucket_start =
+        frame_rng.first + (b * total_frames) / bucket_count;
+    const FrameID bucket_end =
+        frame_rng.first + ((b + 1) * total_frames) / bucket_count - 1;
+    const uint64_t bucket_size = bucket_end - bucket_start + 1;
+    const uint64_t n_samples =
+        (kSamplesPerBucket < bucket_size) ? kSamplesPerBucket : bucket_size;
 
-    if (fields_in_bin == 0) {
-      first_field_in_bin = i;
-    }
-    last_field_in_bin = i;
+    double sum = 0.0;
+    size_t count = 0;
 
-    burst_observer.process_field(*representation, fid, observation_context);
+    for (uint64_t s = 0; s < n_samples; ++s) {
+      // Evenly distribute sample frames across the bucket so the first and last
+      // frames are always included.
+      const FrameID fid =
+          (n_samples == 1U)
+              ? bucket_start
+              : bucket_start + (s * (bucket_size - 1U)) / (n_samples - 1U);
 
-    try {
-      auto burst_level_opt =
-          observation_context.get(fid, "burst_level", "median_burst_ire");
-      if (burst_level_opt) {
-        try {
-          double field_burst = std::get<double>(*burst_level_opt);
-          current_bin.median_burst_ire += field_burst;
-          current_bin.has_data = true;
-          logger_.trace(
-              "BurstLevelAnalysisSinkDeps: Read burst_level for field {} = "
-              "{:.2f} IRE",
-              fid.value(), field_burst);
-        } catch (const std::exception& e) {
-          logger_.warn(
-              "BurstLevelAnalysisSinkDeps: Failed to extract burst_level "
-              "value: {}",
-              e.what());
-        }
+      burst_level_observer_.process_frame(*representation, fid,
+                                          observation_context);
+
+      const FieldID frame_fid(fid * 2U);
+      auto val = observation_context.get(frame_fid, "burst_level",
+                                         "median_burst_10bit");
+      logger_.debug(
+          "BurstLevelAnalysisSinkDeps: fid={} field_id={} val_present={} "
+          "type_ok={}",
+          fid, frame_fid.value(), val.has_value(),
+          val.has_value() && std::holds_alternative<double>(*val));
+      if (val && std::holds_alternative<double>(*val)) {
+        sum += std::get<double>(*val);
+        ++count;
       }
-    } catch (const std::exception& e) {
-      logger_.warn(
-          "BurstLevelAnalysisSinkDeps: Exception reading observations for "
-          "field {}: {}",
-          fid.value(), e.what());
+      observation_context.clear_field(frame_fid);
     }
 
-    current_bin.field_count++;
-    fields_in_bin++;
+    FrameBurstLevelStats frame_stat;
+    // Use the center frame of the bucket as the representative frame number
+    // (1-based for display).
+    frame_stat.frame_number =
+        static_cast<int32_t>(bucket_start + (bucket_end - bucket_start) / 2U) +
+        1;
 
-    if (fields_in_bin >= fields_per_bin) {
-      if (current_bin.field_count > 0 && current_bin.has_data) {
-        current_bin.median_burst_ire /=
-            static_cast<double>(current_bin.field_count);
-        FieldID last_fid(range.start.value() + last_field_in_bin);
-        int32_t bin_frame_number =
-            static_cast<int32_t>((last_fid.value() / 2) + 1);
-        current_bin.frame_number = bin_frame_number;
-        logger_.info(
-            "BurstLevelAnalysisSinkDeps: Bucket {} - field indices {}-{}, "
-            "field IDs {}-{}, frame {}: median_burst_ire={:.2f} IRE ({} "
-            "fields)",
-            result.frame_stats.size(), first_field_in_bin, last_field_in_bin,
-            range.start.value() + first_field_in_bin,
-            range.start.value() + last_field_in_bin, bin_frame_number,
-            current_bin.median_burst_ire, current_bin.field_count);
-        result.frame_stats.push_back(current_bin);
-      }
-
-      current_bin = FrameBurstLevelStats();
-      fields_in_bin = 0;
+    if (count > 0) {
+      frame_stat.median_burst_10bit = sum / static_cast<double>(count);
+      frame_stat.has_data = true;
+      frame_stat.field_count = count;
     }
 
-    if (progress_callback_) {
-      progress_callback_(i + 1, total_fields,
-                         "Processing field " + std::to_string(i));
+    result.frame_stats.push_back(frame_stat);
+
+    if (progress_callback_ && (b % 50 == 0 || b + 1 == bucket_count)) {
+      progress_callback_(b + 1, bucket_count,
+                         "Analysing bucket " + std::to_string(b + 1) + "/" +
+                             std::to_string(bucket_count));
     }
   }
 
-  if (fields_in_bin > 0 && current_bin.field_count > 0 &&
-      current_bin.has_data) {
-    current_bin.median_burst_ire /=
-        static_cast<double>(current_bin.field_count);
-    FieldID last_fid(range.start.value() + last_field_in_bin);
-    int32_t bin_frame_number = static_cast<int32_t>((last_fid.value() / 2) + 1);
-    current_bin.frame_number = bin_frame_number;
-    logger_.info(
-        "BurstLevelAnalysisSinkDeps: Final bucket {} - field indices {}-{}, "
-        "field IDs {}-{}, frame {}: median_burst_ire={:.2f} IRE ({} fields)",
-        result.frame_stats.size(), first_field_in_bin, last_field_in_bin,
-        range.start.value() + first_field_in_bin,
-        range.start.value() + last_field_in_bin, bin_frame_number,
-        current_bin.median_burst_ire, current_bin.field_count);
-    result.frame_stats.push_back(current_bin);
-  }
-
-  result.total_frames = static_cast<int32_t>((total_fields + 1) / 2);
-
+  result.total_frames = static_cast<int32_t>(total_frames);
   logger_.debug(
-      "BurstLevelAnalysisSinkDeps: Computed {} data buckets from {} total "
-      "fields ({} total frames)",
-      result.frame_stats.size(), total_fields, result.total_frames);
+      "BurstLevelAnalysisSinkDeps: Complete — {} buckets from {} frames",
+      result.frame_stats.size(), total_frames);
 
   return result;
 }
@@ -196,11 +160,11 @@ bool BurstLevelAnalysisSinkStageDeps::write_csv(
     return false;
   }
 
-  csv << "frame_number,median_burst_ire\n";
+  csv << "frame_number,median_burst_10bit\n";
   size_t rows_written = 0;
   for (const auto& fs : frame_stats) {
     csv << fs.frame_number << ','
-        << (fs.has_data ? fs.median_burst_ire : std::nan("")) << '\n';
+        << (fs.has_data ? fs.median_burst_10bit : std::nan("")) << '\n';
     rows_written++;
   }
 

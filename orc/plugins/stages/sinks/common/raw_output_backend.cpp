@@ -9,8 +9,9 @@
 
 #include "raw_output_backend.h"
 
+#include <orc/stage/logging.h>
+
 #include "componentframe.h"
-#include "logging.h"
 
 namespace orc {
 
@@ -73,7 +74,8 @@ bool RawOutputBackend::initialize(const Configuration& config) {
   // Write stream header if needed
   std::string stream_header = writer_->getStreamHeader();
   if (!stream_header.empty()) {
-    output_file_.write(stream_header.data(), static_cast<std::streamsize>(stream_header.size()));
+    output_file_.write(stream_header.data(),
+                       static_cast<std::streamsize>(stream_header.size()));
     if (!output_file_.good()) {
       ORC_LOG_ERROR("RawOutputBackend: Failed to write stream header");
       return false;
@@ -96,7 +98,8 @@ bool RawOutputBackend::writeFrame(const ::ComponentFrame& frame) {
   // Write frame header if needed
   std::string frame_header = writer_->getFrameHeader();
   if (!frame_header.empty()) {
-    output_file_.write(frame_header.data(), static_cast<std::streamsize>(frame_header.size()));
+    output_file_.write(frame_header.data(),
+                       static_cast<std::streamsize>(frame_header.size()));
     if (!output_file_.good()) {
       ORC_LOG_ERROR("RawOutputBackend: Failed to write frame header");
       return false;
@@ -109,7 +112,8 @@ bool RawOutputBackend::writeFrame(const ::ComponentFrame& frame) {
 
   // Write output data
   const char* data = reinterpret_cast<const char*>(output_frame.data());
-  std::streamsize size = static_cast<std::streamsize>(output_frame.size() * sizeof(uint16_t));
+  std::streamsize size =
+      static_cast<std::streamsize>(output_frame.size() * sizeof(uint16_t));
   output_file_.write(data, size);
 
   if (!output_file_.good()) {

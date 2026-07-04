@@ -35,20 +35,14 @@ class TestablePalDecoder : public PalDecoder {
 orc::SourceParameters make_ntsc_params() {
   orc::SourceParameters p;
   p.system = orc::VideoSystem::NTSC;
-  p.field_width = 32;
-  p.field_height = 4;
-  p.sample_rate = 4.0;
-  p.fsc = 1.0;
+  p.frame_width_nominal = 32;
   return p;
 }
 
 orc::SourceParameters make_pal_params() {
   orc::SourceParameters p;
   p.system = orc::VideoSystem::PAL;
-  p.field_width = 32;
-  p.field_height = 4;
-  p.sample_rate = 4.0;
-  p.fsc = 1.0;
+  p.frame_width_nominal = 32;
   return p;
 }
 }  // namespace
@@ -99,7 +93,7 @@ TEST(NtscDecoderWrapperTest, Configure_RejectsInvalidGeometry) {
   TestableNtscDecoder decoder(config);
 
   auto params = make_ntsc_params();
-  params.field_width = 8;
+  params.frame_width_nominal = 8;
 
   EXPECT_FALSE(decoder.configure(params));
 }
@@ -109,7 +103,7 @@ TEST(PalDecoderWrapperTest, Configure_RejectsInvalidGeometry) {
   TestablePalDecoder decoder(config);
 
   auto params = make_pal_params();
-  params.field_width = 8;
+  params.frame_width_nominal = 8;
 
   EXPECT_FALSE(decoder.configure(params));
 }

@@ -9,7 +9,7 @@
 
 #include "orcgraphicsview.h"
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
 
 #include <QAction>
 #include <QContextMenuEvent>
@@ -48,8 +48,9 @@ OrcGraphicsView::OrcGraphicsView(QWidget* parent)
           "file pairs ending in .tbcy and .tbcc will be treated as Y/C "
           "sources. NTSC, NTSC-J, PAL and PAL-M are currently supported for "
           "both LaserDisc, tape and other capture sources.\n\n"
-          "Please see the decode-orc documentation for a detailed user-guide "
-          "and reference.")) {
+          "For a full user guide open Help > User Guide from the menu bar. "
+          "Every stage node also has built-in help: right-click any node and "
+          "choose Help....")) {
   // Find and disconnect the default delete action
   for (QAction* action : actions()) {
     if (action->shortcut() == QKeySequence::Delete) {
@@ -132,7 +133,8 @@ void OrcGraphicsView::wheelEvent(QWheelEvent* event) {
 
   // Reduced sensitivity: use 1.1 (10% per scroll) instead of default 1.2 (20%)
   double const step = 1.1;
-  double const d = delta.y() / std::abs(delta.y());  // NOLINT(bugprone-integer-division)
+  double const d =
+      delta.y() / std::abs(delta.y());  // NOLINT(bugprone-integer-division)
   double const factor = std::pow(step, d);
 
   // Get current scale and apply limits
@@ -162,7 +164,8 @@ void OrcGraphicsView::contextMenuEvent(QContextMenuEvent* event) {
     // NodeGraphicsObject::contextMenuEvent() to emit nodeContextMenu(), handled
     // by OrcGraphicsScene::onNodeContextMenu() -- showing only the single ORC
     // context menu.
-    QGraphicsView::contextMenuEvent(event);  // NOLINT(bugprone-parent-virtual-call)
+    QGraphicsView::contextMenuEvent(  // NOLINT(bugprone-parent-virtual-call)
+        event);
     return;
   }
 

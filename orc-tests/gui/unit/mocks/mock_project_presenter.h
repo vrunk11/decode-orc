@@ -41,6 +41,10 @@ class MockProjectPresenter : public IProjectPresenter {
               (const, override));
   MOCK_METHOD(SourceType, getSourceType, (), (const, override));
   MOCK_METHOD(void, setSourceType, (SourceType source), (override));
+  MOCK_METHOD(orc::AmplitudeDisplayUnit, getAmplitudeUnit, (),
+              (const, override));
+  MOCK_METHOD(void, setAmplitudeUnit, (orc::AmplitudeDisplayUnit unit),
+              (override));
 
   MOCK_METHOD(NodeID, addNode,
               (const std::string& stage_name, double x_position,
@@ -74,8 +78,6 @@ class MockProjectPresenter : public IProjectPresenter {
               (const, override));
   MOCK_METHOD(std::shared_ptr<void>, instantiateStage,
               (const std::string& stage_name), (const, override));
-  MOCK_METHOD(std::shared_ptr<void>, getStageForInspection, (NodeID node_id),
-              (const, override));
   MOCK_METHOD(std::vector<LoadedPluginInfo>, listLoadedPlugins, (),
               (const, override));
   MOCK_METHOD(std::vector<PluginDiagnosticInfo>, listPluginDiagnostics, (),
@@ -93,6 +95,8 @@ class MockProjectPresenter : public IProjectPresenter {
               (const std::string& plugin_id), (const, override));
   MOCK_METHOD(PluginRegistryMutationResult, setPluginEnabled,
               (const std::string& plugin_id, bool enabled), (const, override));
+  MOCK_METHOD(PluginRegistryMutationResult, setPluginTrusted,
+              (const std::string& plugin_id, bool trusted), (const, override));
 
   MOCK_METHOD(bool, canTriggerNode, (NodeID node_id, std::string* reason),
               (const, override));
@@ -105,12 +109,15 @@ class MockProjectPresenter : public IProjectPresenter {
   MOCK_METHOD(std::vector<std::string>, getValidationErrors, (),
               (const, override));
 
-  MOCK_METHOD(std::optional<StageInspectionView>, getNodeInspection,
+  MOCK_METHOD(orc::ConfigurationStatus, getNodeConfigurationStatus,
               (NodeID node_id), (const, override));
 
   MOCK_METHOD(std::shared_ptr<void>, getDAG, (), (const, override));
   MOCK_METHOD(std::shared_ptr<void>, buildDAG, (), (override));
   MOCK_METHOD(bool, validateDAG, (), (override));
+
+  MOCK_METHOD(std::string, getStageInstructions,
+              (const std::string& stage_name), (const, override));
 
   MOCK_METHOD(std::vector<ParameterDescriptor>, getStageParameters,
               (const std::string& stage_name), (override));

@@ -16,14 +16,13 @@ namespace orc_unit_test {
 class ComponentFrameTest : public ::testing::Test {
  public:
   void SetUp() override {
-    sourceParameters_.field_width = 4;
-    sourceParameters_.field_height = 3;
+    sourceParameters_.system = orc::VideoSystem::NTSC;
+    sourceParameters_.frame_width_nominal = 4;
 
     uvFrame_.init(sourceParameters_, false);
     yFrame_.init(sourceParameters_, false);
 
-    const int32_t frameSize = sourceParameters_.field_width *
-                              ((sourceParameters_.field_height * 2) - 1);
+    const int32_t frameSize = uvFrame_.getWidth() * uvFrame_.getHeight();
 
     originalY_ = std::vector<double>(frameSize, 1.0);
     replacementY_ = std::vector<double>(frameSize, 2.0);

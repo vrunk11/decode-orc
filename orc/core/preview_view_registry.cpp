@@ -9,24 +9,26 @@
 
 #include "preview_view_registry.h"
 
+#include <orc/stage/colour_preview_provider.h>
+
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <fstream>
 #include <utility>
 
 #include "analysis/vectorscope/vectorscope_analysis.h"
-#include "colour_preview_provider.h"
+#include "orc_histogram.h"
 #include "preview_renderer.h"
-#include "video_field_representation.h"
 
 namespace orc {
 namespace {
 
 constexpr const char* kLineScopeViewId = "preview.linescope";
-constexpr const char* kFieldTimingViewId = "preview.field_timing";
+constexpr const char* kFrameTimingViewId = "preview.frame_timing";
 
 bool is_generic_vfr_view_id(const std::string& view_id) {
-  return view_id == kLineScopeViewId || view_id == kFieldTimingViewId;
+  return view_id == kLineScopeViewId || view_id == kFrameTimingViewId;
 }
 
 const DAGNode* find_node(const DAG& dag, NodeID node_id) {
@@ -48,13 +50,13 @@ PreviewOutputType output_type_for_data_type(VideoDataType data_type) {
     case VideoDataType::CompositePAL:
     case VideoDataType::YC_NTSC:
     case VideoDataType::YC_PAL:
-      return PreviewOutputType::Field;
+      return PreviewOutputType::Frame_Field1;
     case VideoDataType::ColourNTSC:
     case VideoDataType::ColourPAL:
-      return PreviewOutputType::Frame;
+      return PreviewOutputType::Frame_Field1_First;
   }
 
-  return PreviewOutputType::Field;
+  return PreviewOutputType::Frame_Field1;
 }
 
 class ImagePreviewView final : public IPreviewView {
@@ -126,7 +128,7 @@ class ImagePreviewView final : public IPreviewView {
  private:
   NodeID node_id_;
   PreviewRenderer* renderer_{nullptr};
-  PreviewOutputType last_type_{PreviewOutputType::Field};
+  PreviewOutputType last_type_{PreviewOutputType::Frame_Field1};
   uint64_t last_index_{0};
 };
 
@@ -198,10 +200,10 @@ class VectorscopePreviewView final : public IPreviewView {
     }
 
     last_vectorscope_->system = carrier_opt->system;
-    last_vectorscope_->white_16b_ire =
-        static_cast<int32_t>(carrier_opt->white_16b_ire);
-    last_vectorscope_->black_16b_ire =
-        static_cast<int32_t>(carrier_opt->black_16b_ire);
+    last_vectorscope_->cvbs_white =
+        static_cast<int32_t>(carrier_opt->cvbs_white);
+    last_vectorscope_->cvbs_blanking =
+        static_cast<int32_t>(carrier_opt->cvbs_blanking);
 
     result.success = true;
     result.payload_kind = PreviewViewPayloadKind::Vectorscope;
@@ -250,6 +252,226 @@ class VectorscopePreviewView final : public IPreviewView {
   const DAG* dag_{nullptr};
   NodeID node_id_;
   std::optional<VectorscopeData> last_vectorscope_;
+};
+
+// Accumulates a per-channel histogram from a ColourFrameCarrier.
+// Channel normalisation follows the same convention as VectorscopePreviewView:
+//   Y  — relative to the picture-black floor (cvbs_black); 0 % = black.
+//   U/V — relative to full active-video swing, centred at zero.
+//   I/Q — U/V rotated by 33° (SMPTE 170M-2004 §7.3), NTSC only.
+static VideoHistogramData extractHistogramFromCarrier(
+    const ColourFrameCarrier& carrier, uint64_t field_number) {
+  VideoHistogramData data;
+  data.field_number = field_number;
+  data.system = carrier.system;
+  data.cvbs_blanking = carrier.cvbs_blanking;
+  data.cvbs_black = carrier.cvbs_black;
+  data.cvbs_white = carrier.cvbs_white;
+  data.width = carrier.width;
+  data.height = carrier.height;
+
+  if (!carrier.is_valid()) {
+    return data;
+  }
+
+  const double range = std::max(1.0, carrier.cvbs_white - carrier.cvbs_black);
+  const double uv_range =
+      std::max(1.0, carrier.cvbs_white - carrier.cvbs_blanking);
+
+  // Pre-compute NTSC IQ rotation constants.
+  // SMPTE 170M-2004 §7.3: I is at 33° from V (R-Y), Q at 33° from U (B-Y).
+  // In normalised (U,V) space: I = −U·sin33° + V·cos33°,
+  //                             Q =  U·cos33° + V·sin33°.
+  constexpr double kSin33 = 0.5446390350;
+  constexpr double kCos33 = 0.8386705679;
+
+  const bool is_ntsc = (carrier.system == VideoSystem::NTSC);
+
+  const double bin_range =
+      VideoHistogramData::kRangeMax - VideoHistogramData::kRangeMin;
+  const double bins_per_percent =
+      static_cast<double>(VideoHistogramData::kBinCount) / bin_range;
+
+  const double chroma_bin_range =
+      VideoHistogramData::kChromaRangeMax - VideoHistogramData::kChromaRangeMin;
+  const double chroma_bins_per_percent =
+      static_cast<double>(VideoHistogramData::kBinCount) / chroma_bin_range;
+
+  auto to_bin = [&](double percent) -> std::optional<size_t> {
+    const double offset = percent - VideoHistogramData::kRangeMin;
+    const int bin = static_cast<int>(offset * bins_per_percent);
+    if (bin < 0 || bin >= static_cast<int>(VideoHistogramData::kBinCount)) {
+      return std::nullopt;
+    }
+    return static_cast<size_t>(bin);
+  };
+
+  auto to_chroma_bin = [&](double percent) -> std::optional<size_t> {
+    const double offset = percent - VideoHistogramData::kChromaRangeMin;
+    const int bin = static_cast<int>(offset * chroma_bins_per_percent);
+    if (bin < 0 || bin >= static_cast<int>(VideoHistogramData::kBinCount)) {
+      return std::nullopt;
+    }
+    return static_cast<size_t>(bin);
+  };
+
+  // The chroma sink always sets active_area_cropping_applied = true, which
+  // causes decoders to remap active-picture data to 0-based indices within
+  // the full-sized ComponentFrame buffer.  plane[0] is therefore the first
+  // active pixel.  active_x/y_start hold the original pre-crop signal
+  // coordinates and must NOT be used as absolute plane indices — only the
+  // difference (active width / height) gives the correct iteration bounds.
+  const uint32_t active_width =
+      (carrier.active_x_end > carrier.active_x_start)
+          ? (carrier.active_x_end - carrier.active_x_start)
+          : carrier.width;
+  const uint32_t active_height =
+      (carrier.active_y_end > carrier.active_y_start)
+          ? (carrier.active_y_end - carrier.active_y_start)
+          : carrier.height;
+
+  uint32_t pixel_count = 0;
+
+  for (uint32_t row = 0; row < active_height; ++row) {
+    for (uint32_t col = 0; col < active_width; ++col) {
+      const size_t i = static_cast<size_t>(row) * carrier.width + col;
+
+      // Y: normalised so that cvbs_black = 0 %, cvbs_white = 100 %.
+      const double y_norm = (carrier.y_plane[i] - carrier.cvbs_black) / range;
+      if (auto b = to_bin(y_norm * 100.0)) {
+        data.y_bins[*b]++;
+      }
+
+      // U/V: bipolar, centred at 0 % (neutral chroma), binned over
+      // [kChromaRangeMin, kChromaRangeMax] so the full swing is visible.
+      const double u_norm = carrier.u_plane[i] / uv_range;
+      const double v_norm = carrier.v_plane[i] / uv_range;
+
+      if (auto b = to_chroma_bin(u_norm * 100.0)) {
+        data.u_bins[*b]++;
+      }
+      if (auto b = to_chroma_bin(v_norm * 100.0)) {
+        data.v_bins[*b]++;
+      }
+
+      // I/Q: SMPTE 170M rotation of (U, V), NTSC only.
+      if (is_ntsc) {
+        const double i_norm = (-u_norm * kSin33) + (v_norm * kCos33);
+        const double q_norm = (u_norm * kCos33) + (v_norm * kSin33);
+        if (auto b = to_chroma_bin(i_norm * 100.0)) {
+          data.i_bins[*b]++;
+        }
+        if (auto b = to_chroma_bin(q_norm * 100.0)) {
+          data.q_bins[*b]++;
+        }
+      }
+
+      ++pixel_count;
+    }
+  }
+
+  data.total_pixels = pixel_count;
+  return data;
+}
+
+class HistogramPreviewView final : public IPreviewView {
+ public:
+  HistogramPreviewView(const DAG* dag, NodeID node_id)
+      : dag_(dag), node_id_(node_id) {}
+
+  std::vector<VideoDataType> supported_data_types() const override {
+    return {
+        VideoDataType::ColourNTSC,
+        VideoDataType::ColourPAL,
+    };
+  }
+
+  PreviewViewDataResult request_data(
+      VideoDataType /*data_type*/,
+      const PreviewCoordinate& coordinate) override {
+    PreviewViewDataResult result{};
+
+    if (!dag_) {
+      result.error_message = "DAG is not initialized";
+      return result;
+    }
+
+    if (!coordinate.is_valid()) {
+      result.error_message = "Preview coordinate is invalid";
+      return result;
+    }
+
+    const DAGNode* node = find_node(*dag_, node_id_);
+    if (!node || !node->stage) {
+      result.error_message = "Target node not found";
+      return result;
+    }
+
+    auto* provider =
+        dynamic_cast<const IColourPreviewProvider*>(node->stage.get());
+    if (!provider) {
+      result.error_message = "Stage does not provide colour preview carriers";
+      return result;
+    }
+
+    auto carrier_opt =
+        provider->get_colour_preview_carrier(coordinate.field_index);
+    if (!carrier_opt.has_value()) {
+      result.error_message = "Failed to fetch colour preview carrier";
+      return result;
+    }
+
+    last_histogram_ =
+        extractHistogramFromCarrier(*carrier_opt, coordinate.field_index);
+
+    result.success = true;
+    result.payload_kind = PreviewViewPayloadKind::Histogram;
+    result.histogram = last_histogram_;
+    return result;
+  }
+
+  PreviewViewExportResult export_as(const std::string& format,
+                                    const std::string& path) const override {
+    PreviewViewExportResult result{};
+
+    if (format != "csv") {
+      result.error_message = "Unsupported export format for histogram view";
+      return result;
+    }
+
+    if (!last_histogram_.has_value()) {
+      result.error_message = "No histogram data has been requested for export";
+      return result;
+    }
+
+    std::ofstream out(path);
+    if (!out.is_open()) {
+      result.error_message = "Failed to open export path";
+      return result;
+    }
+
+    out << "bin,y,u,v,i,q\n";
+    for (size_t b = 0; b < VideoHistogramData::kBinCount; ++b) {
+      out << b << ',' << last_histogram_->y_bins[b] << ','
+          << last_histogram_->u_bins[b] << ',' << last_histogram_->v_bins[b]
+          << ',' << last_histogram_->i_bins[b] << ','
+          << last_histogram_->q_bins[b] << '\n';
+    }
+
+    out.flush();
+    if (!out.good()) {
+      result.error_message = "Failed while writing histogram CSV";
+      return result;
+    }
+
+    result.success = true;
+    return result;
+  }
+
+ private:
+  const DAG* dag_{nullptr};
+  NodeID node_id_;
+  std::optional<VideoHistogramData> last_histogram_;
 };
 
 class GenericVfrVisualizationPreviewView final : public IPreviewView {
@@ -481,6 +703,19 @@ void PreviewViewRegistry::register_default_views(
 
   registry.register_view(
       PreviewViewDescriptor{
+          "preview.histogram",
+          "Video Histogram",
+          {
+              VideoDataType::ColourNTSC,
+              VideoDataType::ColourPAL,
+          },
+      },
+      [dag](NodeID node_id) {
+        return std::make_unique<HistogramPreviewView>(dag.get(), node_id);
+      });
+
+  registry.register_view(
+      PreviewViewDescriptor{
           kLineScopeViewId,
           "Line Scope",
           {
@@ -499,8 +734,8 @@ void PreviewViewRegistry::register_default_views(
 
   registry.register_view(
       PreviewViewDescriptor{
-          kFieldTimingViewId,
-          "Field Timing",
+          kFrameTimingViewId,
+          "Frame Timing",
           {
               VideoDataType::CompositeNTSC,
               VideoDataType::CompositePAL,
@@ -512,7 +747,7 @@ void PreviewViewRegistry::register_default_views(
       },
       [](NodeID) {
         return std::make_unique<GenericVfrVisualizationPreviewView>(
-            "Field timing");
+            "Frame timing");
       });
 }
 

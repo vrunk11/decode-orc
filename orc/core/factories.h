@@ -45,6 +45,12 @@ class Factories : public IFactories {
   std::shared_ptr<IFileWriter<uint16_t>>
   create_instance_buffered_file_writer_uint16(size_t buffer_size) override;
 
+  /**
+   * @brief Create instance of BufferedFileWriter<int16_t>
+   */
+  std::shared_ptr<IFileWriter<int16_t>>
+  create_instance_buffered_file_writer_int16(size_t buffer_size) override;
+
  private:
   StageFactories factoriesStage_;
 };

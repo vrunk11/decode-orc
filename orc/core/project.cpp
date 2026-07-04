@@ -30,7 +30,11 @@
 
 #include "project.h"
 
-#include <tbc_metadata.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/triggerable_stage.h>
+#include <sqlite3.h>
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
@@ -46,11 +50,8 @@
 
 #include "dag_executor.h"
 #include "include/stage_plugin_registry.h"
-#include "logging.h"
-#include "observation_context.h"
 #include "project_to_dag.h"
 #include "stage_registry.h"
-#include "stages/triggerable_stage.h"
 
 namespace orc {
 
@@ -320,6 +321,59 @@ std::optional<ProjectPluginRequirement> parse_required_plugin_node(
   return requirement;
 }
 
+// Returns true for source stages whose signal type (composite vs Y/C) is
+// determined by their file-path parameters rather than by the stage name.
+bool is_dual_mode_source(const std::string& stage_name) {
+  return stage_name == "tbc_source" || stage_name == "NTSC_CVBS_Source" ||
+         stage_name == "PAL_CVBS_Source" || stage_name == "PAL_M_CVBS_Source";
+}
+
+// Determine the signal type of a source node from its stored parameters.
+// For dual-mode sources the type depends on which file-path parameters are set:
+//   y_path + c_path → Y/C;  input_path → Composite;  neither → Unknown.
+// For non-dual-mode sources the type is inferred from the stage name.
+SourceType get_node_signal_type(const ProjectDAGNode& node) {
+  auto has_nonempty_str = [&](const std::string& key) {
+    const auto it = node.parameters.find(key);
+    return it != node.parameters.end() &&
+           std::holds_alternative<std::string>(it->second) &&
+           !std::get<std::string>(it->second).empty();
+  };
+  if (is_dual_mode_source(node.stage_name)) {
+    if (has_nonempty_str("y_path") && has_nonempty_str("c_path")) {
+      return SourceType::YC;
+    }
+    if (has_nonempty_str("input_path")) {
+      return SourceType::Composite;
+    }
+    return SourceType::Unknown;
+  }
+  if (node.stage_name.find("YC") != std::string::npos ||
+      node.stage_name.find("Yc") != std::string::npos ||
+      node.stage_name.find("yc") != std::string::npos) {
+    return SourceType::YC;
+  }
+  return SourceType::Composite;
+}
+
+// Determine the video format of a source node from its stage name.
+// PALM must be checked before PAL to avoid a substring false-match.
+// Returns Unknown for tbc_source (format is determined by the .db metadata
+// file, not the stage name itself).
+VideoSystem get_node_video_format(const ProjectDAGNode& node) {
+  const auto& name = node.stage_name;
+  if (name.find("NTSC") != std::string::npos) {
+    return VideoSystem::NTSC;
+  }
+  if (name.find("PALM") != std::string::npos) {
+    return VideoSystem::PAL_M;
+  }
+  if (name.find("PAL") != std::string::npos) {
+    return VideoSystem::PAL;
+  }
+  return VideoSystem::Unknown;
+}
+
 }  // namespace
 
 // Project class method implementations
@@ -333,19 +387,10 @@ bool Project::has_source() const {
 }
 
 SourceType Project::get_source_type() const {
-  // Check all source nodes to determine the type
   for (const auto& node : nodes_) {
     if (node.node_type == NodeType::SOURCE) {
-      // YC sources have "YC" in their stage name
-      if (node.stage_name.find("YC") != std::string::npos ||
-          node.stage_name.find("Yc") != std::string::npos ||
-          node.stage_name.find("yc") != std::string::npos) {
-        return SourceType::YC;
-      }
-      // Composite sources (PAL_Comp_Source, NTSC_Comp_Source, etc.)
-      else if (node.stage_name.find("Source") != std::string::npos) {
-        return SourceType::Composite;
-      }
+      const SourceType t = get_node_signal_type(node);
+      if (t != SourceType::Unknown) return t;
     }
   }
   return SourceType::Unknown;
@@ -473,6 +518,14 @@ Project load_project_from_yaml(const std::string& yaml_text,
   project.description_ = root["project"]["description"].as<std::string>("");
   project.version_ = root["project"]["version"].as<std::string>("1.0");
 
+  // Reject project files that are not v2.0. v1.x files are not supported.
+  if (project.version_ != "2.0") {
+    throw std::runtime_error(
+        "Project format version '" + project.version_ +
+        "' is not supported by Decode-Orc 2.x.\n"
+        "Please recreate the project using Decode-Orc 2.0 or later.");
+  }
+
   // Validate video format (required)
   if (!root["project"]["video_format"]) {
     throw std::runtime_error(
@@ -510,6 +563,26 @@ Project load_project_from_yaml(const std::string& yaml_text,
                              "': invalid source_format '" + source_format_str +
                              "'. "
                              "Valid values are: Composite, YC, or Unknown");
+  }
+
+  // Load amplitude display unit (required)
+  if (!root["project"]["amplitude_unit"]) {
+    throw std::runtime_error(
+        "Invalid project file '" + filename_hint +
+        "': missing required 'amplitude_unit' field. "
+        "Please create a new project or manually add "
+        "'amplitude_unit: IRE' (or 'mV' or '10bit') to the project section.");
+  }
+
+  std::string amplitude_unit_str =
+      root["project"]["amplitude_unit"].as<std::string>();
+  project.amplitude_unit_ = amplitude_unit_from_string(amplitude_unit_str);
+  if (amplitude_unit_str != "IRE" && amplitude_unit_str != "mV" &&
+      amplitude_unit_str != "10bit") {
+    throw std::runtime_error("Invalid project file '" + filename_hint +
+                             "': invalid amplitude_unit '" +
+                             amplitude_unit_str +
+                             "'. Valid values are: IRE, mV, or 10bit");
   }
 
   // Load DAG nodes
@@ -583,6 +656,107 @@ Project load_project_from_yaml(const std::string& yaml_text,
       auto requirement = parse_required_plugin_node(plugin_yaml);
       if (requirement.has_value()) {
         project.required_plugins_.push_back(std::move(*requirement));
+      }
+    }
+  }
+
+  // Validate source stage nodes against the declared video_format and
+  // source_format, mirroring the enforcement in add_node().
+  for (const auto& node : project.nodes_) {
+    if (node.node_type != NodeType::SOURCE) {
+      continue;
+    }
+
+    if (project.video_format_ != VideoSystem::Unknown) {
+      bool is_ntsc_stage = (node.stage_name.find("NTSC") != std::string::npos);
+      bool is_pal_stage = (node.stage_name.find("PAL") != std::string::npos);
+      if (is_ntsc_stage && project.video_format_ != VideoSystem::NTSC) {
+        throw std::runtime_error(
+            "Project video_format mismatch: project declares '" +
+            video_system_to_string(project.video_format_) +
+            "' but source stage '" + node.stage_name + "' (node " +
+            node.node_id.to_string() + ") is NTSC.");
+      }
+      if (is_pal_stage && !(project.video_format_ == VideoSystem::PAL ||
+                            project.video_format_ == VideoSystem::PAL_M)) {
+        throw std::runtime_error(
+            "Project video_format mismatch: project declares '" +
+            video_system_to_string(project.video_format_) +
+            "' but source stage '" + node.stage_name + "' (node " +
+            node.node_id.to_string() + ") is PAL.");
+      }
+    }
+
+    if (project.source_format_ != SourceType::Unknown) {
+      // CVBS source stages and tbc_source are dual-mode; skip name-based check.
+      const bool is_dual_mode = (node.stage_name == "tbc_source" ||
+                                 node.stage_name == "NTSC_CVBS_Source" ||
+                                 node.stage_name == "PAL_CVBS_Source" ||
+                                 node.stage_name == "PAL_M_CVBS_Source");
+      if (!is_dual_mode) {
+        bool is_yc_stage = (node.stage_name.find("YC") != std::string::npos ||
+                            node.stage_name.find("Yc") != std::string::npos ||
+                            node.stage_name.find("_yc") != std::string::npos);
+        if (is_yc_stage && project.source_format_ != SourceType::YC) {
+          throw std::runtime_error(
+              "Project source_format mismatch: project declares 'Composite' "
+              "but source stage '" +
+              node.stage_name + "' (node " + node.node_id.to_string() +
+              ") is a YC source.");
+        }
+      }
+    }
+  }
+
+  // Validate that all configured source nodes use a consistent signal type.
+  // Mixing composite and Y/C sources within a project is not permitted.
+  {
+    SourceType reference_type = SourceType::Unknown;
+    std::string reference_desc;
+    for (const auto& node : project.nodes_) {
+      if (node.node_type != NodeType::SOURCE) continue;
+      const SourceType node_type = get_node_signal_type(node);
+      if (node_type == SourceType::Unknown) continue;
+      if (reference_type == SourceType::Unknown) {
+        reference_type = node_type;
+        reference_desc = "'" + node.display_name + "' (node " +
+                         node.node_id.to_string() + ")";
+      } else if (node_type != reference_type) {
+        const std::string type_name =
+            (node_type == SourceType::YC) ? "Y/C" : "composite";
+        const std::string ref_name =
+            (reference_type == SourceType::YC) ? "Y/C" : "composite";
+        throw std::runtime_error(
+            "Source signal type mismatch: source node '" + node.display_name +
+            "' (node " + node.node_id.to_string() + ") is a " + type_name +
+            " source, but " + reference_desc + " is a " + ref_name +
+            " source. All sources in a project must use the same signal type.");
+      }
+    }
+  }
+
+  // Validate that all configured source nodes use a consistent video format.
+  // PAL-M is distinct from PAL and NTSC; mixing formats within a project is
+  // not permitted.
+  {
+    VideoSystem reference_fmt = VideoSystem::Unknown;
+    std::string reference_desc;
+    for (const auto& node : project.nodes_) {
+      if (node.node_type != NodeType::SOURCE) continue;
+      const VideoSystem fmt = get_node_video_format(node);
+      if (fmt == VideoSystem::Unknown) continue;
+      if (reference_fmt == VideoSystem::Unknown) {
+        reference_fmt = fmt;
+        reference_desc = "'" + node.display_name + "' (node " +
+                         node.node_id.to_string() + ")";
+      } else if (fmt != reference_fmt) {
+        throw std::runtime_error(
+            "Source video format mismatch: source node '" + node.display_name +
+            "' (node " + node.node_id.to_string() + ") is a " +
+            video_system_to_string(fmt) + " source, but " + reference_desc +
+            " is a " + video_system_to_string(reference_fmt) +
+            " source. All sources in a project must use the same video "
+            "format.");
       }
     }
   }
@@ -672,7 +846,7 @@ std::string serialize_project_to_yaml(const Project& project,
   if (!project.description_.empty()) {
     out << YAML::Key << "description" << YAML::Value << project.description_;
   }
-  out << YAML::Key << "version" << YAML::Value << project.version_;
+  out << YAML::Key << "version" << YAML::Value << "2.0";
 
   // Save video format if set
   if (project.video_format_ != VideoSystem::Unknown) {
@@ -685,6 +859,9 @@ std::string serialize_project_to_yaml(const Project& project,
     out << YAML::Key << "source_format" << YAML::Value
         << source_type_to_string(project.source_format_);
   }
+
+  out << YAML::Key << "amplitude_unit" << YAML::Value
+      << amplitude_unit_to_string(project.amplitude_unit_);
 
   out << YAML::EndMap;
 
@@ -778,7 +955,7 @@ std::string serialize_project_to_yaml(const Project& project,
 
   std::ostringstream file_text;
   file_text << "# ORC Project File\n";
-  file_text << "# Version: " << project.version_ << "\n\n";
+  file_text << "# Version: 2.0\n\n";
   file_text << out.c_str();
   return file_text.str();
 }
@@ -803,10 +980,10 @@ Project create_empty_project(const std::string& project_name,
                              SourceType source_format) {
   Project project;
   project.name_ = project_name;
-  project.version_ = "1.0";
+  project.version_ = "2.0";
   project.video_format_ = video_format;
   project.source_format_ = source_format;
-  // Empty sources, nodes_, and edges
+  project.amplitude_unit_ = default_amplitude_unit(video_format);
   // Mark as modified since it's a newly created project
   project.is_modified_ = true;
   return project;
@@ -879,8 +1056,14 @@ NodeID add_node(Project& project, const std::string& stage_name,
 
   // Validate source stage compatibility with project's video and source format
   if (type_info->type == NodeType::SOURCE) {
-    // Check source_format if set
-    if (project.source_format_ != SourceType::Unknown) {
+    // Check source_format if set.
+    // tbc_source and the CVBS source stages are dual-mode: whether they carry
+    // composite or YC signal is determined by their file-path parameters, not
+    // by the stage name, so they are valid for any source format.
+    const bool is_dual_mode_source =
+        (stage_name == "tbc_source" || stage_name == "NTSC_CVBS_Source" ||
+         stage_name == "PAL_CVBS_Source" || stage_name == "PAL_M_CVBS_Source");
+    if (!is_dual_mode_source && project.source_format_ != SourceType::Unknown) {
       bool is_yc_stage = (stage_name.find("YC") != std::string::npos);
       SourceType stage_type =
           is_yc_stage ? SourceType::YC : SourceType::Composite;
@@ -977,7 +1160,7 @@ bool can_remove_node(const Project& project, NodeID node_id,
       if (reason) {
         *reason =
             "Cannot delete node with connections - disconnect all edges first";
-}
+      }
       return false;
     }
   }
@@ -985,6 +1168,56 @@ bool can_remove_node(const Project& project, NodeID node_id,
   // Node can be removed
   if (reason) *reason = "";
   return true;
+}
+
+// Returns the preset string from a CVBS .meta SQLite sidecar, or empty string
+// if the file is not accessible or does not contain the expected data.
+static std::string read_cvbs_meta_preset(const std::string& meta_path) {
+  if (!std::filesystem::exists(meta_path)) return {};
+  sqlite3* db = nullptr;
+  if (sqlite3_open_v2(meta_path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) !=
+      SQLITE_OK) {
+    if (db) sqlite3_close(db);
+    return {};
+  }
+  sqlite3_stmt* stmt = nullptr;
+  std::string preset;
+  if (sqlite3_prepare_v2(db, "SELECT preset FROM cvbs_file LIMIT 1", -1, &stmt,
+                         nullptr) == SQLITE_OK) {
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+      const char* val =
+          reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+      if (val) preset = val;
+    }
+    sqlite3_finalize(stmt);
+  }
+  sqlite3_close(db);
+  return preset;
+}
+
+// Returns the system string from a TBC .tbc.db SQLite sidecar, or empty
+// string if the file is not accessible or does not contain the expected data.
+static std::string read_tbc_video_system(const std::string& db_path) {
+  if (!std::filesystem::exists(db_path)) return {};
+  sqlite3* db = nullptr;
+  if (sqlite3_open_v2(db_path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) !=
+      SQLITE_OK) {
+    if (db) sqlite3_close(db);
+    return {};
+  }
+  sqlite3_stmt* stmt = nullptr;
+  std::string system;
+  if (sqlite3_prepare_v2(db, "SELECT system FROM capture LIMIT 1", -1, &stmt,
+                         nullptr) == SQLITE_OK) {
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+      const char* val =
+          reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+      if (val) system = val;
+    }
+    sqlite3_finalize(stmt);
+  }
+  sqlite3_close(db);
+  return system;
 }
 
 void set_node_parameters(
@@ -999,34 +1232,191 @@ void set_node_parameters(
     throw std::runtime_error("Node not found: " + node_id.to_string());
   }
 
-  // Only TBC composite sources derive metadata from input_path at persist time.
-  const bool requires_tbc_metadata_sidecar =
-      (node_it->stage_name == "PAL_Comp_Source" ||
-       node_it->stage_name == "NTSC_Comp_Source");
+  // For source nodes, ensure the signal type implied by the incoming parameters
+  // is consistent with all other configured source nodes. All sources in a
+  // project must use the same signal type (all composite or all Y/C).
+  if (node_it->node_type == NodeType::SOURCE) {
+    const SourceType incoming_type = [&]() -> SourceType {
+      auto has_str = [&](const std::string& key) {
+        const auto it = parameters.find(key);
+        return it != parameters.end() &&
+               std::holds_alternative<std::string>(it->second) &&
+               !std::get<std::string>(it->second).empty();
+      };
+      if (is_dual_mode_source(node_it->stage_name)) {
+        if (has_str("y_path") && has_str("c_path")) return SourceType::YC;
+        if (has_str("input_path")) return SourceType::Composite;
+        return SourceType::Unknown;
+      }
+      if (node_it->stage_name.find("YC") != std::string::npos ||
+          node_it->stage_name.find("Yc") != std::string::npos ||
+          node_it->stage_name.find("yc") != std::string::npos) {
+        return SourceType::YC;
+      }
+      return SourceType::Composite;
+    }();
 
-  if (requires_tbc_metadata_sidecar) {
-    auto input_path_it = parameters.find("input_path");
-    if (input_path_it != parameters.end() &&
-        std::holds_alternative<std::string>(input_path_it->second)) {
-      std::string input_path = std::get<std::string>(input_path_it->second);
-
-      // Only validate if a path is provided (empty is allowed)
-      if (!input_path.empty()) {
-        // Check that a metadata file exists (either .tbc.db or legacy
-        // .tbc.json). Full decoder/system validation is deferred to the source
-        // stage on first execution, which calls create_tbc_representation() →
-        // open_tbc_metadata() and reports any mismatch with a clear error at
-        // that point. input_path is the .tbc file; metadata lives alongside as
-        // .tbc.db or .tbc.json
-        std::string db_path = input_path + ".db";
-        std::string json_path = input_path + ".json";
-        bool metadata_exists = std::filesystem::exists(db_path) ||
-                               std::filesystem::exists(json_path);
-        if (!metadata_exists) {
+    if (incoming_type != SourceType::Unknown) {
+      for (const auto& other : project.nodes_) {
+        if (other.node_type != NodeType::SOURCE) continue;
+        if (other.node_id == node_id) continue;
+        const SourceType other_type = get_node_signal_type(other);
+        if (other_type != SourceType::Unknown && other_type != incoming_type) {
+          const std::string type_name =
+              (incoming_type == SourceType::YC) ? "Y/C" : "composite";
+          const std::string conflict_name =
+              (other_type == SourceType::YC) ? "Y/C" : "composite";
           throw std::runtime_error(
-              "Failed to validate TBC file: metadata file not found "
-              "(expected " +
-              db_path + " or " + json_path + ")");
+              "Cannot configure '" + node_it->display_name + "' as a " +
+              type_name + " source: source '" + other.display_name +
+              "' is already configured as " + conflict_name +
+              ". All sources in a project must use the same signal type.");
+        }
+      }
+    }
+  }
+
+  // For source nodes with a stage-name-determined video format (CVBS sources),
+  // validate that the format is consistent with all other configured source
+  // nodes. PAL-M is distinct from PAL and NTSC and cannot be mixed.
+  if (node_it->node_type == NodeType::SOURCE) {
+    const VideoSystem incoming_fmt = get_node_video_format(*node_it);
+    if (incoming_fmt != VideoSystem::Unknown) {
+      for (const auto& other : project.nodes_) {
+        if (other.node_type != NodeType::SOURCE) continue;
+        if (other.node_id == node_id) continue;
+        const VideoSystem other_fmt = get_node_video_format(other);
+        if (other_fmt != VideoSystem::Unknown && other_fmt != incoming_fmt) {
+          throw std::runtime_error(
+              "Cannot configure '" + node_it->display_name + "' as a " +
+              video_system_to_string(incoming_fmt) + " source: source '" +
+              other.display_name + "' is already configured as " +
+              video_system_to_string(other_fmt) +
+              ". All sources in a project must use the same video format.");
+        }
+      }
+    }
+  }
+
+  // CVBS source: validate that the source file's format matches the stage's
+  // fixed system. Throws if the .meta sidecar is accessible and reports a
+  // format mismatch.
+  static const std::array<std::pair<std::string, std::string>, 3>
+      kCvbsStageExpectedSystem = {{{"PAL_CVBS_Source", "PAL"},
+                                   {"NTSC_CVBS_Source", "NTSC"},
+                                   {"PAL_M_CVBS_Source", "PAL_M"}}};
+  for (const auto& [stage, expected_system] : kCvbsStageExpectedSystem) {
+    if (node_it->stage_name == stage) {
+      auto it = parameters.find("input_path");
+      if (it != parameters.end() &&
+          std::holds_alternative<std::string>(it->second)) {
+        const std::string& input_path = std::get<std::string>(it->second);
+        if (!input_path.empty()) {
+          namespace fs = std::filesystem;
+          const fs::path p(input_path);
+          const std::string meta_path =
+              (p.parent_path() / p.stem()).string() + ".meta";
+          const std::string preset = read_cvbs_meta_preset(meta_path);
+          if (!preset.empty() && preset != expected_system) {
+            throw std::runtime_error("The selected " + preset +
+                                     " source file cannot be used with a " +
+                                     expected_system + " source stage");
+          }
+        }
+      }
+      break;
+    }
+  }
+
+  // tbc_source: validate that the source file's video system matches the
+  // project's video system. Throws if the .tbc.db sidecar is accessible and
+  // reports a system mismatch.
+  if (node_it->stage_name == "tbc_source") {
+    const VideoSystem project_system = project.get_video_format();
+
+    // Determine the path to check: composite uses input_path, YC uses y_path.
+    auto get_str_param = [&](const std::string& key) -> std::string {
+      auto pit = parameters.find(key);
+      if (pit != parameters.end() &&
+          std::holds_alternative<std::string>(pit->second)) {
+        return std::get<std::string>(pit->second);
+      }
+      return {};
+    };
+
+    std::string tbc_path = get_str_param("input_path");
+    if (tbc_path.empty()) {
+      tbc_path = get_str_param("y_path");
+    }
+
+    // Prefer an explicit db_path parameter if provided.
+    std::string db_path = get_str_param("db_path");
+
+    // For YC sources the metadata lives next to the base .tbc file, not the
+    // .tbcy/.tbcc file.  Strip the Y/C extension and restore ".tbc" so that
+    // derived paths resolve to e.g. "foo.tbc.db" / "foo.tbc.json".
+    std::string meta_base = tbc_path;
+    if (meta_base.size() > 5) {
+      std::string ext = meta_base.substr(meta_base.size() - 5);
+      for (auto& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+      }
+      if (ext == ".tbcy" || ext == ".tbcc") {
+        meta_base = meta_base.substr(0, meta_base.size() - 5) + ".tbc";
+      }
+    }
+
+    if (db_path.empty() && !tbc_path.empty()) {
+      db_path = meta_base + ".db";
+    }
+
+    if (!tbc_path.empty()) {
+      // Existence check: metadata file must be present (legacy: .json).
+      std::string legacy_json = meta_base + ".json";
+      bool metadata_exists =
+          (!db_path.empty() && std::filesystem::exists(db_path)) ||
+          std::filesystem::exists(legacy_json);
+      if (!metadata_exists) {
+        throw std::runtime_error(
+            "Failed to validate source file: metadata file not found "
+            "(expected " +
+            db_path + " or " + legacy_json + ")");
+      }
+
+      // Format check: if the .tbc.db is accessible and the project system is
+      // known, verify the source system matches.
+      if (!db_path.empty() && project_system != VideoSystem::Unknown) {
+        const std::string file_system_str = read_tbc_video_system(db_path);
+        if (!file_system_str.empty()) {
+          // DB uses underscore (PAL_M); video_system_from_string handles this.
+          const VideoSystem file_system =
+              video_system_from_string(file_system_str);
+          if (file_system != VideoSystem::Unknown &&
+              file_system != project_system) {
+            throw std::runtime_error(
+                "The selected " + video_system_to_string(file_system) +
+                " source file cannot be used with a " +
+                video_system_to_string(project_system) + " project");
+          }
+          // Cross-check against other configured source nodes. PAL-M is
+          // distinct from PAL and NTSC and cannot be mixed.
+          if (file_system != VideoSystem::Unknown) {
+            for (const auto& other : project.nodes_) {
+              if (other.node_type != NodeType::SOURCE) continue;
+              if (other.node_id == node_id) continue;
+              const VideoSystem other_fmt = get_node_video_format(other);
+              if (other_fmt != VideoSystem::Unknown &&
+                  other_fmt != file_system) {
+                throw std::runtime_error(
+                    "Cannot use this " + video_system_to_string(file_system) +
+                    " TBC source: source '" + other.display_name +
+                    "' is already configured as " +
+                    video_system_to_string(other_fmt) +
+                    ". All sources in a project must use the same video "
+                    "format.");
+              }
+            }
+          }
         }
       }
     }
@@ -1195,6 +1585,11 @@ void set_source_format(Project& project, SourceType source_format) {
   project.is_modified_ = true;
 }
 
+void set_amplitude_unit(Project& project, AmplitudeDisplayUnit unit) {
+  project.amplitude_unit_ = unit;
+  project.is_modified_ = true;
+}
+
 bool can_trigger_node(const Project& project, NodeID node_id,
                       std::string* reason) {
   // Find the node
@@ -1265,7 +1660,7 @@ bool trigger_node(Project& project, NodeID node_id, std::string& status_out,
 
   // CRITICAL: Keep executor alive during trigger to prevent dangling pointers
   // Artifacts from execute_to_node may contain representations (like
-  // CorrectedVideoFieldRepresentation) that hold raw pointers to stages owned
+  // VideoFrameRepresentationWrapper) that hold raw pointers to stages owned
   // by the executor/DAG. These stages must outlive the trigger operation.
   auto executor = std::make_shared<DAGExecutor>();
 
@@ -1438,7 +1833,6 @@ NodeCapabilities get_node_capabilities(const Project& project, NodeID node_id) {
   if (it == project.nodes_.end()) {
     caps.remove_reason = "Node not found";
     caps.trigger_reason = "Node not found";
-    caps.inspect_reason = "Node not found";
     return caps;
   }
 
@@ -1487,18 +1881,11 @@ NodeCapabilities get_node_capabilities(const Project& project, NodeID node_id) {
         }
       }
 
-      // Check can_inspect - must have generate_report
-      caps.can_inspect = stage->generate_report().has_value();
-      if (!caps.can_inspect) {
-        caps.inspect_reason = "Stage does not support inspection";
-      }
     } else {
       caps.trigger_reason = "Failed to create stage";
-      caps.inspect_reason = "Failed to create stage";
     }
   } catch (const std::exception& e) {
     caps.trigger_reason = std::string("Error: ") + e.what();
-    caps.inspect_reason = std::string("Error: ") + e.what();
   }
 
   return caps;

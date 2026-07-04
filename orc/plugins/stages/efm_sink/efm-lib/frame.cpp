@@ -8,11 +8,12 @@
 
 #include "frame.h"
 
+#include <orc/stage/logging.h>
+
 #include <cstdio>
 #include <cstdlib>
 
 #include "hex_utils.h"
-#include "logging.h"
 
 // Frame class
 // --------------------------------------------------------------------------------------------------------

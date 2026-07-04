@@ -10,13 +10,11 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <common_types.h>  // For VideoSystem, SourceType
-#include <node_id.h>
-#include <orc_analysis.h>  // For AnalysisToolInfo
-#include <orc_preview_types.h>
-#include <orc_preview_views.h>  // For LiveTweakClass, LiveTweakableParameterView
-#include <orc_rendering.h>      // Public API rendering types
-#include <parameter_types.h>    // For ParameterValue, ParameterDescriptor
+#include <orc/stage/common_types.h>  // For VideoSystem, SourceType
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_preview_types.h>
+#include <orc/stage/orc_rendering.h>  // Public API rendering types
+#include <orc_analysis.h>             // For AnalysisToolInfo
 
 #include <QMainWindow>
 #include <QPointer>
@@ -33,7 +31,6 @@
 #include "orcgraphicsscene.h"
 #include "orcgraphmodel.h"
 #include "presenters/include/dropout_presenter.h"
-#include "presenters/include/hints_presenter.h"
 #include "presenters/include/vbi_presenter.h"
 #include "presenters/include/vbi_view_models.h"
 #include "render_coordinator.h"
@@ -41,12 +38,11 @@
 class OrcGraphicsView;
 class PreviewDialog;
 class VBIDialog;
-class HintsDialog;
+class VideoParameterObserverDialog;
 class NtscObserverDialog;
 class DropoutAnalysisDialog;
 class SNRAnalysisDialog;
 class BurstLevelAnalysisDialog;
-class QualityMetricsDialog;
 class RenderCoordinator;
 
 namespace orc {
@@ -57,7 +53,6 @@ enum class SNRAnalysisMode;
 }  // namespace orc
 
 namespace orc {
-class VideoFieldRepresentation;
 class DAG;
 class AnalysisTool;
 class VBIDecoder;
@@ -125,13 +120,10 @@ class MainWindow : public QMainWindow {
   void onNodeContextMenu(QtNodes::NodeId nodeId, const QPointF& pos);
   void onArrangeDAGToGrid();
   void onQtNodeSelected(QtNodes::NodeId nodeId);
-  void onInspectStage(const orc::NodeID& node_id);
   void onShowVBIDialog();
   void updateVBIDialog();
-  void onShowHintsDialog();
-  void updateHintsDialog();
-  void onShowQualityMetricsDialog();
-  void updateQualityMetricsDialog();
+  void onShowVideoParameterObserverDialog();
+  void updateVideoParameterObserverDialog();
   void onShowNtscObserverDialog();
   void updateNtscObserverDialog();
   void onLineScopeRequested(int image_x, int image_y);
@@ -142,10 +134,12 @@ class MainWindow : public QMainWindow {
   void onSampleMarkerMoved(int sample_x);
   void
   refreshLineScopeForCurrentStage();  ///< Refresh line scope when stage changes
-  void onFieldTimingRequested();
-  void onSetCrosshairsFromFieldTiming();
-  void onLineScopeDialogClosed();
+  void onFrameTimingRequested();
+  void onWaveformMonitorRequested();
+  void onSetCrosshairsFromFrameTiming();
+  void onFrameScopeDialogClosed();
   void onPreviewVectorscopeRequested(const orc::PreviewCoordinate& coordinate);
+  void onPreviewHistogramRequested(const orc::PreviewCoordinate& coordinate);
 
   // Coordinator response slots
   void onPreviewReady(uint64_t request_id, orc::PreviewRenderResult result);
@@ -155,19 +149,25 @@ class MainWindow : public QMainWindow {
                                std::vector<orc::PreviewOutputInfo> outputs);
   void onLineSamplesReady(uint64_t request_id, uint64_t field_index,
                           int line_number, int sample_x,
-                          std::vector<uint16_t> samples,
+                          std::vector<int16_t> samples,
                           std::optional<orc::SourceParameters> video_params,
-                          std::vector<uint16_t> y_samples,
-                          std::vector<uint16_t> c_samples);
-  void onFieldTimingDataReady(uint64_t request_id, uint64_t field_index,
+                          std::vector<int16_t> y_samples,
+                          std::vector<int16_t> c_samples);
+  void onFrameTimingDataReady(uint64_t request_id, uint64_t field_index,
                               std::optional<uint64_t> field_index_2,
-                              std::vector<uint16_t> samples,
-                              std::vector<uint16_t> samples_2,
-                              std::vector<uint16_t> y_samples,
-                              std::vector<uint16_t> c_samples,
-                              std::vector<uint16_t> y_samples_2,
-                              std::vector<uint16_t> c_samples_2,
+                              std::vector<int16_t> samples,
+                              std::vector<int16_t> samples_2,
+                              std::vector<int16_t> y_samples,
+                              std::vector<int16_t> c_samples,
+                              std::vector<int16_t> y_samples_2,
+                              std::vector<int16_t> c_samples_2,
                               int first_field_height, int second_field_height);
+  void onWaveformMonitorDataReady(uint64_t request_id,
+                                  std::vector<int16_t> composite_samples,
+                                  std::vector<int16_t> y_samples,
+                                  std::vector<int16_t> c_samples,
+                                  int first_field_height,
+                                  int second_field_height);
   void onFrameLineNavigationReady(uint64_t request_id,
                                   orc::FrameLineNavigationResult result);
   void onDropoutDataReady(uint64_t request_id,
@@ -184,7 +184,6 @@ class MainWindow : public QMainWindow {
   void onBurstLevelProgress(size_t current, size_t total, QString message);
   void onTriggerProgress(size_t current, size_t total, QString message);
   void onTriggerComplete(uint64_t request_id, bool success, QString status);
-  void onStageParametersApplied(uint64_t request_id, bool success);
   void onCoordinatorError(uint64_t request_id, QString message);
   void onAbout();
 
@@ -241,48 +240,11 @@ class MainWindow : public QMainWindow {
   void refreshPreviewViewAvailability();
   orc::PreviewCoordinate buildCurrentPreviewCoordinate() const;
   void refreshVectorscopeForCurrentCoordinate();
+  void refreshHistogramForCurrentCoordinate();
 
   // In-flight render state helpers — all "rendering" UX lives here
   void beginPreviewRenderInFlight();  // Set flag + start slow-title timer
   void endPreviewRenderInFlight();    // Clear flag + stop timer + restore title
-
-  // Live preview tweak panel (Phase 6)
-  struct LiveTweakStageContext {
-    std::vector<orc::LiveTweakableParameterView> tweakable;
-    std::vector<orc::ParameterDescriptor> descriptors;
-    std::map<std::string, orc::ParameterValue> persisted_values;
-    std::map<std::string, orc::ParameterValue> baseline_values;
-    std::map<std::string, orc::ParameterValue> display_values;
-  };
-
-  void refreshTweakPanel();
-  std::optional<LiveTweakStageContext> buildLiveTweakStageContext(
-      orc::NodeID node_id);
-  std::map<std::string, orc::ParameterValue> buildEffectiveStageParameters(
-      const LiveTweakStageContext& context,
-      const std::map<std::string, orc::ParameterValue>& values) const;
-  bool computeLiveTweakDirty(
-      const LiveTweakStageContext& context,
-      const std::map<std::string, orc::ParameterValue>& current_values) const;
-  void showLiveTweakValues(
-      orc::NodeID node_id,
-      const std::map<std::string, orc::ParameterValue>& display_values,
-      bool dirty);
-  void dispatchLiveTweakApply(orc::NodeID node_id,
-                              std::map<std::string, orc::ParameterValue> params,
-                              orc::LiveTweakClass tweak_class);
-  bool hasStoredLiveTweakValues(orc::NodeID node_id) const;
-  void setStoredLiveTweakValues(
-      orc::NodeID node_id, std::map<std::string, orc::ParameterValue> values);
-  void clearLiveTweakState(orc::NodeID node_id);
-  void clearAllLiveTweakState();
-  void onTweakParameterChanged(
-      orc::NodeID node_id, std::map<std::string, orc::ParameterValue> params,
-      orc::LiveTweakClass tweak_class);
-  void onResetLiveTweaksRequested(orc::NodeID node_id);
-  void onAllLiveTweaksDismissed();
-  void onWriteLiveTweaksRequested(
-      orc::NodeID node_id, std::map<std::string, orc::ParameterValue> params);
 
   // Settings helpers
   QString getLastProjectDirectory() const;
@@ -293,6 +255,9 @@ class MainWindow : public QMainWindow {
   void setLastExportDirectory(const QString& path);
   void saveSettings();
   void restoreSettings();
+
+  void propagateAmplitudeUnit();  ///< Push current project amplitude unit to
+                                  ///< all open dialogs
 
   // Project management
   GUIProject project_;
@@ -313,17 +278,14 @@ class MainWindow : public QMainWindow {
   uint64_t pending_trigger_request_id_{0};
   orc::NodeID pending_trigger_node_id_;  // Track which node is being triggered
   uint64_t pending_line_sample_request_id_{0};
-  uint64_t pending_field_timing_request_id_{0};
+  uint64_t pending_frame_timing_request_id_{0};
+  uint64_t pending_waveform_monitor_request_id_{0};
   std::unordered_map<uint64_t, orc::NodeID>
       pending_dropout_requests_;  // request_id -> node_id
   std::unordered_map<uint64_t, orc::NodeID>
       pending_snr_requests_;  // request_id -> node_id
   std::unordered_map<uint64_t, orc::NodeID>
       pending_burst_level_requests_;  // request_id -> node_id
-  std::unordered_map<orc::NodeID, std::map<std::string, orc::ParameterValue>>
-      live_tweak_baseline_values_by_node_;
-  std::unordered_map<orc::NodeID, std::map<std::string, orc::ParameterValue>>
-      live_tweak_values_by_node_;
 
   // Dropout analysis state tracking
   orc::NodeID last_dropout_node_id_;
@@ -337,10 +299,8 @@ class MainWindow : public QMainWindow {
 
   // UI components
   PreviewDialog* preview_dialog_;
-  QualityMetricsDialog* quality_metrics_dialog_;
   VBIDialog* vbi_dialog_;
-  HintsDialog* hints_dialog_;
-  std::unique_ptr<orc::presenters::HintsPresenter> hints_presenter_;
+  VideoParameterObserverDialog* video_parameter_observer_dialog_;
   std::unique_ptr<orc::presenters::DropoutPresenter> dropout_presenter_;
   std::unique_ptr<orc::presenters::VbiPresenter> vbi_presenter_;
   // Note: project_presenter_ removed - use project_.presenter() instead
@@ -363,7 +323,7 @@ class MainWindow : public QMainWindow {
   // Preview state (UI only - all data comes from core)
   orc::PreviewOutputType current_output_type_;
   std::string
-      current_option_id_;  ///< Current option ID for PreviewableStage rendering
+      current_option_id_;  ///< Current option ID for custom preview rendering
   orc::AspectRatioMode
       current_aspect_ratio_mode_;  ///< Current aspect ratio mode
   std::vector<orc::PreviewOutputInfo>

@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "dropout_decision.h"
+#include <orc/stage/dropout_decision.h>
 
 #include <algorithm>
 

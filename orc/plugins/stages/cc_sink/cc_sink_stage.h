@@ -10,17 +10,17 @@
 #ifndef ORC_CORE_CC_SINK_STAGE_H
 #define ORC_CORE_CC_SINK_STAGE_H
 
-#include <node_type.h>
+#include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <atomic>
 #include <memory>
 #include <string>
 
-#include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
 #include "cc_sink_stage_deps_interface.h"
-#include "stage_parameter.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 
@@ -61,6 +61,7 @@ class CCSinkStage : public DAGStage,
 
   // DAGStage interface
   std::string version() const override { return "1.0"; }
+  ORC_STAGE_INSTRUCTIONS_MD
   NodeTypeInfo get_node_type_info() const override;
 
   std::vector<ArtifactPtr> execute(

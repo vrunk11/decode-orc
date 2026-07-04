@@ -9,14 +9,14 @@
 
 #pragma once
 
+#include <orc/stage/file_io_interface.h>
+
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include "file_io_interface.h"
 
 namespace orc {
 
@@ -73,8 +73,7 @@ class BufferedFileWriter : public IFileWriter<T> {
    * @return true if opened successfully
    */
   using IFileWriter<T>::open;
-  bool open(const std::string& filepath,
-            std::ios::openmode mode) override {
+  bool open(const std::string& filepath, std::ios::openmode mode) override {
     if (is_open_) {
       close();
     }

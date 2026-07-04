@@ -12,7 +12,8 @@
 
 #pragma once
 
-#include <dag_executor.h>
-#include <observation_context.h>
-#include <triggerable_stage.h>
-#include <video_field_representation.h>
+#include <orc/stage/observation_context.h>
+#include <orc/stage/stage.h>
+#include <orc/stage/triggerable_stage.h>
+
+#include "orc_stage_tooling.h"

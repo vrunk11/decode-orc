@@ -9,17 +9,15 @@
 
 #pragma once
 
+#include <orc/stage/observers/observer.h>
+
 #include <array>
 #include <cstdint>
-
-#include "observer.h"
 
 namespace orc {
 
 // Forward declarations
 class ObservationContext;
-class VideoFieldRepresentation;
-class FieldID;
 
 /**
  * @brief Observer for field quality analysis
@@ -40,8 +38,8 @@ class FieldQualityObserver : public Observer {
 
   std::string observer_version() const override { return "1.0.0"; }
 
-  void process_field(const VideoFieldRepresentation& representation,
-                     FieldID field_id, IObservationContext& context) override;
+  void process_frame(const VideoFrameRepresentation& representation,
+                     FrameID frame_id, IObservationContext& context) override;
 
   std::vector<ObservationKey> get_provided_observations() const override {
     return {
@@ -65,8 +63,9 @@ class FieldQualityObserver : public Observer {
    *
    * @return Quality score 0.0-1.0
    */
-  double calculate_quality_score(const VideoFieldRepresentation& representation,
-                                 FieldID field_id) const;
+  double calculate_quality_score(const VideoFrameRepresentation& representation,
+                                 FrameID frame_id, size_t field_height,
+                                 const SourceParameters& vp) const;
 };
 
 }  // namespace orc

@@ -9,6 +9,8 @@
 
 #include "stage_registry.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -17,7 +19,6 @@
 #include <set>
 
 #include "include/plugin_safe_call.h"
-#include "logging.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -237,13 +238,27 @@ std::vector<std::string> collect_default_plugin_search_paths() {
   return paths;
 }
 
-std::vector<std::string> collect_registry_plugin_paths(
+}  // namespace
+
+std::vector<std::string> collect_trusted_registry_plugin_paths(
     const std::vector<StagePluginRegistryEntry>& entries,
     std::vector<StagePluginDiagnostic>& diagnostics) {
   std::vector<std::string> paths;
 
   for (const auto& entry : entries) {
     if (!entry.enabled) {
+      continue;
+    }
+
+    if (!StagePluginRegistry::is_entry_trusted(entry)) {
+      const std::string label =
+          entry.plugin_id.empty() ? entry.path : entry.plugin_id;
+      diagnostics.push_back(
+          {StagePluginDiagnosticSeverity::Warning, entry.path,
+           "Plugin registry entry '" + label +
+               "' is untrusted and was not loaded; mark it trusted to enable "
+               "it (e.g. 'orc-cli plugins trust " +
+               label + "')"});
       continue;
     }
 
@@ -258,8 +273,6 @@ std::vector<std::string> collect_registry_plugin_paths(
 
   return paths;
 }
-
-}  // namespace
 
 StageRegistry& StageRegistry::instance() {
   static StageRegistry registry;
@@ -374,7 +387,7 @@ void StageRegistry::initialize_runtime_plugins() {
         "Using default runtime plugin search paths from build/install layout");
   }
 
-  const auto registry_paths = collect_registry_plugin_paths(
+  const auto registry_paths = collect_trusted_registry_plugin_paths(
       plugin_registry_entries_, plugin_diagnostics_);
   unique_search_paths.insert(registry_paths.begin(), registry_paths.end());
 
@@ -423,6 +436,13 @@ void StageRegistry::initialize_runtime_plugins() {
           DAGStagePtr stage;
           std::optional<NodeTypeInfo> node_type_info;
           std::string fault_error;
+          // Fault-guard note (see plugin_safe_call.h): this guarded region
+          // does NOT meet the "raw C function pointers only" constraint — the
+          // factory constructs a C++ stage object and get_node_type_info()
+          // builds strings. If the plugin faults here, siglongjmp abandons
+          // those objects in flight (leaking memory). Accepted residual risk:
+          // this runs once per stage at startup, and surviving a faulty
+          // plugin with a diagnostic beats crashing the host.
           bool metadata_ok = core_internal::plugin_safe_call(
               [&] {
                 try {
@@ -466,7 +486,7 @@ void StageRegistry::initialize_runtime_plugins() {
               for (const auto& d : plugin_diagnostics_) {
                 if (d.message.find(stage_name) != std::string::npos) {
                   return true;
-}
+                }
               }
               return false;
             }();

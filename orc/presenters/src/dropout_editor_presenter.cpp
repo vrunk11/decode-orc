@@ -9,6 +9,9 @@
 
 #include "../include/dropout_editor_presenter.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/stage.h>
+
 #include <algorithm>
 #include <atomic>
 
@@ -17,9 +20,7 @@
 #include "../../core/analysis/analysis_tool.h"
 #include "../../core/analysis/dropout/dropout_editor_tool.h"
 #include "../../core/include/dag_executor.h"
-#include "../../core/include/logging.h"
 #include "../../core/include/project.h"
-#include "../../core/stages/stage.h"
 
 namespace orc::presenters {
 

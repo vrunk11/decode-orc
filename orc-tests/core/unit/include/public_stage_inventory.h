@@ -42,30 +42,27 @@ struct PublicStageSpec {
 
 inline const std::vector<PublicStageSpec>& public_stage_specs() {
   static const std::vector<PublicStageSpec> specs = {
-      {"NTSC_Comp_Source", PublicStageFamily::Source, true,
+      {"tbc_source", PublicStageFamily::Source, true,
        [] {
-         return orc::StageRegistry::instance().create_stage("NTSC_Comp_Source");
+         return orc::StageRegistry::instance().create_stage("tbc_source");
        }},
-      {"NTSC_YC_Source", PublicStageFamily::Source, true,
+      {"PAL_CVBS_Source", PublicStageFamily::Source, true,
        [] {
-         return orc::StageRegistry::instance().create_stage("NTSC_YC_Source");
+         return orc::StageRegistry::instance().create_stage("PAL_CVBS_Source");
        }},
-      {"PAL_Comp_Source", PublicStageFamily::Source, true,
+      {"NTSC_CVBS_Source", PublicStageFamily::Source, true,
        [] {
-         return orc::StageRegistry::instance().create_stage("PAL_Comp_Source");
+         return orc::StageRegistry::instance().create_stage("NTSC_CVBS_Source");
        }},
-      {"PAL_YC_Source", PublicStageFamily::Source, true,
+      {"PAL_M_CVBS_Source", PublicStageFamily::Source, true,
        [] {
-         return orc::StageRegistry::instance().create_stage("PAL_YC_Source");
+         return orc::StageRegistry::instance().create_stage(
+             "PAL_M_CVBS_Source");
        }},
       {"stacker", PublicStageFamily::Transform, true,
        [] { return orc::StageRegistry::instance().create_stage("stacker"); }},
-      {"field_invert", PublicStageFamily::Transform, true,
-       [] {
-         return orc::StageRegistry::instance().create_stage("field_invert");
-       }},
-      {"field_map", PublicStageFamily::Transform, true,
-       [] { return orc::StageRegistry::instance().create_stage("field_map"); }},
+      {"frame_map", PublicStageFamily::Transform, true,
+       [] { return orc::StageRegistry::instance().create_stage("frame_map"); }},
       {"video_params", PublicStageFamily::Transform, true,
        [] {
          return orc::StageRegistry::instance().create_stage("video_params");
@@ -103,16 +100,16 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
        [] { return orc::StageRegistry::instance().create_stage("CCSink"); }},
       {"ld_sink", PublicStageFamily::Sink, true,
        [] { return orc::StageRegistry::instance().create_stage("ld_sink"); }},
+      {"CVBSSink", PublicStageFamily::Sink, true,
+       [] { return orc::StageRegistry::instance().create_stage("CVBSSink"); }},
       {"EFMSink", PublicStageFamily::Sink, true,
        [] { return orc::StageRegistry::instance().create_stage("EFMSink"); }},
       {"RawEFMSink", PublicStageFamily::Sink, true,
        [] {
          return orc::StageRegistry::instance().create_stage("RawEFMSink");
        }},
-      {"hackdac_sink", PublicStageFamily::Sink, true,
-       [] {
-         return orc::StageRegistry::instance().create_stage("hackdac_sink");
-       }},
+      {"AC3RFSink", PublicStageFamily::Sink, true,
+       [] { return orc::StageRegistry::instance().create_stage("AC3RFSink"); }},
       {"dropout_analysis_sink", PublicStageFamily::Sink, true,
        [] {
          return orc::StageRegistry::instance().create_stage(

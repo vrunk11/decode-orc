@@ -7,13 +7,12 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include "eia608_decoder.h"
+#include <orc/stage/eia608_decoder.h>
+#include <orc/stage/logging.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
-
-#include "logging.h"
 
 namespace orc {
 

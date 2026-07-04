@@ -18,7 +18,8 @@
     "CLI code cannot include core/include/preview_view_registry.h. Use RenderPresenter instead."
 #endif
 
-#include <node_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/stage_preview_capability.h>
 
 #include <functional>
 #include <memory>
@@ -28,7 +29,6 @@
 
 #include "dag_executor.h"
 #include "orc_preview_views.h"
-#include "stage_preview_capability.h"
 
 namespace orc {
 

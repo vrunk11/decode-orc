@@ -160,9 +160,9 @@ TEST(RenderCoordinatorTest, StalePreviewResponses_AreSuppressed) {
   EXPECT_CALL(*mock_presenter, setDAG(testing::_)).Times(1);
   EXPECT_CALL(*mock_presenter, setShowDropouts(false)).Times(1);
 
-  EXPECT_CALL(
-      *mock_presenter,
-      renderPreview(orc::NodeID(9), orc::PreviewOutputType::Field, 0, ""))
+  EXPECT_CALL(*mock_presenter,
+              renderPreview(orc::NodeID(9),
+                            orc::PreviewOutputType::Frame_Field1, 0, ""))
       .WillOnce(
           Invoke([](orc::NodeID node_id, orc::PreviewOutputType output_type,
                     uint64_t output_index, const std::string&) {
@@ -190,64 +190,14 @@ TEST(RenderCoordinatorTest, StalePreviewResponses_AreSuppressed) {
   coordinator.updateDAG(std::make_shared<int>(345));
 
   const uint64_t first_id = coordinator.requestPreview(
-      orc::NodeID(9), orc::PreviewOutputType::Field, 0);
+      orc::NodeID(9), orc::PreviewOutputType::Frame_Field1, 0);
   const uint64_t second_id = coordinator.requestPreview(
-      orc::NodeID(9), orc::PreviewOutputType::Field, 0);
+      orc::NodeID(9), orc::PreviewOutputType::Frame_Field1, 0);
 
   ASSERT_TRUE(waitForCount(preview_spy, 1));
   EXPECT_EQ(preview_spy.count(), 1);
   EXPECT_EQ(preview_spy.at(0).at(0).toULongLong(), second_id);
   EXPECT_NE(first_id, second_id);
-
-  coordinator.stop();
-}
-
-TEST(RenderCoordinatorTest,
-     ApplyStageParametersRequest_EmitsPreviewReadyForSameRequestId) {
-  (void)kMetatypesRegistered;
-
-  auto mock_presenter =
-      std::make_shared<NiceMock<orc::presenters::test::MockRenderPresenter>>();
-
-  EXPECT_CALL(*mock_presenter, setDAG(testing::_)).Times(1);
-  EXPECT_CALL(*mock_presenter, setShowDropouts(false)).Times(1);
-
-  EXPECT_CALL(
-      *mock_presenter,
-      applyStageParameters(
-          orc::NodeID(11),
-          testing::A<const std::map<std::string, orc::ParameterValue>&>()))
-      .WillOnce(Return(true));
-  EXPECT_CALL(
-      *mock_presenter,
-      renderPreview(orc::NodeID(11), orc::PreviewOutputType::Field, 2, ""))
-      .WillOnce(
-          Invoke([](orc::NodeID node_id, orc::PreviewOutputType output_type,
-                    uint64_t output_index, const std::string&) {
-            return orc::PreviewRenderResult{
-                {}, true, "", node_id, output_type, output_index, std::nullopt};
-          }));
-
-  RenderCoordinator coordinator(
-      [mock_presenter](
-          void*) -> std::shared_ptr<orc::presenters::IRenderPresenter> {
-        return mock_presenter;
-      });
-
-  QSignalSpy preview_spy(&coordinator, &RenderCoordinator::previewReady);
-
-  coordinator.start();
-  coordinator.setProject(reinterpret_cast<void*>(0x1));
-  coordinator.updateDAG(std::make_shared<int>(456));
-
-  std::map<std::string, orc::ParameterValue> params;
-  params.emplace("phase", int32_t{3});
-  const uint64_t request_id = coordinator.requestApplyStageParameters(
-      orc::NodeID(11), orc::PreviewOutputType::Field, 2, "", std::move(params));
-
-  ASSERT_TRUE(waitForCount(preview_spy, 1));
-  ASSERT_EQ(preview_spy.count(), 1);
-  EXPECT_EQ(preview_spy.at(0).at(0).toULongLong(), request_id);
 
   coordinator.stop();
 }

@@ -10,10 +10,11 @@
 #ifndef ORC_CORE_DROPOUT_EDITOR_TOOL_H
 #define ORC_CORE_DROPOUT_EDITOR_TOOL_H
 
+#include <orc/stage/stage_parameter.h>
+
 #include <string>
 #include <vector>
 
-#include "../../include/stage_parameter.h"
 #include "analysis_context.h"
 #include "analysis_result.h"
 #include "analysis_tool.h"
@@ -24,7 +25,7 @@ namespace orc {
  * @brief Analysis tool for editing dropout maps
  *
  * This tool opens a GUI dialog that allows the user to:
- * - Navigate through video fields
+ * - Navigate through video frames
  * - Mark new dropout regions by clicking and dragging
  * - Remove false positive dropout regions
  * - Save changes back to the dropout map stage parameter
@@ -54,7 +55,7 @@ class DropoutEditorTool : public AnalysisTool {
   }
 
   bool canAnalyze(AnalysisSourceType source_type) const override {
-    // This tool works with LaserDisc sources (which provide video fields)
+    // This tool works with LaserDisc sources (which provide video frames)
     return source_type == AnalysisSourceType::LaserDisc;
   }
 

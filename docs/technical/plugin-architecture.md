@@ -15,8 +15,13 @@ registered through a common host runtime.
 - **Stable binary interface:** Explicit ABI and API version numbers govern
   compatibility, and the host refuses to load mismatched plugins with a clear
   diagnostic.
-- **Signed-registry distribution:** Plugins are declared in a persistent YAML
-  registry and can be fetched automatically from GitHub release assets at startup.
+- **Registry-based distribution:** Plugins are declared in a persistent YAML
+  registry and can be fetched automatically from GitHub release assets at
+  startup. Non-core registry entries must be explicitly marked trusted
+  before they are downloaded or loaded, and downloaded artifacts are
+  verified against a recorded SHA-256 checksum (see
+  [Distribution integrity](#distribution-integrity)). Plugin binaries are
+  **not** code-signed.
 
 ## Runtime Flow
 
@@ -31,12 +36,15 @@ Host startup
   │      (development build dir or executable-relative install dir)
    │
    ├─ For each registry entry
-   │      ├─ Resolve local path (download from GitHub releases if absent)
+   │      ├─ Check trust_state (untrusted non-core entries are skipped
+   │      │      with a warning diagnostic; nothing is downloaded or loaded)
+   │      ├─ Resolve local path (download from GitHub releases if absent;
+   │      │      verify sha256 checksum, quarantining mismatches)
    │      ├─ dlopen / LoadLibrary the shared library
    │      ├─ Resolve entrypoints:
    │      │      orc_get_stage_plugin_descriptor
    │      │      orc_register_stage_plugin
-   │      ├─ Validate host_abi_version and plugin_api_version
+   │      ├─ Validate host_abi_version, plugin_api_version, toolchain_tag
    │      └─ Call orc_register_stage_plugin → StageRegistry::register_stage
    │
   ├─ Merge registry paths, default search paths, and ORC_STAGE_PLUGIN_PATHS
@@ -46,6 +54,11 @@ Host startup
 
 Loading happens once at startup. Hot-reload is not supported in the current
 version.
+
+Plugins are loaded with `RTLD_LOCAL` (each plugin's symbols stay private to
+that plugin), and plugin libraries are reference-counted: every registered
+stage factory and every live stage instance holds a keep-alive reference, so
+a plugin's code is never unmapped while one of its stages can still run.
 
 `orc-gui` and `orc-cli` share the same persistent registry file. The difference
 between development and packaged installs is the default plugin search path, not
@@ -61,32 +74,72 @@ Plugins are native shared libraries:
 | macOS    | `.dylib`  |
 | Windows  | `.dll`    |
 
-Each plugin must export two C-linkage entrypoints:
+Each plugin must export two C-linkage entrypoints (C++ types cross the
+boundary — see Binary Compatibility Model below):
 
-```c
-// Returns the plugin descriptor (ABI version, API version, metadata)
-const StagePluginDescriptor* orc_get_stage_plugin_descriptor(void);
+```cpp
+// Returns the plugin descriptor (ABI version, API version, toolchain tag,
+// metadata).
+// All descriptor pointer fields must reference static storage.
+const orc::StagePluginDescriptor* orc_get_stage_plugin_descriptor();
 
-// Registers one or more stage types with the host
-void orc_register_stage_plugin(OrcStageRegisterFn register_fn, void* host_ctx);
+// Receives the host service table and registers one or more stage types
+// with the host by invoking register_stage once per exported stage.
+// Returns true when every stage registered successfully.
+bool orc_register_stage_plugin(
+    const orc::OrcPluginServices* services, void* context,
+    bool (*register_stage)(void* context, const char* stage_name,
+                           orc::OrcStageFactoryFn factory),
+    const char** error_message);
 ```
+
+Both symbols are declared with `ORC_STAGE_PLUGIN_EXPORT` (C linkage, default
+visibility). Stage factories match `orc::OrcStageFactoryFn` and return
+`std::shared_ptr<orc::DAGStage>`.
+
+## Binary Compatibility Model
+
+The plugin boundary is a **C++ ABI**, not a C ABI. `std::shared_ptr`,
+`std::string`, STL containers, exceptions, and virtual-function tables all
+cross the host/plugin boundary. Matching version numbers are therefore
+necessary but not sufficient: a plugin must be built with the same compiler
+family, the same C++ standard library, and a compatible build configuration
+as the host. On Windows this includes the CRT flavour — a Debug-CRT plugin
+cannot be loaded by a Release-CRT host.
+
+Since ABI v5 the toolchain requirement is enforced at load time: the
+descriptor's `toolchain_tag` field (populated by the `ORC_SDK_TOOLCHAIN_TAG`
+macro) encodes the compiler family and major version, the C++ standard
+library, and — on Windows — the CRT flavour, e.g. `gcc14/libstdc++`,
+`clang17/libc++`, `msvc19/msvc-stl/release-crt`. The host requires the
+plugin's tag to equal its own tag exactly and rejects the plugin with a
+diagnostic naming both tags otherwise.
+
+The host requires **exact equality** for both `host_abi_version` and
+`plugin_api_version`; a mismatch in either causes the plugin to be rejected
+with a logged diagnostic. The `services_size` field in `OrcPluginServices`
+is an intra-version safety net only: it guards access to service-table
+fields appended within the current ABI version. It is not a cross-version
+compatibility mechanism.
 
 ## Compatibility Gating
 
-Two version numbers govern compatibility. Both are checked before a plugin is
-accepted; a mismatch causes the plugin to be skipped with a logged diagnostic.
+Two version numbers plus the toolchain tag govern compatibility. All three
+are checked before a plugin is accepted; a mismatch causes the plugin to be
+skipped with a logged diagnostic.
 
 ### `host_abi_version`
 
 Controls the binary ABI: the layout of `StagePluginDescriptor`, the entrypoint
 signatures, and the `register_stage` callback contract.
 
-**Current value:** `3`
+**Current value:** `5`
 
 Bumped when any of the following change:
 - `StagePluginDescriptor` field order or alignment
 - Entrypoint function signatures
 - Callback calling convention
+- `IStageServices` gains or loses methods
 
 ### `plugin_api_version`
 
@@ -94,13 +147,20 @@ Controls the stage contract: the `DAGStage` virtual interface,
 `ParameterizedStage`, `TriggerableStage`, `ArtifactPtr`, `ObservationContext`,
 and `NodeTypeInfo` semantics.
 
-**Current value:** `1`
+**Current value:** `2`
 
 Bumped when any of the following change:
 - A `DAGStage` virtual method is added, removed, or reordered
 - `ParameterValue` variant types change
 - `NodeTypeInfo` struct layout changes
 - `execute()` or `trigger()` lifecycle semantics change incompatibly
+- The primary frame-data type changes (e.g. field → frame representation)
+
+### `toolchain_tag`
+
+Identifies the build environment the plugin binary was produced with (ABI
+v5+). Compared as an exact string against the host's own tag; see the
+Binary Compatibility Model above for the encoding.
 
 ## Plugin Registry
 
@@ -131,15 +191,43 @@ Each entry records:
 | `target_platform` | Optional platform hint for cache selection |
 | `local_dev_path` | Optional development override used before remote download |
 | `enabled` | Whether the plugin is loaded at startup |
-| `trust_state` | Trust level (`untrusted`, etc.) |
+| `trust_state` | Trust level, enforced before loading: entries other than `trusted` are neither downloaded nor `dlopen`ed unless `is_core_plugin` is set. Change it with `orc-cli plugins trust <id>` / `untrust <id>` or the GUI Plugin Manager's Trusted checkbox |
 | `license_spdx` | SPDX license identifier |
-| `is_core_plugin` | Marks entries supplied by Decode-Orc itself |
+| `is_core_plugin` | Marks entries supplied by Decode-Orc itself; implicitly trusted |
 | `required_host_abi` | Expected host ABI version |
+| `sha256` | Optional SHA-256 digest (64 hex chars) of the plugin binary for `github_release_asset` entries; verified after download and on cache hits |
 
 Entries with `artifact_source: github_release_asset` and an absent or empty
 `path` are resolved automatically: the host downloads the binary from the
 declared GitHub release and caches it to
-`~/.config/decode-orc/plugin-cache/<platform>/` before loading.
+`~/.config/decode-orc/plugin-cache/<platform>/` before loading. The download
+only happens for trusted entries. When the entry records a `sha256`, the
+digest is checked both after a fresh download and on every cache hit; a
+mismatching file is quarantined (renamed with a `.quarantined` suffix) and
+reported as an error, and a mismatching cache hit triggers one fresh
+download attempt. When no `sha256` is recorded, the host loads the artifact
+but emits a warning that its integrity could not be verified.
+
+### Distribution integrity
+
+What the host verifies before running plugin code, and what it does not:
+
+**Verified:**
+
+- `trust_state` — untrusted non-core registry entries are never downloaded
+  or `dlopen`ed (`stage_plugin_registry.cpp`, `stage_registry.cpp`).
+- `sha256` — downloaded artifacts (and cached copies) are checked against
+  the registry digest when one is recorded (`plugin_remote_loader.cpp`).
+- `host_abi_version` and `plugin_api_version` — exact-match at load time
+  (`stage_plugin_loader.cpp`).
+- `toolchain_tag` — exact-match against the host's compiler/stdlib/build
+  configuration tag (ABI v5).
+
+**Not verified (future work):**
+
+- Code signing. Plugin binaries carry no cryptographic signature and the
+  registry itself is not signed; the `sha256` field authenticates the
+  artifact only as strongly as the registry file that records it.
 
 ## Project-Level Plugin Metadata
 
@@ -202,16 +290,27 @@ and as the recommended standard for third-party authors.
 ## Stage Services
 
 Plugins interact with the host through explicit service interfaces rather than
-direct calls into host internals. The `IStageServices` contract (declared in
-`<orc/plugin/orc_stage_services.h>`) exposes:
+direct calls into host internals. The host builds an `OrcPluginServices` table
+(declared in `<orc/plugin/orc_plugin_services.h>`) and passes it as the first
+argument to `orc_register_stage_plugin()`. The table provides:
 
-- Artifact I/O callbacks (field/frame delivery)
-- Logging and diagnostics
-- Progress reporting
+- `log` — pre-formatted message logging routed to the host logger (plugins use
+  the `ORC_PLUGIN_LOG_*` macros)
+- `render_colour_preview` — converts a decoded `ColourFrameCarrier` to a
+  display-ready `PreviewImage`
+- `stage_services` — optional pointer to the consolidated `IStageServices`
+  interface (may be `nullptr` when the capability is unavailable)
 
-The host provides a concrete `IStageServices` implementation at registration
-time. Plugins call `orc::plugin::get_stage_services()` to obtain the pointer
-within their `orc_register_stage_plugin` implementation.
+The `IStageServices` contract (declared in `<orc/plugin/orc_stage_services.h>`)
+currently exposes buffered file-output factories used by sink stages:
+`create_buffered_file_writer_uint8()`, `create_buffered_file_writer_uint16()`,
+and `create_buffered_file_writer_int16()`. It does not currently provide
+artifact delivery, logging, or progress reporting.
+
+Plugins store the table with `orc::plugin::set_services()` at the start of
+`orc_register_stage_plugin`, and obtain the `IStageServices` pointer later via
+`orc::plugin::get_stage_services()` (which returns `nullptr` when the host does
+not provide it).
 
 ## Stage Tools
 
@@ -223,6 +322,33 @@ exist in host tool dispatch.
 
 Analysis tools (dropout analysis, SNR analysis, burst-level analysis) follow the
 same pattern via `AnalysisToolDescriptor` and `AnalysisToolProvider`.
+
+## SDK Boundary Enforcement
+
+The source-level plugin boundary is an **allowlist** of SDK contract
+headers: the `<orc/plugin/...>` family (ABI, entrypoints, services) and the
+`<orc/stage/...>` family (stage, frame, observation, preview, and utility
+contracts). The complete permitted set is listed in the
+[Plugin SDK Developer Guide](plugin-sdk.md) (SDK Headers section); anything
+else in the host tree is private.
+
+Enforcement happens at two levels:
+
+1. **Compile time** — the `orc-plugin-sdk` / `orc::plugin-sdk` target
+   propagates only the SDK include tree plus the spdlog/fmt usage
+   requirements the SDK headers themselves need. `orc-core` is linked
+   symbols-only (`$<LINK_ONLY:...>`), so its private include directories and
+   third-party dependencies are not visible to plugin translation units;
+   including a private host header fails the plugin's compile. Third-party
+   libraries a plugin uses directly must be declared by the plugin's own
+   CMake target.
+2. **Scan gates** — two hard-fail CI gates (`ctest -L sdk`) run on
+   `orc/plugins/stages/` and `3rd-party-plugins/`:
+   `check_plugin_private_includes.sh` fails on any include that is not an
+   allowlisted SDK header, a plugin-local header, a standard-library or
+   platform header, or a permitted third-party header;
+   `check_plugin_private_links.sh` fails on plugin build files that link
+   private host targets directly.
 
 ## Third-Party Plugin Repositories
 

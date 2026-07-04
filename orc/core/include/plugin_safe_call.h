@@ -22,7 +22,9 @@
 #include <string>
 
 #if defined(_WIN32)
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #else
 #include <setjmp.h>

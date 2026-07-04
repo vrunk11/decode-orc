@@ -9,11 +9,11 @@
 
 #pragma once
 
+#include <orc/stage/field_id.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <string>
 #include <vector>
-
-#include "../../include/field_id.h"
-#include "../../include/video_field_representation.h"
 
 namespace orc {
 
@@ -83,7 +83,7 @@ class DiscMapperAnalyzer {
    * @return Field mapping decision
    */
   FieldMappingDecision analyze(
-      const VideoFieldRepresentation& source,
+      const VideoFrameRepresentation& source,
       const class ObservationContext& observation_context,
       const Options& options = Options{},
       class AnalysisProgress* progress = nullptr);

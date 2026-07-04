@@ -9,6 +9,8 @@
 
 #include "analysis_presenter.h"
 
+#include <orc/stage/logging.h>
+
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
@@ -18,10 +20,8 @@
 #include "../core/analysis/analysis_registry.h"
 #include "../core/analysis/analysis_tool.h"
 #include "../core/include/dag_executor.h"
-#include "../core/include/logging.h"
 #include "../core/include/project.h"
 #include "../core/include/stage_registry.h"
-#include "../core/include/video_field_representation.h"
 
 namespace orc::presenters {
 

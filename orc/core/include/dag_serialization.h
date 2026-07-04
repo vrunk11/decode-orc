@@ -9,14 +9,13 @@
 
 #pragma once
 
-#include <node_id.h>
-#include <node_type.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/stage_parameter.h>
 
 #include <map>
 #include <string>
 #include <vector>
-
-#include "stage_parameter.h"
 
 namespace orc {
 
@@ -28,7 +27,7 @@ namespace orc {
  */
 struct GUIDAGNode {
   NodeID node_id;            ///< Unique identifier for this node
-  std::string stage_name;    ///< Name of the stage type (e.g., "TBCSource")
+  std::string stage_name;    ///< Name of the stage type (e.g., "tbc_source")
   NodeType node_type;        ///< Node type (SOURCE, SINK, TRANSFORM, etc.)
   std::string display_name;  ///< Display name for GUI
   std::string user_label;    ///< User-editable label

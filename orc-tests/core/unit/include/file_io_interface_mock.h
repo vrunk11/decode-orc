@@ -11,8 +11,7 @@
 #define DECODE_ORC_ROOT_FILE_IO_INTERFACE_MOCK_H
 
 #include <gmock/gmock.h>
-
-#include "file_io_interface.h"
+#include <orc/stage/file_io_interface.h>
 
 // using different namespace from module-under-test so that we can use the same
 // class names in the tests as in the module-under-test

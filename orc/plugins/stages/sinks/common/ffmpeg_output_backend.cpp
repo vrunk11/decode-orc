@@ -11,7 +11,14 @@
 
 #ifdef HAVE_FFMPEG
 
-#include <field_id.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/cvbs_signal_constants.h>
+#include <orc/stage/eia608_decoder.h>
+#include <orc/stage/field_id.h>
+#include <orc/stage/frame_id.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observers/closed_caption_observer.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <algorithm>
 #include <cmath>
@@ -19,11 +26,7 @@
 #include <limits>
 #include <thread>
 
-#include "closed_caption_observer.h"
 #include "componentframe.h"
-#include "eia608_decoder.h"
-#include "logging.h"
-#include "video_field_representation.h"
 
 namespace orc {
 
@@ -40,7 +43,8 @@ bool fillAudioFrameFromInterleavedS16(AVFrame* audio_frame,
       float* right_channel = reinterpret_cast<float*>(audio_frame->data[1]);
       for (size_t i = 0; i < static_cast<size_t>(frame_size); i++) {
         left_channel[i] = static_cast<float>(audio_buffer[i * 2]) / 32768.0f;
-        right_channel[i] = static_cast<float>(audio_buffer[i * 2 + 1]) / 32768.0f;
+        right_channel[i] =
+            static_cast<float>(audio_buffer[i * 2 + 1]) / 32768.0f;
       }
       return true;
     }
@@ -459,10 +463,10 @@ bool FFmpegOutputBackend::setupEncoder(const std::string& codec_id,
       params.last_active_frame_line - params.first_active_frame_line;
 
   // Store video system, IRE levels, and full parameters for color space
-  // configuration
+  // configuration.  CVBS_U10_4FSC normative levels from source parameters.
   video_system_ = params.system;
-  black_ire_ = params.black_16b_ire;
-  white_ire_ = params.white_16b_ire;
+  black_ire_ = static_cast<double>(params.blanking_level);
+  white_ire_ = static_cast<double>(params.white_level);
   video_params_ =
       params;  // Store full params for offset handling in convertAndEncode
 
@@ -888,7 +892,7 @@ bool FFmpegOutputBackend::setupEncoder(const std::string& codec_id,
   }
 
   // Configure color space conversion
-  // ComponentFrame uses IRE scale with black_16b_ire/white_16b_ire range
+  // ComponentFrame uses IRE scale with cvbs_blanking/cvbs_white range
   // OutputWriter converts this to limited range Y'CbCr (16-235/240 for 8-bit,
   // scaled to 16-bit) So our source is already in "video" range, not full range
   // SWS_CS_ITU601 and SWS_CS_SMPTE170M are both defined as 5 in FFmpeg;
@@ -998,11 +1002,14 @@ bool FFmpegOutputBackend::convertAndEncode(
   // Clear top padding, if any.
   for (int y = 0; y < crop_top_; y++) {
     uint16_t* dst_y = reinterpret_cast<uint16_t*>(src_frame_->data[0] +
-                                                  static_cast<ptrdiff_t>(y) * src_frame_->linesize[0]);
+                                                  static_cast<ptrdiff_t>(y) *
+                                                      src_frame_->linesize[0]);
     uint16_t* dst_u = reinterpret_cast<uint16_t*>(src_frame_->data[1] +
-                                                  static_cast<ptrdiff_t>(y) * src_frame_->linesize[1]);
+                                                  static_cast<ptrdiff_t>(y) *
+                                                      src_frame_->linesize[1]);
     uint16_t* dst_v = reinterpret_cast<uint16_t*>(src_frame_->data[2] +
-                                                  static_cast<ptrdiff_t>(y) * src_frame_->linesize[2]);
+                                                  static_cast<ptrdiff_t>(y) *
+                                                      src_frame_->linesize[2]);
 
     for (int x = 0; x < width_; x++) {
       dst_y[x] = static_cast<uint16_t>(Y_ZERO);
@@ -1020,11 +1027,14 @@ bool FFmpegOutputBackend::convertAndEncode(
 
     const int dst_line = crop_top_ + y;
     uint16_t* dst_y = reinterpret_cast<uint16_t*>(
-        src_frame_->data[0] + static_cast<ptrdiff_t>(dst_line) * src_frame_->linesize[0]);
+        src_frame_->data[0] +
+        static_cast<ptrdiff_t>(dst_line) * src_frame_->linesize[0]);
     uint16_t* dst_u = reinterpret_cast<uint16_t*>(
-        src_frame_->data[1] + static_cast<ptrdiff_t>(dst_line) * src_frame_->linesize[1]);
+        src_frame_->data[1] +
+        static_cast<ptrdiff_t>(dst_line) * src_frame_->linesize[1]);
     uint16_t* dst_v = reinterpret_cast<uint16_t*>(
-        src_frame_->data[2] + static_cast<ptrdiff_t>(dst_line) * src_frame_->linesize[2]);
+        src_frame_->data[2] +
+        static_cast<ptrdiff_t>(dst_line) * src_frame_->linesize[2]);
 
     for (int x = 0; x < src_width_; x++) {
       // Convert Y'UV (IRE scale) to Y'CbCr (limited range) - same as
@@ -1048,11 +1058,14 @@ bool FFmpegOutputBackend::convertAndEncode(
   // Fill bottom padding lines, if needed.
   for (int y = crop_top_ + src_height_; y < height_; y++) {
     uint16_t* dst_y = reinterpret_cast<uint16_t*>(src_frame_->data[0] +
-                                                  static_cast<ptrdiff_t>(y) * src_frame_->linesize[0]);
+                                                  static_cast<ptrdiff_t>(y) *
+                                                      src_frame_->linesize[0]);
     uint16_t* dst_u = reinterpret_cast<uint16_t*>(src_frame_->data[1] +
-                                                  static_cast<ptrdiff_t>(y) * src_frame_->linesize[1]);
+                                                  static_cast<ptrdiff_t>(y) *
+                                                      src_frame_->linesize[1]);
     uint16_t* dst_v = reinterpret_cast<uint16_t*>(src_frame_->data[2] +
-                                                  static_cast<ptrdiff_t>(y) * src_frame_->linesize[2]);
+                                                  static_cast<ptrdiff_t>(y) *
+                                                      src_frame_->linesize[2]);
 
     for (int x = 0; x < width_; x++) {
       dst_y[x] = static_cast<uint16_t>(Y_ZERO);
@@ -1062,10 +1075,11 @@ bool FFmpegOutputBackend::convertAndEncode(
   }
 
   // Make destination frame writable before sws_scale writes to it. With
-  // FF_THREAD_FRAME enabled, avcodec_send_frame() takes an internal av_frame_ref
-  // on frame_, so buf[0]->refcount becomes > 1. Without this call, the next
-  // sws_scale would write to a buffer still held by the encoder thread, causing
-  // heap corruption (Windows 0xC0000005 inside av_buffer_realloc).
+  // FF_THREAD_FRAME enabled, avcodec_send_frame() takes an internal
+  // av_frame_ref on frame_, so buf[0]->refcount becomes > 1. Without this call,
+  // the next sws_scale would write to a buffer still held by the encoder
+  // thread, causing heap corruption (Windows 0xC0000005 inside
+  // av_buffer_realloc).
   ret = av_frame_make_writable(frame_);
   if (ret < 0) {
     char errbuf[AV_ERROR_MAX_STRING_SIZE];
@@ -1382,39 +1396,33 @@ bool FFmpegOutputBackend::encodeAudioForFrame() {
   int frame_size =
       audio_codec_ctx_->frame_size;  // AAC typically uses 1024 samples
 
-  // Collect audio samples for these 2 fields and add to persistent buffer
-  // NOTE: Padding fields (from field_map) may have no audio samples - we still
-  // need to process them to maintain audio/video sync
-  for (int field_offset = 0;
-       field_offset < 2 &&
-       current_field_for_audio_ < start_field_index_ + num_fields_;
-       field_offset++) {
-    auto samples = vfr_->get_audio_samples(FieldID(current_field_for_audio_));
+  // Collect audio samples for this video frame (one frame = two fields).
+  // VFrameR provides audio per frame; advance current_field_for_audio_ by 2
+  // so the field-based start/num_fields_ accounting stays consistent with the
+  // closed-caption extraction that still iterates per field.
+  if (current_field_for_audio_ < start_field_index_ + num_fields_) {
+    orc::FrameID frame_id = current_field_for_audio_ / 2;
+    auto samples = vfr_->get_audio_samples(frame_id);
 
     if (samples.empty()) {
-      // Padding field with no audio - generate silence to maintain sync
-      // Typical field has ~1470 samples for NTSC (48kHz / 29.97 fps / 2 fields)
-      // or ~1920 samples for PAL (48kHz / 25 fps / 2 fields)
-      uint32_t sample_count =
-          vfr_->get_audio_sample_count(FieldID(current_field_for_audio_));
+      // No audio for this frame — generate silence to maintain A/V sync.
+      uint32_t sample_count = vfr_->get_audio_sample_count(frame_id);
       if (sample_count == 0) {
-        // Estimate based on system if no sample count available
         auto video_params = vfr_->get_video_parameters();
         if (video_params) {
-          // Calculate expected samples per field
-          // Assuming 48kHz audio sample rate
-          double field_rate =
-              (video_params->system == VideoSystem::PAL) ? 50.0 : 59.94;
-          sample_count = static_cast<uint32_t>(std::lround(48000.0 / field_rate));
+          // Estimate expected stereo int16 pairs per frame at 48 kHz.
+          double frame_rate =
+              (video_params->system == VideoSystem::PAL) ? 25.0 : 29.97;
+          sample_count =
+              static_cast<uint32_t>(std::lround(48000.0 / frame_rate));
           sample_count *= 2;  // stereo (interleaved L/R pairs)
         }
       }
-      // Insert silence (zeros) for padding fields
       samples.resize(sample_count, 0);
     }
 
     audio_buffer_.insert(audio_buffer_.end(), samples.begin(), samples.end());
-    current_field_for_audio_++;
+    current_field_for_audio_ += 2;  // Advance by 2 fields (= 1 frame)
   }
 
   ORC_LOG_DEBUG(
@@ -1484,8 +1492,9 @@ bool FFmpegOutputBackend::encodeAudioForFrame() {
     }
 
     // Remove the encoded samples from the buffer
-    audio_buffer_.erase(audio_buffer_.begin(),
-                        audio_buffer_.begin() + static_cast<ptrdiff_t>(frame_size) * 2);
+    audio_buffer_.erase(
+        audio_buffer_.begin(),
+        audio_buffer_.begin() + static_cast<ptrdiff_t>(frame_size) * 2);
   }
 
   return true;
@@ -1613,20 +1622,19 @@ void FFmpegOutputBackend::setupChapterMetadata(
 
   for (size_t i = 0; i < chapters.size(); ++i) {
     const int64_t start_ms = field_offset_to_ms(chapters[i].field_offset);
-    const int64_t end_ms = (i + 1 < chapters.size())
-                               ? field_offset_to_ms(chapters[i + 1].field_offset)
-                               : total_ms;
+    const int64_t end_ms =
+        (i + 1 < chapters.size())
+            ? field_offset_to_ms(chapters[i + 1].field_offset)
+            : total_ms;
 
     const std::string title = "Chapter " + std::to_string(chapters[i].number);
 
     // Allocate and populate AVChapter manually (avformat_new_chapter was
     // removed in FFmpeg 7.x).
-    AVChapter* chapter =
-        static_cast<AVChapter*>(av_mallocz(sizeof(AVChapter)));
+    AVChapter* chapter = static_cast<AVChapter*>(av_mallocz(sizeof(AVChapter)));
     if (!chapter) {
-      ORC_LOG_WARN(
-          "FFmpegOutputBackend: Failed to allocate chapter {} ('{}')", i + 1,
-          title);
+      ORC_LOG_WARN("FFmpegOutputBackend: Failed to allocate chapter {} ('{}')",
+                   i + 1, title);
       continue;
     }
     chapter->id = static_cast<int64_t>(i);
@@ -1638,9 +1646,9 @@ void FFmpegOutputBackend::setupChapterMetadata(
     // Append chapter pointer to format context chapters array.
     // av_realloc_array expects void*; cast explicitly to satisfy the
     // bugprone-multi-level-implicit-pointer-conversion check.
-    AVChapter** new_chapters = static_cast<AVChapter**>(av_realloc_array(
-        static_cast<void*>(format_ctx_->chapters),
-        format_ctx_->nb_chapters + 1, sizeof(AVChapter*)));
+    AVChapter** new_chapters = static_cast<AVChapter**>(
+        av_realloc_array(static_cast<void*>(format_ctx_->chapters),
+                         format_ctx_->nb_chapters + 1, sizeof(AVChapter*)));
     if (!new_chapters) {
       ORC_LOG_WARN(
           "FFmpegOutputBackend: Failed to resize chapters array for chapter "

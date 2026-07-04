@@ -10,17 +10,15 @@
 #ifndef ORC_CORE_EFM_SINK_STAGE_H
 #define ORC_CORE_EFM_SINK_STAGE_H
 
-#include <node_type.h>
+#include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/node_type.h>
+#include <orc/stage/stage_parameter.h>
+#include <orc/stage/triggerable_stage.h>
 
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
-
-#include "../../../sdk/include/orc/plugin/orc_stage_runtime.h"
-#include "stage_parameter.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 
@@ -33,7 +31,7 @@ class IRawEFMSinkStageDeps;
  * and writes them to a raw binary file.
  * This is a SINK stage - it has inputs but no outputs.
  *
- * The EFM data flows through the VideoFieldRepresentation from the source
+ * The EFM data flows through the VideoFrameRepresentation from the source
  * stage, which reads the .efm file (if specified in the source stage
  * parameters).
  *
@@ -62,6 +60,7 @@ class RawEFMSinkStage : public DAGStage,
 
   // DAGStage interface
   std::string version() const override { return "1.0"; }
+  ORC_STAGE_INSTRUCTIONS_MD
   NodeTypeInfo get_node_type_info() const override;
 
   std::vector<ArtifactPtr> execute(

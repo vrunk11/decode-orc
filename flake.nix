@@ -3,10 +3,12 @@
 
   # Upstream dependencies for the flake
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
     qtnodes = {
-      url = "github:paceholder/nodeeditor";
+      # Pinned commit; keep in sync with io.github.simoninns.decode-orc.yml
+      # and the QtNodes fetch steps in .github/workflows/package-{macos,windows}.yml.
+      url = "github:paceholder/nodeeditor/1b173f885b52e4fd9616f663ea288435ccf1d0d8";
       flake = false;
     };
     ezpwd = {
@@ -403,6 +405,7 @@
             perf
             hotspot
             heaptrack
+            mold
           ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             lldb
           ];
@@ -430,6 +433,9 @@
 
           # Environment variables
           CMAKE_EXPORT_COMPILE_COMMANDS = 1;
+          # Default to Ninja when no -G is given (existing build trees keep
+          # their configured generator; a Makefiles tree must be recreated).
+          CMAKE_GENERATOR = "Ninja";
           QT_QPA_PLATFORM = pkgs.lib.optionalString pkgs.stdenv.isLinux "xcb"; # For Linux
         };
 

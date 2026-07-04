@@ -27,13 +27,13 @@ namespace orc::presenters {
  * - Applying generated alignment map to source_align stage
  *
  * The Source Alignment tool analyzes multiple input sources (typically
- * different TBC captures of the same disc) and determines the optimal alignment
+ * different captures of the same disc) and determines the optimal alignment
  * by finding common VBI frame numbers or CLV timecodes across all sources.
  *
  * **Requirements:**
  * - Node must be a source_align stage
  * - Must have at least one input (typically multiple)
- * - Input nodes must produce VideoFieldRepresentation artifacts
+ * - Input nodes must produce VideoFrameRepresentation artifacts
  * - Sources should have VBI data (CAV picture numbers or CLV timecodes)
  */
 class SourceAlignmentPresenter : public AnalysisToolPresenter {

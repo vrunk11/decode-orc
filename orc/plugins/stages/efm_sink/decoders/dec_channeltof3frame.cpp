@@ -8,11 +8,11 @@
 
 #include "dec_channeltof3frame.h"
 
+#include <orc/stage/logging.h>
+
 #include <cmath>
 #include <queue>
 #include <stdexcept>
-
-#include "logging.h"
 
 ChannelToF3Frame::ChannelToF3Frame() {
   // Statistics
@@ -65,7 +65,7 @@ void ChannelToF3Frame::processQueue() {
           "ChannelToF3Frame::processQueue() - Frame data is {} bits (should be "
           "588)",
           bitCount);
-}
+    }
     if (bitCount == 588) m_goodFrames++;
     if (bitCount < 588) m_undershootFrames++;
     if (bitCount > 588) m_overshootFrames++;
@@ -137,7 +137,7 @@ F3Frame ChannelToF3Frame::createF3Frame(const std::vector<uint8_t>& tValues) {
     f3Frame.setFrameTypeAsSync1();
   } else {
     f3Frame.setFrameTypeAsSubcode(subcode);
-}
+  }
 
   // Set the frame data
   f3Frame.setData(dataValues);

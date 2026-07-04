@@ -9,13 +9,13 @@
 
 #pragma once
 
-#include <common_types.h>  // PreviewOutputType
-#include <field_id.h>
-#include <node_id.h>
+#include <orc/stage/common_types.h>  // PreviewOutputType
+#include <orc/stage/field_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_rendering.h>          // Public API rendering types
+#include <orc/stage/orc_source_parameters.h>  // Public API SourceParameters
+#include <orc/stage/parameter_types.h>        // ParameterValue
 #include <orc_preview_views.h>
-#include <orc_rendering.h>          // Public API rendering types
-#include <orc_source_parameters.h>  // Public API SourceParameters
-#include <parameter_types.h>        // ParameterValue
 
 #include <cstdint>
 #include <functional>
@@ -330,6 +330,23 @@ class RenderPresenter {
   uint64_t triggerStage(NodeID node_id, ProgressCallback callback);
 
   /**
+   * @brief Trigger a stage with transient parameter overrides
+   *
+   * Like triggerStage() but merges the supplied overrides into the node's
+   * stored parameters for this trigger only — the node's saved parameters
+   * are not modified.
+   *
+   * @param node_id Node to trigger
+   * @param callback Progress callback
+   * @param parameter_overrides Key/value pairs that shadow the node's params
+   * @return Request ID for tracking
+   * @throws std::runtime_error if triggering fails
+   */
+  uint64_t triggerStage(
+      NodeID node_id, ProgressCallback callback,
+      std::map<std::string, ParameterValue> parameter_overrides);
+
+  /**
    * @brief Cancel ongoing trigger operation
    *
    * This sets a cancellation flag that the trigger operation will check.
@@ -452,11 +469,11 @@ class RenderPresenter {
    * For single field outputs, only first_field_height is used.
    */
   struct LineSampleData {
-    std::vector<uint16_t>
+    std::vector<int16_t>
         composite_samples;  ///< Composite/combined samples (always populated)
-    std::vector<uint16_t> y_samples;  ///< Luma samples (only for Y/C sources)
-    std::vector<uint16_t> c_samples;  ///< Chroma samples (only for Y/C sources)
-    bool has_separate_channels;       ///< True if Y/C separation is available
+    std::vector<int16_t> y_samples;  ///< Luma samples (only for Y/C sources)
+    std::vector<int16_t> c_samples;  ///< Chroma samples (only for Y/C sources)
+    bool has_separate_channels;      ///< True if Y/C separation is available
     int first_field_height = 0;  ///< Height of first field from VFR descriptor
     int second_field_height =
         0;  ///< Height of second field (0 if single field)
@@ -473,10 +490,10 @@ class RenderPresenter {
    * @param preview_width Width of preview image (for coordinate mapping)
    * @return Vector of 16-bit sample values
    */
-  std::vector<uint16_t> getLineSamples(NodeID node_id,
-                                       orc::PreviewOutputType output_type,
-                                       uint64_t output_index, int line_number,
-                                       int sample_x, int preview_width);
+  std::vector<int16_t> getLineSamples(NodeID node_id,
+                                      orc::PreviewOutputType output_type,
+                                      uint64_t output_index, int line_number,
+                                      int sample_x, int preview_width);
 
   /**
    * @brief Get line samples with Y/C separation for oscilloscope display
@@ -568,7 +585,7 @@ class RenderPresenter {
    * @param node_id Node to execute to
    * @return Shared pointer to field representation (as void* for encapsulation)
    *
-   * @note Returns core VideoFieldRepresentation. Analysis tools should
+   * @note Returns core VideoFrameRepresentation. Analysis tools should
    * eventually migrate to presenter-based data access.
    */
   std::shared_ptr<const void> executeToNode(NodeID node_id);
@@ -600,39 +617,6 @@ class RenderPresenter {
    * @return String describing cache usage
    */
   std::string getCacheStats() const;
-
-  // === Live Preview Tweak Panel ===
-
-  /**
-   * @brief Apply updated parameters to the live stage instance without
-   * rebuilding the DAG.
-   *
-   * For DecodePhase tweaks this invalidates the decoder cache so the next
-   * renderPreview() call produces a fresh frame with the new parameters.
-   * Never triggers a full DAG rebuild.
-   *
-   * @param node_id  Node whose stage should receive the parameter update.
-   * @param params   Parameters to apply (only tweakable keys need be present).
-   * @return true if the stage was found and accepted the parameters.
-   */
-  bool applyStageParameters(
-      NodeID node_id, const std::map<std::string, ParameterValue>& params);
-
-  /**
-   * @brief Return the live-tweakable parameter declarations for a node's stage.
-   *
-   * Returns a view-model list suitable for building the preview tweak panel.
-   * Returns an empty vector if the stage does not implement
-   * IStagePreviewCapability or has not yet loaded any input data.
-   *
-   * @param node_id Node to query.
-   * @return View-model list of tweakable parameters (may be empty).
-   */
-  std::vector<orc::LiveTweakableParameterView> getStageTweakableParameters(
-      NodeID node_id);
-
-  std::map<std::string, ParameterValue> getStageCurrentParameters(
-      NodeID node_id);
 
  private:
   class Impl;

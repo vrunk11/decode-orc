@@ -9,7 +9,7 @@
 
 #include "fieldpreviewwidget.h"
 
-#include <orc_rendering.h>  // For public API PreviewImage and DropoutRegion
+#include <orc/stage/orc_rendering.h>  // For public API PreviewImage and DropoutRegion
 
 #include <QMouseEvent>
 #include <QPaintEvent>
@@ -46,12 +46,15 @@ void FieldPreviewWidget::setImage(const orc::PreviewImage& image) {
     if (current_image_.width() != static_cast<int>(image.width) ||
         current_image_.height() != static_cast<int>(image.height) ||
         current_image_.format() != QImage::Format_RGB888) {
-      current_image_ = QImage(static_cast<int>(image.width), static_cast<int>(image.height), QImage::Format_RGB888);
+      current_image_ =
+          QImage(static_cast<int>(image.width), static_cast<int>(image.height),
+                 QImage::Format_RGB888);
     }
 
     // QImage aligns scanlines to 4-byte boundaries, so we need to check stride
     const int source_bytes_per_line = static_cast<int>(image.width * 3);
-    const int qimage_bytes_per_line = static_cast<int>(current_image_.bytesPerLine());
+    const int qimage_bytes_per_line =
+        static_cast<int>(current_image_.bytesPerLine());
 
     if (source_bytes_per_line == qimage_bytes_per_line) {
       // Fast path: strides match, bulk copy

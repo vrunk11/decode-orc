@@ -10,11 +10,11 @@
 #ifndef ORC_CORE_EFM_SINK_STAGE_DEPS_INTERFACE_H
 #define ORC_CORE_EFM_SINK_STAGE_DEPS_INTERFACE_H
 
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <string>
-
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 struct EFMSinkOptions {
@@ -42,7 +42,7 @@ class IEFMSinkStageDeps {
                     std::atomic<bool>* cancel_requested) = 0;
 
   virtual EFMSinkDecodeResult decode_efm(
-      const VideoFieldRepresentation* representation,
+      const VideoFrameRepresentation* representation,
       const EFMSinkOptions& options) = 0;
 };
 }  // namespace orc

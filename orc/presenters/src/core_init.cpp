@@ -7,7 +7,8 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include "../core/include/logging.h"
+#include <orc/stage/logging.h>
+
 #include "../include/project_presenter.h"
 
 namespace orc::presenters {

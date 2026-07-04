@@ -10,13 +10,13 @@
 #ifndef ORC_CORE_CC_SINK_STAGE_DEPS_INTERFACE_H
 #define ORC_CORE_CC_SINK_STAGE_DEPS_INTERFACE_H
 
+#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/triggerable_stage.h>
+#include <orc/stage/video_frame_representation.h>
+
 #include <atomic>
 #include <cstdint>
 #include <string>
-
-#include "observation_context_interface.h"
-#include "triggerable_stage.h"
-#include "video_field_representation.h"
 
 namespace orc {
 /**
@@ -46,7 +46,7 @@ class ICCSinkStageDeps {
   virtual void init(TriggerProgressCallback progress_callback,
                     std::atomic<bool>* cancel_requested) = 0;
 
-  virtual CCExportResult export_cc(VideoFieldRepresentation* representation,
+  virtual CCExportResult export_cc(VideoFrameRepresentation* representation,
                                    IObservationContext& observation_context,
                                    CCExportOptions options) = 0;
 };

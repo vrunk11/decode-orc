@@ -9,17 +9,19 @@
 
 #include "ac3rf_sink_stage.h"
 
-#include <common_types.h>
+#include <orc/stage/common_types.h>
+#include <orc/stage/logging.h>
 
 #include <stdexcept>
 
 #include "ac3rf_sink_stage_deps.h"
 #include "ac3rf_sink_stage_deps_interface.h"
-#include "logging.h"
 
 namespace orc {
 
-AC3RFSinkStage::AC3RFSinkStage() = default;
+AC3RFSinkStage::AC3RFSinkStage() {
+  set_configuration_status(orc::ConfigurationStatus::Red);
+}
 
 NodeTypeInfo AC3RFSinkStage::get_node_type_info() const {
   return NodeTypeInfo{NodeType::SINK,
@@ -74,6 +76,14 @@ std::map<std::string, ParameterValue> AC3RFSinkStage::get_parameters() const {
 bool AC3RFSinkStage::set_parameters(
     const std::map<std::string, ParameterValue>& params) {
   parameters_ = params;
+
+  const auto it = params.find("output_path");
+  const bool has_path =
+      (it != params.end() && std::holds_alternative<std::string>(it->second) &&
+       !std::get<std::string>(it->second).empty());
+
+  set_configuration_status(has_path ? orc::ConfigurationStatus::Green
+                                    : orc::ConfigurationStatus::Red);
   return true;
 }
 
@@ -89,17 +99,17 @@ bool AC3RFSinkStage::trigger(
     // Validate input
     if (inputs.empty()) {
       throw std::runtime_error(
-          "AC3 RF sink requires one input (VideoFieldRepresentation)");
+          "AC3 RF sink requires one input (VideoFrameRepresentation)");
     }
 
-    auto vfr = std::dynamic_pointer_cast<VideoFieldRepresentation>(inputs[0]);
+    auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
     if (!vfr) {
-      throw std::runtime_error("Input must be a VideoFieldRepresentation");
+      throw std::runtime_error("Input must be a VideoFrameRepresentation");
     }
 
     if (!vfr->has_ac3_rf()) {
       throw std::runtime_error(
-          "Input VFR does not have AC3 RF symbols data "
+          "Input VFrameR does not have AC3 RF symbols data "
           "(no AC3 RF symbols file specified in the source stage?)");
     }
 

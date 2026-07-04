@@ -9,10 +9,10 @@
 
 #include "vbi_decoder.h"
 
-#include <cstdio>
+#include <orc/stage/logging.h>
+#include <orc/stage/observation_context.h>
 
-#include "include/observation_context.h"
-#include "logging.h"
+#include <cstdio>
 
 namespace {
 

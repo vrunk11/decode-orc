@@ -9,10 +9,11 @@
 
 #include "ffmpeg_video_sink_stage.h"
 
-#include "../../../../sdk/include/orc/plugin/orc_stage_runtime.h"
-#include "biphase_observer.h"
-#include "closed_caption_observer.h"
-#include "logging.h"
+#include <orc/plugin/orc_stage_runtime.h>
+#include <orc/stage/logging.h>
+#include <orc/stage/observers/biphase_observer.h>
+#include <orc/stage/observers/closed_caption_observer.h>
+
 #include "output_backend.h"
 
 namespace orc {
@@ -199,34 +200,30 @@ bool FFmpegVideoSinkStage::trigger(
         "FFmpegVideoSink: Closed caption embedding enabled, extracting CC "
         "observations");
 
-    // Extract VideoFieldRepresentation from input
+    // Extract VideoFrameRepresentation from input
     if (!inputs.empty()) {
-      auto vfr = std::dynamic_pointer_cast<VideoFieldRepresentation>(inputs[0]);
+      auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
       if (vfr) {
         // Create and run ClosedCaptionObserver to populate observations
         auto cc_observer = std::make_shared<ClosedCaptionObserver>();
 
-        // Get field range from VFR
-        auto field_range = vfr->field_range();
-        const size_t total_cc_fields = static_cast<size_t>(
-            field_range.end.value() - field_range.start.value() + 1);
+        auto frame_range = vfr->frame_range();
+        const size_t total_cc_frames = frame_range.count();
 
         if (progress_callback_) {
-          progress_callback_(0, total_cc_fields,
+          progress_callback_(0, total_cc_frames,
                              "Collecting closed caption data...");
         }
 
-        // Run observer on all fields to extract CC data
-        size_t cc_fields_processed = 0;
-        for (FieldID::value_type field_num = field_range.start.value();
-             field_num <= field_range.end.value(); ++field_num) {
-          FieldID field_id(field_num);
-          if (vfr->has_field(field_id)) {
-            cc_observer->process_field(*vfr, field_id, observation_context);
+        size_t cc_frames_processed = 0;
+        for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
+             ++frame_id) {
+          if (vfr->has_frame(frame_id)) {
+            cc_observer->process_frame(*vfr, frame_id, observation_context);
           }
-          ++cc_fields_processed;
+          ++cc_frames_processed;
           if (progress_callback_) {
-            progress_callback_(cc_fields_processed, total_cc_fields,
+            progress_callback_(cc_frames_processed, total_cc_frames,
                                "Collecting closed caption data...");
           }
           if (cancel_requested_.load()) {
@@ -237,8 +234,8 @@ bool FFmpegVideoSinkStage::trigger(
         }
 
         ORC_LOG_DEBUG(
-            "FFmpegVideoSink: CC observations extracted for fields {}-{}",
-            field_range.start.value(), field_range.end.value());
+            "FFmpegVideoSink: CC observations extracted for {} frames",
+            total_cc_frames);
       }
     }
   }
@@ -263,28 +260,25 @@ bool FFmpegVideoSinkStage::trigger(
         "observations");
 
     if (!inputs.empty()) {
-      auto vfr =
-          std::dynamic_pointer_cast<VideoFieldRepresentation>(inputs[0]);
+      auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
       if (vfr) {
         BiphaseObserver biphase_observer;
-        auto field_range = vfr->field_range();
-        const size_t total_fields = static_cast<size_t>(
-            field_range.end.value() - field_range.start.value() + 1);
+        auto frame_range = vfr->frame_range();
+        const size_t total_frames = frame_range.count();
 
         if (progress_callback_) {
-          progress_callback_(0, total_fields, "Collecting VBI chapter data...");
+          progress_callback_(0, total_frames, "Collecting VBI chapter data...");
         }
 
-        size_t fields_processed = 0;
-        for (FieldID::value_type field_num = field_range.start.value();
-             field_num <= field_range.end.value(); ++field_num) {
-          FieldID field_id(field_num);
-          if (vfr->has_field(field_id)) {
-            biphase_observer.process_field(*vfr, field_id, observation_context);
+        size_t frames_processed = 0;
+        for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
+             ++frame_id) {
+          if (vfr->has_frame(frame_id)) {
+            biphase_observer.process_frame(*vfr, frame_id, observation_context);
           }
-          ++fields_processed;
+          ++frames_processed;
           if (progress_callback_) {
-            progress_callback_(fields_processed, total_fields,
+            progress_callback_(frames_processed, total_frames,
                                "Collecting VBI chapter data...");
           }
           if (cancel_requested_.load()) {
@@ -295,8 +289,8 @@ bool FFmpegVideoSinkStage::trigger(
         }
 
         ORC_LOG_DEBUG(
-            "FFmpegVideoSink: VBI observations extracted for fields {}-{}",
-            field_range.start.value(), field_range.end.value());
+            "FFmpegVideoSink: VBI observations extracted for {} frames",
+            total_frames);
       }
     }
   }

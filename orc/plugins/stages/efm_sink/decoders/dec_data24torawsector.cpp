@@ -8,9 +8,9 @@
 
 #include "dec_data24torawsector.h"
 
-#include <algorithm>
+#include <orc/stage/logging.h>
 
-#include "logging.h"
+#include <algorithm>
 
 // See https://www.domesday86.com/?page_id=2678#CD_Sector_descrambling
 // for the code used to generate this look-up table
@@ -303,9 +303,10 @@ Data24ToRawSector::State Data24ToRawSector::waitingForSync() {
   // Does the sector data contain the sync pattern? Use std::search to find it
   auto it = std::search(m_sectorData.begin(), m_sectorData.end(),
                         m_syncPattern.begin(), m_syncPattern.end());
-  int syncPatternPosition = (it != m_sectorData.end())
-                                ? static_cast<int>(std::distance(m_sectorData.begin(), it))
-                                : -1;
+  int syncPatternPosition =
+      (it != m_sectorData.end())
+          ? static_cast<int>(std::distance(m_sectorData.begin(), it))
+          : -1;
 
   if (syncPatternPosition == -1) {
     // No sync pattern found

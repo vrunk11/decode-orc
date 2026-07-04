@@ -9,10 +9,9 @@
 
 #include "efm_sink_stage_deps.h"
 
-#include <cstddef>
+#include <orc/stage/logging.h>
 
-#include "buffered_file_io.h"
-#include "logging.h"
+#include <cstddef>
 
 namespace orc {
 void RawEFMSinkStageDeps::init(TriggerProgressCallback progress_callback,
@@ -22,37 +21,44 @@ void RawEFMSinkStageDeps::init(TriggerProgressCallback progress_callback,
 }
 
 RawEFMSinkWriteResult RawEFMSinkStageDeps::write_raw_efm(
-    const VideoFieldRepresentation* representation,
+    const VideoFrameRepresentation* representation,
     const std::string& output_path) {
-  auto field_range = representation->field_range();
-  FieldID start_field = field_range.start;
-  FieldID end_field = field_range.end;
+  auto frame_rng = representation->frame_range();
+  FrameID start_frame = frame_rng.first;
+  FrameID end_frame = frame_rng.last;
 
-  uint64_t total_fields = end_field.value() - start_field.value();
-  ORC_LOG_DEBUG("RawEFMSinkDeps: Processing {} fields", total_fields);
+  uint64_t total_frames = frame_rng.count();
+  ORC_LOG_DEBUG("RawEFMSinkDeps: Processing {} frames", total_frames);
 
   uint64_t total_tvalues = 0;
-  for (FieldID fid = start_field; fid < end_field; ++fid) {
+  for (FrameID fid = start_frame; fid <= end_frame; ++fid) {
     total_tvalues += representation->get_efm_sample_count(fid);
   }
 
   ORC_LOG_DEBUG("RawEFMSinkDeps: Total EFM t-values: {}", total_tvalues);
 
   if (total_tvalues == 0) {
-    return {false, 0, "Error: No EFM t-values found in field range"};
+    return {false, 0, "Error: No EFM t-values found in frame range"};
   }
 
-  BufferedFileWriter<uint8_t> writer(static_cast<size_t>(4 * 1024 * 1024));
-  if (!writer.open(output_path)) {
+  std::shared_ptr<IFileWriterUint8> writer;
+  if (stage_services_) {
+    writer = stage_services_->create_buffered_file_writer_uint8(
+        static_cast<size_t>(4 * 1024 * 1024));
+  }
+  if (!writer) {
+    return {false, 0, "Error: File writer service unavailable"};
+  }
+  if (!writer->open(output_path)) {
     return {false, 0, "Error: Failed to open output file: " + output_path};
   }
 
   uint64_t tvalues_written = 0;
   uint64_t invalid_tvalue_count = 0;
 
-  for (FieldID fid = start_field; fid < end_field; ++fid) {
+  for (FrameID fid = start_frame; fid <= end_frame; ++fid) {
     if (cancel_requested_ && cancel_requested_->load()) {
-      writer.close();
+      writer->close();
       return {false, 0, "Cancelled by user"};
     }
 
@@ -64,19 +70,19 @@ RawEFMSinkWriteResult RawEFMSinkStageDeps::write_raw_efm(
         }
       }
 
-      writer.write(tvalues);
+      writer->write(tvalues);
       tvalues_written += tvalues.size();
     }
 
-    uint64_t current_field = fid.value() - start_field.value();
-    if (current_field % 10 == 0 && progress_callback_) {
-      progress_callback_(current_field, total_fields,
-                         "Writing EFM field " + std::to_string(current_field) +
-                             "/" + std::to_string(total_fields));
+    uint64_t current_frame = fid - start_frame + 1;
+    if (current_frame % 10 == 0 && progress_callback_) {
+      progress_callback_(current_frame, total_frames,
+                         "Writing EFM: frame " + std::to_string(current_frame) +
+                             "/" + std::to_string(total_frames));
     }
   }
 
-  writer.close();
+  writer->close();
 
   ORC_LOG_INFO("RawEFMSinkDeps: Successfully wrote {} t-values to {}",
                tvalues_written, output_path);

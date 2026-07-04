@@ -9,19 +9,21 @@
 
 #include "ld_sink_stage.h"
 
+#include <orc/stage/logging.h>
+#include <orc/stage/preview_helpers.h>
+
 #include <memory>
 
 #include "ld_sink_stage_deps.h"
 #include "ld_sink_stage_deps_interface.h"
-#include "logging.h"
-#include "preview_helpers.h"
-#include "preview_renderer.h"
 #include "tbc_metadata_writer.h"
 
 namespace orc {
 
 LDSinkStage::LDSinkStage(IStageServices* stage_services)
-    : stage_services_(stage_services) {}
+    : stage_services_(stage_services) {
+  set_configuration_status(orc::ConfigurationStatus::Red);
+}
 
 NodeTypeInfo LDSinkStage::get_node_type_info() const {
   return NodeTypeInfo{NodeType::SINK,    // type
@@ -46,7 +48,7 @@ std::vector<ArtifactPtr> LDSinkStage::execute(
   // Cache input for preview rendering
   if (!inputs.empty()) {
     cached_input_ =
-        std::dynamic_pointer_cast<const VideoFieldRepresentation>(inputs[0]);
+        std::dynamic_pointer_cast<const VideoFrameRepresentation>(inputs[0]);
   }
 
   // Sink stages don't produce outputs during normal execution
@@ -88,6 +90,9 @@ bool LDSinkStage::set_parameters(
     }
   }
 
+  set_configuration_status(output_path_.empty()
+                               ? orc::ConfigurationStatus::Red
+                               : orc::ConfigurationStatus::Green);
   return true;
 }
 
@@ -128,10 +133,10 @@ bool LDSinkStage::trigger(
 
   // Get input representation
   auto representation =
-      std::dynamic_pointer_cast<const VideoFieldRepresentation>(inputs[0]);
+      std::dynamic_pointer_cast<const VideoFrameRepresentation>(inputs[0]);
   if (!representation) {
-    ORC_LOG_ERROR("LDSink: Input is not VideoFieldRepresentation");
-    return fail_trigger("Error: Input is not a video field representation");
+    ORC_LOG_ERROR("LDSink: Input is not VideoFrameRepresentation");
+    return fail_trigger("Error: Input is not a video frame representation");
   }
 
   // Write TBC and metadata
@@ -153,8 +158,8 @@ bool LDSinkStage::trigger(
                                               observation_context);
 
   if (success) {
-    auto range = representation->field_range();
-    trigger_status_ = "Exported " + std::to_string(range.size()) +
+    auto frame_rng = representation->frame_range();
+    trigger_status_ = "Exported " + std::to_string(frame_rng.count() * 2) +
                       " fields to " + output_path;
     ORC_LOG_DEBUG("LDSink: Trigger completed successfully");
   } else {
@@ -168,16 +173,8 @@ bool LDSinkStage::trigger(
 
 std::string LDSinkStage::get_trigger_status() const { return trigger_status_; }
 
-std::vector<PreviewOption> LDSinkStage::get_preview_options() const {
-  return PreviewHelpers::get_standard_preview_options(cached_input_);
-}
-
-PreviewImage LDSinkStage::render_preview(const std::string& option_id,
-                                         uint64_t index,
-                                         PreviewNavigationHint hint) const {
-  (void)hint;  // Unused for now
-  return PreviewHelpers::render_standard_preview(cached_input_, option_id,
-                                                 index);
+StagePreviewCapability LDSinkStage::get_preview_capability() const {
+  return PreviewHelpers::make_signal_preview_capability(cached_input_);
 }
 
 }  // namespace orc

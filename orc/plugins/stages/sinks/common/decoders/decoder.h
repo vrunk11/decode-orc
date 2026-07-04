@@ -11,7 +11,7 @@
 #ifndef DECODER_H
 #define DECODER_H
 
-#include <orc_source_parameters.h>
+#include <orc/stage/orc_source_parameters.h>
 
 #include <atomic>
 #include <cassert>

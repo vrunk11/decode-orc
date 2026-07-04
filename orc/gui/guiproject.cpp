@@ -9,7 +9,7 @@
 
 #include "guiproject.h"
 
-#include <common_types.h>  // For VideoSystem, SourceType
+#include <orc/stage/common_types.h>  // For VideoSystem, SourceType
 
 #include <QFileInfo>
 #include <algorithm>
@@ -69,6 +69,24 @@ bool GUIProject::newEmptyProject(const QString& project_name,
     presenter_->setVideoFormat(video_format);
     presenter_->setSourceType(source_format);
 
+    // Default amplitude unit follows industry convention for the video system:
+    // NTSC → IRE (SMPTE 170M-2004), PAL → mV (EBU Tech. 3280-E).
+    orc::VideoSystem sys = orc::VideoSystem::Unknown;
+    switch (video_format) {
+      case orc::presenters::VideoFormat::NTSC:
+        sys = orc::VideoSystem::NTSC;
+        break;
+      case orc::presenters::VideoFormat::PAL:
+        sys = orc::VideoSystem::PAL;
+        break;
+      case orc::presenters::VideoFormat::PAL_M:
+        sys = orc::VideoSystem::PAL_M;
+        break;
+      default:
+        break;
+    }
+    presenter_->setAmplitudeUnit(orc::default_amplitude_unit(sys));
+
     // New blank project should start unmodified
     presenter_->clearModifiedFlag();
 
@@ -106,9 +124,7 @@ bool GUIProject::loadFromFile(const QString& path, QString* error) {
       presenter_ = std::make_unique<orc::presenters::ProjectPresenter>();
     }
 
-    if (!presenter_->loadProject(path.toStdString())) {
-      throw std::runtime_error("Failed to load project from file");
-    }
+    presenter_->loadProject(path.toStdString());
     project_path_ = path;
 
     ORC_LOG_DEBUG("Building DAG from project");

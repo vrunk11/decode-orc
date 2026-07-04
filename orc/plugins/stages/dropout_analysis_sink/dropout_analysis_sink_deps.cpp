@@ -1,7 +1,7 @@
 /*
  * File:        dropout_analysis_sink_deps.cpp
  * Module:      orc-core
- * Purpose:     DropoutAnalysisSinkStage dependency implementation
+ * Purpose:     DropoutAnalysisSinkStage dependency implementation (VFrameR)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -11,11 +11,12 @@
 
 #include <algorithm>
 #include <fstream>
-#include <map>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace orc {
+
 void DropoutAnalysisSinkStageDeps::init(
     TriggerProgressCallback progress_callback,
     std::atomic<bool>* cancel_requested) {
@@ -24,11 +25,10 @@ void DropoutAnalysisSinkStageDeps::init(
 }
 
 DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
-    VideoFieldRepresentation* representation,
+    VideoFrameRepresentation* representation,
     IObservationContext& observation_context,
     DropoutAnalysisComputeOptions options) {
   (void)observation_context;
-  (void)options.max_frames;
 
   if (!representation) {
     return {false, "Input representation is null", {}, 0};
@@ -38,28 +38,29 @@ DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
   result.success = true;
   result.message = "Dropout analysis complete";
 
-  auto range = representation->field_range();
-  if (range.size() == 0) {
-    logger_.warn("DropoutAnalysisSinkDeps: No fields available");
+  auto range = representation->frame_range();
+  if (range.count() == 0) {
+    logger_.warn("DropoutAnalysisSinkDeps: No frames available");
     result.total_frames = 0;
     return result;
   }
 
-  const size_t total_fields = range.size();
-  const auto active_hint = representation->get_active_line_hint();
+  const size_t total_frames_count = static_cast<size_t>(range.count());
   const auto video_params = representation->get_video_parameters();
 
-  struct FrameAccumulation {
-    double total_dropout_length = 0.0;
-    double dropout_count = 0.0;
-    bool has_data = false;
-  };
+  // Nominal samples per line for line-position approximation in visible-area
+  // mode. PAL: 1135, NTSC: 910.
+  int32_t nominal_spl = 910;
+  if (video_params) nominal_spl = video_params->frame_width_nominal;
 
-  std::map<int32_t, FrameAccumulation> frame_accum;
+  // Pre-allocated contiguous vector: O(1) per-frame access, single allocation.
+  // Frames are visited in monotonically increasing order so std::map's O(log n)
+  // tree insertions and per-node heap allocations are unnecessary here.
+  std::vector<FrameDropoutStats> frame_data(total_frames_count);
 
-  for (size_t i = 0; i < total_fields; ++i) {
+  for (size_t i = 0; i < total_frames_count; ++i) {
     if (cancel_requested_ && cancel_requested_->load()) {
-      logger_.warn("DropoutAnalysisSinkDeps: Cancel requested at field {}", i);
+      logger_.warn("DropoutAnalysisSinkDeps: Cancel requested at frame {}", i);
       result.success = false;
       result.message = "Cancelled by user";
       result.frame_stats.clear();
@@ -67,144 +68,122 @@ DropoutAnalysisComputeResult DropoutAnalysisSinkStageDeps::compute_and_analyze(
       return result;
     }
 
-    FieldID fid(range.start.value() + i);
-    const auto field_descriptor = representation->get_descriptor(fid);
-    if (!field_descriptor) {
-      continue;
-    }
+    const FrameID fid = range.first + i;
+    const int32_t frame_num = static_cast<int32_t>(fid) + 1;
 
-    const auto dropouts = representation->get_dropout_hints(fid);
+    auto& accum = frame_data[i];
+    accum.frame_number = frame_num;
 
-    double field_dropout_length = 0.0;
-    size_t field_dropout_count = 0;
+    const auto desc = representation->get_frame_descriptor(fid);
+    if (!desc) continue;
 
-    for (const auto& dropout : dropouts) {
+    const auto runs = representation->get_dropout_hints(fid);
+
+    double frame_dropout_length = 0.0;
+    size_t frame_dropout_count = 0;
+
+    for (const auto& run : runs) {
       bool include = true;
 
       if (options.mode == DropoutAnalysisMode::VISIBLE_AREA) {
-        if (active_hint) {
-          if (static_cast<int32_t>(dropout.line) <
-                  active_hint->first_active_field_line ||
-              static_cast<int32_t>(dropout.line) >
-                  active_hint->last_active_field_line) {
+        // Approximate frame-flat line of this run's start position.
+        const int32_t approx_line = static_cast<int32_t>(
+            run.sample_start / static_cast<uint64_t>(nominal_spl));
+        const int32_t approx_sample = static_cast<int32_t>(
+            run.sample_start % static_cast<uint64_t>(nominal_spl));
+
+        // Filter by active frame line range.
+        if (video_params && video_params->first_active_frame_line >= 0 &&
+            video_params->last_active_frame_line >= 0) {
+          if (approx_line < video_params->first_active_frame_line ||
+              approx_line > video_params->last_active_frame_line) {
             include = false;
           }
         }
 
+        // Filter by active video sample range within line.
         if (include && video_params && video_params->active_video_start >= 0 &&
             video_params->active_video_end >= 0) {
-          if (static_cast<int32_t>(dropout.end_sample) <=
-                  video_params->active_video_start ||
-              static_cast<int32_t>(dropout.start_sample) >=
-                  video_params->active_video_end) {
+          if (approx_sample >= video_params->active_video_end ||
+              approx_sample + static_cast<int32_t>(run.sample_count) <=
+                  video_params->active_video_start) {
             include = false;
           }
         }
       }
 
       if (include) {
-        uint32_t start = dropout.start_sample;
-        uint32_t end = dropout.end_sample;
+        uint64_t length = run.sample_count;
 
+        // Clamp to active_video_start / active_video_end within the line.
         if (options.mode == DropoutAnalysisMode::VISIBLE_AREA && video_params &&
             video_params->active_video_start >= 0 &&
             video_params->active_video_end >= 0) {
-          start = std::max(
-              start, static_cast<uint32_t>(video_params->active_video_start));
-          end = std::min(end,
-                         static_cast<uint32_t>(video_params->active_video_end));
+          const int32_t approx_sample = static_cast<int32_t>(
+              run.sample_start % static_cast<uint64_t>(nominal_spl));
+          const int32_t clamped_start =
+              std::max(approx_sample, video_params->active_video_start);
+          const int32_t clamped_end =
+              std::min(approx_sample + static_cast<int32_t>(run.sample_count),
+                       video_params->active_video_end);
+          length =
+              static_cast<uint64_t>(std::max(0, clamped_end - clamped_start));
         }
 
-        field_dropout_length += static_cast<double>(end - start);
-        field_dropout_count++;
+        frame_dropout_length += static_cast<double>(length);
+        frame_dropout_count++;
       }
     }
 
-    const int32_t frame_num = field_descriptor->frame_number.value_or(
-        static_cast<int32_t>((fid.value() / 2) + 1));
+    accum.total_dropout_length += frame_dropout_length;
+    accum.dropout_count += static_cast<double>(frame_dropout_count);
+    if (frame_dropout_count > 0) accum.has_data = true;
 
-    auto& accum = frame_accum[frame_num];
-    accum.total_dropout_length += field_dropout_length;
-    accum.dropout_count += static_cast<double>(field_dropout_count);
-    if (field_dropout_count > 0) {
-      accum.has_data = true;
-    }
-
-    if (progress_callback_) {
-      progress_callback_(i + 1, total_fields,
-                         "Processing field " + std::to_string(i));
+    if (progress_callback_ && (i % 100 == 0 || i + 1 == total_frames_count)) {
+      progress_callback_(i + 1, total_frames_count,
+                         "Processing frame " + std::to_string(i));
     }
   }
 
-  if (frame_accum.empty()) {
-    logger_.warn("DropoutAnalysisSinkDeps: No frame data accumulated");
-    result.total_frames = 0;
-    return result;
-  }
-
-  const size_t total_frames = frame_accum.size();
+  const size_t total_frames = total_frames_count;
   result.total_frames = static_cast<int32_t>(total_frames);
 
   const size_t TARGET_DATA_POINTS = 1000;
-  size_t fields_per_bin = 2;
-  if (total_fields > TARGET_DATA_POINTS * 2) {
-    fields_per_bin =
-        (total_fields + TARGET_DATA_POINTS - 1) / TARGET_DATA_POINTS;
-    if (fields_per_bin % 2 != 0) {
-      fields_per_bin++;
-    }
-  }
+  size_t frames_per_bin = std::max<size_t>(
+      1, (total_frames + TARGET_DATA_POINTS - 1) / TARGET_DATA_POINTS);
 
-  size_t frames_per_bin = std::max<size_t>(1, fields_per_bin / 2);
-
-  logger_.debug(
-      "DropoutAnalysisSinkDeps: {} total fields ({} total frames), binning by "
-      "{} fields per data point",
-      total_fields, total_frames, fields_per_bin);
+  logger_.debug("DropoutAnalysisSinkDeps: {} total frames, {} frames per bin",
+                total_frames, frames_per_bin);
 
   FrameDropoutStats current_bin{};
   size_t frames_in_bin = 0;
   [[maybe_unused]] int32_t bin_start_frame = 0;
 
-  for (const auto& [frame_number, accum] : frame_accum) {
+  for (const auto& entry : frame_data) {
     if (frames_in_bin == 0) {
-      bin_start_frame = frame_number;
+      bin_start_frame = entry.frame_number;
     }
 
-    current_bin.frame_number = frame_number;
-    current_bin.total_dropout_length += accum.total_dropout_length;
-    current_bin.dropout_count += accum.dropout_count;
-    current_bin.has_data = current_bin.has_data || accum.has_data;
+    current_bin.frame_number = entry.frame_number;
+    current_bin.total_dropout_length += entry.total_dropout_length;
+    current_bin.dropout_count += entry.dropout_count;
+    current_bin.has_data = current_bin.has_data || entry.has_data;
 
     frames_in_bin++;
 
     if (frames_in_bin >= frames_per_bin) {
-      logger_.debug(
-          "DropoutAnalysisSinkDeps: Bucket {} - frames {}-{}: "
-          "total_dropout_length={:.2f}, dropout_count={:.2f} ({} frames)",
-          result.frame_stats.size(), bin_start_frame, frame_number,
-          current_bin.total_dropout_length, current_bin.dropout_count,
-          frames_in_bin);
-
       result.frame_stats.push_back(current_bin);
-      current_bin = FrameDropoutStats();
+      current_bin = FrameDropoutStats{};
       frames_in_bin = 0;
     }
   }
 
   if (frames_in_bin > 0) {
-    logger_.debug(
-        "DropoutAnalysisSinkDeps: Final bucket {} - frames {}-{}: "
-        "total_dropout_length={:.2f}, dropout_count={:.2f} ({} frames)",
-        result.frame_stats.size(), bin_start_frame, current_bin.frame_number,
-        current_bin.total_dropout_length, current_bin.dropout_count,
-        frames_in_bin);
     result.frame_stats.push_back(current_bin);
   }
 
-  logger_.debug(
-      "DropoutAnalysisSinkDeps: Computed {} data buckets from {} total frames",
-      result.frame_stats.size(), total_frames);
+  logger_.debug("DropoutAnalysisSinkDeps: {} data buckets from {} total frames",
+                result.frame_stats.size(), total_frames);
 
   return result;
 }
@@ -221,24 +200,22 @@ bool DropoutAnalysisSinkStageDeps::write_csv(
 
   std::ofstream csv(path, std::ios::out | std::ios::trunc);
   if (!csv.is_open()) {
-    logger_.error(
-        "DropoutAnalysisSinkDeps: Failed to open file for writing: {}", path);
+    logger_.error("DropoutAnalysisSinkDeps: Failed to open file: {}", path);
     return false;
   }
 
   csv << "frame_number,total_dropout_length_samples,total_dropout_count\n";
-  size_t rows_written = 0;
+  size_t rows = 0;
   for (const auto& fs : frame_stats) {
     if (fs.has_data) {
       csv << fs.frame_number << ',' << fs.total_dropout_length << ','
           << fs.dropout_count << '\n';
-      rows_written++;
+      rows++;
     }
   }
 
-  logger_.debug(
-      "DropoutAnalysisSinkDeps: Successfully wrote {} data rows to: {}",
-      rows_written, path);
+  logger_.debug("DropoutAnalysisSinkDeps: Wrote {} rows to: {}", rows, path);
   return true;
 }
+
 }  // namespace orc

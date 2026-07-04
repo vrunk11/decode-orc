@@ -12,10 +12,14 @@
 // Stage and plugin implementations may use this header for preview rendering.
 // GUI/CLI code must NOT include this directly; use RenderPresenter instead.
 
-#include <common_types.h>  // For PreviewOutputType, AspectRatioMode
-#include <field_id.h>
-#include <node_id.h>
-#include <orc_rendering.h>  // For public API types (DropoutRegion, PreviewImage)
+#include <orc/stage/common_types.h>  // For PreviewOutputType, AspectRatioMode
+#include <orc/stage/frame_id.h>
+#include <orc/stage/node_id.h>
+#include <orc/stage/orc_rendering.h>  // For public API types (DropoutRegion, PreviewImage)
+#include <orc/stage/preview_stage_types.h>
+#include <orc/stage/stage_custom_preview_renderer.h>
+#include <orc/stage/stage_preview_capability.h>
+#include <orc/stage/video_frame_representation.h>
 
 #include <cstdint>
 #include <map>
@@ -25,10 +29,7 @@
 #include <vector>
 
 #include "../analysis/vectorscope/vectorscope_data.h"
-#include "dag_field_renderer.h"
-#include "previewable_stage.h"  // For PreviewNavigationHint enum
-#include "stage_preview_capability.h"
-#include "video_field_representation.h"
+#include "dag_frame_renderer.h"
 
 namespace orc {
 
@@ -57,7 +58,7 @@ using FrameFieldsResult = orc::FrameFieldsResult;
  * - Queries available output types at a node
  * - Renders specific outputs (field N, frame N, etc.) to RGB888
  * - Handles field weaving for frames
- * - Handles sample scaling (16-bit TBC -> 8-bit RGB)
+ * - Handles sample scaling (CVBS_U10_4FSC -> 8-bit RGB)
  * - Future: chroma decoding, composite generation
  *
  * The GUI is responsible ONLY for:
@@ -125,7 +126,8 @@ class PreviewRenderer {
    * @return Rendered image result
    *
    * Examples:
-   * - render_output("node_1", PreviewOutputType::Field, 100) -> field 100
+   * - render_output("node_1", PreviewOutputType::Frame_Field1, 100) -> field
+   * 100
    * - render_output("node_1", PreviewOutputType::Frame_EvenOdd, 50) -> frame 50
    * (even first)
    */
@@ -157,16 +159,16 @@ class PreviewRenderer {
   bool get_show_dropouts() const;
 
   /**
-   * @brief Get the field representation at a node
+   * @brief Get the frame representation at a node
    *
-   * This allows direct access to the underlying 16-bit field data
+   * This allows direct access to the underlying CVBS_U10_4FSC frame data
    * for operations like line scope display.
    *
    * @param node_id The node to get representation from
-   * @return Shared pointer to the field representation, or nullptr if not
+   * @return Shared pointer to the frame representation, or nullptr if not
    * available
    */
-  std::shared_ptr<const VideoFieldRepresentation> get_representation_at_node(
+  VideoFrameRepresentationPtr get_representation_at_node(
       const NodeID& node_id) const;
 
   /**
@@ -332,7 +334,8 @@ class PreviewRenderer {
    * @param type The output type (field, frame, etc.)
    * @param index The output index (0-based)
    * @param filename Path to PNG file to create
-   * @param option_id Optional ID for PreviewableStage outputs (default: "")
+   * @param option_id Optional ID for custom preview renderer outputs (default:
+   * "")
    * @return true if successful, false on error
    *
    * Example:
@@ -353,8 +356,8 @@ class PreviewRenderer {
   bool save_png(const PreviewImage& image, const std::string& filename);
 
  private:
-  /// DAG field renderer for getting field representations
-  std::unique_ptr<DAGFieldRenderer> field_renderer_;
+  /// DAG frame renderer for getting frame representations
+  std::unique_ptr<DAGFrameRenderer> frame_renderer_;
 
   /// Current DAG reference
   std::shared_ptr<const DAG> dag_;
@@ -381,45 +384,10 @@ class PreviewRenderer {
   // ========================================================================
 
   /**
-   * @brief Render a single field to RGB888
-   */
-  PreviewImage render_field(
-      std::shared_ptr<const VideoFieldRepresentation> repr, FieldID field_id);
-
-  /**
-   * @brief Render a frame (two fields woven together) to RGB888
-   *
-   * @param even_first If true, even field on even lines; if false, odd field on
-   * even lines
-   */
-  PreviewImage render_frame(
-      std::shared_ptr<const VideoFieldRepresentation> repr, FieldID field_a,
-      FieldID field_b, bool even_first);
-
-  /**
-   * @brief Render a frame by stacking two fields vertically
-   * @param repr The video field representation
-   * @param field_a First field ID (top)
-   * @param field_b Second field ID (bottom)
-   * @return Rendered split frame image
-   */
-  PreviewImage render_split_frame(
-      std::shared_ptr<const VideoFieldRepresentation> repr, FieldID field_a,
-      FieldID field_b);
-
-  /**
    * @brief Render dropout regions onto an image
    * @param image Image to render dropouts onto (modified in place)
    */
   void render_dropouts(PreviewImage& image) const;
-
-  /**
-   * @brief Convert 16-bit TBC samples to 8-bit grayscale
-   *
-   * Applies proper scaling based on black/white IRE levels.
-   * Default: simple 16->8 bit shift, but could be improved with metadata.
-   */
-  uint8_t tbc_sample_to_8bit(uint16_t sample, double blackIRE, double whiteIRE);
 
   // ========================================================================
   // Stage preview support (new interface for sources/transforms)
@@ -429,7 +397,7 @@ class PreviewRenderer {
    * @brief Build preview output metadata from StagePreviewCapability.
    */
   std::vector<PreviewOutputInfo> get_capability_preview_outputs(
-      const NodeID& stage_node_id, const StagePreviewCapability& capability);
+      const StagePreviewCapability& capability);
 
   /**
    * @brief Render a frame through the colour-carrier provider path.
@@ -441,32 +409,13 @@ class PreviewRenderer {
       PreviewNavigationHint hint = PreviewNavigationHint::Random);
 
   /**
-   * @brief Get available outputs for a previewable stage (source/transform)
+   * @brief Convert a vector of PreviewOptions to PreviewOutputInfo entries.
    *
-   * @param stage_node_id The stage node ID
-   * @param stage_node The DAG node for the stage
-   * @param previewable The PreviewableStage interface
-   * @return Vector of available output types
+   * Shared by the VFR path and the IStageCustomPreviewRenderer path.
    */
-  std::vector<PreviewOutputInfo> get_stage_preview_outputs(
+  std::vector<PreviewOutputInfo> build_outputs_from_options(
       const NodeID& stage_node_id, const DAGNode& stage_node,
-      const class PreviewableStage& previewable);
-
-  /**
-   * @brief Render preview output from a previewable stage
-   *
-   * @param stage_node_id The stage node ID
-   * @param stage_node The DAG node for the stage
-   * @param previewable The PreviewableStage interface
-   * @param type The output type to render
-   * @param index The output index
-   * @return Rendered preview result
-   */
-  PreviewRenderResult render_stage_preview(
-      const NodeID& stage_node_id, const DAGNode& stage_node,
-      const class PreviewableStage& previewable, PreviewOutputType type,
-      uint64_t index, const std::string& requested_option_id = "",
-      PreviewNavigationHint hint = PreviewNavigationHint::Random);
+      const std::vector<PreviewOption>& options);
 };
 
 }  // namespace orc

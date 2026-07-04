@@ -40,21 +40,21 @@
 
 // Parameter schema types: ParameterValue, ParameterType, ParameterConstraints,
 // ParameterDescriptor, ParameterDependency.
-#include <parameter_types.h>
+#include <orc/stage/parameter_types.h>
 
 // Common enumeration types: VideoSystem, SourceType.
-#include <common_types.h>
+#include <orc/stage/common_types.h>
 
 // Node metadata types: NodeTypeInfo, NodeType, VideoFormatCompatibility,
 // SinkCategory.
-#include <node_type.h>
+#include <orc/stage/node_type.h>
 
 // ParameterizedStage mixin interface: get_parameter_descriptors(),
 // get_parameters(), set_parameters(). Include this when your stage exposes
 // configurable parameters.
-#include <stage_parameter.h>
+#include <orc/stage/stage_parameter.h>
 
 // TriggerableStage mixin interface: trigger(), get_trigger_status(), etc.
 // Include-guarded; only defines the interface; no MVP enforcement on plugin
 // builds.
-#include <triggerable_stage.h>
+#include <orc/stage/triggerable_stage.h>
