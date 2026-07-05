@@ -9,6 +9,8 @@
 
 #include "stageparameterdialog.h"
 
+#include <frame_numbering.h>
+
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -20,7 +22,8 @@
 #include <limits>
 
 StageParameterDialog::StageParameterDialog(
-    const std::string& stage_name, const std::string& stage_description,
+    const std::string& stage_name, const std::string& display_name,
+    const std::string& stage_description,
     const std::vector<orc::ParameterDescriptor>& descriptors,
     const std::map<std::string, orc::ParameterValue>& current_values,
     const QString& project_path,
@@ -33,7 +36,7 @@ StageParameterDialog::StageParameterDialog(
       project_path_(project_path),
       reset_values_(reset_values) {
   setWindowTitle(
-      QString("%1 Parameters").arg(QString::fromStdString(stage_name)));
+      QString("%1 Parameters").arg(QString::fromStdString(display_name)));
   setMinimumWidth(400);
 
   auto* main_layout = new QVBoxLayout(this);
@@ -193,9 +196,16 @@ void StageParameterDialog::build_ui(
               QString::fromStdString(std::get<std::string>(value)));
           widget = combo;
         } else {
-          // Use line edit for free-form strings
+          // Use line edit for free-form strings. Indexed spec parameters are
+          // stored 0-based but presented 1-based.
           auto* edit = new QLineEdit();
-          edit->setText(QString::fromStdString(std::get<std::string>(value)));
+          const std::string display_text =
+              to_display_spec(desc.name, std::get<std::string>(value));
+          edit->setText(QString::fromStdString(display_text));
+          if (orc::indexed_spec_kind(stage_name_, desc.name) !=
+              orc::IndexedSpecKind::kNone) {
+            spec_display_baseline_[desc.name] = display_text;
+          }
           widget = edit;
         }
         break;
@@ -572,7 +582,13 @@ void StageParameterDialog::set_widget_value(const std::string& param_name,
         combo->setCurrentText(
             QString::fromStdString(std::get<std::string>(value)));
       } else if (auto* edit = qobject_cast<QLineEdit*>(pw.widget)) {
-        edit->setText(QString::fromStdString(std::get<std::string>(value)));
+        const std::string display_text =
+            to_display_spec(param_name, std::get<std::string>(value));
+        edit->setText(QString::fromStdString(display_text));
+        if (orc::indexed_spec_kind(stage_name_, param_name) !=
+            orc::IndexedSpecKind::kNone) {
+          spec_display_baseline_[param_name] = display_text;
+        }
       }
       break;
     case orc::ParameterType::FILE_PATH: {
@@ -608,7 +624,7 @@ orc::ParameterValue StageParameterDialog::get_widget_value(
       if (auto* combo = qobject_cast<QComboBox*>(pw.widget)) {
         return combo->currentText().toStdString();
       } else if (auto* edit = qobject_cast<QLineEdit*>(pw.widget)) {
-        return edit->text().toStdString();
+        return from_display_spec(param_name, edit->text().toStdString());
       }
       break;
     case orc::ParameterType::FILE_PATH: {
@@ -622,6 +638,19 @@ orc::ParameterValue StageParameterDialog::get_widget_value(
   }
 
   return static_cast<int32_t>(0);  // Should never happen
+}
+
+std::string StageParameterDialog::to_display_spec(
+    const std::string& param_name, const std::string& stored_value) const {
+  const auto kind = orc::indexed_spec_kind(stage_name_, param_name);
+  return orc::indexed_spec_to_presentation(kind, stored_value);
+}
+
+std::string StageParameterDialog::from_display_spec(
+    const std::string& param_name, const std::string& display_value) const {
+  const auto kind = orc::indexed_spec_kind(stage_name_, param_name);
+  auto stored = orc::indexed_spec_from_presentation(kind, display_value);
+  return stored ? *stored : display_value;
 }
 
 void StageParameterDialog::on_reset_defaults() {
@@ -745,6 +774,41 @@ bool StageParameterDialog::validate_values() {
   };
 
   QStringList validation_errors;
+
+  // Indexed spec parameters (frame/line ranges) are entered 1-based in the
+  // UI; verify they convert cleanly to the stored 0-based form.
+  for (const auto& desc : descriptors_) {
+    const auto kind = orc::indexed_spec_kind(stage_name_, desc.name);
+    if (kind == orc::IndexedSpecKind::kNone) continue;
+
+    auto widget_it = parameter_widgets_.find(desc.name);
+    if (widget_it == parameter_widgets_.end()) continue;
+    auto* edit = qobject_cast<QLineEdit*>(widget_it->second.widget);
+    if (edit == nullptr) continue;
+
+    const std::string display_value = edit->text().toStdString();
+
+    // Unmodified values (including unrecognised legacy specs shown verbatim)
+    // pass through to the stage untouched.
+    auto baseline_it = spec_display_baseline_.find(desc.name);
+    if (baseline_it != spec_display_baseline_.end() &&
+        baseline_it->second == display_value) {
+      continue;
+    }
+
+    if (!orc::indexed_spec_from_presentation(kind, display_value)) {
+      const QString example = (kind == orc::IndexedSpecKind::kDropoutMapSpec)
+                                  ? "'[{frame:1,add:[{line:22,start:100,"
+                                    "end:200}]}]'"
+                                  : "'1-11,21-31'";
+      validation_errors << QString(
+                               "%1: invalid specification. Frame and line "
+                               "numbers are 1-based (matching the preview); "
+                               "for example %2.")
+                               .arg(QString::fromStdString(desc.display_name))
+                               .arg(example);
+    }
+  }
 
   const auto colour_burst_start = get_int_param("colourBurstStart");
   const auto colour_burst_end = get_int_param("colourBurstEnd");

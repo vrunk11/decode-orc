@@ -9,6 +9,7 @@
 
 #include "frame_corruption_analysis.h"
 
+#include <frame_numbering.h>
 #include <orc/stage/logging.h>
 #include <orc/stage/video_frame_representation.h>
 
@@ -267,18 +268,21 @@ AnalysisResult FrameCorruptionAnalysisTool::analyze(
   }
   summary << "\n\n";
 
-  // Add frame mapping specification preview
+  // Add frame mapping specification preview. Shown 1-based to match the
+  // Frame Map parameter dialog; the applied spec stays 0-based internally.
+  const std::string display_spec =
+      range_spec_to_presentation(analysis_result.mapping_spec);
   summary << "==================================================\n";
   summary << "Generated Frame Mapping Specification:\n";
   summary << "==================================================\n";
-  if (analysis_result.mapping_spec.length() > 500) {
-    summary << analysis_result.mapping_spec.substr(0, 500) << "...\n\n";
-    summary << "(Full specification: " << analysis_result.mapping_spec.length()
+  if (display_spec.length() > 500) {
+    summary << display_spec.substr(0, 500) << "...\n\n";
+    summary << "(Full specification: " << display_spec.length()
             << " characters)\n";
     summary << "This will be applied to the 'ranges' parameter when you click "
                "'Apply to Node'\n";
   } else {
-    summary << analysis_result.mapping_spec << "\n";
+    summary << display_spec << "\n";
   }
 
   result.summary = summary.str();
@@ -310,14 +314,14 @@ AnalysisResult FrameCorruptionAnalysisTool::analyze(
   spec_msg << "Generated Frame Mapping Specification\n";
   spec_msg << "==================================================\n\n";
 
-  // Show a preview if it's long
-  if (analysis_result.mapping_spec.length() > 500) {
-    spec_msg << analysis_result.mapping_spec.substr(0, 500) << "...\n\n";
-    spec_msg << "(Full specification: " << analysis_result.mapping_spec.length()
+  // Show a preview if it's long (1-based display, like the summary above)
+  if (display_spec.length() > 500) {
+    spec_msg << display_spec.substr(0, 500) << "...\n\n";
+    spec_msg << "(Full specification: " << display_spec.length()
              << " characters)\n";
     spec_msg << "Click 'Apply to Node' to use this specification\n";
   } else {
-    spec_msg << analysis_result.mapping_spec << "\n";
+    spec_msg << display_spec << "\n";
   }
   spec_item.message = spec_msg.str();
   result.items.push_back(spec_item);

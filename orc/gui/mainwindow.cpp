@@ -2380,7 +2380,7 @@ void MainWindow::onEditParameters(const orc::NodeID& node_id) {
   }
 
   // Show parameter dialog
-  StageParameterDialog dialog(display_name, stage_description,
+  StageParameterDialog dialog(stage_name, display_name, stage_description,
                               param_descriptors, current_values,
                               project_.projectPath(), reset_values, this);
 

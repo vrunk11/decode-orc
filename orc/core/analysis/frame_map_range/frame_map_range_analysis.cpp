@@ -585,14 +585,16 @@ AnalysisResult FrameMapRangeAnalysisTool::analyze(const AnalysisContext& ctx,
 
   result.graphData["rangeSpec"] = range_spec.str();
 
+  // Presentation is 1-based (matching the preview and the Frame Map stage
+  // parameter dialog); the applied range spec stays 0-based internally.
   std::ostringstream summary;
   summary << "Frame range located successfully.\n\n";
   summary << "Start address: " << start_input << " (picture number "
           << start_addr.picture_number << ")\n";
   summary << "End address: " << end_input << " (picture number "
           << end_addr.picture_number << ")\n\n";
-  summary << "Frame range: " << start_frame << "-" << end_frame << "\n";
-  summary << "Range spec: " << range_spec.str() << "\n\n";
+  summary << "Frame range: " << (start_frame + 1) << "-" << (end_frame + 1)
+          << "\n\n";
   summary << "Click 'Apply to Stage' to update the Frame Map stage.";
 
   result.summary = summary.str();

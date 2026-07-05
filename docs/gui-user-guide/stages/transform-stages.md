@@ -31,12 +31,13 @@ Transform stages are used to:
 
 **What it does**
 
-Frame Map parses a comma-separated list of frame ranges (e.g. `0-10,20-30,11-19`) and remaps output frame IDs to the specified input frames. It can optionally remove consecutive duplicate frames and insert synthetic padding frames to fill detected gaps.
+Frame Map parses a comma-separated list of frame ranges (e.g. `1-11,21-31,12-20`) and remaps output frame IDs to the specified input frames. It can optionally remove consecutive duplicate frames and insert synthetic padding frames to fill detected gaps.
 
 **Parameters**
 
 * `ranges` (string)
-    - Comma-separated list of 0-based frame ID ranges.
+    - Comma-separated list of frame ranges, entered 1-based in the GUI (matching the preview window).
+    - The project file (YAML) stores the value 0-based; the conversion is automatic when editing through the parameter dialog.
     - Default: `""` (empty) meaning passthrough.
 
 * `remove_duplicates` (bool)
@@ -195,10 +196,11 @@ This stage modifies the **dropout hint regions** seen by downstream stages. It d
 **Parameters**
 
 * `dropout_map` (string)
-    - Per-field dropout overrides in a JSON-like format.
+    - Per-frame dropout overrides in a JSON-like format.
+    - Frame numbers are entered 1-based in the GUI (matching the preview window); the project file (YAML) stores them 0-based and the conversion is automatic. Line, start, and end values are frame-flat 0-based coordinates.
     - Default: `[]`.
     - Example:
-        - `[{field:0,add:[{field:1,line:10,start:100,end:200}],remove:[{field:1,line:15,start:50,end:75}]}]`
+        - `[{frame:1,add:[{line:10,start:100,end:200}],remove:[{line:15,start:50,end:75}]}]`
     - Use the Dropout Editor tool to build this string interactively rather than writing it by hand.
 
 **Stage tools**
@@ -265,7 +267,7 @@ Dropout Correction reads dropout hints (from the source or from an upstream `dro
 | **Stage id** | `mask_line` |
 | **Stage name** | Mask Line |
 | **Connections** | 1 input → 1 output (fan-out supported) |
-| **Purpose** | Mask (blank) specified lines by 0-based frame-flat line index |
+| **Purpose** | Mask (blank) specified lines by frame-flat line number |
 
 **Use this stage when:**
 
@@ -275,17 +277,17 @@ Dropout Correction reads dropout hints (from the source or from an upstream `dro
 
 **What it does**
 
-Mask Line overwrites selected frame lines with a constant 10-bit sample level. Line numbers are **0-based frame-flat** indices. For Y/C sources both the luma and chroma buffers of a masked line are filled with the mask value. All other lines, and the audio/EFM streams, are forwarded unchanged.
+Mask Line overwrites selected frame lines with a constant 10-bit sample level. Line numbers are **frame-flat** positions, entered 1-based in the GUI (equal to the full-frame broadcast line number). For Y/C sources both the luma and chroma buffers of a masked line are filled with the mask value. All other lines, and the audio/EFM streams, are forwarded unchanged.
 
 **Parameters**
 
 * `lineSpec` (string)
-    - Comma-separated list of frame-flat 0-based line indices or inclusive ranges to mask.
-    - Format: `LINE` or `START-END`.
-    - Examples:
-        - `20` — mask frame-flat line 20 (broadcast line 21, field 1 in PAL/NTSC)
-        - `5-21` — mask frame-flat lines 5 through 21 (broadcast lines 6–22)
-        - `5-21,318-334` — mask the VBI area in both fields of a PAL frame
+    - Comma-separated list of frame-flat line numbers or inclusive ranges to mask.
+    - Format: `LINE` or `START-END`. Entered 1-based in the GUI; the project file (YAML) stores the value 0-based and the conversion is automatic.
+    - Examples (as entered in the GUI):
+        - `21` — mask broadcast line 21 (field 1 in PAL/NTSC; stored as `20` in YAML)
+        - `6-22` — mask broadcast lines 6 through 22 (stored as `5-21` in YAML)
+        - `6-22,319-335` — mask the VBI area in both fields of a PAL frame (stored as `5-21,318-334` in YAML)
     - Default: `""` (no masking, pass-through).
     - Use the **Mask Line Config** tool to generate this value from broadcast line numbers without writing the spec manually.
 
@@ -296,7 +298,7 @@ Mask Line overwrites selected frame lines with a constant 10-bit sample level. L
 
 **Stage tools**
 
-* **Mask Line Config** — a configuration dialog that accepts **full-frame broadcast line numbers** (1-based; PAL 1–625, NTSC/PAL-M 1–525) and converts them automatically to the frame-flat `lineSpec` format, masking each range in **both** fields. Example: PAL range 6–22 produces `lineSpec` = `5-21,318-334`.
+* **Mask Line Config** — a configuration dialog that accepts **full-frame broadcast line numbers** (1-based; PAL 1–625, NTSC/PAL-M 1–525) and converts them automatically to the frame-flat `lineSpec` format, masking each range in **both** fields. Example: PAL range 6–22 produces `lineSpec` = `6-22,319-335` (stored as `5-21,318-334` in the project file).
 * Supports standard GUI previews (via `PreviewableStage`).
 
 ---

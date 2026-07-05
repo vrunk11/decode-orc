@@ -44,9 +44,9 @@ All timing information shown reflects:
 
 ### Frame ID
 
-Each output frame is identified by a **FrameID**, corresponding to the 0-based frame identifier used throughout the pipeline.
+Each output frame is identified by a **FrameID**. Internally (and in the project file) frames are numbered from 0; the dialogue presents frame numbers 1-based, matching the preview window.
 
-If frames are reordered or dropped upstream, the FrameIDs shown here reflect the **effective output ordering**, not the original capture numbering.
+If frames are reordered or dropped upstream, the frame numbers shown here reflect the **effective output ordering**, not the original capture numbering.
 
 ---
 

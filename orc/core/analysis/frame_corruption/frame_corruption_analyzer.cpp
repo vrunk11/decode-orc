@@ -217,28 +217,30 @@ std::string FrameCorruptionAnalyzer::mapping_to_ranges(
   return oss.str();
 }
 
-// Event to string
+// Event to string. Frame numbers are presented 1-based, matching the preview
+// (internal frame indices are 0-based).
 std::string FrameCorruptionAnalyzer::CorruptionEvent::to_string() const {
   std::ostringstream oss;
 
   switch (type) {
     case SKIP:
       if (start_frame == end_frame) {
-        oss << "SKIP: Frame " << start_frame << " (" << count << " frame"
+        oss << "SKIP: Frame " << (start_frame + 1) << " (" << count << " frame"
             << (count > 1 ? "s)" : ")");
       } else {
-        oss << "SKIP: Frames " << start_frame << "-" << end_frame << " ("
-            << count << " frames)";
+        oss << "SKIP: Frames " << (start_frame + 1) << "-" << (end_frame + 1)
+            << " (" << count << " frames)";
       }
       break;
 
     case REPEAT:
-      oss << "REPEAT: Frame " << start_frame << " (" << count << " times)";
+      oss << "REPEAT: Frame " << (start_frame + 1) << " (" << count
+          << " times)";
       break;
 
     case GAP:
       oss << "GAP: " << count << " gap marker" << (count > 1 ? "s" : "")
-          << " at frame " << start_frame;
+          << " at frame " << (start_frame + 1);
       break;
   }
 

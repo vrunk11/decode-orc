@@ -9,6 +9,7 @@
 
 #include "mask_line_analysis.h"
 
+#include <frame_numbering.h>
 #include <orc/stage/logging.h>
 
 #include <algorithm>
@@ -66,10 +67,9 @@ std::vector<ParameterDescriptor> MaskLineAnalysisTool::parameters() const {
   custom_lines.name = "customLines";
   custom_lines.display_name = "Custom Line Spec";
   custom_lines.description =
-      "Custom line specification with parity prefix (e.g., 'F:25', 'S:10-15', "
-      "'A:20'). "
-      "F=first field, S=second field, A=all fields. Leave empty to use only "
-      "preset options above.";
+      "Custom frame-flat line specification, 1-based as shown in the Mask "
+      "Line stage parameters (e.g., '22' or '101-116', comma-separated). "
+      "Leave empty to use only preset options above.";
   custom_lines.type = ParameterType::STRING;
   custom_lines.constraints.default_value = std::string("");
   params.push_back(custom_lines);
@@ -163,8 +163,11 @@ AnalysisResult MaskLineAnalysisTool::analyze(const AnalysisContext& ctx,
     // PAL Teletext/WSS is on field lines 6-22 (0-based), both fields
     line_spec_result = "A:6-22";
   } else if (!custom_lines.empty()) {
-    // Custom configuration
-    line_spec_result = custom_lines;
+    // Custom lines are entered 1-based (matching the Mask Line stage
+    // parameter dialog); store the 0-based form. Legacy parity-prefixed
+    // specs (F:/S:/A:) that cannot be converted pass through unchanged.
+    auto converted = range_spec_from_presentation(custom_lines);
+    line_spec_result = converted ? *converted : custom_lines;
   } else {
     // No masking selected
     line_spec_result = "";
@@ -176,11 +179,12 @@ AnalysisResult MaskLineAnalysisTool::analyze(const AnalysisContext& ctx,
   // Build summary showing what will be applied
   std::ostringstream summary;
   summary << "Configuration ready to apply:\n\n";
+  // Line numbers are presented 1-based, matching the stage parameter dialog.
   summary << "Line Specification: ";
   if (line_spec_result.empty()) {
     summary << "(none - no lines will be masked)\n";
   } else {
-    summary << line_spec_result << "\n";
+    summary << range_spec_to_presentation(line_spec_result) << "\n";
     if (mask_ntsc_cc) {
       summary << "  → NTSC Closed Captions (field line 20, first field - "
                  "traditional 'line 21')\n";

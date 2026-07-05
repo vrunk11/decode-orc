@@ -10,6 +10,7 @@
 
 #include "disc_mapper_analysis.h"
 
+#include <frame_numbering.h>
 #include <orc/stage/logging.h>
 #include <orc/stage/observers/biphase_observer.h>
 #include <orc/stage/video_frame_representation.h>
@@ -280,15 +281,18 @@ AnalysisResult DiscMapperAnalysisTool::analyze(const AnalysisContext& ctx,
       summary << ")";
     }
 
-    // Add generated mapping spec to summary
+    // Add generated mapping spec to summary. Shown 1-based to match the
+    // Frame Map parameter dialog; the applied spec stays 0-based internally.
+    const std::string display_spec =
+        range_spec_to_presentation(decision.mapping_spec);
     summary << "\n\nGenerated Field Mapping:\n";
-    if (decision.mapping_spec.empty()) {
+    if (display_spec.empty()) {
       summary << "  (empty - no fields could be mapped)";
-    } else if (decision.mapping_spec.length() <= 200) {
-      summary << "  " << decision.mapping_spec;
+    } else if (display_spec.length() <= 200) {
+      summary << "  " << display_spec;
     } else {
-      summary << "  " << decision.mapping_spec.substr(0, 200) << "...\n";
-      summary << "  (Full spec: " << decision.mapping_spec.length()
+      summary << "  " << display_spec.substr(0, 200) << "...\n";
+      summary << "  (Full spec: " << display_spec.length()
               << " chars - see details below)";
     }
 

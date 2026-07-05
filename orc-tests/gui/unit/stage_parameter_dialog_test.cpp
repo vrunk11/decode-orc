@@ -126,8 +126,9 @@ TEST(StageParameterDialogTest,
   current_values["string_param"] = std::string("current");
   current_values["enum_param"] = std::string("beta");
 
-  StageParameterDialog dialog("test-stage", "test stage description",
-                              descriptors, current_values);
+  StageParameterDialog dialog("test-stage", "Test Stage",
+                              "test stage description", descriptors,
+                              current_values);
 
   auto* int_spin =
       qobject_cast<QSpinBox*>(widgetForDisplayName(dialog, "Int Param"));
@@ -197,8 +198,8 @@ TEST(StageParameterDialogTest,
                                        orc::ParameterType::DOUBLE, 0.0, -0.5,
                                        0.5));
 
-  StageParameterDialog dialog("test-stage", "test stage description",
-                              descriptors, {});
+  StageParameterDialog dialog("test-stage", "Test Stage",
+                              "test stage description", descriptors, {});
 
   auto* int_spin =
       qobject_cast<QSpinBox*>(widgetForDisplayName(dialog, "Int Param"));
@@ -252,6 +253,117 @@ TEST(StageParameterDialogTest,
   EXPECT_DOUBLE_EQ(double_spin->value(), -0.5);
   double_spin->stepDown();
   EXPECT_DOUBLE_EQ(double_spin->value(), -0.5);
+}
+
+TEST(StageParameterDialogTest,
+     FrameMapRanges_DisplayedOneBasedAndStoredZeroBased) {
+  (void)ensureApplication();
+
+  std::vector<orc::ParameterDescriptor> descriptors;
+  descriptors.push_back(makeDescriptor(
+      "ranges", "Frame Ranges", orc::ParameterType::STRING, std::string("")));
+
+  std::map<std::string, orc::ParameterValue> current_values;
+  current_values["ranges"] = std::string("0-10,PAD_5,20-30");
+
+  StageParameterDialog dialog("frame_map", "Frame Map", "", descriptors,
+                              current_values);
+
+  auto* edit =
+      qobject_cast<QLineEdit*>(widgetForDisplayName(dialog, "Frame Ranges"));
+  ASSERT_NE(edit, nullptr);
+
+  // Stored 0-based value is displayed 1-based (matching the preview)
+  EXPECT_EQ(edit->text().toStdString(), "1-11,PAD_5,21-31");
+
+  // A 1-based edit is stored 0-based
+  edit->setText("1-101,201");
+  const auto values = dialog.get_values();
+  ASSERT_TRUE(values.find("ranges") != values.end());
+  ASSERT_TRUE(std::holds_alternative<std::string>(values.at("ranges")));
+  EXPECT_EQ(std::get<std::string>(values.at("ranges")), "0-100,200");
+}
+
+TEST(StageParameterDialogTest,
+     DropoutMapSpec_FrameValuesConvertedLineValuesUntouched) {
+  (void)ensureApplication();
+
+  std::vector<orc::ParameterDescriptor> descriptors;
+  descriptors.push_back(makeDescriptor("dropout_map", "Dropout Map",
+                                       orc::ParameterType::STRING,
+                                       std::string("[]")));
+
+  std::map<std::string, orc::ParameterValue> current_values;
+  current_values["dropout_map"] =
+      std::string("[{frame:0,add:[{line:10,start:100,end:200}]}]");
+
+  StageParameterDialog dialog("dropout_map", "Dropout Map", "", descriptors,
+                              current_values);
+
+  auto* edit =
+      qobject_cast<QLineEdit*>(widgetForDisplayName(dialog, "Dropout Map"));
+  ASSERT_NE(edit, nullptr);
+
+  EXPECT_EQ(edit->text().toStdString(),
+            "[{frame:1,add:[{line:10,start:100,end:200}]}]");
+
+  edit->setText("[{frame:42,add:[{line:5,start:1,end:2}]}]");
+  const auto values = dialog.get_values();
+  ASSERT_TRUE(std::holds_alternative<std::string>(values.at("dropout_map")));
+  EXPECT_EQ(std::get<std::string>(values.at("dropout_map")),
+            "[{frame:41,add:[{line:5,start:1,end:2}]}]");
+}
+
+TEST(StageParameterDialogTest,
+     MaskLineSpec_LegacyUnparseableValuePassesThroughUnchanged) {
+  (void)ensureApplication();
+
+  std::vector<orc::ParameterDescriptor> descriptors;
+  descriptors.push_back(makeDescriptor("lineSpec", "Line Specification",
+                                       orc::ParameterType::STRING,
+                                       std::string("")));
+
+  std::map<std::string, orc::ParameterValue> current_values;
+  current_values["lineSpec"] = std::string("F:20");
+
+  StageParameterDialog dialog("mask_line", "Mask Line", "", descriptors,
+                              current_values);
+
+  auto* edit = qobject_cast<QLineEdit*>(
+      widgetForDisplayName(dialog, "Line Specification"));
+  ASSERT_NE(edit, nullptr);
+
+  // Legacy specs that cannot be converted are shown verbatim...
+  EXPECT_EQ(edit->text().toStdString(), "F:20");
+
+  // ...and saved back untouched when the user does not modify them.
+  const auto values = dialog.get_values();
+  ASSERT_TRUE(std::holds_alternative<std::string>(values.at("lineSpec")));
+  EXPECT_EQ(std::get<std::string>(values.at("lineSpec")), "F:20");
+}
+
+TEST(StageParameterDialogTest,
+     NonSpecStringParameters_AreNotConvertedForOtherStages) {
+  (void)ensureApplication();
+
+  std::vector<orc::ParameterDescriptor> descriptors;
+  descriptors.push_back(makeDescriptor(
+      "ranges", "Frame Ranges", orc::ParameterType::STRING, std::string("")));
+
+  std::map<std::string, orc::ParameterValue> current_values;
+  current_values["ranges"] = std::string("0-10");
+
+  // Same parameter name on a different stage: no conversion
+  StageParameterDialog dialog("some_other_stage", "Other Stage", "",
+                              descriptors, current_values);
+
+  auto* edit =
+      qobject_cast<QLineEdit*>(widgetForDisplayName(dialog, "Frame Ranges"));
+  ASSERT_NE(edit, nullptr);
+  EXPECT_EQ(edit->text().toStdString(), "0-10");
+
+  const auto values = dialog.get_values();
+  EXPECT_EQ(std::get<std::string>(values.at("ranges")), "0-10");
 }
 
 }  // namespace gui_unit_test

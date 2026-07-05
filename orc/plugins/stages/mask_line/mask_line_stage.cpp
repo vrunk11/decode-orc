@@ -317,9 +317,10 @@ std::vector<ParameterDescriptor> MaskLineStage::get_parameter_descriptors(
   return {
       ParameterDescriptor{
           "lineSpec", "Line Specification",
-          "Frame-flat 0-based line numbers to mask. Format: LINE or START-END, "
-          "comma-separated. Examples: '21' (NTSC CC line), '100-115', "
-          "'21,334'.",
+          "Frame-flat line numbers to mask, 1-based as shown in the Mask Line "
+          "tool (stored 0-based in the project file). Format: LINE or "
+          "START-END, comma-separated. Examples: '22' (NTSC CC line), "
+          "'101-116', '22,335'.",
           ParameterType::STRING,
           ParameterConstraints{std::nullopt,
                                std::nullopt,

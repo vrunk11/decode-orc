@@ -4,7 +4,7 @@ Reorders, filters, and pads the frame stream from a single source. Without any c
 
 ## When to use
 
-Use Frame Map when a capture starts before the desired programme content, contains a damaged or duplicate region, or needs to be trimmed to a specific range. For example: a capture of 5,000 frames where frames 100–4,900 contain the actual disc content — set `ranges` to `100-4900` so downstream stages only see those frames numbered from 0.
+Use Frame Map when a capture starts before the desired programme content, contains a damaged or duplicate region, or needs to be trimmed to a specific range. For example: a capture of 5,000 frames where frames 101–4,901 (as shown in the preview) contain the actual disc content — set `ranges` to `101-4901` so downstream stages only see those frames.
 
 Use `remove_duplicates` when a player hesitated and captured the same frame twice in a row. Use `pad_gaps` when a player skipped forward and left a hole in the colour-frame index sequence.
 
@@ -21,7 +21,9 @@ When `pad_gaps` is enabled, the stage inserts synthetic padding frames wherever 
 ## Parameters
 
 ### ranges (string)
-Comma-separated list of 0-based frame ID ranges to include, in output order. Each element is either a single index (`42`) or an inclusive range (`0-10`). Default: `""` (passthrough). Example: `0-10,20-30` emits frames 0–10 then frames 20–30, producing 22 output frames total.
+Comma-separated list of frame ranges to include, in output order. Each element is either a single frame number (`42`) or an inclusive range (`1-11`). Frame numbers are entered 1-based in the GUI, matching the preview window. Default: `""` (passthrough). Example: `1-11,21-31` emits frames 1–11 then frames 21–31 (as numbered in the preview), producing 22 output frames total.
+
+Note: the project file (YAML) stores this parameter 0-based (`1-11,21-31` in the GUI is stored as `0-10,20-30`); the conversion is automatic when editing through the parameter dialog.
 
 ### remove_duplicates (bool)
 When enabled, removes the second of any two consecutive frames with matching `colour_frame_index` values. Use this to eliminate duplicate frames caused by player hesitation or double-capture. Default: `false`.

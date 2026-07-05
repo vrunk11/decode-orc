@@ -643,7 +643,8 @@ std::vector<ParameterDescriptor> FrameMapStage::get_parameter_descriptors(
   return {
       ParameterDescriptor{
           "ranges", "Frame Ranges",
-          "Comma-separated FrameID ranges (e.g., '0-10,20-30,11-19'). "
+          "Comma-separated frame ranges, 1-based as shown in the preview "
+          "(e.g., '1-11,21-31,12-20'). Stored 0-based in the project file. "
           "Empty = pass-through.",
           ParameterType::STRING,
           ParameterConstraints{std::nullopt,

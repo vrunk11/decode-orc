@@ -13,7 +13,7 @@ The stage wraps the incoming field representation and intercepts calls to `get_d
 ## Parameters
 
 ### dropout_map (string)
-Per-field dropout override specification encoded as a JSON-like array. Each element identifies a field and lists regions to add or remove. Default: `[]` (no overrides). Example: `[{field:0,add:[{field:1,line:10,start:100,end:200}],remove:[{field:1,line:15,start:50,end:75}]}]`. Use the Dropout Editor tool to build and edit this string interactively rather than writing it by hand.
+Per-frame dropout override specification encoded as a JSON-like array. Each element identifies a frame and lists regions to add or remove. Default: `[]` (no overrides). Example: `[{frame:1,add:[{line:10,start:100,end:200}],remove:[{line:15,start:50,end:75}]}]`. Frame numbers are entered 1-based in the GUI parameter dialog, matching the preview window; the project file (YAML) stores them 0-based and the conversion is automatic. Line, start, and end values are frame-flat 0-based coordinates. Use the Dropout Editor tool to build and edit this string interactively rather than writing it by hand.
 
 ## Tools
 

@@ -13,13 +13,13 @@ The stage wraps the incoming frame representation and intercepts all frame and l
 ## Parameters
 
 ### lineSpec (string)
-Comma-separated list of frame-flat 0-based line indices or inclusive ranges to mask. Format: `LINE` or `START-END`. Default: `""` (no masking, pass-through).
+Comma-separated list of frame-flat line numbers or inclusive ranges to mask. Format: `LINE` or `START-END`. Line numbers are entered 1-based in the GUI parameter dialog, equal to the full-frame broadcast line number; the project file (YAML) stores the value 0-based and the conversion is automatic. Default: `""` (no masking, pass-through).
 
-Examples:
-- `20` — mask frame-flat line 20 (broadcast line 21, field 1 in PAL/NTSC)
-- `333` — mask frame-flat line 333 (broadcast line 334, field 2 in PAL)
-- `5-21` — mask frame-flat lines 5 through 21 (broadcast lines 6–22)
-- `5-21,318-334` — mask VBI area in both fields of a PAL frame
+Examples (as entered in the GUI parameter dialog):
+- `21` — mask broadcast line 21 (field 1 in PAL/NTSC; stored as `20` in YAML)
+- `334` — mask broadcast line 334 (field 2 in PAL; stored as `333` in YAML)
+- `6-22` — mask broadcast lines 6 through 22 (stored as `5-21` in YAML)
+- `6-22,319-335` — mask VBI area in both fields of a PAL frame (stored as `5-21,318-334` in YAML)
 
 Use the **Mask Line Config** tool to generate this value from broadcast line numbers without writing the spec manually.
 
@@ -48,8 +48,8 @@ The dialog maps each input range to the corresponding frame-flat positions in bo
 - A range in field 1 (e.g. PAL 1–313) also masks the equivalent field 2 lines
 - A range in field 2 (e.g. PAL 314–625) also masks the equivalent field 1 lines
 
-Example — PAL, entering range 6–22 (field 1) produces `lineSpec` = `5-21,318-334`, blanking the VBI region in both fields.
-Example — PAL, entering range 10–20 produces `lineSpec` = `9-19,322-332`.
+Example — PAL, entering range 6–22 (field 1) produces `lineSpec` = `6-22,319-335` (stored as `5-21,318-334` in YAML), blanking the VBI region in both fields.
+Example — PAL, entering range 10–20 produces `lineSpec` = `10-20,323-333` (stored as `9-19,322-332` in YAML).
 
 Select this tool from the stage context menu to open the dialog.
 

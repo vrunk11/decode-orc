@@ -557,9 +557,10 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
       summary << "Source Details:\n";
       for (size_t i = 0; i < input_sources.size(); ++i) {
         summary << "  Source " << (i + 1) << ":\n";
-        summary << "    Frame range: " << source_ranges[i].first << "-"
-                << source_ranges[i].last << " (" << source_ranges[i].count()
-                << " frames)\n";
+        // Frame numbers are presented 1-based, matching the preview.
+        summary << "    Frame range: " << (source_ranges[i].first + 1) << "-"
+                << (source_ranges[i].last + 1) << " ("
+                << source_ranges[i].count() << " frames)\n";
         if (first_vbi_frames[i] >= 0) {
           summary << "    VBI range: frame " << first_vbi_frames[i] << "-"
                   << last_vbi_frames[i] << " (" << vbi_counts[i]
@@ -918,9 +919,10 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
           summary << " [EXCLUDED - no overlapping VBI frames]";
         }
         summary << ":\n";
-        summary << "    Frame range: " << source_ranges[i].first << "-"
-                << source_ranges[i].last << " (" << source_ranges[i].count()
-                << " frames)\n";
+        // Frame numbers are presented 1-based, matching the preview.
+        summary << "    Frame range: " << (source_ranges[i].first + 1) << "-"
+                << (source_ranges[i].last + 1) << " ("
+                << source_ranges[i].count() << " frames)\n";
         if (first_vbi_frames[i] >= 0) {
           summary << "    VBI range: frame " << first_vbi_frames[i] << "-"
                   << last_vbi_frames[i] << " (" << vbi_counts[i]
@@ -928,7 +930,7 @@ AnalysisResult SourceAlignmentAnalysisTool::analyze(
           if (is_participating) {
             const FrameID frame_offset = alignment_offsets[i];
             summary << "    First common VBI frame (" << first_common_frame
-                    << ") at frame: " << frame_offset << "\n";
+                    << ") at frame: " << (frame_offset + 1) << "\n";
             summary << "    Alignment offset: " << frame_offset << " frames";
             if (frame_offset > FrameID{0}) {
               summary << " (skip first " << frame_offset << ")";

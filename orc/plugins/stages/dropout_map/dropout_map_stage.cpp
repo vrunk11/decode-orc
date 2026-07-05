@@ -164,7 +164,8 @@ std::vector<ParameterDescriptor> DropoutMapStage::get_parameter_descriptors(
   desc.description =
       "Per-frame dropout overrides: "
       "[{frame:N,add:[{line:L,start:S,end:E}],remove:[...]}] "
-      "(frame = 0-based frame_id, line/start/end are frame-flat 0-based)";
+      "(frame = 1-based frame number as shown in the preview; stored 0-based "
+      "in the project file. line/start/end are frame-flat 0-based)";
   desc.type = ParameterType::STRING;
   desc.constraints.default_value = std::string("[]");
   desc.constraints.required = false;

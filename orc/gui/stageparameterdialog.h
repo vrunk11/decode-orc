@@ -39,7 +39,10 @@ class StageParameterDialog : public QDialog {
   /**
    * @brief Construct parameter editor dialog
    *
-   * @param stage_name Name of the stage being edited
+   * @param stage_name Internal stage identifier (e.g. "frame_map"); used for
+   * QSettings keys and to identify parameters that need presentation
+   * conversion (0-based stored values shown 1-based in the UI)
+   * @param display_name Human-readable stage name (used for the window title)
    * @param stage_description Description of the stage (shown at the top of the
    * dialog)
    * @param descriptors Parameter descriptors from the stage
@@ -50,7 +53,8 @@ class StageParameterDialog : public QDialog {
    * @param parent Parent widget
    */
   explicit StageParameterDialog(
-      const std::string& stage_name, const std::string& stage_description,
+      const std::string& stage_name, const std::string& display_name,
+      const std::string& stage_description,
       const std::vector<orc::ParameterDescriptor>& descriptors,
       const std::map<std::string, orc::ParameterValue>& current_values,
       const QString& project_path = QString(),
@@ -93,6 +97,11 @@ class StageParameterDialog : public QDialog {
   };
   std::map<std::string, ParameterWidget> parameter_widgets_;
 
+  // Display text loaded into indexed spec editors (frame/line ranges). Used
+  // to pass unrecognised legacy values through untouched: validation only
+  // rejects a spec the user has actually modified.
+  std::map<std::string, std::string> spec_display_baseline_;
+
   // Build UI from descriptors
   void build_ui(
       const std::map<std::string, orc::ParameterValue>& current_values);
@@ -109,4 +118,15 @@ class StageParameterDialog : public QDialog {
 
   // Helper to get ParameterValue from widget
   orc::ParameterValue get_widget_value(const std::string& param_name) const;
+
+  // Presentation conversion for indexed spec parameters (frame/line ranges):
+  // stored values are 0-based, the UI shows 1-based numbers matching the
+  // preview dialog. Non-spec parameters pass through unchanged.
+  std::string to_display_spec(const std::string& param_name,
+                              const std::string& stored_value) const;
+  // Converts a displayed 1-based spec back to the stored 0-based form; falls
+  // back to the raw text when it cannot be parsed (validate_values() reports
+  // the error before the dialog can be accepted).
+  std::string from_display_spec(const std::string& param_name,
+                                const std::string& display_value) const;
 };
