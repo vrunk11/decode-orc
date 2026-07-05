@@ -1050,10 +1050,12 @@ bool ChromaSinkStage::trigger(
       colourLookAheadFrames = (decoder_type_ == "transform3d") ? 4 : 0;
     }
   } else if (ntscDecoder) {
-    // NTSC 3D decoder might need lookbehind/lookahead
+    // NTSC 3D comb filters across the previous, current, and next frame
     if (decoder_type_ == "ntsc3d" || decoder_type_ == "ntsc3dnoadapt") {
-      colourLookBehindFrames = 1;  // From Comb::Configuration::getLookBehind()
-      colourLookAheadFrames = 2;   // From Comb::Configuration::getLookAhead()
+      // Comb::Configuration::getLookBehind()/getLookAhead() both return 1 in
+      // 3D mode; decodeFramesComposite() never reads past one frame ahead.
+      colourLookBehindFrames = 1;
+      colourLookAheadFrames = 1;
     }
   }
 
