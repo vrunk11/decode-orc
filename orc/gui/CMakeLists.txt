@@ -44,6 +44,14 @@ set(ORC_GUI_LIB_SOURCES
     orcnodepainter.h
     fieldpreviewwidget.cpp
     fieldpreviewwidget.h
+    frame_marker_slider.cpp
+    frame_marker_slider.h
+    frame_view_geometry.cpp
+    frame_view_geometry.h
+    frame_viewport_widget.cpp
+    frame_viewport_widget.h
+    preview_image_qt.cpp
+    preview_image_qt.h
     previewdialog.cpp
     previewdialog.h
     framescopedialog.cpp

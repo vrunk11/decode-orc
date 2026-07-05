@@ -15,9 +15,9 @@
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPen>
-#include <cstring>
 
 #include "logging.h"
+#include "preview_image_qt.h"
 
 FieldPreviewWidget::FieldPreviewWidget(QWidget* parent) : QWidget(parent) {
   setMinimumSize(320, 240);
@@ -37,56 +37,42 @@ FieldPreviewWidget::FieldPreviewWidget(QWidget* parent) : QWidget(parent) {
 FieldPreviewWidget::~FieldPreviewWidget() {}
 
 void FieldPreviewWidget::setImage(const orc::PreviewImage& image) {
-  // Convert RGB888 data from orc-core to QImage
-  if (image.rgb_data.empty() || image.width == 0 || image.height == 0) {
-    current_image_ = QImage();
+  current_image_ =
+      orc::gui::previewImageToQImage(image, std::move(current_image_));
+
+  if (current_image_.isNull()) {
     dropout_regions_.clear();
   } else {
-    // Check if we need to reuse existing image buffer (avoid reallocation)
-    if (current_image_.width() != static_cast<int>(image.width) ||
-        current_image_.height() != static_cast<int>(image.height) ||
-        current_image_.format() != QImage::Format_RGB888) {
-      current_image_ =
-          QImage(static_cast<int>(image.width), static_cast<int>(image.height),
-                 QImage::Format_RGB888);
-    }
-
-    // QImage aligns scanlines to 4-byte boundaries, so we need to check stride
-    const int source_bytes_per_line = static_cast<int>(image.width * 3);
-    const int qimage_bytes_per_line =
-        static_cast<int>(current_image_.bytesPerLine());
-
-    if (source_bytes_per_line == qimage_bytes_per_line) {
-      // Fast path: strides match, bulk copy
-      std::memcpy(current_image_.bits(), image.rgb_data.data(),
-                  image.rgb_data.size());
-    } else {
-      // Strides don't match due to alignment - copy line by line
-      for (size_t y = 0; y < image.height; ++y) {
-        auto* scan_line = current_image_.scanLine(static_cast<int>(y));
-        const uint8_t* src = &image.rgb_data[y * source_bytes_per_line];
-        std::memcpy(scan_line, src, source_bytes_per_line);
-      }
-    }
-
     // Store dropout regions for visualization
     dropout_regions_ = image.dropout_regions;
     ORC_LOG_DEBUG("FieldPreviewWidget::setImage - dropout regions count: {}",
                   dropout_regions_.size());
   }
 
+  updateViewGeometry();
   update();
 }
 
 void FieldPreviewWidget::clearImage() {
   current_image_ = QImage();
   dropout_regions_.clear();
+  updateViewGeometry();
   update();
 }
 
 void FieldPreviewWidget::setAspectCorrection(double correction) {
-  aspect_correction_ = correction;
+  geometry_.setAspectCorrection(correction);
+  updateViewGeometry();
   update();
+}
+
+void FieldPreviewWidget::updateViewGeometry() {
+  // Fit-to-widget presentation: the zoom always letterboxes the
+  // aspect-corrected image inside the widget rect.
+  geometry_.setImageSize(current_image_.size());
+  geometry_.setViewportSize(size());
+  geometry_.setZoom(geometry_.fitZoom());
+  image_rect_ = geometry_.targetRect();
 }
 
 void FieldPreviewWidget::setShowDropouts(bool show) {
@@ -116,14 +102,12 @@ void FieldPreviewWidget::updateCrosshairsPosition(int image_x, int image_y) {
   image_y = qBound(0, image_y, image_size.height() - 1);
 
   // Map image coordinates to widget coordinates
-  int widget_x =
-      image_rect_.left() + (image_x * image_rect_.width()) / image_size.width();
-  int widget_y = image_rect_.top() +
-                 (image_y * image_rect_.height()) / image_size.height();
+  const QPointF widget_pos =
+      geometry_.widgetFromImage(QPointF(image_x, image_y));
 
   // Update locked cross-hairs position
   crosshairs_locked_ = true;
-  locked_crosshairs_pos_ = QPoint(widget_x, widget_y);
+  locked_crosshairs_pos_ = widget_pos.toPoint();
   update();
 }
 
@@ -143,24 +127,9 @@ void FieldPreviewWidget::paintEvent(QPaintEvent* event) {
     return;
   }
 
-  // Scale image to fit widget
-  // Apply GUI-side aspect ratio correction by scaling width
-  QRect target = rect();
+  // Scale image to fit widget with aspect-ratio correction (shared geometry)
+  const QRect dest_rect = image_rect_;
   QSize image_size = current_image_.size();
-
-  // Calculate display size with width correction (aspect_correction_)
-  // aspect_correction_ = 1.0 for SAR 1:1; < 1.0 (e.g., ~0.7) for DAR 4:3
-  QSize corrected_size(
-      static_cast<int>(image_size.width() * aspect_correction_),
-      image_size.height());
-  QSize scaled_size = corrected_size.scaled(target.size(), Qt::KeepAspectRatio);
-
-  QRect dest_rect((target.width() - scaled_size.width()) / 2,
-                  (target.height() - scaled_size.height()) / 2,
-                  scaled_size.width(), scaled_size.height());
-
-  // Store image rect for cross-hair calculations
-  image_rect_ = dest_rect;
 
   // Use smooth transformation for better quality when scaling
   // This is especially important for chroma information to avoid aliasing
@@ -185,15 +154,12 @@ void FieldPreviewWidget::paintEvent(QPaintEvent* event) {
       }
 
       // Map image coordinates to widget coordinates
-      qreal widget_x1 =
-          image_rect_.left() + (start_sample * image_rect_.width()) /
-                                   static_cast<qreal>(image_size.width());
-      qreal widget_x2 =
-          image_rect_.left() + (end_sample * image_rect_.width()) /
-                                   static_cast<qreal>(image_size.width());
-      qreal widget_y =
-          image_rect_.top() + (line * image_rect_.height()) /
-                                  static_cast<qreal>(image_size.height());
+      const qreal widget_x1 =
+          geometry_.widgetFromImage(QPointF(start_sample, line)).x();
+      const qreal widget_x2 =
+          geometry_.widgetFromImage(QPointF(end_sample, line)).x();
+      const qreal widget_y =
+          geometry_.widgetFromImage(QPointF(start_sample, line)).y();
 
       // Calculate thickness - scale with image height, 1-4 pixels
       int thickness = std::max(1, std::min(4, image_rect_.height() / 200));
@@ -216,34 +182,20 @@ void FieldPreviewWidget::paintEvent(QPaintEvent* event) {
     pen.setWidth(1);
     painter.setPen(pen);
 
-    // Map position to image pixel coordinates
-    int img_x = ((draw_pos.x() - image_rect_.left()) * image_size.width()) /
-                image_rect_.width();
-    int img_y = ((draw_pos.y() - image_rect_.top()) * image_size.height()) /
-                image_rect_.height();
+    // Map position to image pixel coordinates (clamped)
+    const QPoint image_pixel = geometry_.imagePixelFromWidget(draw_pos);
 
-    // Clamp to image bounds
-    img_x = qBound(0, img_x, image_size.width() - 1);
-    img_y = qBound(0, img_y, image_size.height() - 1);
-
-    // Map image pixel back to widget coordinates to get pixel-aligned positions
-    // This ensures the cross-hairs align with the actual pixel boundaries
-    qreal widget_x =
-        image_rect_.left() +
-        (img_x * image_rect_.width()) / static_cast<qreal>(image_size.width());
-    qreal widget_y =
-        image_rect_.top() + (img_y * image_rect_.height()) /
-                                static_cast<qreal>(image_size.height());
-    qreal widget_x_end =
-        image_rect_.left() + ((img_x + 1) * image_rect_.width()) /
-                                 static_cast<qreal>(image_size.width());
-    qreal widget_y_end =
-        image_rect_.top() + ((img_y + 1) * image_rect_.height()) /
-                                static_cast<qreal>(image_size.height());
+    // Map image pixel back to widget coordinates to get pixel-aligned
+    // positions - this ensures the cross-hairs align with the actual pixel
+    // boundaries
+    const QPointF pixel_top_left =
+        geometry_.widgetFromImage(QPointF(image_pixel.x(), image_pixel.y()));
+    const QPointF pixel_bottom_right = geometry_.widgetFromImage(
+        QPointF(image_pixel.x() + 1, image_pixel.y() + 1));
 
     // Calculate center of the pixel
-    qreal center_x = (widget_x + widget_x_end) / 2.0;
-    qreal center_y = (widget_y + widget_y_end) / 2.0;
+    const qreal center_x = (pixel_top_left.x() + pixel_bottom_right.x()) / 2.0;
+    const qreal center_y = (pixel_top_left.y() + pixel_bottom_right.y()) / 2.0;
 
     // Draw vertical line through pixel center
     painter.drawLine(QPointF(center_x, image_rect_.top()),
@@ -294,21 +246,8 @@ void FieldPreviewWidget::mousePressEvent(QMouseEvent* event) {
 
     // Emit signal for initial click if over the image area
     if (image_rect_.contains(event->pos()) && !current_image_.isNull()) {
-      QSize image_size = current_image_.size();
-
-      // Map mouse position to image pixel coordinates
-      int img_x =
-          ((event->pos().x() - image_rect_.left()) * image_size.width()) /
-          image_rect_.width();
-      int img_y =
-          ((event->pos().y() - image_rect_.top()) * image_size.height()) /
-          image_rect_.height();
-
-      // Clamp to image bounds
-      img_x = qBound(0, img_x, image_size.width() - 1);
-      img_y = qBound(0, img_y, image_size.height() - 1);
-
-      emit lineClicked(img_x, img_y);
+      const QPoint image_pixel = geometry_.imagePixelFromWidget(event->pos());
+      emit lineClicked(image_pixel.x(), image_pixel.y());
     }
   }
 
@@ -339,21 +278,9 @@ void FieldPreviewWidget::onLineScopeUpdateTimer() {
 
   line_scope_update_pending_ = false;
 
-  QSize image_size = current_image_.size();
-
-  // Map mouse position to image pixel coordinates
-  int img_x = ((pending_line_scope_pos_.x() - image_rect_.left()) *
-               image_size.width()) /
-              image_rect_.width();
-  int img_y = ((pending_line_scope_pos_.y() - image_rect_.top()) *
-               image_size.height()) /
-              image_rect_.height();
-
-  // Clamp to image bounds
-  img_x = qBound(0, img_x, image_size.width() - 1);
-  img_y = qBound(0, img_y, image_size.height() - 1);
-
-  emit lineClicked(img_x, img_y);
+  const QPoint image_pixel =
+      geometry_.imagePixelFromWidget(pending_line_scope_pos_);
+  emit lineClicked(image_pixel.x(), image_pixel.y());
 }
 
 void FieldPreviewWidget::leaveEvent(QEvent* event) {
@@ -365,5 +292,6 @@ void FieldPreviewWidget::leaveEvent(QEvent* event) {
 
 void FieldPreviewWidget::resizeEvent(QResizeEvent* event) {
   QWidget::resizeEvent(event);
+  updateViewGeometry();
   update();
 }

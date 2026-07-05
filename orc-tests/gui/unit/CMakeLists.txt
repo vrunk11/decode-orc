@@ -86,6 +86,7 @@ orc_add_gui_unit_tests(
         OFFSCREEN
         SOURCES
             field_frame_presentation_test.cpp
+            frame_view_geometry_test.cpp
             framescopedialog_test.cpp
             frametimingdialog_test.cpp
             line_navigation_mapper_test.cpp
@@ -118,4 +119,6 @@ orc_add_gui_unit_tests(
         stage_parameter_dialog_test.cpp
         analysis_dialog_smoke_test.cpp
         project_properties_dialog_test.cpp
+        dropout_frame_view_test.cpp
+        dropout_editor_dialog_test.cpp
 )

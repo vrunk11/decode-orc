@@ -19,6 +19,8 @@
 #include <memory>
 #include <vector>
 
+#include "frame_view_geometry.h"
+
 // Forward declarations
 namespace orc {
 namespace public_api {
@@ -70,7 +72,7 @@ class FieldPreviewWidget : public QWidget {
    * @brief Get the current aspect correction value
    * @return The aspect correction factor
    */
-  double aspectCorrection() const { return aspect_correction_; }
+  double aspectCorrection() const { return geometry_.aspectCorrection(); }
 
   /**
    * @brief Set whether to show dropout regions
@@ -110,8 +112,12 @@ class FieldPreviewWidget : public QWidget {
   void leaveEvent(QEvent* event) override;
 
  private:
+  /// Refresh the shared display geometry after image/aspect/size changes.
+  void updateViewGeometry();
+
   QImage current_image_;
-  double aspect_correction_ = 1.0;  // Default to SAR 1:1 (GUI sets DAR)
+  // Shared display geometry (fit-to-widget: zoom is always fitZoom())
+  orc::gui::FrameViewGeometry geometry_;
   std::vector<orc::DropoutRegion> dropout_regions_;
   bool show_dropouts_ = false;
   QPoint mouse_pos_;         // Current mouse position

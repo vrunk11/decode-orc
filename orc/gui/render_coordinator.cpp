@@ -174,6 +174,11 @@ class RenderPresenterAdapter final : public orc::presenters::IRenderPresenter {
 
 }  // namespace
 
+std::shared_ptr<orc::presenters::IRenderPresenter> makeRenderPresenterAdapter(
+    void* project_handle) {
+  return std::make_shared<RenderPresenterAdapter>(project_handle);
+}
+
 // Forward declarations for core types used via opaque pointers
 namespace orc {
 class DAG;

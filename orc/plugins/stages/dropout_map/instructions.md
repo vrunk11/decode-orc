@@ -18,7 +18,25 @@ Per-frame dropout override specification encoded as a JSON-like array. Each elem
 ## Tools
 
 ### Dropout Editor
-Opens the interactive dropout map editor. Select this tool from the stage context menu to visually draw new dropout regions or delete existing ones on a per-field basis. Changes made in the editor are saved back to the `dropout_map` parameter automatically.
+Opens the interactive dropout map editor. Select this tool from the stage context menu to visually draw new dropout regions or delete existing ones on a per-frame basis. Changes made in the editor are saved back to the `dropout_map` parameter automatically.
+
+The editor displays the frame exactly as the preview window does (same rendering pipeline, sequential frame layout) with the same aspect-ratio options (1:1 square samples or 4:3 display). Dropout regions are drawn as overlays on the frame:
+
+- **Red** — dropouts detected by the source
+- **Green** — regions added in the editor
+- **Grey (struck-through)** — source dropouts marked for removal
+
+Editing is modeless and works by direct manipulation:
+
+- **Add** — click and drag along a line on an empty area of the frame.
+- **Select** — click any region (or its row in the region table; selection stays in sync both ways).
+- **Move / resize** — drag a selected addition to move it; drag the square handles at its ends to resize it; arrow keys nudge it one line/sample at a time.
+- **Delete / remove** — press `Delete` (or use the right-click menu): on an addition it deletes the region; on a red source dropout it toggles the removed mark; on a struck-through region it restores it.
+- **Undo / redo** — `Ctrl+Z` / `Ctrl+Shift+Z` (or the Undo/Redo buttons) step through every edit, including edits on other frames.
+
+All regions on the frame are listed in a single table with their status (Source / Removed / Added), line (1-based, matching the rest of the GUI), and start/end samples. Zoom with the toolbar buttons (including 1:1 and Fit) or Ctrl+mouse-wheel, which zooms at the cursor position; the plain wheel pans, and the arrow keys pan when no addition is selected.
+
+Frame navigation matches the preview window: first/previous/next/last buttons, a scrub slider, a 1-based jump box, and Page Up/Page Down keys. Frames that carry edits are marked in orange on the slider, and the *◀ Edit* / *Edit ▶* buttons jump between them. The pipeline executes and frames render in the background — the editor opens immediately and shows progress in its status bar.
 
 ## Status Indicator
 

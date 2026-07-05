@@ -3600,38 +3600,31 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
       return;
     }
 
-    // Get DAG and execute to input node
-    auto dag = project_.getDAG();
-    // Create temporary RenderPresenter for execution
+    // Create a RenderPresenter for the editor so it renders frames through
+    // the same pipeline as the preview dialog. The dialog holds a shared_ptr
+    // as it is non-modal; dropout overlay baking is disabled because the
+    // editor draws its own overlay graphics.
     auto* core_project = project_.presenter()->getCoreProjectHandle();
     if (!core_project) {
       QMessageBox::warning(this, "Error", "Invalid project state.");
       return;
     }
 
-    orc::presenters::RenderPresenter render_presenter(core_project);
-    render_presenter.setDAG(project_.getDAG());
-
-    std::shared_ptr<const void> source_repr;
-    try {
-      source_repr = render_presenter.executeToNode(input_node_id);
-    } catch (const std::exception& e) {
-      QMessageBox::warning(this, "Error",
-                           QString("Failed to execute DAG: %1").arg(e.what()));
-      return;
-    }
-
-    if (!source_repr) {
-      QMessageBox::warning(
-          this, "Error",
-          "Could not get video frame data from input. "
-          "Ensure the dropout_map stage has a valid video source connected.");
-      return;
-    }
+    auto render_presenter = makeRenderPresenterAdapter(core_project);
+    render_presenter->setDAG(project_.getDAG());
+    render_presenter->setShowDropouts(false);
 
     // Open the editor dialog as a non-modal independent window
-    auto* dialog = new DropoutEditorDialog(node_id, dropout_presenter_.get(),
-                                           source_repr, this);
+    DropoutEditorDialog* dialog = nullptr;
+    try {
+      dialog = new DropoutEditorDialog(node_id, dropout_presenter_.get(),
+                                       render_presenter, input_node_id, this);
+    } catch (const std::exception& e) {
+      QMessageBox::warning(
+          this, "Error",
+          QString("Failed to open dropout editor: %1").arg(e.what()));
+      return;
+    }
     dialog->setAttribute(Qt::WA_DeleteOnClose);
 
     auto apply_dropout_map = [this, node_id, dialog]() {

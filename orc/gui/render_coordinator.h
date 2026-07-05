@@ -1017,4 +1017,16 @@ class RenderCoordinator : public QObject {
   // Removed: trigger_cancel_requested_ and current_trigger_stage_
 };
 
+/**
+ * @brief Create an IRenderPresenter backed by a concrete RenderPresenter
+ *
+ * Used by GUI components (e.g. the dropout editor) that render through the
+ * presenter interface so tests can substitute a fake implementation.
+ *
+ * @param project_handle Opaque core project handle (must be non-null and
+ * outlive the returned presenter)
+ */
+std::shared_ptr<orc::presenters::IRenderPresenter> makeRenderPresenterAdapter(
+    void* project_handle);
+
 #endif  // RENDER_COORDINATOR_H

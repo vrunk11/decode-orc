@@ -10,446 +10,633 @@
 #include "dropout_editor_dialog.h"
 
 #include <QDialogButtonBox>
-#include <QMessageBox>
+#include <QFontMetrics>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QMenu>
 #include <QPainter>
-#include <QScrollArea>
 #include <QScrollBar>
+#include <QShortcut>
+#include <QSignalBlocker>
+#include <QVBoxLayout>
 #include <algorithm>
 
-#include "field_frame_presentation.h"
 #include "logging.h"
+#include "preview_image_qt.h"
+
+namespace {
+
+// Overlay colours shared with the legend and region table. Source dropouts
+// use the same red family as the preview dialog's dropout overlay.
+const QColor kSourceColor(255, 48, 48);
+const QColor kAdditionColor(48, 200, 48);
+const QColor kRemovalColor(160, 160, 160);
+
+// The "sequential" preview option renders image rows as frame-flat lines,
+// which is the dropout map's coordinate system.
+constexpr const char* kSequentialOptionId = "sequential_clamped";
+
+// Interaction geometry (widget-space pixels)
+constexpr double kHandleSize = 8.0;
+constexpr double kHitSlop = 2.0;
+constexpr int kMoveThreshold = 3;
+
+bool sameRegion(const orc::presenters::DropoutRegion& a,
+                const orc::presenters::DropoutRegion& b) {
+  return a.line == b.line && a.start_sample == b.start_sample &&
+         a.end_sample == b.end_sample;
+}
+
+QRectF leftHandleRect(const QRectF& band) {
+  return QRectF(band.left() - kHandleSize / 2.0,
+                band.center().y() - kHandleSize / 2.0, kHandleSize,
+                kHandleSize);
+}
+
+QRectF rightHandleRect(const QRectF& band) {
+  return QRectF(band.right() - kHandleSize / 2.0,
+                band.center().y() - kHandleSize / 2.0, kHandleSize,
+                kHandleSize);
+}
+
+}  // namespace
 
 // ============================================================================
 // DropoutFrameView Implementation
 // ============================================================================
 
 DropoutFrameView::DropoutFrameView(QWidget* parent)
-    : QLabel(parent),
-      frame_width_(0),
-      frame_height_(0),
-      mode_(InteractionMode::None),
-      dragging_(false),
-      rubber_band_(new QRubberBand(QRubberBand::Rectangle, this)),
-      hover_region_index_(-1),
-      hover_region_type_(HoverRegionType::None),
-      zoom_level_(1.0f) {
-  setAlignment(Qt::AlignCenter);
-  setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-  setScaledContents(false);
-  setFrameStyle(QFrame::Box | QFrame::Sunken);
-  setMouseTracking(true);
-  setCursor(Qt::CrossCursor);
-  rubber_band_->hide();
-
-  QPalette palette;
-  palette.setBrush(QPalette::Highlight, QBrush(QColor(0, 120, 215, 100)));
-  rubber_band_->setPalette(palette);
+    : FrameViewportWidget(parent) {
+  setZoomRange(0.25, 8.0);
 }
 
 void DropoutFrameView::setFrame(
-    const std::vector<uint8_t>& frame_data, int width, int height,
+    const QImage& frame_image,
     const std::vector<orc::presenters::DropoutRegion>& source_dropouts,
     const std::vector<orc::presenters::DropoutRegion>& additions,
     const std::vector<orc::presenters::DropoutRegion>& removals) {
-  frame_data_ = frame_data;
-  frame_width_ = width;
-  frame_height_ = height;
   source_dropouts_ = source_dropouts;
   additions_ = additions;
   removals_ = removals;
-  updateDisplay();
+  selected_kind_ = RegionKind::None;
+  selected_index_ = -1;
+  hover_ = Hit{};
+  drag_mode_ = DragMode::None;
+  setImage(frame_image);
 }
 
-void DropoutFrameView::clearEdits() {
-  additions_.clear();
-  removals_.clear();
-  updateDisplay();
-  Q_EMIT regionsModified();
-}
+void DropoutFrameView::updateRegions(
+    const std::vector<orc::presenters::DropoutRegion>& additions,
+    const std::vector<orc::presenters::DropoutRegion>& removals) {
+  additions_ = additions;
+  removals_ = removals;
 
-QSize DropoutFrameView::sizeHint() const {
-  if (frame_width_ > 0 && frame_height_ > 0) {
-    return QSize(
-        static_cast<int>(static_cast<float>(frame_width_) * zoom_level_),
-        static_cast<int>(static_cast<float>(frame_height_) * zoom_level_));
+  // The dialog resyncs the selection after edits; drop it locally when the
+  // index no longer exists so painting never dereferences a stale index.
+  if ((selected_kind_ == RegionKind::Addition &&
+       selected_index_ >= static_cast<int>(additions_.size())) ||
+      (selected_kind_ == RegionKind::OrphanRemoval &&
+       selected_index_ >= static_cast<int>(removals_.size()))) {
+    selected_kind_ = RegionKind::None;
+    selected_index_ = -1;
   }
-  return QSize(800, 600);
+  hover_ = Hit{};
+  update();
 }
 
-void DropoutFrameView::resizeEvent(QResizeEvent* event) {
-  QLabel::resizeEvent(event);
-  if (!frame_data_.empty() && frame_width_ > 0 && frame_height_ > 0) {
-    updateDisplay();
+void DropoutFrameView::setSelectedRegion(RegionKind kind, int index) {
+  selected_kind_ = kind;
+  selected_index_ = index;
+  update();
+}
+
+bool DropoutFrameView::isOrphanRemoval(int removal_index) const {
+  return removal_index >= 0 &&
+         removal_index < static_cast<int>(removals_.size()) &&
+         !removalHasSource(removals_[removal_index]);
+}
+
+bool DropoutFrameView::isRegionMarkedForRemoval(
+    const orc::presenters::DropoutRegion& region) const {
+  return std::any_of(removals_.begin(), removals_.end(),
+                     [&region](const orc::presenters::DropoutRegion& removal) {
+                       return sameRegion(removal, region);
+                     });
+}
+
+bool DropoutFrameView::removalHasSource(
+    const orc::presenters::DropoutRegion& removal) const {
+  return std::any_of(source_dropouts_.begin(), source_dropouts_.end(),
+                     [&removal](const orc::presenters::DropoutRegion& source) {
+                       return sameRegion(source, removal);
+                     });
+}
+
+QRectF DropoutFrameView::regionBandRect(
+    const orc::presenters::DropoutRegion& region, bool emphasized) const {
+  const int width = imageSize().width();
+  const int height = imageSize().height();
+  const int line = static_cast<int>(region.line);
+  const int start = static_cast<int>(region.start_sample);
+  const int end = static_cast<int>(region.end_sample);
+  if (line < 0 || line >= height || start < 0 || end > width || start >= end) {
+    return QRectF();
   }
+
+  // Widget-space band centered on the scanline; constant on-screen thickness
+  // regardless of zoom so overlays stay crisp, visible and clickable.
+  const QPointF left = widgetFromImage(QPointF(start, line + 0.5));
+  const QPointF right = widgetFromImage(QPointF(end, line + 0.5));
+  const double thickness =
+      std::max(4.0, viewGeometry().zoom()) + (emphasized ? 3.0 : 0.0);
+  return QRectF(left.x(), left.y() - thickness / 2.0, right.x() - left.x(),
+                thickness);
 }
 
-void DropoutFrameView::wheelEvent(QWheelEvent* event) {
-  if (event->modifiers() == Qt::NoModifier) {
-    float delta = static_cast<float>(event->angleDelta().y()) / 120.0f;
-    float zoom_factor = 1.0f + (delta * 0.1f);
-    float old_zoom = zoom_level_;
-    float new_zoom = std::max(0.5f, std::min(4.0f, old_zoom * zoom_factor));
-
-    if (new_zoom != zoom_level_) {
-      QScrollArea* scroll_area =
-          qobject_cast<QScrollArea*>(parentWidget()->parentWidget());
-      if (scroll_area) {
-        QPoint viewport_pos = scroll_area->viewport()->mapFromGlobal(
-            event->globalPosition().toPoint());
-
-        int old_h_scroll = scroll_area->horizontalScrollBar()->value();
-        int old_v_scroll = scroll_area->verticalScrollBar()->value();
-
-        float content_x = static_cast<float>(old_h_scroll) +
-                          static_cast<float>(viewport_pos.x());
-        float content_y = static_cast<float>(old_v_scroll) +
-                          static_cast<float>(viewport_pos.y());
-
-        zoom_level_ = new_zoom;
-        updateDisplay();
-
-        float zoom_ratio = new_zoom / old_zoom;
-        int new_h_scroll = static_cast<int>(
-            content_x * zoom_ratio - static_cast<float>(viewport_pos.x()));
-        int new_v_scroll = static_cast<int>(
-            content_y * zoom_ratio - static_cast<float>(viewport_pos.y()));
-
-        scroll_area->horizontalScrollBar()->setValue(new_h_scroll);
-        scroll_area->verticalScrollBar()->setValue(new_v_scroll);
-
-        Q_EMIT zoomChanged(zoom_level_);
-      } else {
-        zoom_level_ = new_zoom;
-        updateDisplay();
-        Q_EMIT zoomChanged(zoom_level_);
-      }
-    }
-
-    event->accept();
-  } else {
-    QLabel::wheelEvent(event);
-  }
-}
-
-void DropoutFrameView::setZoomLevel(float zoom) {
-  zoom_level_ = std::max(0.5f, std::min(4.0f, zoom));
-  updateDisplay();
-}
-
-void DropoutFrameView::setHighlightedRegion(HoverRegionType type, int index) {
-  hover_region_type_ = type;
-  hover_region_index_ = index;
-  updateDisplay();
-}
-
-void DropoutFrameView::updateDisplay() {
-  if (frame_data_.empty() || frame_width_ == 0 || frame_height_ == 0) {
-    setText("No frame data");
+void DropoutFrameView::drawRegionBand(
+    QPainter& painter, const orc::presenters::DropoutRegion& region,
+    const QColor& color, bool emphasized, bool struck) const {
+  const QRectF band = regionBandRect(region, emphasized);
+  if (band.isEmpty()) {
     return;
   }
 
-  QImage image(frame_width_, frame_height_, QImage::Format_RGB32);
+  QColor fill = color;
+  fill.setAlpha(emphasized ? 220 : 150);
+  painter.fillRect(band, fill);
 
-  for (int y = 0; y < frame_height_; ++y) {
-    for (int x = 0; x < frame_width_; ++x) {
-      int idx = y * frame_width_ + x;
-      if (idx < static_cast<int>(frame_data_.size())) {
-        uint8_t val = frame_data_[idx];
-        image.setPixel(x, y, qRgb(val, val, val));
+  if (struck) {
+    // Strike-through marks a source dropout the user has removed.
+    QPen strike_pen(Qt::white);
+    strike_pen.setWidthF(1.5);
+    strike_pen.setStyle(Qt::DashLine);
+    painter.setPen(strike_pen);
+    painter.drawLine(QPointF(band.left(), band.center().y()),
+                     QPointF(band.right(), band.center().y()));
+  }
+
+  if (emphasized) {
+    QPen outline(color.darker(150));
+    outline.setWidthF(1.0);
+    painter.setPen(outline);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(band);
+  }
+}
+
+void DropoutFrameView::paintOverlay(QPainter& painter) {
+  painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+  // Source dropouts (red); those marked for removal render struck-through in
+  // the removal colour.
+  for (size_t i = 0; i < source_dropouts_.size(); ++i) {
+    const auto& region = source_dropouts_[i];
+    const bool emphasized = (selected_kind_ == RegionKind::Source &&
+                             selected_index_ == static_cast<int>(i)) ||
+                            (hover_.kind == RegionKind::Source &&
+                             hover_.index == static_cast<int>(i));
+    if (isRegionMarkedForRemoval(region)) {
+      drawRegionBand(painter, region, kRemovalColor, emphasized, true);
+    } else {
+      drawRegionBand(painter, region, kSourceColor, emphasized, false);
+    }
+  }
+
+  // Orphan removal entries (no matching source dropout)
+  for (size_t i = 0; i < removals_.size(); ++i) {
+    if (removalHasSource(removals_[i])) {
+      continue;  // Already drawn from the source list above
+    }
+    const bool emphasized = (selected_kind_ == RegionKind::OrphanRemoval &&
+                             selected_index_ == static_cast<int>(i)) ||
+                            (hover_.kind == RegionKind::OrphanRemoval &&
+                             hover_.index == static_cast<int>(i));
+    drawRegionBand(painter, removals_[i], kRemovalColor, emphasized, true);
+  }
+
+  // Additions (green, on top)
+  for (size_t i = 0; i < additions_.size(); ++i) {
+    const bool emphasized = (selected_kind_ == RegionKind::Addition &&
+                             selected_index_ == static_cast<int>(i)) ||
+                            (hover_.kind == RegionKind::Addition &&
+                             hover_.index == static_cast<int>(i));
+    drawRegionBand(painter, additions_[i], kAdditionColor, emphasized, false);
+  }
+
+  // Resize handles for the selected addition
+  if (selected_kind_ == RegionKind::Addition && selected_index_ >= 0 &&
+      selected_index_ < static_cast<int>(additions_.size())) {
+    const QRectF band = regionBandRect(additions_[selected_index_], true);
+    if (!band.isEmpty()) {
+      painter.setPen(QPen(Qt::black, 1.0));
+      painter.setBrush(Qt::white);
+      painter.drawRect(leftHandleRect(band));
+      painter.drawRect(rightHandleRect(band));
+    }
+  }
+
+  // In-progress add-drag preview
+  if (drag_mode_ == DragMode::Adding) {
+    orc::presenters::DropoutRegion preview;
+    preview.line = static_cast<uint32_t>(drag_start_image_.y());
+    preview.start_sample = static_cast<uint32_t>(
+        std::min(drag_start_image_.x(), drag_current_image_.x()));
+    preview.end_sample = static_cast<uint32_t>(
+        std::max(drag_start_image_.x(), drag_current_image_.x()) + 1);
+    drawRegionBand(painter, preview, kAdditionColor, true, false);
+  }
+}
+
+DropoutFrameView::Hit DropoutFrameView::hitTest(
+    const QPointF& widget_pos) const {
+  Hit hit;
+
+  // Resize handles of the selected addition take priority.
+  if (selected_kind_ == RegionKind::Addition && selected_index_ >= 0 &&
+      selected_index_ < static_cast<int>(additions_.size())) {
+    const QRectF band = regionBandRect(additions_[selected_index_], true);
+    if (!band.isEmpty()) {
+      const double slop = kHitSlop;
+      if (leftHandleRect(band)
+              .adjusted(-slop, -slop, slop, slop)
+              .contains(widget_pos)) {
+        return Hit{RegionKind::Addition, selected_index_,
+                   Hit::Part::LeftHandle};
+      }
+      if (rightHandleRect(band)
+              .adjusted(-slop, -slop, slop, slop)
+              .contains(widget_pos)) {
+        return Hit{RegionKind::Addition, selected_index_,
+                   Hit::Part::RightHandle};
       }
     }
   }
 
-  QPainter painter(&image);
-  painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-
-  int line_thickness = std::max(3, std::min(6, frame_height_ / 100));
-  int hover_thickness = line_thickness + 2;
-
-  // Draw source dropouts in red (semi-transparent)
-  for (size_t i = 0; i < source_dropouts_.size(); ++i) {
-    const auto& region = source_dropouts_[i];
-    bool is_hovered = (hover_region_type_ == HoverRegionType::Source &&
-                       hover_region_index_ == static_cast<int>(i));
-    QColor color = is_hovered ? QColor(255, 0, 0, 192) : QColor(255, 0, 0, 128);
-    int thickness = is_hovered ? hover_thickness : line_thickness;
-
-    int line = static_cast<int>(region.line);
-    int start = static_cast<int>(region.start_sample);
-    int end = static_cast<int>(region.end_sample);
-    if (line >= 0 && line < frame_height_ && start >= 0 &&
-        end <= frame_width_ && start < end) {
-      painter.fillRect(start, line - thickness / 2, end - start, thickness,
-                       color);
+  // Additions are drawn on top, so hit-test them first (topmost = last).
+  for (int i = static_cast<int>(additions_.size()) - 1; i >= 0; --i) {
+    const QRectF band = regionBandRect(additions_[i], true);
+    if (!band.isEmpty() &&
+        band.adjusted(-kHitSlop, -kHitSlop, kHitSlop, kHitSlop)
+            .contains(widget_pos)) {
+      return Hit{RegionKind::Addition, i, Hit::Part::Body};
     }
   }
 
-  // Draw additions in green (semi-transparent)
-  for (size_t i = 0; i < additions_.size(); ++i) {
-    const auto& region = additions_[i];
-    bool is_hovered = (hover_region_type_ == HoverRegionType::Addition &&
-                       hover_region_index_ == static_cast<int>(i));
-    QColor color = is_hovered ? QColor(0, 255, 0, 192) : QColor(0, 255, 0, 128);
-    int thickness = is_hovered ? hover_thickness : line_thickness;
-
-    int line = static_cast<int>(region.line);
-    int start = static_cast<int>(region.start_sample);
-    int end = static_cast<int>(region.end_sample);
-    if (line >= 0 && line < frame_height_ && start >= 0 &&
-        end <= frame_width_ && start < end) {
-      painter.fillRect(start, line - thickness / 2, end - start, thickness,
-                       color);
+  for (int i = static_cast<int>(removals_.size()) - 1; i >= 0; --i) {
+    if (removalHasSource(removals_[i])) {
+      continue;
+    }
+    const QRectF band = regionBandRect(removals_[i], true);
+    if (!band.isEmpty() &&
+        band.adjusted(-kHitSlop, -kHitSlop, kHitSlop, kHitSlop)
+            .contains(widget_pos)) {
+      return Hit{RegionKind::OrphanRemoval, i, Hit::Part::Body};
     }
   }
 
-  // Draw removals in yellow (semi-transparent)
-  for (size_t i = 0; i < removals_.size(); ++i) {
-    const auto& region = removals_[i];
-    bool is_hovered = (hover_region_type_ == HoverRegionType::Removal &&
-                       hover_region_index_ == static_cast<int>(i));
-    QColor color =
-        is_hovered ? QColor(255, 255, 0, 192) : QColor(255, 255, 0, 128);
-    int thickness = is_hovered ? hover_thickness : line_thickness;
-
-    int line = static_cast<int>(region.line);
-    int start = static_cast<int>(region.start_sample);
-    int end = static_cast<int>(region.end_sample);
-    if (line >= 0 && line < frame_height_ && start >= 0 &&
-        end <= frame_width_ && start < end) {
-      painter.fillRect(start, line - thickness / 2, end - start, thickness,
-                       color);
+  for (int i = static_cast<int>(source_dropouts_.size()) - 1; i >= 0; --i) {
+    const QRectF band = regionBandRect(source_dropouts_[i], true);
+    if (!band.isEmpty() &&
+        band.adjusted(-kHitSlop, -kHitSlop, kHitSlop, kHitSlop)
+            .contains(widget_pos)) {
+      return Hit{RegionKind::Source, i, Hit::Part::Body};
     }
   }
 
-  QPixmap pixmap = QPixmap::fromImage(image);
+  return hit;
+}
 
-  int zoomed_width =
-      static_cast<int>(static_cast<float>(frame_width_) * zoom_level_);
-  int zoomed_height =
-      static_cast<int>(static_cast<float>(frame_height_) * zoom_level_);
-
-  resize(zoomed_width, zoomed_height);
-  setFixedSize(zoomed_width, zoomed_height);
-
-  setPixmap(pixmap.scaled(zoomed_width, zoomed_height, Qt::IgnoreAspectRatio,
-                          Qt::SmoothTransformation));
+void DropoutFrameView::selectFromInteraction(RegionKind kind, int index) {
+  if (selected_kind_ == kind && selected_index_ == index) {
+    return;
+  }
+  selected_kind_ = kind;
+  selected_index_ = index;
+  update();
+  Q_EMIT selectionChanged(kind, index);
 }
 
 void DropoutFrameView::mousePressEvent(QMouseEvent* event) {
-  if (event->button() != Qt::LeftButton || frame_width_ == 0 ||
-      frame_height_ == 0) {
+  if (!hasImage()) {
     return;
   }
 
-  QPixmap pm = pixmap();
-  if (pm.isNull()) {
-    return;
-  }
-
-  QSize pm_size = pm.size();
-  int pm_x = (width() - pm_size.width()) / 2;
-  int pm_y = (height() - pm_size.height()) / 2;
-
-  int click_x = event->pos().x() - pm_x;
-  int click_y = event->pos().y() - pm_y;
-
-  if (click_x < 0 || click_x >= pm_size.width() || click_y < 0 ||
-      click_y >= pm_size.height()) {
-    return;
-  }
-
-  float scale_x =
-      static_cast<float>(frame_width_) / static_cast<float>(pm_size.width());
-  float scale_y =
-      static_cast<float>(frame_height_) / static_cast<float>(pm_size.height());
-  int frame_x = static_cast<int>(static_cast<float>(click_x) * scale_x);
-  int frame_y = static_cast<int>(static_cast<float>(click_y) * scale_y);
-
-  if (hover_region_index_ >= 0) {
-    if (hover_region_type_ == HoverRegionType::Addition) {
-      Q_EMIT additionClicked(hover_region_index_);
-      return;
-    } else if (hover_region_type_ == HoverRegionType::Removal) {
-      Q_EMIT removalClicked(hover_region_index_);
-      return;
+  if (event->button() == Qt::RightButton) {
+    const Hit hit = hitTest(event->position());
+    if (hit.kind != RegionKind::None) {
+      selectFromInteraction(hit.kind, hit.index);
     }
-  }
-
-  if (mode_ == InteractionMode::RemovingDropout) {
-    removeRegionAtPoint(frame_x, frame_y);
+    Q_EMIT contextMenuRequested(hit.kind, hit.index,
+                                event->globalPosition().toPoint());
     return;
   }
 
-  if (mode_ == InteractionMode::AddingDropout) {
-    dragging_ = true;
-    drag_start_ = QPoint(frame_x, frame_y);
-    drag_current_ = drag_start_;
-
-    rubber_band_->setGeometry(QRect(event->pos(), QSize()));
-    rubber_band_->show();
+  if (event->button() != Qt::LeftButton) {
+    return;
   }
+
+  const Hit hit = hitTest(event->position());
+  const QPoint image_pos = imagePixelFromWidget(event->pos());
+
+  if (hit.kind == RegionKind::Addition) {
+    selectFromInteraction(RegionKind::Addition, hit.index);
+    drag_index_ = hit.index;
+    drag_original_ = additions_[hit.index];
+    drag_start_image_ = image_pos;
+    drag_start_widget_ = event->position();
+    if (hit.part == Hit::Part::LeftHandle) {
+      drag_mode_ = DragMode::ResizingLeft;
+    } else if (hit.part == Hit::Part::RightHandle) {
+      drag_mode_ = DragMode::ResizingRight;
+    } else {
+      drag_mode_ = DragMode::PendingMove;
+    }
+    return;
+  }
+
+  if (hit.kind == RegionKind::Source || hit.kind == RegionKind::OrphanRemoval) {
+    selectFromInteraction(hit.kind, hit.index);
+    return;
+  }
+
+  // Empty area: clear selection and start dragging out a new region.
+  selectFromInteraction(RegionKind::None, -1);
+  drag_mode_ = DragMode::Adding;
+  drag_start_image_ = image_pos;
+  drag_current_image_ = image_pos;
+  update();
 }
 
 void DropoutFrameView::mouseMoveEvent(QMouseEvent* event) {
-  QPixmap pm = pixmap();
-  if (pm.isNull()) {
+  if (!hasImage()) {
     return;
   }
 
-  QSize pm_size = pm.size();
-  int pm_x = (width() - pm_size.width()) / 2;
-  int pm_y = (height() - pm_size.height()) / 2;
+  const QPoint image_pos = imagePixelFromWidget(event->pos());
+  const int width = imageSize().width();
+  const int height = imageSize().height();
 
-  int mouse_x = event->pos().x() - pm_x;
-  int mouse_y = event->pos().y() - pm_y;
+  switch (drag_mode_) {
+    case DragMode::Adding:
+      drag_current_image_ = image_pos;
+      update();
+      return;
 
-  mouse_x = std::max(0, std::min(mouse_x, pm_size.width() - 1));
-  mouse_y = std::max(0, std::min(mouse_y, pm_size.height() - 1));
+    case DragMode::PendingMove:
+      if ((event->position() - drag_start_widget_).manhattanLength() <=
+          kMoveThreshold) {
+        return;
+      }
+      drag_mode_ = DragMode::Moving;
+      [[fallthrough]];
 
-  float scale_x =
-      static_cast<float>(frame_width_) / static_cast<float>(pm_size.width());
-  float scale_y =
-      static_cast<float>(frame_height_) / static_cast<float>(pm_size.height());
-  int frame_x = static_cast<int>(static_cast<float>(mouse_x) * scale_x);
-  int frame_y = static_cast<int>(static_cast<float>(mouse_y) * scale_y);
+    case DragMode::Moving: {
+      if (drag_index_ < 0 ||
+          drag_index_ >= static_cast<int>(additions_.size())) {
+        return;
+      }
+      const int dy = image_pos.y() - drag_start_image_.y();
+      const int dx = image_pos.x() - drag_start_image_.x();
+      const int length = static_cast<int>(drag_original_.end_sample -
+                                          drag_original_.start_sample);
+      const int line =
+          std::clamp(static_cast<int>(drag_original_.line) + dy, 0, height - 1);
+      const int start =
+          std::clamp(static_cast<int>(drag_original_.start_sample) + dx, 0,
+                     width - length);
+      auto& region = additions_[drag_index_];
+      region.line = static_cast<uint32_t>(line);
+      region.start_sample = static_cast<uint32_t>(start);
+      region.end_sample = static_cast<uint32_t>(start + length);
+      update();
+      return;
+    }
 
-  if (dragging_ && mode_ == InteractionMode::AddingDropout) {
-    drag_current_ = QPoint(frame_x, frame_y);
+    case DragMode::ResizingLeft: {
+      if (drag_index_ < 0 ||
+          drag_index_ >= static_cast<int>(additions_.size())) {
+        return;
+      }
+      auto& region = additions_[drag_index_];
+      const int start = std::clamp(
+          image_pos.x(), 0, static_cast<int>(drag_original_.end_sample) - 1);
+      region.start_sample = static_cast<uint32_t>(start);
+      region.end_sample = drag_original_.end_sample;
+      update();
+      return;
+    }
 
-    int widget_start_x =
-        (drag_start_.x() * pm_size.width() / frame_width_) + pm_x;
-    int widget_start_y =
-        (drag_start_.y() * pm_size.height() / frame_height_) + pm_y;
-    int widget_current_x = event->pos().x();
+    case DragMode::ResizingRight: {
+      if (drag_index_ < 0 ||
+          drag_index_ >= static_cast<int>(additions_.size())) {
+        return;
+      }
+      auto& region = additions_[drag_index_];
+      const int end =
+          std::clamp(image_pos.x() + 1,
+                     static_cast<int>(drag_original_.start_sample) + 1, width);
+      region.start_sample = drag_original_.start_sample;
+      region.end_sample = static_cast<uint32_t>(end);
+      update();
+      return;
+    }
 
-    int line_height = 3;
-    QRect line_rect(std::min(widget_start_x, widget_current_x),
-                    widget_start_y - line_height / 2,
-                    std::abs(widget_current_x - widget_start_x), line_height);
+    case DragMode::None:
+      updateHoverState(event->position());
+      return;
+  }
+}
 
-    rubber_band_->setGeometry(line_rect);
+void DropoutFrameView::updateHoverState(const QPointF& widget_pos) {
+  const Hit hit = hitTest(widget_pos);
+  if (hit.kind != hover_.kind || hit.index != hover_.index ||
+      hit.part != hover_.part) {
+    hover_ = hit;
+    updateCursorShape();
+    update();
+  }
+}
+
+void DropoutFrameView::updateCursorShape() {
+  if (hover_.kind == RegionKind::Addition &&
+      (hover_.part == Hit::Part::LeftHandle ||
+       hover_.part == Hit::Part::RightHandle)) {
+    setCursor(Qt::SizeHorCursor);
+  } else if (hover_.kind == RegionKind::Addition) {
+    setCursor(Qt::SizeAllCursor);
+  } else if (hover_.kind != RegionKind::None) {
+    setCursor(Qt::PointingHandCursor);
   } else {
-    int old_hover_index = hover_region_index_;
-    HoverRegionType old_hover_type = hover_region_type_;
-
-    hover_region_index_ = -1;
-    hover_region_type_ = HoverRegionType::None;
-
-    for (size_t i = 0; i < source_dropouts_.size(); ++i) {
-      if (isPointInRegion(frame_x, frame_y, source_dropouts_[i])) {
-        hover_region_index_ = static_cast<int>(i);
-        hover_region_type_ = HoverRegionType::Source;
-        break;
-      }
-    }
-
-    if (hover_region_index_ == -1) {
-      for (size_t i = 0; i < additions_.size(); ++i) {
-        if (isPointInRegion(frame_x, frame_y, additions_[i])) {
-          hover_region_index_ = static_cast<int>(i);
-          hover_region_type_ = HoverRegionType::Addition;
-          break;
-        }
-      }
-    }
-
-    if (hover_region_index_ == -1) {
-      for (size_t i = 0; i < removals_.size(); ++i) {
-        if (isPointInRegion(frame_x, frame_y, removals_[i])) {
-          hover_region_index_ = static_cast<int>(i);
-          hover_region_type_ = HoverRegionType::Removal;
-          break;
-        }
-      }
-    }
-
-    if (hover_region_index_ != old_hover_index ||
-        hover_region_type_ != old_hover_type) {
-      updateDisplay();
-    }
+    setCursor(Qt::CrossCursor);
   }
 }
 
 void DropoutFrameView::mouseReleaseEvent(QMouseEvent* event) {
-  if (!dragging_ || event->button() != Qt::LeftButton ||
-      mode_ != InteractionMode::AddingDropout) {
+  if (event->button() != Qt::LeftButton) {
     return;
   }
 
-  dragging_ = false;
-  rubber_band_->hide();
+  const DragMode finished_mode = drag_mode_;
+  drag_mode_ = DragMode::None;
 
-  int line = drag_start_.y();
-  int start_sample = std::min(drag_start_.x(), drag_current_.x());
-  int end_sample = std::max(drag_start_.x(), drag_current_.x());
+  switch (finished_mode) {
+    case DragMode::Adding: {
+      const int line = drag_start_image_.y();
+      const int start_sample =
+          std::min(drag_start_image_.x(), drag_current_image_.x());
+      const int end_sample =
+          std::max(drag_start_image_.x(), drag_current_image_.x());
+      update();
+      if (end_sample > start_sample) {
+        orc::presenters::DropoutRegion region;
+        region.line = static_cast<uint32_t>(line);
+        region.start_sample = static_cast<uint32_t>(start_sample);
+        region.end_sample = static_cast<uint32_t>(end_sample);
+        region.basis =
+            orc::presenters::DropoutRegion::DetectionBasis::HINT_DERIVED;
+        Q_EMIT regionAddRequested(region);
+      }
+      return;
+    }
 
-  if (end_sample > start_sample) {
-    orc::presenters::DropoutRegion region;
-    region.line = static_cast<uint32_t>(line);
-    region.start_sample = static_cast<uint32_t>(start_sample);
-    region.end_sample = static_cast<uint32_t>(end_sample);
-    region.basis = orc::presenters::DropoutRegion::DetectionBasis::HINT_DERIVED;
+    case DragMode::Moving:
+    case DragMode::ResizingLeft:
+    case DragMode::ResizingRight: {
+      if (drag_index_ >= 0 &&
+          drag_index_ < static_cast<int>(additions_.size()) &&
+          !sameRegion(additions_[drag_index_], drag_original_)) {
+        Q_EMIT additionModifyRequested(drag_index_, additions_[drag_index_]);
+      }
+      return;
+    }
 
-    additions_.push_back(region);
-    int new_index = static_cast<int>(additions_.size()) - 1;
-    updateDisplay();
-    Q_EMIT regionsModified();
-    Q_EMIT additionCreated(new_index);
+    case DragMode::PendingMove:
+    case DragMode::None:
+      return;
   }
 }
 
-bool DropoutFrameView::isPointInRegion(
-    int x, int y, const orc::presenters::DropoutRegion& region) const {
-  return static_cast<uint32_t>(y) == region.line &&
-         static_cast<uint32_t>(x) >= region.start_sample &&
-         static_cast<uint32_t>(x) < region.end_sample;
+void DropoutFrameView::leaveEvent(QEvent* event) {
+  if (hover_.kind != RegionKind::None) {
+    hover_ = Hit{};
+    updateCursorShape();
+    update();
+  }
+  FrameViewportWidget::leaveEvent(event);
 }
 
-void DropoutFrameView::removeRegionAtPoint(int x, int y) {
-  for (auto it = additions_.begin(); it != additions_.end(); ++it) {
-    if (isPointInRegion(x, y, *it)) {
-      additions_.erase(it);
-      hover_region_index_ = -1;
-      hover_region_type_ = HoverRegionType::None;
-      updateDisplay();
-      Q_EMIT regionsModified();
-      return;
+// ============================================================================
+// DropoutMapEditCommand
+// ============================================================================
+
+/**
+ * @brief Undoable transition of one frame's dropout edit state
+ *
+ * Stores before/after snapshots of a single frame's additions and removals.
+ * Snapshots keep undo/redo exact without index bookkeeping; per-frame edit
+ * lists are small. Commands with the same non-negative merge key on the same
+ * frame coalesce (arrow-key nudges).
+ */
+class DropoutMapEditCommand : public QUndoCommand {
+ public:
+  DropoutMapEditCommand(DropoutEditorDialog* dialog, uint64_t frame_id,
+                        orc::presenters::FrameDropoutMap before,
+                        orc::presenters::FrameDropoutMap after,
+                        const QString& text, int merge_key)
+      : QUndoCommand(text),
+        dialog_(dialog),
+        frame_id_(frame_id),
+        before_(std::move(before)),
+        after_(std::move(after)),
+        merge_key_(merge_key) {}
+
+  int id() const override { return merge_key_ >= 0 ? 1 : -1; }
+
+  bool mergeWith(const QUndoCommand* other) override {
+    const auto* command = dynamic_cast<const DropoutMapEditCommand*>(other);
+    if (!command || merge_key_ < 0 || command->merge_key_ != merge_key_ ||
+        command->frame_id_ != frame_id_) {
+      return false;
     }
+    after_ = command->after_;
+    return true;
   }
 
-  for (auto it = removals_.begin(); it != removals_.end(); ++it) {
-    if (isPointInRegion(x, y, *it)) {
-      removals_.erase(it);
-      hover_region_index_ = -1;
-      hover_region_type_ = HoverRegionType::None;
-      updateDisplay();
-      Q_EMIT regionsModified();
-      return;
-    }
-  }
+  void redo() override { dialog_->applyFrameEditState(frame_id_, after_); }
+  void undo() override { dialog_->applyFrameEditState(frame_id_, before_); }
 
-  for (const auto& region : source_dropouts_) {
-    if (isPointInRegion(x, y, region)) {
-      bool already_removed = false;
-      for (const auto& removal : removals_) {
-        if (removal.line == region.line &&
-            removal.start_sample == region.start_sample &&
-            removal.end_sample == region.end_sample) {
-          already_removed = true;
-          break;
+ private:
+  DropoutEditorDialog* dialog_;
+  uint64_t frame_id_;
+  orc::presenters::FrameDropoutMap before_;
+  orc::presenters::FrameDropoutMap after_;
+  int merge_key_;
+};
+
+// ============================================================================
+// DropoutEditorRenderWorker Implementation
+// ============================================================================
+
+DropoutEditorRenderWorker::DropoutEditorRenderWorker(
+    std::shared_ptr<orc::presenters::IRenderPresenter> render_presenter,
+    orc::NodeID input_node_id)
+    : render_presenter_(std::move(render_presenter)),
+      input_node_id_(std::move(input_node_id)),
+      frame_output_type_(orc::PreviewOutputType::Frame_Field1_First) {}
+
+void DropoutEditorRenderWorker::initialize() {
+  bool success = false;
+  uint64_t total_frames = 0;
+  double dar_aspect_correction = 1.0;
+
+  render_option_id_ = kSequentialOptionId;
+  try {
+    // Executes the DAG up to the input node on this worker thread.
+    const auto outputs = render_presenter_->getAvailableOutputs(input_node_id_);
+    for (const auto& output : outputs) {
+      if (output.option_id == kSequentialOptionId) {
+        frame_output_type_ = output.type;
+        total_frames = output.count;
+        dar_aspect_correction = output.dar_aspect_correction;
+        if (output.has_separate_channels) {
+          // Y/C sources: display luma, matching the preview dialog's default
+          // "Y+C" signal selection.
+          render_option_id_ += "_yc";
         }
+        success = total_frames > 0;
+        break;
       }
-
-      if (!already_removed) {
-        removals_.push_back(region);
-        int new_index = static_cast<int>(removals_.size()) - 1;
-        updateDisplay();
-        Q_EMIT regionsModified();
-        Q_EMIT removalCreated(new_index);
-      }
-      return;
     }
+  } catch (const std::exception& e) {
+    ORC_LOG_ERROR("DropoutEditorRenderWorker: initialization failed: {}",
+                  e.what());
   }
+
+  if (!success) {
+    ORC_LOG_ERROR(
+        "DropoutEditorRenderWorker: no '{}' preview output available on "
+        "input node '{}'",
+        kSequentialOptionId, input_node_id_.to_string());
+  } else {
+    ORC_LOG_DEBUG("DropoutEditorRenderWorker: {} total frames", total_frames);
+  }
+
+  Q_EMIT initialized(success, total_frames, dar_aspect_correction);
+}
+
+void DropoutEditorRenderWorker::renderFrame(uint64_t frame_id) {
+  orc::PreviewRenderResult result;
+  result.success = false;
+  try {
+    result = render_presenter_->renderPreview(
+        input_node_id_, frame_output_type_, frame_id, render_option_id_);
+  } catch (const std::exception& e) {
+    result.error_message = e.what();
+    ORC_LOG_ERROR("DropoutEditorRenderWorker: render of frame {} failed: {}",
+                  frame_id, e.what());
+  }
+  Q_EMIT frameReady(frame_id, std::move(result));
 }
 
 // ============================================================================
@@ -458,107 +645,200 @@ void DropoutFrameView::removeRegionAtPoint(int x, int y) {
 
 DropoutEditorDialog::DropoutEditorDialog(
     orc::NodeID node_id, orc::presenters::DropoutPresenter* presenter,
-    std::shared_ptr<const void> vfr_repr, QWidget* parent)
+    std::shared_ptr<orc::presenters::IRenderPresenter> render_presenter,
+    orc::NodeID input_node_id, QWidget* parent)
     : QDialog(parent),
       node_id_(node_id),
       presenter_(presenter),
-      vfr_repr_(vfr_repr),
+      render_presenter_(std::move(render_presenter)),
+      input_node_id_(input_node_id),
+      worker_(nullptr),
+      dar_aspect_correction_(1.0),
       current_frame_id_(0),
       total_frames_(0),
-      edit_mode_(EditMode::Add),
-      selected_addition_index_(-1),
-      selected_removal_index_(-1) {
+      undo_stack_(new QUndoStack(this)) {
   if (!presenter_) {
     throw std::invalid_argument("Presenter cannot be null");
+  }
+  if (!render_presenter_) {
+    throw std::invalid_argument("Render presenter cannot be null");
   }
 
   dropout_map_ = presenter_->getDropoutMap(node_id_);
 
-  if (vfr_repr_) {
-    std::shared_ptr<void> vfr_non_const =
-        std::const_pointer_cast<void>(vfr_repr_);
-    total_frames_ = presenter_->getFrameCount(vfr_non_const);
-    ORC_LOG_DEBUG("DropoutEditorDialog: loaded {} total frames", total_frames_);
-  } else {
-    ORC_LOG_ERROR("DropoutEditorDialog: vfr_repr is null");
-  }
-
   setupUI();
 
-  if (total_frames_ > 0) {
-    loadFrame(0);
-  } else {
-    ORC_LOG_WARN("DropoutEditorDialog: No frames available (total_frames_={})",
-                 total_frames_);
-  }
+  // DAG execution and frame rendering run on a dedicated worker thread so
+  // the dialog opens immediately and stays responsive. The RenderPresenter
+  // is used exclusively from that thread from here on.
+  worker_ = new DropoutEditorRenderWorker(render_presenter_, input_node_id_);
+  worker_->moveToThread(&worker_thread_);
+  connect(&worker_thread_, &QThread::finished, worker_, &QObject::deleteLater);
+  connect(worker_, &DropoutEditorRenderWorker::initialized, this,
+          &DropoutEditorDialog::onWorkerInitialized);
+  connect(worker_, &DropoutEditorRenderWorker::frameReady, this,
+          &DropoutEditorDialog::onFrameReady);
+  worker_thread_.start();
+
+  status_bar_->showMessage("Executing pipeline…");
+  QMetaObject::invokeMethod(worker_, &DropoutEditorRenderWorker::initialize,
+                            Qt::QueuedConnection);
+}
+
+DropoutEditorDialog::~DropoutEditorDialog() {
+  worker_thread_.quit();
+  worker_thread_.wait();
 }
 
 void DropoutEditorDialog::setupUI() {
   setWindowTitle("Dropout Map Editor");
   setWindowFlags(Qt::Window | Qt::WindowMinimizeButtonHint |
                  Qt::WindowMaximizeButtonHint | Qt::WindowCloseButtonHint);
-  resize(1000, 700);
+  resize(1000, 750);
 
   auto* main_layout = new QVBoxLayout(this);
 
-  // Frame navigation controls
-  auto* nav_group = new QGroupBox("Frame Navigation");
-  auto* nav_layout = new QHBoxLayout(nav_group);
+  // Navigation debounce (same semantics as the preview dialog): scrubbing
+  // and spinbox typing update the UI immediately but commit the render only
+  // once movement settles.
+  nav_debounce_timer_ = new QTimer(this);
+  nav_debounce_timer_->setSingleShot(true);
+  nav_debounce_timer_->setInterval(100);  // ms: coalesces rapid scrub moves
+  connect(nav_debounce_timer_, &QTimer::timeout,
+          [this]() { navigateToIndex(frame_slider_->value()); });
 
-  prev_button_ = new QPushButton("Previous");
+  // Slider row with navigation buttons (mirrors the preview dialog)
+  auto* slider_layout = new QHBoxLayout();
+
+  first_button_ = new QPushButton("<<");
+  prev_button_ = new QPushButton("<");
+  next_button_ = new QPushButton(">");
+  last_button_ = new QPushButton(">>");
+
   prev_button_->setAutoRepeat(true);
-  prev_button_->setAutoRepeatDelay(500);
-  prev_button_->setAutoRepeatInterval(100);
-  connect(prev_button_, &QPushButton::clicked, this,
-          &DropoutEditorDialog::onPreviousFrame);
-  nav_layout->addWidget(prev_button_);
+  prev_button_->setAutoRepeatDelay(200);
+  prev_button_->setAutoRepeatInterval(30);
+  next_button_->setAutoRepeat(true);
+  next_button_->setAutoRepeatDelay(200);
+  next_button_->setAutoRepeatInterval(30);
+
+  for (QPushButton* button :
+       {first_button_, prev_button_, next_button_, last_button_}) {
+    button->setAutoDefault(false);
+    button->setFixedWidth(40);
+    button->setEnabled(false);
+    slider_layout->addWidget(button);
+  }
+  first_button_->setToolTip("First frame");
+  prev_button_->setToolTip("Previous frame");
+  next_button_->setToolTip("Next frame");
+  last_button_->setToolTip("Last frame");
 
   frame_spin_box_ = new QSpinBox();
-  frame_spin_box_->setMinimum(1);
-  frame_spin_box_->setMaximum(
-      static_cast<int>(total_frames_ > 0 ? total_frames_ : 1));
-  frame_spin_box_->setValue(1);
-  connect(frame_spin_box_, QOverload<int>::of(&QSpinBox::valueChanged), this,
-          &DropoutEditorDialog::onFrameNumberChanged);
-  nav_layout->addWidget(new QLabel("Frame:"));
-  nav_layout->addWidget(frame_spin_box_);
+  frame_spin_box_->setRange(1, 1);
+  frame_spin_box_->setEnabled(false);
+  {
+    // Size the spinbox to comfortably hold up to 5-digit numbers
+    QFontMetrics fm(frame_spin_box_->font());
+    frame_spin_box_->setMinimumWidth(fm.horizontalAdvance("99999") + 36);
+  }
+  frame_spin_box_->setToolTip("Jump directly to a frame number");
+  slider_layout->addWidget(frame_spin_box_);
 
-  next_button_ = new QPushButton("Next");
-  next_button_->setAutoRepeat(true);
-  next_button_->setAutoRepeatDelay(500);
-  next_button_->setAutoRepeatInterval(100);
-  connect(next_button_, &QPushButton::clicked, this,
-          &DropoutEditorDialog::onNextFrame);
-  nav_layout->addWidget(next_button_);
+  slider_min_label_ = new QLabel("1");
+  slider_max_label_ = new QLabel("-");
+  frame_slider_ = new FrameMarkerSlider(Qt::Horizontal);
+  frame_slider_->setEnabled(false);
+  frame_slider_->setToolTip(
+      "Scrub through frames; orange marks show frames with edits");
+  slider_layout->addWidget(slider_min_label_);
+  slider_layout->addWidget(frame_slider_, 1);
+  slider_layout->addWidget(slider_max_label_);
 
-  frame_info_label_ = new QLabel();
-  nav_layout->addWidget(frame_info_label_);
-  nav_layout->addStretch();
+  prev_edit_button_ = new QPushButton("◀ Edit");
+  next_edit_button_ = new QPushButton("Edit ▶");
+  prev_edit_button_->setAutoDefault(false);
+  next_edit_button_->setAutoDefault(false);
+  prev_edit_button_->setEnabled(false);
+  next_edit_button_->setEnabled(false);
+  prev_edit_button_->setToolTip("Go to the previous frame with edits");
+  next_edit_button_->setToolTip("Go to the next frame with edits");
+  connect(prev_edit_button_, &QPushButton::clicked, this,
+          &DropoutEditorDialog::onPreviousEditedFrame);
+  connect(next_edit_button_, &QPushButton::clicked, this,
+          &DropoutEditorDialog::onNextEditedFrame);
+  slider_layout->addWidget(prev_edit_button_);
+  slider_layout->addWidget(next_edit_button_);
 
-  nav_layout->addWidget(new QLabel("Zoom:"));
+  main_layout->addLayout(slider_layout);
+
+  // Navigation wiring: buttons commit immediately; slider and spinbox are
+  // debounced; slider release commits immediately.
+  connect(first_button_, &QPushButton::clicked,
+          [this]() { navigateToIndex(frame_slider_->minimum()); });
+  connect(prev_button_, &QPushButton::clicked,
+          [this]() { navigateToIndex(frame_slider_->value() - 1); });
+  connect(next_button_, &QPushButton::clicked,
+          [this]() { navigateToIndex(frame_slider_->value() + 1); });
+  connect(last_button_, &QPushButton::clicked,
+          [this]() { navigateToIndex(frame_slider_->maximum()); });
+  connect(frame_slider_, &QSlider::valueChanged,
+          [this](int value) { navigateToIndexDebounced(value); });
+  connect(frame_slider_, &QSlider::sliderReleased,
+          [this]() { navigateToIndex(frame_slider_->value()); });
+  connect(frame_slider_, &QSlider::rangeChanged, [this](int min, int max) {
+    frame_spin_box_->setRange(min + 1, max + 1);
+  });
+  connect(frame_spin_box_, QOverload<int>::of(&QSpinBox::valueChanged),
+          [this](int one_based) { navigateToIndexDebounced(one_based - 1); });
+
+  // Display control row: aspect ratio and zoom
+  auto* display_layout = new QHBoxLayout();
+
+  display_layout->addWidget(new QLabel("Aspect:"));
+  aspect_ratio_combo_ = new QComboBox();
+  aspect_ratio_combo_->addItem("1:1 (Square)");
+  aspect_ratio_combo_->addItem("4:3 (Display)");
+  aspect_ratio_combo_->setCurrentIndex(1);  // Default to 4:3 like the preview
+  connect(aspect_ratio_combo_, QOverload<int>::of(&QComboBox::activated), this,
+          &DropoutEditorDialog::onAspectRatioChanged);
+  display_layout->addWidget(aspect_ratio_combo_);
+
+  display_layout->addWidget(new QLabel("Zoom:"));
 
   zoom_out_button_ = new QPushButton("-");
   zoom_out_button_->setMaximumWidth(40);
+  zoom_out_button_->setAutoDefault(false);
   connect(zoom_out_button_, &QPushButton::clicked, this,
           &DropoutEditorDialog::onZoomOut);
-  nav_layout->addWidget(zoom_out_button_);
+  display_layout->addWidget(zoom_out_button_);
 
-  zoom_reset_button_ = new QPushButton("100%");
+  zoom_reset_button_ = new QPushButton("1:1");
   zoom_reset_button_->setMaximumWidth(60);
+  zoom_reset_button_->setAutoDefault(false);
   connect(zoom_reset_button_, &QPushButton::clicked, this,
           &DropoutEditorDialog::onZoomReset);
-  nav_layout->addWidget(zoom_reset_button_);
+  display_layout->addWidget(zoom_reset_button_);
+
+  zoom_fit_button_ = new QPushButton("Fit");
+  zoom_fit_button_->setMaximumWidth(60);
+  zoom_fit_button_->setAutoDefault(false);
+  connect(zoom_fit_button_, &QPushButton::clicked, this,
+          &DropoutEditorDialog::onZoomFit);
+  display_layout->addWidget(zoom_fit_button_);
 
   zoom_in_button_ = new QPushButton("+");
   zoom_in_button_->setMaximumWidth(40);
+  zoom_in_button_->setAutoDefault(false);
   connect(zoom_in_button_, &QPushButton::clicked, this,
           &DropoutEditorDialog::onZoomIn);
-  nav_layout->addWidget(zoom_in_button_);
+  display_layout->addWidget(zoom_in_button_);
 
   zoom_label_ = new QLabel("100%");
-  nav_layout->addWidget(zoom_label_);
+  display_layout->addWidget(zoom_label_);
+  display_layout->addStretch();
 
-  main_layout->addWidget(nav_group);
+  main_layout->addLayout(display_layout);
 
   // Frame view wrapped in scroll area
   scroll_area_ = new QScrollArea();
@@ -568,94 +848,95 @@ void DropoutEditorDialog::setupUI() {
   scroll_area_->setAlignment(Qt::AlignCenter);
   scroll_area_->setFrameShape(QFrame::StyledPanel);
   frame_view_ = new DropoutFrameView();
-  frame_view_->setMinimumSize(400, 300);
-  connect(frame_view_, &DropoutFrameView::regionsModified, this,
-          &DropoutEditorDialog::onRegionsModified);
-  connect(frame_view_, &DropoutFrameView::zoomChanged, this,
+  frame_view_->setAspectCorrection(currentAspectCorrection());
+  connect(frame_view_, &FrameViewportWidget::zoomChanged, this,
           &DropoutEditorDialog::onFrameViewZoomChanged);
-  connect(frame_view_, &DropoutFrameView::additionCreated, this,
-          &DropoutEditorDialog::onAdditionCreated);
-  connect(frame_view_, &DropoutFrameView::removalCreated, this,
-          &DropoutEditorDialog::onRemovalCreated);
-  connect(frame_view_, &DropoutFrameView::additionClicked, this,
-          &DropoutEditorDialog::onAdditionClicked);
-  connect(frame_view_, &DropoutFrameView::removalClicked, this,
-          &DropoutEditorDialog::onRemovalClicked);
+  connect(frame_view_, &DropoutFrameView::selectionChanged, this,
+          &DropoutEditorDialog::onViewSelectionChanged);
+  connect(frame_view_, &DropoutFrameView::regionAddRequested, this,
+          &DropoutEditorDialog::onRegionAddRequested);
+  connect(frame_view_, &DropoutFrameView::additionModifyRequested, this,
+          &DropoutEditorDialog::onAdditionModifyRequested);
+  connect(frame_view_, &DropoutFrameView::contextMenuRequested, this,
+          &DropoutEditorDialog::onContextMenuRequested);
 
   scroll_area_->setWidget(frame_view_);
   main_layout->addWidget(scroll_area_, 3);
 
-  // Control panel
+  // Overlay legend and interaction hints
+  auto* legend_label = new QLabel(
+      QString("<span style='color:%1'>&#9632;</span> Source dropout&nbsp;&nbsp;"
+              "<span style='color:%2'>&#9632;</span> Addition&nbsp;&nbsp;"
+              "<span style='color:%3'>&#9632;</span> Removal "
+              "(struck-through)<br>"
+              "Drag empty area to add &bull; drag a selected addition to move, "
+              "handles resize, arrow keys nudge &bull; Del deletes / toggles "
+              "removal &bull; right-click for menu &bull; Ctrl+wheel zooms")
+          .arg(kSourceColor.name(), kAdditionColor.name(),
+               kRemovalColor.name()));
+  legend_label->setTextFormat(Qt::RichText);
+  main_layout->addWidget(legend_label);
+
+  // Edit panel: undo/redo/delete/clear + unified region table
   auto* control_layout = new QHBoxLayout();
 
-  auto* controls_group = new QGroupBox("Controls");
-  auto* controls_vlayout = new QVBoxLayout(controls_group);
+  auto* edit_group = new QGroupBox("Edit");
+  auto* edit_vlayout = new QVBoxLayout(edit_group);
 
-  add_dropout_button_ = new QPushButton("Add Dropout");
-  add_dropout_button_->setCheckable(true);
-  add_dropout_button_->setChecked(true);
-  connect(add_dropout_button_, &QPushButton::clicked, this,
-          &DropoutEditorDialog::onAddDropout);
-  controls_vlayout->addWidget(add_dropout_button_);
+  undo_button_ = new QPushButton("Undo");
+  undo_button_->setObjectName("dropoutEditorUndoButton");
+  undo_button_->setEnabled(false);
+  undo_button_->setAutoDefault(false);
+  undo_button_->setToolTip("Undo the last edit (Ctrl+Z)");
+  connect(undo_button_, &QPushButton::clicked, undo_stack_, &QUndoStack::undo);
+  connect(undo_stack_, &QUndoStack::canUndoChanged, undo_button_,
+          &QPushButton::setEnabled);
+  edit_vlayout->addWidget(undo_button_);
 
-  remove_dropout_button_ = new QPushButton("Remove Dropout");
-  remove_dropout_button_->setCheckable(true);
-  connect(remove_dropout_button_, &QPushButton::clicked, this,
-          &DropoutEditorDialog::onRemoveDropout);
-  controls_vlayout->addWidget(remove_dropout_button_);
+  redo_button_ = new QPushButton("Redo");
+  redo_button_->setObjectName("dropoutEditorRedoButton");
+  redo_button_->setEnabled(false);
+  redo_button_->setAutoDefault(false);
+  redo_button_->setToolTip("Redo the last undone edit (Ctrl+Shift+Z)");
+  connect(redo_button_, &QPushButton::clicked, undo_stack_, &QUndoStack::redo);
+  connect(undo_stack_, &QUndoStack::canRedoChanged, redo_button_,
+          &QPushButton::setEnabled);
+  edit_vlayout->addWidget(redo_button_);
 
-  clear_frame_button_ = new QPushButton("Clear Current Frame");
+  delete_button_ = new QPushButton("Delete");
+  delete_button_->setObjectName("dropoutEditorDeleteButton");
+  delete_button_->setEnabled(false);
+  delete_button_->setAutoDefault(false);
+  delete_button_->setToolTip(
+      "Delete the selected addition, or mark/restore the selected source "
+      "dropout (Del)");
+  connect(delete_button_, &QPushButton::clicked,
+          [this]() { deleteOrToggleSelection(); });
+  edit_vlayout->addWidget(delete_button_);
+
+  clear_frame_button_ = new QPushButton("Clear Frame Edits");
+  clear_frame_button_->setAutoDefault(false);
   connect(clear_frame_button_, &QPushButton::clicked, this,
           &DropoutEditorDialog::onClearCurrentFrame);
-  controls_vlayout->addWidget(clear_frame_button_);
+  edit_vlayout->addWidget(clear_frame_button_);
+  edit_vlayout->addStretch();
 
-  control_layout->addWidget(controls_group);
+  control_layout->addWidget(edit_group);
 
-  auto* adjust_group = new QGroupBox("Adjust Selected Dropout");
-  auto* adjust_layout = new QVBoxLayout(adjust_group);
-
-  move_up_button_ = new QPushButton("Move Up ↑");
-  move_up_button_->setEnabled(false);
-  connect(move_up_button_, &QPushButton::clicked, this,
-          &DropoutEditorDialog::onMoveDropoutUp);
-  adjust_layout->addWidget(move_up_button_);
-
-  move_down_button_ = new QPushButton("Move Down ↓");
-  move_down_button_->setEnabled(false);
-  connect(move_down_button_, &QPushButton::clicked, this,
-          &DropoutEditorDialog::onMoveDropoutDown);
-  adjust_layout->addWidget(move_down_button_);
-
-  delete_dropout_button_ = new QPushButton("Delete");
-  delete_dropout_button_->setEnabled(false);
-  connect(delete_dropout_button_, &QPushButton::clicked, this,
-          &DropoutEditorDialog::onDeleteDropout);
-  adjust_layout->addWidget(delete_dropout_button_);
-
-  adjust_layout->addWidget(
-      new QLabel("Click a dropout in the\nlist to select it"));
-
-  control_layout->addWidget(adjust_group);
-
-  auto* additions_group = new QGroupBox("Additions (Green)");
-  auto* additions_layout = new QVBoxLayout(additions_group);
-  additions_list_ = new QListWidget();
-  connect(additions_list_, &QListWidget::itemClicked, this,
-          &DropoutEditorDialog::onAdditionsListItemClicked);
-  connect(additions_list_, &QListWidget::itemSelectionChanged, this,
-          &DropoutEditorDialog::onAdditionsListSelectionChanged);
-  additions_layout->addWidget(additions_list_);
-  control_layout->addWidget(additions_group);
-
-  auto* removals_group = new QGroupBox("Removals (Yellow)");
-  auto* removals_layout = new QVBoxLayout(removals_group);
-  removals_list_ = new QListWidget();
-  connect(removals_list_, &QListWidget::itemClicked, this,
-          &DropoutEditorDialog::onRemovalsListItemClicked);
-  connect(removals_list_, &QListWidget::itemSelectionChanged, this,
-          &DropoutEditorDialog::onRemovalsListSelectionChanged);
-  removals_layout->addWidget(removals_list_);
-  control_layout->addWidget(removals_group);
+  auto* regions_group = new QGroupBox("Dropout Regions");
+  auto* regions_layout = new QVBoxLayout(regions_group);
+  region_table_ = new QTableWidget(0, 4);
+  region_table_->setHorizontalHeaderLabels({"Status", "Line", "Start", "End"});
+  region_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+  region_table_->setSelectionMode(QAbstractItemView::SingleSelection);
+  region_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  region_table_->verticalHeader()->setVisible(false);
+  region_table_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  region_table_->setMaximumHeight(160);
+  connect(region_table_, &QTableWidget::itemSelectionChanged, this,
+          &DropoutEditorDialog::onTableSelectionChanged);
+  regions_layout->addWidget(region_table_);
+  control_layout->addWidget(regions_group, 1);
 
   main_layout->addLayout(control_layout);
 
@@ -668,427 +949,677 @@ void DropoutEditorDialog::setupUI() {
           this, &DropoutEditorDialog::onApply);
   main_layout->addWidget(button_box);
 
-  frame_view_->mode_ = DropoutFrameView::InteractionMode::AddingDropout;
+  // Status bar: transient messages on the left, frame info always visible on
+  // the right.
+  status_bar_ = new QStatusBar(this);
+  status_bar_->setSizeGripEnabled(false);
+  frame_info_label_ = new QLabel();
+  status_bar_->addPermanentWidget(frame_info_label_);
+  main_layout->addWidget(status_bar_);
+
+  // Editing shortcuts work regardless of which child has focus.
+  auto* undo_shortcut = new QShortcut(QKeySequence::Undo, this);
+  undo_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+  connect(undo_shortcut, &QShortcut::activated, undo_stack_, &QUndoStack::undo);
+  auto* redo_shortcut = new QShortcut(QKeySequence::Redo, this);
+  redo_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+  connect(redo_shortcut, &QShortcut::activated, undo_stack_, &QUndoStack::redo);
+  auto* delete_shortcut = new QShortcut(QKeySequence::Delete, this);
+  delete_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+  connect(delete_shortcut, &QShortcut::activated,
+          [this]() { deleteOrToggleSelection(); });
 }
 
-void DropoutEditorDialog::loadFrame(orc::FrameID frame_id) {
-  if (!vfr_repr_ || frame_id >= static_cast<orc::FrameID>(total_frames_)) {
+double DropoutEditorDialog::currentAspectCorrection() const {
+  // Index 0 = SAR 1:1, index 1 = DAR 4:3 (same order as the preview dialog).
+  if (aspect_ratio_combo_ && aspect_ratio_combo_->currentIndex() == 0) {
+    return 1.0;
+  }
+  return dar_aspect_correction_;
+}
+
+void DropoutEditorDialog::onWorkerInitialized(bool success,
+                                              uint64_t total_frames,
+                                              double dar_aspect_correction) {
+  total_frames_ = total_frames;
+  dar_aspect_correction_ = dar_aspect_correction;
+  worker_ready_ = success && total_frames > 0;
+
+  if (!worker_ready_) {
+    status_bar_->showMessage(
+        "No frames available — ensure the dropout_map stage has a valid "
+        "video source connected");
     return;
   }
 
-  if (current_frame_id_ != frame_id &&
-      current_frame_id_ < static_cast<orc::FrameID>(total_frames_)) {
-    saveCurrentFrame();
+  frame_view_->setAspectCorrection(currentAspectCorrection());
+
+  frame_slider_->setEnabled(true);
+  frame_spin_box_->setEnabled(true);
+  {
+    // Range setup must not fire a debounced navigation.
+    const QSignalBlocker slider_blocker(frame_slider_);
+    frame_slider_->setRange(0, static_cast<int>(total_frames_) - 1);
+    frame_spin_box_->setRange(1, static_cast<int>(total_frames_));
   }
+  slider_max_label_->setText(QString::number(total_frames_));
+  first_button_->setEnabled(true);
+  last_button_->setEnabled(true);
 
-  current_frame_id_ = frame_id;
+  navigateToIndex(0);
+}
 
-  int width = 0, height = 0;
-  std::shared_ptr<void> vfr_non_const =
-      std::const_pointer_cast<void>(vfr_repr_);
-  std::vector<uint8_t> frame_data =
-      presenter_->getFrameData(vfr_non_const, frame_id, width, height);
+void DropoutEditorDialog::navigateToIndex(int zero_based) {
+  if (!worker_ready_) {
+    return;
+  }
+  const int clamped = std::clamp(zero_based, frame_slider_->minimum(),
+                                 frame_slider_->maximum());
+  nav_debounce_timer_->stop();  // cancel any pending debounced commit
+  setIndex(clamped);
 
-  ORC_LOG_DEBUG(
-      "DropoutEditorDialog::loadFrame: frame_id={}, returned {} bytes, "
-      "width={}, height={}",
-      frame_id, frame_data.size(), width, height);
+  current_frame_id_ = static_cast<orc::FrameID>(clamped);
+  updateFrameInfo();
+  requestRenderForCurrentFrame();
+}
 
-  if (frame_data.empty() || width == 0 || height == 0) {
-    ORC_LOG_ERROR("Failed to get frame data for frame {}", frame_id);
+void DropoutEditorDialog::navigateToIndexDebounced(int zero_based) {
+  if (!worker_ready_) {
+    return;
+  }
+  const int clamped = std::clamp(zero_based, frame_slider_->minimum(),
+                                 frame_slider_->maximum());
+  setIndex(clamped);             // update UI immediately for visual feedback
+  nav_debounce_timer_->start();  // (re)starts; commits when settled
+}
+
+void DropoutEditorDialog::setIndex(int zero_based) {
+  // Silently sync both slider and spinbox without emitting any signals.
+  const QSignalBlocker slider_blocker(frame_slider_);
+  const QSignalBlocker spin_blocker(frame_spin_box_);
+  frame_slider_->setValue(zero_based);
+  frame_spin_box_->setValue(zero_based + 1);  // 1-indexed display
+}
+
+void DropoutEditorDialog::requestRenderForCurrentFrame() {
+  if (!worker_ready_) {
+    return;
+  }
+  if (render_in_flight_) {
+    // onFrameReady re-requests when the delivered frame is stale.
+    return;
+  }
+  render_in_flight_ = true;
+  status_bar_->showMessage(
+      QString("Rendering frame %1…").arg(current_frame_id_ + 1));
+  const uint64_t frame_id = current_frame_id_;
+  QMetaObject::invokeMethod(
+      worker_,
+      [worker = worker_, frame_id]() { worker->renderFrame(frame_id); },
+      Qt::QueuedConnection);
+}
+
+void DropoutEditorDialog::onFrameReady(uint64_t frame_id,
+                                       orc::PreviewRenderResult result) {
+  render_in_flight_ = false;
+
+  if (frame_id != current_frame_id_) {
+    // Stale result from an earlier navigation target; render the current one.
+    requestRenderForCurrentFrame();
     return;
   }
 
+  if (!result.is_valid()) {
+    ORC_LOG_ERROR("Failed to render frame {}: {}", frame_id,
+                  result.error_message);
+    status_bar_->showMessage(
+        QString("Failed to render frame %1").arg(frame_id + 1));
+    return;
+  }
+
+  frame_image_ =
+      orc::gui::previewImageToQImage(result.image, std::move(frame_image_));
+
+  // The sequential render reports source dropouts in image coordinates,
+  // which equal frame-flat coordinates for this layout.
   std::vector<orc::presenters::DropoutRegion> source_dropouts =
-      presenter_->getSourceDropouts(vfr_non_const, frame_id);
+      result.image.dropout_regions;
 
-  std::vector<orc::presenters::DropoutRegion> additions;
-  std::vector<orc::presenters::DropoutRegion> removals;
+  const orc::presenters::FrameDropoutMap state = frameEditState(frame_id);
+  frame_view_->setFrame(frame_image_, source_dropouts, state.additions,
+                        state.removals);
+  loaded_frame_id_ = static_cast<orc::FrameID>(frame_id);
+  refreshRegionTable();
+  selectRegion(DropoutFrameView::RegionKind::None, -1);
 
+  if (!initial_fit_done_ && isVisible()) {
+    initial_fit_done_ = true;
+    frame_view_->fitToViewport();
+    updateZoomLabel(frame_view_->zoomLevel());
+  }
+
+  status_bar_->clearMessage();
+  updateFrameInfo();
+}
+
+// ============================================================================
+// Undoable editing
+// ============================================================================
+
+orc::presenters::FrameDropoutMap DropoutEditorDialog::frameEditState(
+    uint64_t frame_id) const {
   auto it = dropout_map_.find(frame_id);
   if (it != dropout_map_.end()) {
-    additions = it->second.additions;
-    removals = it->second.removals;
+    return it->second;
+  }
+  orc::presenters::FrameDropoutMap empty_state;
+  empty_state.frame_id = frame_id;
+  return empty_state;
+}
+
+void DropoutEditorDialog::pushEditCommand(
+    uint64_t frame_id, orc::presenters::FrameDropoutMap after,
+    const QString& text, int merge_key) {
+  undo_stack_->push(
+      new DropoutMapEditCommand(this, frame_id, frameEditState(frame_id),
+                                std::move(after), text, merge_key));
+}
+
+void DropoutEditorDialog::applyFrameEditState(
+    uint64_t frame_id, const orc::presenters::FrameDropoutMap& state) {
+  const bool empty = state.additions.empty() && state.removals.empty();
+  if (empty) {
+    dropout_map_.erase(frame_id);
+  } else {
+    orc::presenters::FrameDropoutMap& entry = dropout_map_[frame_id];
+    entry.frame_id = frame_id;
+    entry.additions = state.additions;
+    entry.removals = state.removals;
   }
 
-  frame_view_->setFrame(frame_data, width, height, source_dropouts, additions,
-                        removals);
-
-  // On first load, fit the frame to the scroll area
-  if (frame_id == 0 && total_frames_ > 0) {
-    int available_width = scroll_area_->width() - 20;
-    int available_height = scroll_area_->height() - 20;
-
-    float zoom_x =
-        static_cast<float>(available_width) / static_cast<float>(width);
-    float zoom_y =
-        static_cast<float>(available_height) / static_cast<float>(height);
-    float fit_zoom = std::max(0.5f, std::min(1.0f, std::min(zoom_x, zoom_y)));
-
-    frame_view_->setZoomLevel(fit_zoom);
-    zoom_label_->setText(QString("%1%").arg(static_cast<int>(fit_zoom * 100)));
-    zoom_reset_button_->setText(
-        QString("%1%").arg(static_cast<int>(fit_zoom * 100)));
+  if (loaded_frame_id_.has_value() && *loaded_frame_id_ == frame_id) {
+    frame_view_->updateRegions(state.additions, state.removals);
+    refreshRegionTable();
+    selectRegion(DropoutFrameView::RegionKind::None, -1);
+  } else if (worker_ready_ &&
+             frame_id != static_cast<uint64_t>(current_frame_id_)) {
+    // Undo/redo touched a frame we are not looking at: go there so the user
+    // sees the effect of the operation.
+    navigateToIndex(static_cast<int>(frame_id));
   }
 
   updateFrameInfo();
 }
 
-void DropoutEditorDialog::saveCurrentFrame() {
-  if (!vfr_repr_ ||
-      current_frame_id_ >= static_cast<orc::FrameID>(total_frames_)) {
+void DropoutEditorDialog::onRegionAddRequested(
+    const orc::presenters::DropoutRegion& region) {
+  if (!loaded_frame_id_.has_value()) {
+    return;
+  }
+  const uint64_t frame_id = *loaded_frame_id_;
+  auto after = frameEditState(frame_id);
+  after.additions.push_back(region);
+  const int new_index = static_cast<int>(after.additions.size()) - 1;
+  pushEditCommand(frame_id, std::move(after), "Add dropout");
+  selectRegion(DropoutFrameView::RegionKind::Addition, new_index);
+}
+
+void DropoutEditorDialog::onAdditionModifyRequested(
+    int index, const orc::presenters::DropoutRegion& new_region) {
+  if (!loaded_frame_id_.has_value()) {
+    return;
+  }
+  const uint64_t frame_id = *loaded_frame_id_;
+  auto after = frameEditState(frame_id);
+  if (index < 0 || index >= static_cast<int>(after.additions.size())) {
+    return;
+  }
+  after.additions[index] = new_region;
+  pushEditCommand(frame_id, std::move(after), "Move dropout");
+  selectRegion(DropoutFrameView::RegionKind::Addition, index);
+}
+
+void DropoutEditorDialog::deleteOrToggleSelection() {
+  if (!loaded_frame_id_.has_value()) {
+    return;
+  }
+  const uint64_t frame_id = *loaded_frame_id_;
+  const DropoutFrameView::RegionKind kind = frame_view_->selectedKind();
+  const int index = frame_view_->selectedIndex();
+  auto after = frameEditState(frame_id);
+
+  auto findRemoval = [&after](const orc::presenters::DropoutRegion& region) {
+    return std::find_if(after.removals.begin(), after.removals.end(),
+                        [&region](const orc::presenters::DropoutRegion& r) {
+                          return sameRegion(r, region);
+                        });
+  };
+
+  switch (kind) {
+    case DropoutFrameView::RegionKind::Addition: {
+      if (index < 0 || index >= static_cast<int>(after.additions.size())) {
+        return;
+      }
+      after.additions.erase(after.additions.begin() + index);
+      pushEditCommand(frame_id, std::move(after), "Delete addition");
+      selectRegion(DropoutFrameView::RegionKind::None, -1);
+      return;
+    }
+
+    case DropoutFrameView::RegionKind::OrphanRemoval: {
+      if (index < 0 || index >= static_cast<int>(after.removals.size())) {
+        return;
+      }
+      after.removals.erase(after.removals.begin() + index);
+      pushEditCommand(frame_id, std::move(after), "Delete removal entry");
+      selectRegion(DropoutFrameView::RegionKind::None, -1);
+      return;
+    }
+
+    case DropoutFrameView::RegionKind::Source: {
+      const auto& sources = frame_view_->getSourceDropouts();
+      if (index < 0 || index >= static_cast<int>(sources.size())) {
+        return;
+      }
+      const orc::presenters::DropoutRegion region = sources[index];
+      auto it = findRemoval(region);
+      if (it != after.removals.end()) {
+        after.removals.erase(it);
+        pushEditCommand(frame_id, std::move(after), "Restore dropout");
+      } else {
+        after.removals.push_back(region);
+        pushEditCommand(frame_id, std::move(after), "Mark dropout removed");
+      }
+      selectRegion(DropoutFrameView::RegionKind::Source, index);
+      return;
+    }
+
+    case DropoutFrameView::RegionKind::None:
+      return;
+  }
+}
+
+void DropoutEditorDialog::nudgeSelectedAddition(int dx, int dy) {
+  if (!loaded_frame_id_.has_value() ||
+      frame_view_->selectedKind() != DropoutFrameView::RegionKind::Addition) {
+    return;
+  }
+  const uint64_t frame_id = *loaded_frame_id_;
+  const int index = frame_view_->selectedIndex();
+  auto after = frameEditState(frame_id);
+  if (index < 0 || index >= static_cast<int>(after.additions.size())) {
     return;
   }
 
-  auto additions = frame_view_->getAdditions();
-  auto removals = frame_view_->getRemovals();
+  auto& region = after.additions[index];
+  const int width = frame_view_->getFrameWidth();
+  const int height = frame_view_->getFrameHeight();
+  const int length = static_cast<int>(region.end_sample - region.start_sample);
+  const int line =
+      std::clamp(static_cast<int>(region.line) + dy, 0, height - 1);
+  const int start =
+      std::clamp(static_cast<int>(region.start_sample) + dx, 0, width - length);
 
-  if (additions.empty() && removals.empty()) {
-    dropout_map_.erase(current_frame_id_);
-  } else {
-    orc::presenters::FrameDropoutMap& frame_map =
-        dropout_map_[current_frame_id_];
-    frame_map.frame_id = current_frame_id_;
-    frame_map.additions = additions;
-    frame_map.removals = removals;
+  if (line == static_cast<int>(region.line) &&
+      start == static_cast<int>(region.start_sample)) {
+    return;  // Clamped into no-op
   }
+  region.line = static_cast<uint32_t>(line);
+  region.start_sample = static_cast<uint32_t>(start);
+  region.end_sample = static_cast<uint32_t>(start + length);
+
+  // merge_key = addition index so consecutive nudges of the same region
+  // collapse into one undo step.
+  pushEditCommand(frame_id, std::move(after), "Nudge dropout", index);
+  selectRegion(DropoutFrameView::RegionKind::Addition, index);
+}
+
+void DropoutEditorDialog::onClearCurrentFrame() {
+  if (!loaded_frame_id_.has_value()) {
+    return;
+  }
+  const uint64_t frame_id = *loaded_frame_id_;
+  const auto state = frameEditState(frame_id);
+  if (state.additions.empty() && state.removals.empty()) {
+    return;
+  }
+  orc::presenters::FrameDropoutMap empty_state;
+  empty_state.frame_id = frame_id;
+  pushEditCommand(frame_id, std::move(empty_state), "Clear frame edits");
+  selectRegion(DropoutFrameView::RegionKind::None, -1);
+}
+
+void DropoutEditorDialog::onContextMenuRequested(
+    DropoutFrameView::RegionKind kind, int index, const QPoint& global_pos) {
+  QMenu menu(this);
+
+  switch (kind) {
+    case DropoutFrameView::RegionKind::Addition:
+      menu.addAction("Delete addition",
+                     [this]() { deleteOrToggleSelection(); });
+      break;
+    case DropoutFrameView::RegionKind::OrphanRemoval:
+      menu.addAction("Delete removal entry",
+                     [this]() { deleteOrToggleSelection(); });
+      break;
+    case DropoutFrameView::RegionKind::Source: {
+      const auto& sources = frame_view_->getSourceDropouts();
+      const auto& removals = frame_view_->getRemovals();
+      bool removed = false;
+      if (index >= 0 && index < static_cast<int>(sources.size())) {
+        removed = std::any_of(
+            removals.begin(), removals.end(),
+            [&sources, index](const orc::presenters::DropoutRegion& r) {
+              return sameRegion(r, sources[index]);
+            });
+      }
+      menu.addAction(removed ? "Restore dropout" : "Mark dropout removed",
+                     [this]() { deleteOrToggleSelection(); });
+      break;
+    }
+    case DropoutFrameView::RegionKind::None:
+      break;
+  }
+
+  if (!menu.isEmpty()) {
+    menu.addSeparator();
+  }
+  QAction* clear_action =
+      menu.addAction("Clear frame edits", [this]() { onClearCurrentFrame(); });
+  {
+    const auto state = loaded_frame_id_.has_value()
+                           ? frameEditState(*loaded_frame_id_)
+                           : orc::presenters::FrameDropoutMap();
+    clear_action->setEnabled(!state.additions.empty() ||
+                             !state.removals.empty());
+  }
+  menu.addSeparator();
+  QAction* undo_action = menu.addAction("Undo", undo_stack_, &QUndoStack::undo);
+  undo_action->setEnabled(undo_stack_->canUndo());
+  QAction* redo_action = menu.addAction("Redo", undo_stack_, &QUndoStack::redo);
+  redo_action->setEnabled(undo_stack_->canRedo());
+
+  menu.exec(global_pos);
+}
+
+// ============================================================================
+// Selection / region table
+// ============================================================================
+
+void DropoutEditorDialog::onViewSelectionChanged(
+    DropoutFrameView::RegionKind kind, int index) {
+  if (syncing_selection_) {
+    return;
+  }
+  selectRegion(kind, index);
+}
+
+void DropoutEditorDialog::selectRegion(DropoutFrameView::RegionKind kind,
+                                       int index) {
+  syncing_selection_ = true;
+  frame_view_->setSelectedRegion(kind, index);
+
+  region_table_->clearSelection();
+  if (kind != DropoutFrameView::RegionKind::None) {
+    for (int row = 0; row < region_table_->rowCount(); ++row) {
+      QTableWidgetItem* item = region_table_->item(row, 0);
+      if (item && item->data(Qt::UserRole).toInt() == static_cast<int>(kind) &&
+          item->data(Qt::UserRole + 1).toInt() == index) {
+        region_table_->selectRow(row);
+        break;
+      }
+    }
+  }
+  syncing_selection_ = false;
+
+  // Delete button context
+  switch (kind) {
+    case DropoutFrameView::RegionKind::Addition:
+      delete_button_->setText("Delete Addition");
+      delete_button_->setEnabled(true);
+      break;
+    case DropoutFrameView::RegionKind::OrphanRemoval:
+      delete_button_->setText("Delete Removal");
+      delete_button_->setEnabled(true);
+      break;
+    case DropoutFrameView::RegionKind::Source: {
+      const auto& sources = frame_view_->getSourceDropouts();
+      const auto& removals = frame_view_->getRemovals();
+      bool removed = false;
+      if (index >= 0 && index < static_cast<int>(sources.size())) {
+        removed = std::any_of(
+            removals.begin(), removals.end(),
+            [&sources, index](const orc::presenters::DropoutRegion& r) {
+              return sameRegion(r, sources[index]);
+            });
+      }
+      delete_button_->setText(removed ? "Restore Dropout" : "Mark Removed");
+      delete_button_->setEnabled(true);
+      break;
+    }
+    case DropoutFrameView::RegionKind::None:
+      delete_button_->setText("Delete");
+      delete_button_->setEnabled(false);
+      break;
+  }
+}
+
+void DropoutEditorDialog::onTableSelectionChanged() {
+  if (syncing_selection_) {
+    return;
+  }
+  const auto selected = region_table_->selectedItems();
+  if (selected.isEmpty()) {
+    selectRegion(DropoutFrameView::RegionKind::None, -1);
+    return;
+  }
+  QTableWidgetItem* item = region_table_->item(selected.first()->row(), 0);
+  if (!item) {
+    return;
+  }
+  const auto kind = static_cast<DropoutFrameView::RegionKind>(
+      item->data(Qt::UserRole).toInt());
+  const int index = item->data(Qt::UserRole + 1).toInt();
+  selectRegion(kind, index);
+}
+
+void DropoutEditorDialog::refreshRegionTable() {
+  syncing_selection_ = true;
+  region_table_->setRowCount(0);
+
+  auto addRow = [this](const QString& status, const QColor& color,
+                       const orc::presenters::DropoutRegion& region,
+                       DropoutFrameView::RegionKind kind, int index) {
+    const int row = region_table_->rowCount();
+    region_table_->insertRow(row);
+
+    auto* status_item = new QTableWidgetItem(status);
+    status_item->setForeground(color);
+    status_item->setData(Qt::UserRole, static_cast<int>(kind));
+    status_item->setData(Qt::UserRole + 1, index);
+    region_table_->setItem(row, 0, status_item);
+
+    // Line shown 1-based per the presentation convention.
+    region_table_->setItem(
+        row, 1, new QTableWidgetItem(QString::number(region.line + 1)));
+    region_table_->setItem(
+        row, 2, new QTableWidgetItem(QString::number(region.start_sample)));
+    region_table_->setItem(
+        row, 3, new QTableWidgetItem(QString::number(region.end_sample)));
+  };
+
+  const auto& sources = frame_view_->getSourceDropouts();
+  const auto& additions = frame_view_->getAdditions();
+  const auto& removals = frame_view_->getRemovals();
+
+  for (size_t i = 0; i < sources.size(); ++i) {
+    const bool removed =
+        std::any_of(removals.begin(), removals.end(),
+                    [&sources, i](const orc::presenters::DropoutRegion& r) {
+                      return sameRegion(r, sources[i]);
+                    });
+    addRow(removed ? "Removed" : "Source",
+           removed ? kRemovalColor : kSourceColor, sources[i],
+           DropoutFrameView::RegionKind::Source, static_cast<int>(i));
+  }
+
+  for (size_t i = 0; i < additions.size(); ++i) {
+    addRow("Added", kAdditionColor, additions[i],
+           DropoutFrameView::RegionKind::Addition, static_cast<int>(i));
+  }
+
+  for (size_t i = 0; i < removals.size(); ++i) {
+    if (frame_view_->isOrphanRemoval(static_cast<int>(i))) {
+      addRow("Removed (no source)", kRemovalColor, removals[i],
+             DropoutFrameView::RegionKind::OrphanRemoval, static_cast<int>(i));
+    }
+  }
+
+  syncing_selection_ = false;
+}
+
+// ============================================================================
+// Frame info / edited-frame navigation
+// ============================================================================
+
+std::vector<int> DropoutEditorDialog::editedFrameIndices() const {
+  std::vector<int> indices;
+  indices.reserve(dropout_map_.size());
+  for (const auto& [frame_id, frame_map] : dropout_map_) {
+    indices.push_back(static_cast<int>(frame_id));
+  }
+  return indices;  // Map iteration order keeps this sorted
 }
 
 void DropoutEditorDialog::updateFrameInfo() {
-  auto additions = frame_view_->getAdditions();
-  auto removals = frame_view_->getRemovals();
+  const auto state = loaded_frame_id_.has_value()
+                         ? frameEditState(*loaded_frame_id_)
+                         : orc::presenters::FrameDropoutMap();
 
   frame_info_label_->setText(
-      QString("Frame %1 of %2 - Additions: %3, Removals: %4")
+      QString("Frame %1 of %2 — Additions: %3, Removals: %4")
           .arg(current_frame_id_ + 1)
           .arg(total_frames_)
-          .arg(additions.size())
-          .arg(removals.size()));
+          .arg(state.additions.size())
+          .arg(state.removals.size()));
 
-  additions_list_->clear();
-  for (const auto& region : additions) {
-    additions_list_->addItem(QString("Line %1: [%2, %3)")
-                                 .arg(region.line)
-                                 .arg(region.start_sample)
-                                 .arg(region.end_sample));
-  }
+  const bool has_frames = worker_ready_ && total_frames_ > 0;
+  prev_button_->setEnabled(has_frames && current_frame_id_ > 0);
+  next_button_->setEnabled(has_frames &&
+                           current_frame_id_ <
+                               static_cast<orc::FrameID>(total_frames_) - 1);
 
-  removals_list_->clear();
-  for (const auto& region : removals) {
-    removals_list_->addItem(QString("Line %1: [%2, %3)")
-                                .arg(region.line)
-                                .arg(region.start_sample)
-                                .arg(region.end_sample));
-  }
-
-  prev_button_->setEnabled(current_frame_id_ > 0);
-  next_button_->setEnabled(current_frame_id_ <
-                           static_cast<orc::FrameID>(total_frames_) - 1);
+  updateEditedFrameNavigation();
 }
 
-void DropoutEditorDialog::onPreviousFrame() {
-  if (current_frame_id_ > 0) {
-    // Spin box is 1-based: frame N (0-based) is shown as N+1. Going to N-1
-    // means setting the spin box to N (current_frame_id_ without +1 offset).
-    frame_spin_box_->setValue(static_cast<int>(current_frame_id_));
-  }
+void DropoutEditorDialog::updateEditedFrameNavigation() {
+  const std::vector<int> edited = editedFrameIndices();
+  frame_slider_->setMarkedValues(edited);
+
+  const int current = static_cast<int>(current_frame_id_);
+  const bool has_prev_edit =
+      !edited.empty() &&
+      std::lower_bound(edited.begin(), edited.end(), current) != edited.begin();
+  const bool has_next_edit =
+      !edited.empty() &&
+      std::upper_bound(edited.begin(), edited.end(), current) != edited.end();
+  prev_edit_button_->setEnabled(worker_ready_ && has_prev_edit);
+  next_edit_button_->setEnabled(worker_ready_ && has_next_edit);
 }
 
-void DropoutEditorDialog::onNextFrame() {
-  if (current_frame_id_ < static_cast<orc::FrameID>(total_frames_) - 1) {
-    // Spin box is 1-based: going to N+1 (0-based) means setting to N+2.
-    frame_spin_box_->setValue(static_cast<int>(current_frame_id_ + 2));
+void DropoutEditorDialog::onPreviousEditedFrame() {
+  const std::vector<int> edited = editedFrameIndices();
+  const int current = static_cast<int>(current_frame_id_);
+  auto it = std::lower_bound(edited.begin(), edited.end(), current);
+  if (it != edited.begin()) {
+    navigateToIndex(*std::prev(it));
   }
 }
 
-void DropoutEditorDialog::onFrameNumberChanged(int value) {
-  // Spin box is 1-based; convert to 0-based FrameID before loading.
-  loadFrame(static_cast<orc::FrameID>(value - 1));
-}
-
-void DropoutEditorDialog::onClearCurrentFrame() { frame_view_->clearEdits(); }
-
-void DropoutEditorDialog::onRegionsModified() { updateFrameInfo(); }
-
-void DropoutEditorDialog::onAddDropout() {
-  edit_mode_ = EditMode::Add;
-  add_dropout_button_->setChecked(true);
-  remove_dropout_button_->setChecked(false);
-  frame_view_->mode_ = DropoutFrameView::InteractionMode::AddingDropout;
-}
-
-void DropoutEditorDialog::onRemoveDropout() {
-  edit_mode_ = EditMode::Remove;
-  add_dropout_button_->setChecked(false);
-  remove_dropout_button_->setChecked(true);
-  frame_view_->mode_ = DropoutFrameView::InteractionMode::RemovingDropout;
-}
-
-std::map<uint64_t, orc::presenters::FrameDropoutMap>
-DropoutEditorDialog::getDropoutMap() const {
-  auto map = dropout_map_;
-
-  auto additions = frame_view_->getAdditions();
-  auto removals = frame_view_->getRemovals();
-
-  if (additions.empty() && removals.empty()) {
-    map.erase(current_frame_id_);
-  } else {
-    orc::presenters::FrameDropoutMap& frame_map = map[current_frame_id_];
-    frame_map.frame_id = current_frame_id_;
-    frame_map.additions = additions;
-    frame_map.removals = removals;
-  }
-
-  return map;
-}
-
-void DropoutEditorDialog::onZoomIn() {
-  float current_zoom = frame_view_->getZoomLevel();
-  float new_zoom = std::min(4.0f, current_zoom * 1.25f);
-  frame_view_->setZoomLevel(new_zoom);
-  zoom_label_->setText(QString("%1%").arg(static_cast<int>(new_zoom * 100)));
-  zoom_reset_button_->setText(
-      QString("%1%").arg(static_cast<int>(new_zoom * 100)));
-}
-
-void DropoutEditorDialog::onZoomOut() {
-  float current_zoom = frame_view_->getZoomLevel();
-  float new_zoom = std::max(0.5f, current_zoom / 1.25f);
-  frame_view_->setZoomLevel(new_zoom);
-  zoom_label_->setText(QString("%1%").arg(static_cast<int>(new_zoom * 100)));
-  zoom_reset_button_->setText(
-      QString("%1%").arg(static_cast<int>(new_zoom * 100)));
-}
-
-void DropoutEditorDialog::onZoomReset() {
-  frame_view_->setZoomLevel(1.0f);
-  zoom_label_->setText("100%");
-  zoom_reset_button_->setText("100%");
-}
-
-void DropoutEditorDialog::onMoveDropoutUp() {
-  if (selected_addition_index_ >= 0) {
-    auto& additions = frame_view_->getAdditionsMutable();
-    if (selected_addition_index_ < static_cast<int>(additions.size())) {
-      auto& region = additions[selected_addition_index_];
-      if (region.line > 0) {
-        region.line--;
-        frame_view_->updateDisplay();
-        updateFrameInfo();
-        additions_list_->setCurrentRow(selected_addition_index_);
-      }
-    }
-  } else if (selected_removal_index_ >= 0) {
-    auto& removals = frame_view_->getRemovalsMutable();
-    if (selected_removal_index_ < static_cast<int>(removals.size())) {
-      auto& region = removals[selected_removal_index_];
-      if (region.line > 0) {
-        region.line--;
-        frame_view_->updateDisplay();
-        updateFrameInfo();
-        removals_list_->setCurrentRow(selected_removal_index_);
-      }
-    }
+void DropoutEditorDialog::onNextEditedFrame() {
+  const std::vector<int> edited = editedFrameIndices();
+  const int current = static_cast<int>(current_frame_id_);
+  auto it = std::upper_bound(edited.begin(), edited.end(), current);
+  if (it != edited.end()) {
+    navigateToIndex(*it);
   }
 }
 
-void DropoutEditorDialog::onMoveDropoutDown() {
-  if (selected_addition_index_ >= 0) {
-    auto& additions = frame_view_->getAdditionsMutable();
-    if (selected_addition_index_ < static_cast<int>(additions.size())) {
-      auto& region = additions[selected_addition_index_];
-      if (region.line <
-          static_cast<uint32_t>(frame_view_->getFrameHeight()) - 1) {
-        region.line++;
-        frame_view_->updateDisplay();
-        updateFrameInfo();
-        additions_list_->setCurrentRow(selected_addition_index_);
-      }
-    }
-  } else if (selected_removal_index_ >= 0) {
-    auto& removals = frame_view_->getRemovalsMutable();
-    if (selected_removal_index_ < static_cast<int>(removals.size())) {
-      auto& region = removals[selected_removal_index_];
-      if (region.line <
-          static_cast<uint32_t>(frame_view_->getFrameHeight()) - 1) {
-        region.line++;
-        frame_view_->updateDisplay();
-        updateFrameInfo();
-        removals_list_->setCurrentRow(selected_removal_index_);
-      }
-    }
-  }
+// ============================================================================
+// Zoom / aspect / keyboard
+// ============================================================================
+
+void DropoutEditorDialog::onZoomIn() { frame_view_->zoomIn(); }
+
+void DropoutEditorDialog::onZoomOut() { frame_view_->zoomOut(); }
+
+void DropoutEditorDialog::onZoomReset() { frame_view_->setZoomLevel(1.0); }
+
+void DropoutEditorDialog::onZoomFit() { frame_view_->fitToViewport(); }
+
+void DropoutEditorDialog::onAspectRatioChanged(int index) {
+  Q_UNUSED(index);
+  frame_view_->setAspectCorrection(currentAspectCorrection());
 }
 
-void DropoutEditorDialog::onAdditionsListItemClicked(QListWidgetItem* item) {
-  selected_addition_index_ = additions_list_->row(item);
-  selected_removal_index_ = -1;
-  removals_list_->clearSelection();
-  updateButtonStatesForSelection(true);
+void DropoutEditorDialog::updateZoomLabel(double zoom_level) {
+  zoom_label_->setText(QString("%1%").arg(qRound(zoom_level * 100)));
 }
 
-void DropoutEditorDialog::onRemovalsListItemClicked(QListWidgetItem* item) {
-  selected_removal_index_ = removals_list_->row(item);
-  selected_addition_index_ = -1;
-  additions_list_->clearSelection();
-  updateButtonStatesForSelection(false);
-}
-
-void DropoutEditorDialog::updateButtonStatesForSelection(bool is_addition) {
-  if (is_addition) {
-    move_up_button_->setEnabled(true);
-    move_down_button_->setEnabled(true);
-    delete_dropout_button_->setEnabled(true);
-  } else {
-    move_up_button_->setEnabled(false);
-    move_down_button_->setEnabled(false);
-    delete_dropout_button_->setEnabled(true);
-  }
-}
-
-void DropoutEditorDialog::onFrameViewZoomChanged(float zoom_level) {
-  zoom_label_->setText(QString("%1%").arg(static_cast<int>(zoom_level * 100)));
-  zoom_reset_button_->setText(
-      QString("%1%").arg(static_cast<int>(zoom_level * 100)));
-}
-
-void DropoutEditorDialog::onAdditionCreated(int index) {
-  selected_addition_index_ = index;
-  selected_removal_index_ = -1;
-
-  updateFrameInfo();
-
-  if (index >= 0 && index < additions_list_->count()) {
-    additions_list_->setCurrentRow(index);
-    removals_list_->clearSelection();
-    updateButtonStatesForSelection(true);
-  }
-}
-
-void DropoutEditorDialog::onRemovalCreated(int index) {
-  selected_removal_index_ = index;
-  selected_addition_index_ = -1;
-
-  updateFrameInfo();
-
-  if (index >= 0 && index < removals_list_->count()) {
-    removals_list_->setCurrentRow(index);
-    additions_list_->clearSelection();
-    updateButtonStatesForSelection(false);
-  }
-}
-
-void DropoutEditorDialog::onAdditionClicked(int index) {
-  selected_addition_index_ = index;
-  selected_removal_index_ = -1;
-
-  if (index >= 0 && index < additions_list_->count()) {
-    additions_list_->setCurrentRow(index);
-    removals_list_->clearSelection();
-    updateButtonStatesForSelection(true);
-  }
-}
-
-void DropoutEditorDialog::onRemovalClicked(int index) {
-  selected_removal_index_ = index;
-  selected_addition_index_ = -1;
-
-  if (index >= 0 && index < removals_list_->count()) {
-    removals_list_->setCurrentRow(index);
-    additions_list_->clearSelection();
-    updateButtonStatesForSelection(false);
-  }
-}
-
-void DropoutEditorDialog::onAdditionsListSelectionChanged() {
-  int current_row = additions_list_->currentRow();
-
-  if (current_row >= 0) {
-    removals_list_->clearSelection();
-    frame_view_->setHighlightedRegion(
-        DropoutFrameView::HoverRegionType::Addition, current_row);
-    selected_addition_index_ = current_row;
-    selected_removal_index_ = -1;
-    updateButtonStatesForSelection(true);
-  } else {
-    if (removals_list_->currentRow() < 0) {
-      frame_view_->setHighlightedRegion(DropoutFrameView::HoverRegionType::None,
-                                        -1);
-    }
-    selected_addition_index_ = -1;
-  }
-}
-
-void DropoutEditorDialog::onRemovalsListSelectionChanged() {
-  int current_row = removals_list_->currentRow();
-
-  if (current_row >= 0) {
-    additions_list_->clearSelection();
-    frame_view_->setHighlightedRegion(
-        DropoutFrameView::HoverRegionType::Removal, current_row);
-    selected_removal_index_ = current_row;
-    selected_addition_index_ = -1;
-    updateButtonStatesForSelection(false);
-  } else {
-    if (additions_list_->currentRow() < 0) {
-      frame_view_->setHighlightedRegion(DropoutFrameView::HoverRegionType::None,
-                                        -1);
-    }
-    selected_removal_index_ = -1;
-  }
-}
-
-void DropoutEditorDialog::onDeleteDropout() {
-  if (selected_addition_index_ >= 0) {
-    auto& additions = frame_view_->getAdditionsMutable();
-    if (selected_addition_index_ < static_cast<int>(additions.size())) {
-      additions.erase(additions.begin() + selected_addition_index_);
-      selected_addition_index_ = -1;
-      move_up_button_->setEnabled(false);
-      move_down_button_->setEnabled(false);
-      delete_dropout_button_->setEnabled(false);
-      frame_view_->updateDisplay();
-      updateFrameInfo();
-      additions_list_->clearSelection();
-    }
-  } else if (selected_removal_index_ >= 0) {
-    auto& removals = frame_view_->getRemovalsMutable();
-    if (selected_removal_index_ < static_cast<int>(removals.size())) {
-      removals.erase(removals.begin() + selected_removal_index_);
-      selected_removal_index_ = -1;
-      move_up_button_->setEnabled(false);
-      move_down_button_->setEnabled(false);
-      delete_dropout_button_->setEnabled(false);
-      frame_view_->updateDisplay();
-      updateFrameInfo();
-      removals_list_->clearSelection();
-    }
-  }
+void DropoutEditorDialog::onFrameViewZoomChanged(double zoom_level) {
+  updateZoomLabel(zoom_level);
 }
 
 void DropoutEditorDialog::keyPressEvent(QKeyEvent* event) {
   const int pan_step = 50;
+  const bool addition_selected =
+      frame_view_->selectedKind() == DropoutFrameView::RegionKind::Addition;
 
+  // Arrow keys nudge the selected addition; with no addition selected they
+  // pan the frame.
   switch (event->key()) {
     case Qt::Key_Left:
-      scroll_area_->horizontalScrollBar()->setValue(
-          scroll_area_->horizontalScrollBar()->value() - pan_step);
+      if (addition_selected) {
+        nudgeSelectedAddition(-1, 0);
+      } else {
+        scroll_area_->horizontalScrollBar()->setValue(
+            scroll_area_->horizontalScrollBar()->value() - pan_step);
+      }
       event->accept();
       break;
     case Qt::Key_Right:
-      scroll_area_->horizontalScrollBar()->setValue(
-          scroll_area_->horizontalScrollBar()->value() + pan_step);
+      if (addition_selected) {
+        nudgeSelectedAddition(1, 0);
+      } else {
+        scroll_area_->horizontalScrollBar()->setValue(
+            scroll_area_->horizontalScrollBar()->value() + pan_step);
+      }
       event->accept();
       break;
     case Qt::Key_Up:
-      scroll_area_->verticalScrollBar()->setValue(
-          scroll_area_->verticalScrollBar()->value() - pan_step);
+      if (addition_selected) {
+        nudgeSelectedAddition(0, -1);
+      } else {
+        scroll_area_->verticalScrollBar()->setValue(
+            scroll_area_->verticalScrollBar()->value() - pan_step);
+      }
       event->accept();
       break;
     case Qt::Key_Down:
-      scroll_area_->verticalScrollBar()->setValue(
-          scroll_area_->verticalScrollBar()->value() + pan_step);
+      if (addition_selected) {
+        nudgeSelectedAddition(0, 1);
+      } else {
+        scroll_area_->verticalScrollBar()->setValue(
+            scroll_area_->verticalScrollBar()->value() + pan_step);
+      }
+      event->accept();
+      break;
+    case Qt::Key_PageUp:
+      navigateToIndex(frame_slider_->value() - 1);
+      event->accept();
+      break;
+    case Qt::Key_PageDown:
+      navigateToIndex(frame_slider_->value() + 1);
       event->accept();
       break;
     case Qt::Key_Plus:
@@ -1110,7 +1641,15 @@ void DropoutEditorDialog::keyPressEvent(QKeyEvent* event) {
   }
 }
 
-void DropoutEditorDialog::onApply() {
-  saveCurrentFrame();
-  Q_EMIT applied();
+void DropoutEditorDialog::showEvent(QShowEvent* event) {
+  QDialog::showEvent(event);
+  // Fit the frame to the viewport once the dialog has its real size (covers
+  // the case where the first frame arrived before the dialog was shown).
+  if (!initial_fit_done_ && frame_view_->hasImage()) {
+    initial_fit_done_ = true;
+    frame_view_->fitToViewport();
+    updateZoomLabel(frame_view_->zoomLevel());
+  }
 }
+
+void DropoutEditorDialog::onApply() { Q_EMIT applied(); }
