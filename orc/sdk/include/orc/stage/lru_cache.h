@@ -108,6 +108,41 @@ class LRUCache {
   }
 
   /**
+   * @brief Insert value only if the key is not already cached
+   * @param key Key to insert
+   * @param value Value to store when the key is absent
+   * @return True if the value was inserted, false if the key already existed
+   *
+   * Use this (rather than put()) when callers may hold pointers obtained via
+   * get_ptr(): a check-then-put sequence from two threads would otherwise
+   * replace the stored value and destroy the buffer the first thread's
+   * pointer refers to.
+   */
+  bool put_if_absent(const Key& key, Value value) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = map_.find(key);
+
+    if (it != map_.end()) {
+      // Key exists - keep the original value so outstanding get_ptr()
+      // pointers stay valid; just refresh the LRU position.
+      lru_list_.splice(lru_list_.begin(), lru_list_, it->second);
+      return false;
+    }
+
+    // Evict oldest if at capacity
+    if (lru_list_.size() >= max_size_) {
+      auto oldest = lru_list_.back();
+      map_.erase(oldest.first);
+      lru_list_.pop_back();
+    }
+
+    // Insert new entry at front (most recently used)
+    lru_list_.emplace_front(key, std::move(value));
+    map_[key] = lru_list_.begin();
+    return true;
+  }
+
+  /**
    * @brief Check if key exists in cache (without updating LRU order)
    * @param key Key to check
    * @return True if key exists

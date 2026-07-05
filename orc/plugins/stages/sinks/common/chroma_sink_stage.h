@@ -25,9 +25,11 @@
 #include <orc/stage/video_frame_representation.h>
 
 #include <atomic>
+#include <deque>
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <vector>
 
 // Forward declarations for decoder classes
 struct SourceField;
@@ -233,12 +235,29 @@ class ChromaSinkStage : public DAGStage,
 
   // Helper methods for integration
 
-  // Build a non-owning SourceField view into the VFrameR frame buffer.
-  // For PAL, populates line_ptrs (and luma/chroma_line_ptrs for YC sources)
-  // to handle non-uniform 1135/1136-sample lines.
-  SourceField convertToSourceField(
-      const orc::VideoFrameRepresentation* vfr, orc::FrameID frame_id,
-      bool is_first_field, const orc::SourceParameters& videoParams) const;
+  // Copy frame_id's buffers out of the VFrameR into owned_buffers and append
+  // SourceFields for field 1 and field 2 viewing those copies. The SDK
+  // forbids retaining get_frame() pointers across calls (upstream caches may
+  // evict or replace buffers while other threads still read them), so
+  // decoder input must view sink-owned memory. owned_buffers must outlive
+  // the appended fields. Returns false (appending nothing) when the frame
+  // has no data.
+  bool appendSourceFields(const orc::VideoFrameRepresentation* vfr,
+                          orc::FrameID frame_id,
+                          const orc::SourceParameters& videoParams,
+                          std::deque<std::vector<int16_t>>& owned_buffers,
+                          std::vector<SourceField>& out_fields) const;
+
+  // Build a SourceField view over caller-owned frame buffers. For PAL,
+  // populates line_ptrs (and luma/chroma_line_ptrs for YC sources) to handle
+  // non-uniform 1135/1136-sample lines. luma_ptr/chroma_ptr may be null for
+  // composite-only sources (is_yc false).
+  SourceField buildSourceField(const int16_t* frame_ptr,
+                               const int16_t* luma_ptr,
+                               const int16_t* chroma_ptr, bool is_yc,
+                               std::optional<int32_t> frame_phase_id,
+                               orc::FrameID frame_id, bool is_first_field,
+                               const orc::SourceParameters& videoParams) const;
 
   bool writeOutputFile(
       const std::string& output_path, const std::string& format,

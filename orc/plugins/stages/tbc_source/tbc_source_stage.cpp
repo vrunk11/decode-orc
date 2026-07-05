@@ -534,7 +534,10 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   void ensure_frame_cached(FrameID id) const {
     if (frame_cache_.contains(id)) return;
     CachedFrame frame = assemble_frame(id);
-    frame_cache_.put(id, std::move(frame));
+    // put_if_absent: two threads can race past the contains() check and both
+    // assemble the frame; replacing the cached entry would free the buffer
+    // that the first thread's get_frame() pointer still refers to.
+    frame_cache_.put_if_absent(id, std::move(frame));
   }
 
   CachedFrame assemble_frame(FrameID id) const {

@@ -1331,10 +1331,10 @@ bool ChromaSinkStage::trigger(
       // SourceFields.
       std::vector<SourceField> frameFields;
 
-      // Owned black buffers for blank SourceFields; must outlive frameFields.
-      // Use a deque so that push_back never invalidates existing data()
-      // pointers.
-      std::deque<std::vector<int16_t>> ownedBlankData;
+      // Owned buffers backing every SourceField (blank padding and copies of
+      // VFrameR frame data); must outlive frameFields. Use a deque so that
+      // push_back never invalidates existing data() pointers.
+      std::deque<std::vector<int16_t>> ownedFieldBuffers;
 
       // The actual frame number we're processing
       int32_t actualFrameNum = static_cast<int32_t>(start_frame) + frameIdx;
@@ -1375,11 +1375,12 @@ bool ChromaSinkStage::trigger(
         return spl * field_lines;
       };
 
-      // Helper: build a blank SourceField backed by an entry in ownedBlankData
+      // Helper: build a blank SourceField backed by an entry in
+      // ownedFieldBuffers
       auto makeBlankField = [&](bool is_first_field) -> SourceField {
         size_t samples = fieldSampleCount(is_first_field);
-        ownedBlankData.emplace_back(samples, blankingLevel);
-        const int16_t* buf = ownedBlankData.back().data();
+        ownedFieldBuffers.emplace_back(samples, blankingLevel);
+        const int16_t* buf = ownedFieldBuffers.back().data();
 
         SourceField sf;
         sf.is_first_field = is_first_field;
@@ -1428,14 +1429,14 @@ bool ChromaSinkStage::trigger(
       for (int32_t i = copyStartIdx; i < copyEndIdx; i++) {
         const auto& fi = frameInfoList[i];
 
-        if (fi.use_blank) {
+        if (fi.use_blank ||
+            !appendSourceFields(vfr.get(), fi.frame_id, videoParams,
+                                ownedFieldBuffers, frameFields)) {
+          // Blank padding, or the frame unexpectedly had no data; substitute
+          // black fields so the window keeps two fields per frame and the
+          // target frame stays at the expected Z-position.
           frameFields.push_back(makeBlankField(true));
           frameFields.push_back(makeBlankField(false));
-        } else {
-          frameFields.push_back(
-              convertToSourceField(vfr.get(), fi.frame_id, true, videoParams));
-          frameFields.push_back(
-              convertToSourceField(vfr.get(), fi.frame_id, false, videoParams));
         }
       }
 
@@ -1633,27 +1634,75 @@ std::string ChromaSinkStage::get_trigger_status() const {
 //   [field1_line0 | field1_line1 | … | field2_line0 | …]
 // For PAL, frame-flat lines 312 and 624 carry 1137 samples (all other lines
 // carry 1135 samples).  EBU Tech. 3280-E §1.3.1.
-SourceField ChromaSinkStage::convertToSourceField(
+bool ChromaSinkStage::appendSourceFields(
     const orc::VideoFrameRepresentation* vfr, orc::FrameID frame_id,
-    bool is_first_field, const orc::SourceParameters& videoParams) const {
-  SourceField sf;
-
-  const int16_t* frame_ptr = vfr->get_frame(frame_id);
-  if (!frame_ptr) {
+    const orc::SourceParameters& videoParams,
+    std::deque<std::vector<int16_t>>& owned_buffers,
+    std::vector<SourceField>& out_fields) const {
+  // SDK contract (video_frame_representation.h): pointers returned by
+  // get_frame()/get_frame_luma()/get_frame_chroma() are only valid until the
+  // next call on the representation. Decoders with temporal look-around
+  // (Transform 3D, NTSC 3D) hold fields from several frames at once while
+  // worker threads pull neighbouring frames through the same upstream caches,
+  // so the decoder input must view sink-owned copies.
+  std::vector<int16_t> composite = vfr->get_frame_copy(frame_id);
+  if (composite.empty()) {
     ORC_LOG_WARN("ChromaSink: Frame {} has no data in VFrameR", frame_id);
-    return sf;
+    return false;
+  }
+  const size_t frame_samples = composite.size();
+  owned_buffers.push_back(std::move(composite));
+  const int16_t* frame_ptr = owned_buffers.back().data();
+
+  const bool is_yc = vfr->has_separate_channels();
+  const int16_t* luma_ptr = nullptr;
+  const int16_t* chroma_ptr = nullptr;
+  if (is_yc) {
+    // Luma and chroma planes share the composite frame buffer layout.
+    const int16_t* src_luma = vfr->get_frame_luma(frame_id);
+    if (src_luma) {
+      owned_buffers.emplace_back(src_luma, src_luma + frame_samples);
+      luma_ptr = owned_buffers.back().data();
+    }
+    const int16_t* src_chroma = vfr->get_frame_chroma(frame_id);
+    if (src_chroma) {
+      owned_buffers.emplace_back(src_chroma, src_chroma + frame_samples);
+      chroma_ptr = owned_buffers.back().data();
+    }
+    if (!luma_ptr || !chroma_ptr) {
+      luma_ptr = nullptr;
+      chroma_ptr = nullptr;
+    }
   }
 
-  sf.seq_no = static_cast<int32_t>(frame_id) + 1;
-  sf.is_first_field = is_first_field;
-
+  std::optional<int32_t> frame_phase_id;
   if (auto desc = vfr->get_frame_descriptor(frame_id)) {
     if (desc->colour_frame_index >= 0) {
-      sf.frame_phase_id = static_cast<int32_t>(desc->colour_frame_index);
+      frame_phase_id = static_cast<int32_t>(desc->colour_frame_index);
       ORC_LOG_TRACE("ChromaSink: Frame {} colour_frame_index={}", frame_id,
                     desc->colour_frame_index);
     }
   }
+
+  out_fields.push_back(buildSourceField(frame_ptr, luma_ptr, chroma_ptr, is_yc,
+                                        frame_phase_id, frame_id, true,
+                                        videoParams));
+  out_fields.push_back(buildSourceField(frame_ptr, luma_ptr, chroma_ptr, is_yc,
+                                        frame_phase_id, frame_id, false,
+                                        videoParams));
+  return true;
+}
+
+SourceField ChromaSinkStage::buildSourceField(
+    const int16_t* frame_ptr, const int16_t* luma_ptr,
+    const int16_t* chroma_ptr, bool is_yc,
+    std::optional<int32_t> frame_phase_id, orc::FrameID frame_id,
+    bool is_first_field, const orc::SourceParameters& videoParams) const {
+  SourceField sf;
+
+  sf.seq_no = static_cast<int32_t>(frame_id) + 1;
+  sf.is_first_field = is_first_field;
+  sf.frame_phase_id = frame_phase_id;
 
   // PAL_M has NTSC-like frame geometry (525 lines, 909 samples/line); only
   // pure PAL uses the 625-line non-uniform layout.
@@ -1721,10 +1770,8 @@ SourceField ChromaSinkStage::convertToSourceField(
     }
   }
 
-  if (vfr->has_separate_channels()) {
+  if (is_yc) {
     sf.is_yc = true;
-    const int16_t* luma_ptr = vfr->get_frame_luma(frame_id);
-    const int16_t* chroma_ptr = vfr->get_frame_chroma(frame_id);
 
     if (luma_ptr && chroma_ptr) {
       if (is_pal) {
@@ -1991,8 +2038,9 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
       preview_is_pal ? static_cast<int16_t>(orc::kPalBlanking)
                      : static_cast<int16_t>(orc::kNtscBlanking);
 
-  // Owned blank buffers for out-of-range frames; must outlive inputFields.
-  std::deque<std::vector<int16_t>> previewBlankBuffers;
+  // Owned buffers backing every preview SourceField (blank padding and copies
+  // of VFrameR frame data); must outlive inputFields.
+  std::deque<std::vector<int16_t>> previewOwnedBuffers;
 
   // Helper: build a blank SourceField for preview
   auto makePreviewBlankField = [&](int64_t fi,
@@ -2030,8 +2078,8 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
       blank.line_count = fl;
     }
 
-    previewBlankBuffers.emplace_back(samples, preview_blanking);
-    const int16_t* buf = previewBlankBuffers.back().data();
+    previewOwnedBuffers.emplace_back(samples, preview_blanking);
+    const int16_t* buf = previewOwnedBuffers.back().data();
 
     blank.data = buf;
     if (is_yc_source) {
@@ -2061,14 +2109,11 @@ std::optional<ColourFrameCarrier> ChromaSinkStage::get_colour_preview_carrier(
 
   for (int64_t fi = start_frame_idx; fi <= end_frame_idx; ++fi) {
     orc::FrameID fid = static_cast<orc::FrameID>(fi);
-    if (fi >= 0 && local_input->has_frame(fid)) {
-      auto sf1 =
-          convertToSourceField(local_input.get(), fid, true, safeVideoParams);
-      auto sf2 =
-          convertToSourceField(local_input.get(), fid, false, safeVideoParams);
-      if (sf1.data || sf1.luma_data) inputFields.push_back(std::move(sf1));
-      if (sf2.data || sf2.luma_data) inputFields.push_back(std::move(sf2));
-    } else {
+    if (fi < 0 || !local_input->has_frame(fid) ||
+        !appendSourceFields(local_input.get(), fid, safeVideoParams,
+                            previewOwnedBuffers, inputFields)) {
+      // Out-of-range, or the frame unexpectedly had no data; substitute
+      // black fields so the target frame stays at frameStartIndex.
       inputFields.push_back(makePreviewBlankField(fi, true));
       inputFields.push_back(makePreviewBlankField(fi, false));
     }

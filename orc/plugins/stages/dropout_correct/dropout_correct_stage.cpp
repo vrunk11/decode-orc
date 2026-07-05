@@ -571,12 +571,19 @@ void DropoutCorrectStage::correct_single_frame(
       "DropoutCorrectStage: frame {} has {} dropout hints ({} line-dropouts)",
       frame_id, runs.size(), dropouts.size());
 
+  // put_if_absent throughout: overlapping decode windows (e.g. Transform 3D
+  // look-around) make concurrent duplicate corrections of the same frame
+  // routine; replacing a cached entry would free the buffer another thread's
+  // get_frame() pointer still refers to.
   if (dropouts.empty()) {
     if (source->has_separate_channels()) {
-      corrected->corrected_luma_frames_.put(frame_id, std::vector<int16_t>{});
-      corrected->corrected_chroma_frames_.put(frame_id, std::vector<int16_t>{});
+      corrected->corrected_luma_frames_.put_if_absent(frame_id,
+                                                      std::vector<int16_t>{});
+      corrected->corrected_chroma_frames_.put_if_absent(frame_id,
+                                                        std::vector<int16_t>{});
     } else {
-      corrected->corrected_frames_.put(frame_id, std::vector<int16_t>{});
+      corrected->corrected_frames_.put_if_absent(frame_id,
+                                                 std::vector<int16_t>{});
     }
     return;
   }
@@ -682,8 +689,10 @@ void DropoutCorrectStage::correct_single_frame(
       corrections++;
     }
 
-    corrected->corrected_luma_frames_.put(frame_id, std::move(luma_data));
-    corrected->corrected_chroma_frames_.put(frame_id, std::move(chroma_data));
+    corrected->corrected_luma_frames_.put_if_absent(frame_id,
+                                                    std::move(luma_data));
+    corrected->corrected_chroma_frames_.put_if_absent(frame_id,
+                                                      std::move(chroma_data));
     ORC_LOG_DEBUG("DropoutCorrectStage: YC frame {} done - {} corrections",
                   frame_id, corrections);
     return;
@@ -728,7 +737,7 @@ void DropoutCorrectStage::correct_single_frame(
     }
   }
 
-  corrected->corrected_frames_.put(frame_id, std::move(frame_data));
+  corrected->corrected_frames_.put_if_absent(frame_id, std::move(frame_data));
   ORC_LOG_DEBUG("DropoutCorrectStage: composite frame {} done - {} corrections",
                 frame_id, corrections);
 }
