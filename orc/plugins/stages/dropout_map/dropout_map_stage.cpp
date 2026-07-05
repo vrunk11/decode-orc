@@ -84,9 +84,11 @@ std::vector<DropoutRun> DropoutMappedFrameRepresentation::get_dropout_hints(
             sys, static_cast<size_t>(nominal_spl), rem.line)) +
         rem.end_sample;
 
+    // Note: run.frame_id is deliberately not checked — the runs were fetched
+    // for this frame, and upstream wrappers (frame_map, stacker) do not all
+    // preserve the frame_id field.
     result.erase(std::remove_if(result.begin(), result.end(),
                                 [&](const DropoutRun& run) {
-                                  if (run.frame_id != id) return false;
                                   const uint64_t run_end =
                                       run.sample_start + run.sample_count - 1;
                                   return !(run_end < rem_start ||

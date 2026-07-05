@@ -121,4 +121,5 @@ orc_add_gui_unit_tests(
         project_properties_dialog_test.cpp
         dropout_frame_view_test.cpp
         dropout_editor_dialog_test.cpp
+        field_preview_crosshair_test.cpp
 )

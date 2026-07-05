@@ -100,6 +100,14 @@ class FakePalYcRepresentation : public orc::VideoFrameRepresentation {
     return params;
   }
 
+  void set_dropout_hints(std::vector<orc::DropoutRun> hints) {
+    dropout_hints_ = std::move(hints);
+  }
+  std::vector<orc::DropoutRun> get_dropout_hints(
+      orc::FrameID id) const override {
+    return id == 0 ? dropout_hints_ : std::vector<orc::DropoutRun>{};
+  }
+
  private:
   const sample_type* line_ptr(const std::vector<sample_type>& plane,
                               orc::FrameID id, size_t line) const {
@@ -110,6 +118,7 @@ class FakePalYcRepresentation : public orc::VideoFrameRepresentation {
 
   std::vector<sample_type> luma_;
   std::vector<sample_type> chroma_;
+  std::vector<orc::DropoutRun> dropout_hints_;
 };
 
 uint8_t gray_at(const orc::PreviewImage& image, uint32_t row, uint32_t x) {
@@ -157,6 +166,45 @@ TEST(PreviewHelpersTest, CompositePathPreview_UsesPalLineOffsets) {
   const auto image = orc::PreviewHelpers::render_standard_preview(
       representation, "sequential_clamped", 0);
   expect_marker_aligned_on_all_rows(image);
+}
+
+// Regression: sequential dropout regions must land on the exact frame-flat
+// line for BOTH fields. The display-row recomposition used field1_lines =
+// height/2 (312 for PAL) while the field split used the true field-1 line
+// count (313), shifting every field-2 region up one line — which drew the
+// overlay on the wrong line and made dropout_map removals created from those
+// regions miss their runs entirely.
+TEST(PreviewHelpersTest,
+     SequentialDropoutRegions_UseFrameFlatLinesForBothFields) {
+  auto representation = std::make_shared<FakePalYcRepresentation>();
+
+  const size_t field1_line = 100;  // PAL field 1 (< 313)
+  const size_t field2_line = 400;  // PAL field 2 (>= 313)
+  std::vector<orc::DropoutRun> hints;
+  for (size_t line : {field1_line, field2_line}) {
+    orc::DropoutRun run;
+    run.frame_id = 0;
+    run.sample_start =
+        orc::frame_line_sample_offset(orc::VideoSystem::PAL, kPalWidth, line) +
+        200;
+    run.sample_count = 100;
+    run.severity = 100;
+    hints.push_back(run);
+  }
+  representation->set_dropout_hints(std::move(hints));
+
+  const auto image = orc::PreviewHelpers::render_standard_preview(
+      representation, "sequential_clamped", 0);
+  ASSERT_TRUE(image.is_valid());
+  ASSERT_EQ(image.dropout_regions.size(), 2u);
+
+  EXPECT_EQ(image.dropout_regions[0].line, field1_line);
+  EXPECT_EQ(image.dropout_regions[0].start_sample, 200u);
+  EXPECT_EQ(image.dropout_regions[0].end_sample, 300u);
+
+  EXPECT_EQ(image.dropout_regions[1].line, field2_line);
+  EXPECT_EQ(image.dropout_regions[1].start_sample, 200u);
+  EXPECT_EQ(image.dropout_regions[1].end_sample, 300u);
 }
 
 }  // namespace orc_unit_test

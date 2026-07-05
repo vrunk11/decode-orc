@@ -196,6 +196,31 @@ TEST(DropoutMapStageTest, GetDropoutHints_RemovesOverlappingSourceRun) {
   EXPECT_TRUE(hints.empty());
 }
 
+// Regression: upstream wrappers do not reliably preserve DropoutRun::frame_id
+// (the stacker used to emit frame_id 0; frame_map passed through the source
+// frame's id). Removal matching must not depend on that field — the runs were
+// fetched for this frame.
+TEST(DropoutMapStageTest, GetDropoutHints_RemovesRun_DespiteStaleRunFrameId) {
+  auto source =
+      std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();
+  const orc::FrameID fid{2};
+
+  // Same geometry as above, but the run carries a stale frame_id of 0.
+  std::vector<orc::DropoutRun> src{{orc::FrameID{0}, 9200u, 101u, 128}};
+  ON_CALL(*source, get_video_parameters())
+      .WillByDefault(Return(make_ntsc_params()));
+  ON_CALL(*source, get_dropout_hints(fid)).WillByDefault(Return(src));
+
+  orc::FrameDropoutMapEntry entry;
+  entry.frame_id = 2;
+  entry.removals.push_back({10u, 100u, 200u});
+  std::map<uint64_t, orc::FrameDropoutMapEntry> dmap{{2, entry}};
+  const orc::DropoutMappedFrameRepresentation rep(source, dmap);
+
+  const auto hints = rep.get_dropout_hints(fid);
+  EXPECT_TRUE(hints.empty());
+}
+
 TEST(DropoutMapStageTest, GetDropoutHints_NoChangeOnOtherFrame) {
   auto source =
       std::make_shared<testing::NiceMock<MockVideoFrameRepresentation>>();

@@ -331,9 +331,11 @@ PreviewImage render_standard_preview(
                                  ? static_cast<uint32_t>(line_in_field) * 2 + 1
                                  : static_cast<uint32_t>(line_in_field) * 2);
       } else {
-        display_row = (field == 1) ? static_cast<uint32_t>(line_in_field)
-                                   : static_cast<uint32_t>(field1_lines) +
-                                         static_cast<uint32_t>(line_in_field);
+        // Sequential layout: display rows ARE frame-flat lines. Do not
+        // recompose from field1_lines, which is height/2 here (312 for PAL)
+        // while the field split above uses the true field-1 line count (313
+        // for PAL) — recomposing shifted every field-2 region up one line.
+        display_row = static_cast<uint32_t>(flat_line);
       }
 
       if (display_row < height) {

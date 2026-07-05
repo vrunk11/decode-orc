@@ -210,8 +210,15 @@ std::vector<DropoutRun> FrameMappedRepresentation::get_dropout_hints(
   auto idx = resolve_index(id);
   if (!idx) return {};
   if (is_padding(*idx)) return {};
-  return source_ ? source_->get_dropout_hints(frame_mapping_[*idx])
-                 : std::vector<DropoutRun>{};
+  if (!source_) return {};
+  // Rewrite frame IDs so the runs describe this representation's frame, not
+  // the source frame they were mapped from (consumers such as dropout_map
+  // may rely on the frame_id field).
+  auto runs = source_->get_dropout_hints(frame_mapping_[*idx]);
+  for (auto& run : runs) {
+    run.frame_id = id;
+  }
+  return runs;
 }
 
 uint32_t FrameMappedRepresentation::get_audio_sample_count(FrameID id) const {

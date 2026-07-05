@@ -208,6 +208,12 @@ void StackedVideoFrameRepresentation::ensure_frame_stacked(FrameID id) const {
 
   stage_->stack_frame(src_ids, sources_, stacked_samples, stacked_do);
 
+  // stack_frame builds runs without frame context; stamp this frame's ID so
+  // downstream consumers (e.g. dropout_map) see consistent hints.
+  for (auto& run : stacked_do) {
+    run.frame_id = id;
+  }
+
   stacked_frames_.put(id, std::move(stacked_samples));
   stacked_dropouts_.put(id, std::move(stacked_do));
 }
@@ -226,6 +232,12 @@ void StackedVideoFrameRepresentation::ensure_frame_stacked_yc(
   std::vector<DropoutRun> dos;
 
   stage_->stack_frame_yc(src_ids, sources_, luma, chroma, dos);
+
+  // stack_frame_yc builds runs without frame context; stamp this frame's ID
+  // so downstream consumers (e.g. dropout_map) see consistent hints.
+  for (auto& run : dos) {
+    run.frame_id = id;
+  }
 
   stacked_luma_.put(id, std::move(luma));
   stacked_chroma_.put(id, std::move(chroma));
@@ -270,6 +282,12 @@ StackedVideoFrameRepresentation::get_frame_copy(FrameID id) const {
   std::vector<DropoutRun> dos;
   auto src_ids = collect_source_frame_ids(id);
   stage_->stack_frame(src_ids, sources_, samples, dos);
+
+  // stack_frame builds runs without frame context; stamp this frame's ID so
+  // downstream consumers (e.g. dropout_map) see consistent hints.
+  for (auto& run : dos) {
+    run.frame_id = id;
+  }
 
   {
     std::lock_guard<std::mutex> lk(cache_mutex_);

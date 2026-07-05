@@ -255,4 +255,56 @@ TEST(StackerStageTest, LineReads_ReturnStackedOutputNotFirstSource) {
   }
 }
 
+namespace {
+
+// FakeConstantSource with multiple frames and a dropout hint present on every
+// frame (line 1, samples 4..11 = flat offset 20, count 8).
+class FakeDropoutSource : public FakeConstantSource {
+ public:
+  FakeDropoutSource(sample_type value, size_t frame_count)
+      : FakeConstantSource(value), frame_count_(frame_count) {}
+
+  orc::FrameIDRange frame_range() const override {
+    return {orc::FrameID{0}, orc::FrameID{frame_count_ - 1}};
+  }
+  size_t frame_count() const override { return frame_count_; }
+  bool has_frame(orc::FrameID id) const override {
+    return id < static_cast<orc::FrameID>(frame_count_);
+  }
+
+  std::vector<orc::DropoutRun> get_dropout_hints(
+      orc::FrameID id) const override {
+    if (!has_frame(id)) return {};
+    return {orc::DropoutRun{id, kStackWidth + 4, 8u, 100}};
+  }
+
+ private:
+  size_t frame_count_;
+};
+
+}  // namespace
+
+// Regression: residual dropout runs on the stacked output must carry the
+// stacked frame's ID. They used to be emitted with a hard-coded frame_id of
+// 0, which broke downstream consumers keying on the field (e.g. dropout_map
+// removals).
+TEST(StackerStageTest, StackedDropoutHints_CarryStackedFrameId) {
+  orc::StackerStage stage;
+  ASSERT_TRUE(stage.set_parameters({{"mode", std::string("Mean")}}));
+
+  // Both sources drop out over the same span, so the stacked output has a
+  // residual dropout there on every frame.
+  auto src0 = std::make_shared<FakeDropoutSource>(100, 2);
+  auto src1 = std::make_shared<FakeDropoutSource>(200, 2);
+
+  const auto stacked = stage.process({src0, src1});
+  ASSERT_NE(stacked, nullptr);
+
+  const auto hints = stacked->get_dropout_hints(orc::FrameID{1});
+  ASSERT_FALSE(hints.empty());
+  for (const auto& run : hints) {
+    EXPECT_EQ(run.frame_id, orc::FrameID{1});
+  }
+}
+
 }  // namespace orc_unit_test

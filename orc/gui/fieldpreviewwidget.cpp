@@ -86,7 +86,7 @@ void FieldPreviewWidget::setCrosshairsEnabled(bool enabled) {
   crosshairs_enabled_ = enabled;
   if (!enabled) {
     // Clear locked state when disabling
-    crosshairs_locked_ = false;
+    locked_crosshairs_image_.reset();
   }
   update();
 }
@@ -96,18 +96,12 @@ void FieldPreviewWidget::updateCrosshairsPosition(int image_x, int image_y) {
     return;
   }
 
-  // Clamp coordinates to valid image bounds
+  // Clamp coordinates to valid image bounds and store in image space; the
+  // paint event maps to widget coordinates at the current scale.
   QSize image_size = current_image_.size();
-  image_x = qBound(0, image_x, image_size.width() - 1);
-  image_y = qBound(0, image_y, image_size.height() - 1);
-
-  // Map image coordinates to widget coordinates
-  const QPointF widget_pos =
-      geometry_.widgetFromImage(QPointF(image_x, image_y));
-
-  // Update locked cross-hairs position
-  crosshairs_locked_ = true;
-  locked_crosshairs_pos_ = widget_pos.toPoint();
+  locked_crosshairs_image_ =
+      QPoint(qBound(0, image_x, image_size.width() - 1),
+             qBound(0, image_y, image_size.height() - 1));
   update();
 }
 
@@ -172,26 +166,32 @@ void FieldPreviewWidget::paintEvent(QPaintEvent* event) {
     }
   }
 
-  // Draw cross-hairs if enabled and (mouse is over the image area or
-  // cross-hairs are locked)
-  QPoint draw_pos = crosshairs_locked_ ? locked_crosshairs_pos_ : mouse_pos_;
-  if (crosshairs_enabled_ && (mouse_over_ || crosshairs_locked_) &&
-      image_rect_.contains(draw_pos)) {
+  // Draw cross-hairs if enabled. The locked position is stored in image
+  // pixels and mapped to widget coordinates here, so the cross-hairs follow
+  // the preview through resizes and aspect-ratio changes.
+  std::optional<QPoint> crosshair_pixel;
+  if (locked_crosshairs_image_.has_value()) {
+    // Re-clamp in case the frame dimensions changed since locking.
+    crosshair_pixel = QPoint(
+        qBound(0, locked_crosshairs_image_->x(), image_size.width() - 1),
+        qBound(0, locked_crosshairs_image_->y(), image_size.height() - 1));
+  } else if (mouse_over_ && image_rect_.contains(mouse_pos_)) {
+    crosshair_pixel = geometry_.imagePixelFromWidget(mouse_pos_);
+  }
+
+  if (crosshairs_enabled_ && crosshair_pixel.has_value()) {
     painter.setRenderHint(QPainter::Antialiasing, false);
     QPen pen(Qt::green);
     pen.setWidth(1);
     painter.setPen(pen);
 
-    // Map position to image pixel coordinates (clamped)
-    const QPoint image_pixel = geometry_.imagePixelFromWidget(draw_pos);
-
-    // Map image pixel back to widget coordinates to get pixel-aligned
+    // Map the image pixel to widget coordinates to get pixel-aligned
     // positions - this ensures the cross-hairs align with the actual pixel
     // boundaries
-    const QPointF pixel_top_left =
-        geometry_.widgetFromImage(QPointF(image_pixel.x(), image_pixel.y()));
+    const QPointF pixel_top_left = geometry_.widgetFromImage(
+        QPointF(crosshair_pixel->x(), crosshair_pixel->y()));
     const QPointF pixel_bottom_right = geometry_.widgetFromImage(
-        QPointF(image_pixel.x() + 1, image_pixel.y() + 1));
+        QPointF(crosshair_pixel->x() + 1, crosshair_pixel->y() + 1));
 
     // Calculate center of the pixel
     const qreal center_x = (pixel_top_left.x() + pixel_bottom_right.x()) / 2.0;
@@ -213,7 +213,7 @@ void FieldPreviewWidget::mouseMoveEvent(QMouseEvent* event) {
 
   // If button is pressed and we're dragging, unlock cross-hairs
   if (mouse_button_pressed_) {
-    crosshairs_locked_ = false;
+    locked_crosshairs_image_.reset();
   }
 
   update();  // Trigger repaint to show cross-hairs at new position
@@ -239,16 +239,14 @@ void FieldPreviewWidget::mousePressEvent(QMouseEvent* event) {
   if (event->button() == Qt::LeftButton) {
     mouse_button_pressed_ = true;
 
-    // Lock cross-hairs at click position
-    crosshairs_locked_ = true;
-    locked_crosshairs_pos_ = event->pos();
-    update();  // Redraw with locked cross-hairs
-
-    // Emit signal for initial click if over the image area
+    // Lock cross-hairs at the clicked image pixel and emit the click when
+    // over the image area
     if (image_rect_.contains(event->pos()) && !current_image_.isNull()) {
       const QPoint image_pixel = geometry_.imagePixelFromWidget(event->pos());
+      locked_crosshairs_image_ = image_pixel;
       emit lineClicked(image_pixel.x(), image_pixel.y());
     }
+    update();  // Redraw with locked cross-hairs
   }
 
   QWidget::mousePressEvent(event);
@@ -261,9 +259,8 @@ void FieldPreviewWidget::mouseReleaseEvent(QMouseEvent* event) {
     line_scope_update_pending_ = false;
 
     // Lock cross-hairs at final position after drag
-    if (image_rect_.contains(event->pos())) {
-      crosshairs_locked_ = true;
-      locked_crosshairs_pos_ = event->pos();
+    if (image_rect_.contains(event->pos()) && !current_image_.isNull()) {
+      locked_crosshairs_image_ = geometry_.imagePixelFromWidget(event->pos());
       update();
     }
   }

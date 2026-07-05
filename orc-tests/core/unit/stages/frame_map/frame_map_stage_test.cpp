@@ -9,10 +9,13 @@
 
 #include "../../../../orc/plugins/stages/frame_map/frame_map_stage.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <orc/stage/observation_context.h>
 
 #include <algorithm>
+
+#include "../../mocks/mock_video_frame_representation.h"
 
 namespace orc_unit_test {
 
@@ -160,6 +163,31 @@ TEST(FrameMapStageTest, Execute_ThrowsWhenInputIsNotVFrameR) {
   };
   orc::ArtifactPtr bad = std::make_shared<DummyArtifact>();
   EXPECT_THROW(stage.execute({bad}, {}, ctx), orc::DAGExecutionError);
+}
+
+// ── Dropout hint frame IDs ──────────────────────────────────────────────────
+
+// Regression: hints returned for a mapped frame must carry the mapped
+// representation's frame ID, not the source frame's — consumers such as
+// dropout_map may rely on the frame_id field.
+TEST(FrameMapStageTest, GetDropoutHints_RewritesFrameIdToMappedFrame) {
+  auto source =
+      std::make_shared<::testing::NiceMock<MockVideoFrameRepresentation>>();
+
+  // Source frame 5 has one dropout run (carrying its own frame id, 5).
+  std::vector<orc::DropoutRun> source_runs{{orc::FrameID{5}, 1000u, 50u, 128}};
+  ON_CALL(*source, get_dropout_hints(orc::FrameID{5}))
+      .WillByDefault(::testing::Return(source_runs));
+
+  // Output frame 0 maps to source frame 5.
+  const orc::FrameMappedRepresentation rep(source, {orc::FrameID{5}}, {},
+                                           "test");
+
+  const auto hints = rep.get_dropout_hints(orc::FrameID{0});
+  ASSERT_EQ(hints.size(), 1u);
+  EXPECT_EQ(hints[0].frame_id, orc::FrameID{0});
+  EXPECT_EQ(hints[0].sample_start, 1000u);
+  EXPECT_EQ(hints[0].sample_count, 50u);
 }
 
 }  // namespace orc_unit_test

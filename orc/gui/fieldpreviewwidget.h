@@ -17,6 +17,7 @@
 #include <QWidget>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "frame_view_geometry.h"
@@ -127,9 +128,10 @@ class FieldPreviewWidget : public QWidget {
   // Cross-hairs locking
   bool crosshairs_enabled_ =
       false;  // Whether cross-hairs are enabled (line scope open)
-  bool crosshairs_locked_ =
-      false;  // Whether cross-hairs are locked at a position
-  QPoint locked_crosshairs_pos_;  // Locked cross-hairs position
+  // Locked cross-hairs position in IMAGE pixels (not widget coordinates), so
+  // the cross-hairs track any rescaling of the preview — widget resize,
+  // aspect-ratio change — by remapping at paint time.
+  std::optional<QPoint> locked_crosshairs_image_;
 
   // Line scope update throttling
   QTimer* line_scope_update_timer_;
