@@ -923,15 +923,13 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
     // Fall back to legacy JSON (.tbc.json) when the SQLite sidecar is absent.
     const std::string json_path = json_path_from_db(db_path);
     if (!json_path.empty() && fs::exists(json_path, ec)) {
-      ORC_LOG_INFO("tbc_source: falling back to legacy JSON metadata: {}",
-                   json_path);
-      TBCMetadataJsonReader reader;
-      if (!reader.open(json_path)) {
+      auto reader = open_json_reader_cached(json_path);
+      if (!reader) {
         error_message =
             "Failed to open TBC legacy JSON metadata: '" + json_path + "'";
         return std::nullopt;
       }
-      return build_tvp_from_reader(reader, json_path, error_message);
+      return build_tvp_from_reader(*reader, json_path, error_message);
     }
 
     error_message = "TBC metadata database not found: '" + db_path + "'";
@@ -957,13 +955,13 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
     // Fall back to legacy JSON (.tbc.json).
     const std::string json_path = json_path_from_db(db_path);
     if (!json_path.empty() && fs::exists(json_path, ec)) {
-      TBCMetadataJsonReader reader;
-      if (!reader.open(json_path)) {
+      auto reader = open_json_reader_cached(json_path);
+      if (!reader) {
         error_message = "Failed to open TBC legacy JSON for field meta: '" +
                         json_path + "'";
         return {};
       }
-      return build_field_meta_from_reader(reader);
+      return build_field_meta_from_reader(*reader);
     }
 
     error_message =
@@ -1089,6 +1087,44 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
       int32_t /*field_seq_no_a*/, int32_t /*field_seq_no_b*/) const override {
     return std::nullopt;
   }
+
+ private:
+  // Opening a legacy .tbc.json parses the entire document, which is expensive
+  // for large captures; video params, per-field meta, and configuration
+  // validation all need it. Cache the most recently parsed file (keyed by
+  // path, size, and modification time) so each sidecar is parsed once.
+  // Returned readers are safe to share across threads: all reads are served
+  // from immutable maps populated during open().
+  std::shared_ptr<TBCMetadataJsonReader> open_json_reader_cached(
+      const std::string& json_path) const {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(json_path, ec);
+    const fs::file_time_type mtime = fs::last_write_time(json_path, ec);
+
+    std::lock_guard<std::mutex> lock(json_cache_mutex_);
+    if (json_cache_reader_ && json_cache_path_ == json_path &&
+        json_cache_size_ == size && json_cache_mtime_ == mtime) {
+      return json_cache_reader_;
+    }
+
+    ORC_LOG_INFO("tbc_source: using legacy JSON metadata: {}", json_path);
+    auto reader = std::make_shared<TBCMetadataJsonReader>();
+    if (!reader->open(json_path)) {
+      return nullptr;
+    }
+    json_cache_reader_ = std::move(reader);
+    json_cache_path_ = json_path;
+    json_cache_size_ = size;
+    json_cache_mtime_ = mtime;
+    return json_cache_reader_;
+  }
+
+  mutable std::mutex json_cache_mutex_;
+  mutable std::shared_ptr<TBCMetadataJsonReader> json_cache_reader_;
+  mutable std::string json_cache_path_;
+  mutable uintmax_t json_cache_size_ = 0;
+  mutable std::filesystem::file_time_type json_cache_mtime_{};
 };
 
 }  // namespace

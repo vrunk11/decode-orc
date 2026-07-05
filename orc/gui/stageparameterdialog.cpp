@@ -21,6 +21,8 @@
 #include <algorithm>
 #include <limits>
 
+#include "logging.h"
+
 StageParameterDialog::StageParameterDialog(
     const std::string& stage_name, const std::string& display_name,
     const std::string& stage_description,
@@ -680,8 +682,8 @@ bool StageParameterDialog::validate_values() {
     return QDir(QFileInfo(project_path_).absolutePath()).filePath(path);
   };
 
-  // Helper: verify the SQLite metadata (.tbc.db) file exists; warn specifically
-  // if only a legacy JSON file is found, or generically if nothing is found.
+  // Helper: verify the SQLite metadata (.tbc.db) file exists; accept a legacy
+  // JSON file with an info log, or warn generically if nothing is found.
   auto check_db_file = [this](const QString& db_path) -> bool {
     if (db_path.isEmpty()) return true;
     if (QFileInfo::exists(db_path)) return true;
@@ -689,23 +691,11 @@ bool StageParameterDialog::validate_values() {
     if (db_path.endsWith(".db", Qt::CaseInsensitive)) {
       QString json_path = db_path.left(db_path.length() - 3) + ".json";
       if (QFileInfo::exists(json_path)) {
-        const QString filename = QFileInfo(json_path).fileName();
-        QMessageBox msgBox(this);
-        msgBox.setWindowTitle("Legacy Metadata Format");
-        msgBox.setIcon(QMessageBox::Warning);
-        msgBox.setText(
-            QString(
-                "The TBC source '%1' has legacy JSON metadata. This is just "
-                "a warning - the source will load regardless.\n\n"
-                "For best long-term results, consider re-decoding with a "
-                "current version of ld-decode/vhs-decode.")
-                .arg(filename));
-        QPushButton* continueBtn =
-            msgBox.addButton("Continue", QMessageBox::AcceptRole);
-        msgBox.addButton("Cancel", QMessageBox::RejectRole);
-        msgBox.setDefaultButton(continueBtn);
-        msgBox.exec();
-        return msgBox.clickedButton() == continueBtn;
+        ORC_LOG_INFO(
+            "TBC source '{}' has legacy JSON metadata; consider re-decoding "
+            "with a current version of ld-decode/vhs-decode",
+            QFileInfo(json_path).fileName().toStdString());
+        return true;
       }
     }
     QMessageBox::warning(this, "Missing Metadata File",

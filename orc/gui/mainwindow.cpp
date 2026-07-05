@@ -1349,23 +1349,10 @@ void MainWindow::quickProject(const QString& filename) {
       // Check for legacy JSON metadata produced by older ld-decode/vhs-decode
       QString json_path = base_path + ".tbc.json";
       if (QFileInfo::exists(json_path)) {
-        const QString json_filename = QFileInfo(json_path).fileName();
-        QMessageBox msgBox(this);
-        msgBox.setWindowTitle("Legacy Metadata Format");
-        msgBox.setIcon(QMessageBox::Warning);
-        msgBox.setText(
-            QString(
-                "The TBC source '%1' has legacy JSON metadata. This is just "
-                "a warning - the source will load regardless.\n\n"
-                "For best long-term results, consider re-decoding with a "
-                "current version of ld-decode/vhs-decode.")
-                .arg(json_filename));
-        QPushButton* continueBtn =
-            msgBox.addButton("Continue", QMessageBox::AcceptRole);
-        msgBox.addButton("Cancel", QMessageBox::RejectRole);
-        msgBox.setDefaultButton(continueBtn);
-        msgBox.exec();
-        if (msgBox.clickedButton() != continueBtn) return;
+        ORC_LOG_INFO(
+            "TBC source '{}' has legacy JSON metadata; consider re-decoding "
+            "with a current version of ld-decode/vhs-decode",
+            QFileInfo(json_path).fileName().toStdString());
 
         // Read video system from the legacy JSON file.
         QFile jf(json_path);
