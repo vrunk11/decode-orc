@@ -377,6 +377,10 @@ void PreviewDialog::setupUI() {
     if (is_playing_) {
       stopPlayback();
     } else {
+      // Restart from the first frame when playback is started at the end.
+      if (currentIndex() >= preview_slider_->maximum()) {
+        navigateToIndex(preview_slider_->minimum());
+      }
       is_playing_ = true;
       play_pause_button_->setText("⏸");  // ⏸ pause symbol
       playback_timer_->start();

@@ -122,4 +122,5 @@ orc_add_gui_unit_tests(
         dropout_frame_view_test.cpp
         dropout_editor_dialog_test.cpp
         field_preview_crosshair_test.cpp
+        preview_dialog_playback_test.cpp
 )

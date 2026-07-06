@@ -100,6 +100,9 @@ class PreviewDialog : public QDialog {
   QSpinBox* frameJumpSpinBox() {
     return frame_jump_spinbox_;
   }  ///< Get frame/field jump spin box
+  QPushButton* playPauseButton() {
+    return play_pause_button_;
+  }  ///< Get play/pause button
   /// @}
 
   /**
