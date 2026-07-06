@@ -221,6 +221,53 @@ TEST_F(DropoutFrameViewTest, DragRightHandle_ResizesAddition) {
   EXPECT_EQ(modified->end_sample, 51u);  // Pixel 50 included (exclusive end)
 }
 
+TEST_F(DropoutFrameViewTest, DragSourceRightHandle_EmitsSourceResizeRequested) {
+  setFrame({makeRegion(10, 20, 40)});
+  view_->setSelectedRegion(DropoutFrameView::RegionKind::Source, 0);
+
+  std::optional<orc::presenters::DropoutRegion> resized;
+  int resized_index = -1;
+  QObject::connect(
+      view_.get(), &DropoutFrameView::sourceResizeRequested,
+      [&](int index, const orc::presenters::DropoutRegion& region) {
+        resized_index = index;
+        resized = region;
+      });
+
+  // The right resize handle sits at the band's right edge (x = end_sample).
+  sendMousePress(view_.get(), QPointF(40, 10.5));
+  sendMouseMove(view_.get(), QPointF(55, 10.5));
+  sendMouseRelease(view_.get(), QPointF(55, 10.5));
+
+  ASSERT_TRUE(resized.has_value());
+  EXPECT_EQ(resized_index, 0);
+  EXPECT_EQ(resized->line, 10u);
+  EXPECT_EQ(resized->start_sample, 20u);
+  EXPECT_EQ(resized->end_sample, 56u);  // Pixel 55 included (exclusive end)
+
+  // The source list itself must stay untouched; the dialog applies the edit.
+  ASSERT_EQ(view_->getSourceDropouts().size(), 1u);
+  EXPECT_EQ(view_->getSourceDropouts()[0].end_sample, 40u);
+}
+
+TEST_F(DropoutFrameViewTest, RemovedSourceDropout_HasNoActiveHandles) {
+  const auto source = makeRegion(10, 20, 40);
+  setFrame({source}, {}, {source});  // Source already marked removed
+  view_->setSelectedRegion(DropoutFrameView::RegionKind::Source, 0);
+
+  int resize_count = 0;
+  QObject::connect(view_.get(), &DropoutFrameView::sourceResizeRequested,
+                   [&resize_count](int, const orc::presenters::DropoutRegion&) {
+                     ++resize_count;
+                   });
+
+  sendMousePress(view_.get(), QPointF(40, 10.5));
+  sendMouseMove(view_.get(), QPointF(55, 10.5));
+  sendMouseRelease(view_.get(), QPointF(55, 10.5));
+
+  EXPECT_EQ(resize_count, 0);
+}
+
 TEST_F(DropoutFrameViewTest, MoveDragClampsToImageBounds) {
   setFrame({}, {makeRegion(30, 10, 40)});
 

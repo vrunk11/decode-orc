@@ -3637,6 +3637,9 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
         project_.setModified(true);
         updateUIState();
         project_.rebuildDAG();
+        // Refresh the graph so the node's status dot reflects the new map
+        // (statuses are cached in the model until it is refreshed).
+        dag_model_->refresh();
         updatePreviewRenderer();
         ORC_LOG_DEBUG("Dropout map updated for node '{}'", node_id.to_string());
         updatePreview();

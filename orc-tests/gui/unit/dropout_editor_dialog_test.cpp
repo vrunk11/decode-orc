@@ -408,6 +408,58 @@ TEST_F(DropoutEditorDialogTest, TableSelectionSyncsWithView) {
   EXPECT_EQ(selected_rows.first().row(), 1);  // Addition row
 }
 
+TEST_F(DropoutEditorDialogTest, ResizeSourceDropout_ReplacesWithAddition) {
+  auto dialog = makeDialog();
+  auto* view = waitForLoadedView(*dialog);
+  ASSERT_NE(view, nullptr);
+  ASSERT_EQ(view->size(), QSize(100, 50));
+
+  // Select the source dropout (line 10, samples [20, 40)).
+  sendMousePress(view, QPointF(30, 10));
+  sendMouseRelease(view, QPointF(30, 10));
+  ASSERT_EQ(view->selectedKind(), DropoutFrameView::RegionKind::Source);
+
+  // Drag its right handle from x=40 to x=60.
+  sendMousePress(view, QPointF(40, 10.5));
+  sendMouseMove(view, QPointF(60, 10.5));
+  sendMouseRelease(view, QPointF(60, 10.5));
+
+  // One command: the source dropout is marked removed and an addition
+  // covering the extended extent is created.
+  auto map = dialog->getDropoutMap();
+  ASSERT_EQ(map.count(0), 1u);
+  ASSERT_EQ(map[0].removals.size(), 1u);
+  EXPECT_EQ(map[0].removals[0].line, 10u);
+  EXPECT_EQ(map[0].removals[0].start_sample, 20u);
+  EXPECT_EQ(map[0].removals[0].end_sample, 40u);
+  ASSERT_EQ(map[0].additions.size(), 1u);
+  EXPECT_EQ(map[0].additions[0].line, 10u);
+  EXPECT_EQ(map[0].additions[0].start_sample, 20u);
+  EXPECT_EQ(map[0].additions[0].end_sample, 61u);
+
+  // The replacement addition is selected for immediate further editing.
+  EXPECT_EQ(view->selectedKind(), DropoutFrameView::RegionKind::Addition);
+
+  // A single undo restores the pristine map.
+  auto* undo_button =
+      dialog->findChild<QPushButton*>("dropoutEditorUndoButton");
+  ASSERT_NE(undo_button, nullptr);
+  undo_button->click();
+  EXPECT_TRUE(dialog->getDropoutMap().empty());
+}
+
+TEST_F(DropoutEditorDialogTest, MinimumSize_FitsSmallScreens) {
+  auto dialog = makeDialog();
+  auto* view = waitForLoadedView(*dialog);
+  ASSERT_NE(view, nullptr);
+
+  // The layout-driven minimum must not exceed the preview dialog's default
+  // size (800x700), so the editor fits on small screens.
+  const QSize min_hint = dialog->minimumSizeHint();
+  EXPECT_LE(min_hint.width(), 800) << "minimum width " << min_hint.width();
+  EXPECT_LE(min_hint.height(), 700) << "minimum height " << min_hint.height();
+}
+
 TEST_F(DropoutEditorDialogTest, ClearFrameEdits_IsUndoable) {
   auto dialog = makeDialog();
   auto* view = waitForLoadedView(*dialog);

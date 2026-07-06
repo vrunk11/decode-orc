@@ -31,6 +31,7 @@ Editing is modeless and works by direct manipulation:
 - **Add** — click and drag along a line on an empty area of the frame.
 - **Select** — click any region (or its row in the region table; selection stays in sync both ways).
 - **Move / resize** — drag a selected addition to move it; drag the square handles at its ends to resize it; arrow keys nudge it one line/sample at a time.
+- **Resize a source dropout** — a selected red source dropout also shows resize handles (unless it is already marked removed). Dragging a handle marks the source dropout as removed and creates an addition covering the new extent, as a single undoable edit; the replacement can then be moved and resized like any other addition.
 - **Delete / remove** — press `Delete` (or use the right-click menu): on an addition it deletes the region; on a red source dropout it toggles the removed mark; on a struck-through region it restores it.
 - **Undo / redo** — `Ctrl+Z` / `Ctrl+Shift+Z` (or the Undo/Redo buttons) step through every edit, including edits on other frames.
 

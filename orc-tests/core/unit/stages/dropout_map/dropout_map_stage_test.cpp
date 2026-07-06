@@ -44,6 +44,22 @@ TEST(DropoutMapStageTest, OutputCount_IsOne) {
   EXPECT_EQ(stage.output_count(), 1u);
 }
 
+TEST(DropoutMapStageTest, ConfigurationStatus_YellowWithoutMapGreenWithMap) {
+  orc::DropoutMapStage stage;
+  // The stage is pass-through with an empty map, so it is never Red.
+  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Yellow);
+
+  stage.set_parameters(
+      {{"dropout_map",
+        orc::ParameterValue{std::string(
+            "[{frame:1,add:[{line:10,start:100,end:200}],remove:[]}]")}}});
+  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Green);
+
+  stage.set_parameters(
+      {{"dropout_map", orc::ParameterValue{std::string("[]")}}});
+  EXPECT_EQ(stage.get_configuration_status(), orc::ConfigurationStatus::Yellow);
+}
+
 TEST(DropoutMapStageTest, NodeTypeInfo_HasExpectedMetadata) {
   orc::DropoutMapStage stage;
   auto info = stage.get_node_type_info();

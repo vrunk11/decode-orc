@@ -224,16 +224,24 @@ void DropoutFrameView::paintOverlay(QPainter& painter) {
     drawRegionBand(painter, additions_[i], kAdditionColor, emphasized, false);
   }
 
-  // Resize handles for the selected addition
-  if (selected_kind_ == RegionKind::Addition && selected_index_ >= 0 &&
-      selected_index_ < static_cast<int>(additions_.size())) {
-    const QRectF band = regionBandRect(additions_[selected_index_], true);
+  // Resize handles for the selected addition or source dropout (sources
+  // marked removed are not resizable).
+  if (const auto* handle_region = resizableSelectedRegion()) {
+    const QRectF band = regionBandRect(*handle_region, true);
     if (!band.isEmpty()) {
       painter.setPen(QPen(Qt::black, 1.0));
       painter.setBrush(Qt::white);
       painter.drawRect(leftHandleRect(band));
       painter.drawRect(rightHandleRect(band));
     }
+  }
+
+  // In-progress source-resize preview: drawn in the addition colour because
+  // releasing converts the resized extent into an addition.
+  if (drag_mode_ == DragMode::ResizingSourceLeft ||
+      drag_mode_ == DragMode::ResizingSourceRight) {
+    drawRegionBand(painter, source_resize_preview_, kAdditionColor, true,
+                   false);
   }
 
   // In-progress add-drag preview
@@ -248,27 +256,41 @@ void DropoutFrameView::paintOverlay(QPainter& painter) {
   }
 }
 
+const orc::presenters::DropoutRegion*
+DropoutFrameView::resizableSelectedRegion() const {
+  if (selected_index_ < 0) {
+    return nullptr;
+  }
+  if (selected_kind_ == RegionKind::Addition &&
+      selected_index_ < static_cast<int>(additions_.size())) {
+    return &additions_[selected_index_];
+  }
+  if (selected_kind_ == RegionKind::Source &&
+      selected_index_ < static_cast<int>(source_dropouts_.size()) &&
+      !isRegionMarkedForRemoval(source_dropouts_[selected_index_])) {
+    return &source_dropouts_[selected_index_];
+  }
+  return nullptr;
+}
+
 DropoutFrameView::Hit DropoutFrameView::hitTest(
     const QPointF& widget_pos) const {
   Hit hit;
 
-  // Resize handles of the selected addition take priority.
-  if (selected_kind_ == RegionKind::Addition && selected_index_ >= 0 &&
-      selected_index_ < static_cast<int>(additions_.size())) {
-    const QRectF band = regionBandRect(additions_[selected_index_], true);
+  // Resize handles of the selected region take priority.
+  if (const auto* handle_region = resizableSelectedRegion()) {
+    const QRectF band = regionBandRect(*handle_region, true);
     if (!band.isEmpty()) {
       const double slop = kHitSlop;
       if (leftHandleRect(band)
               .adjusted(-slop, -slop, slop, slop)
               .contains(widget_pos)) {
-        return Hit{RegionKind::Addition, selected_index_,
-                   Hit::Part::LeftHandle};
+        return Hit{selected_kind_, selected_index_, Hit::Part::LeftHandle};
       }
       if (rightHandleRect(band)
               .adjusted(-slop, -slop, slop, slop)
               .contains(widget_pos)) {
-        return Hit{RegionKind::Addition, selected_index_,
-                   Hit::Part::RightHandle};
+        return Hit{selected_kind_, selected_index_, Hit::Part::RightHandle};
       }
     }
   }
@@ -357,6 +379,20 @@ void DropoutFrameView::mousePressEvent(QMouseEvent* event) {
 
   if (hit.kind == RegionKind::Source || hit.kind == RegionKind::OrphanRemoval) {
     selectFromInteraction(hit.kind, hit.index);
+    if (hit.kind == RegionKind::Source &&
+        (hit.part == Hit::Part::LeftHandle ||
+         hit.part == Hit::Part::RightHandle)) {
+      // Resize-by-replacement: track the new extent as a preview; the source
+      // list stays untouched until the dialog applies the edit.
+      drag_index_ = hit.index;
+      drag_original_ = source_dropouts_[hit.index];
+      source_resize_preview_ = drag_original_;
+      drag_start_image_ = image_pos;
+      drag_start_widget_ = event->position();
+      drag_mode_ = hit.part == Hit::Part::LeftHandle
+                       ? DragMode::ResizingSourceLeft
+                       : DragMode::ResizingSourceRight;
+    }
     return;
   }
 
@@ -442,6 +478,25 @@ void DropoutFrameView::mouseMoveEvent(QMouseEvent* event) {
       return;
     }
 
+    case DragMode::ResizingSourceLeft: {
+      const int start = std::clamp(
+          image_pos.x(), 0, static_cast<int>(drag_original_.end_sample) - 1);
+      source_resize_preview_ = drag_original_;
+      source_resize_preview_.start_sample = static_cast<uint32_t>(start);
+      update();
+      return;
+    }
+
+    case DragMode::ResizingSourceRight: {
+      const int end =
+          std::clamp(image_pos.x() + 1,
+                     static_cast<int>(drag_original_.start_sample) + 1, width);
+      source_resize_preview_ = drag_original_;
+      source_resize_preview_.end_sample = static_cast<uint32_t>(end);
+      update();
+      return;
+    }
+
     case DragMode::None:
       updateHoverState(event->position());
       return;
@@ -459,7 +514,8 @@ void DropoutFrameView::updateHoverState(const QPointF& widget_pos) {
 }
 
 void DropoutFrameView::updateCursorShape() {
-  if (hover_.kind == RegionKind::Addition &&
+  if ((hover_.kind == RegionKind::Addition ||
+       hover_.kind == RegionKind::Source) &&
       (hover_.part == Hit::Part::LeftHandle ||
        hover_.part == Hit::Part::RightHandle)) {
     setCursor(Qt::SizeHorCursor);
@@ -507,6 +563,17 @@ void DropoutFrameView::mouseReleaseEvent(QMouseEvent* event) {
           drag_index_ < static_cast<int>(additions_.size()) &&
           !sameRegion(additions_[drag_index_], drag_original_)) {
         Q_EMIT additionModifyRequested(drag_index_, additions_[drag_index_]);
+      }
+      return;
+    }
+
+    case DragMode::ResizingSourceLeft:
+    case DragMode::ResizingSourceRight: {
+      update();  // Clear the preview band
+      if (drag_index_ >= 0 &&
+          drag_index_ < static_cast<int>(source_dropouts_.size()) &&
+          !sameRegion(source_resize_preview_, drag_original_)) {
+        Q_EMIT sourceResizeRequested(drag_index_, source_resize_preview_);
       }
       return;
     }
@@ -857,6 +924,8 @@ void DropoutEditorDialog::setupUI() {
           &DropoutEditorDialog::onRegionAddRequested);
   connect(frame_view_, &DropoutFrameView::additionModifyRequested, this,
           &DropoutEditorDialog::onAdditionModifyRequested);
+  connect(frame_view_, &DropoutFrameView::sourceResizeRequested, this,
+          &DropoutEditorDialog::onSourceResizeRequested);
   connect(frame_view_, &DropoutFrameView::contextMenuRequested, this,
           &DropoutEditorDialog::onContextMenuRequested);
 
@@ -870,11 +939,14 @@ void DropoutEditorDialog::setupUI() {
               "<span style='color:%3'>&#9632;</span> Removal "
               "(struck-through)<br>"
               "Drag empty area to add &bull; drag a selected addition to move, "
-              "handles resize, arrow keys nudge &bull; Del deletes / toggles "
+              "handles resize, arrow keys nudge &bull; handles on a source "
+              "dropout resize it into an addition &bull; Del deletes / toggles "
               "removal &bull; right-click for menu &bull; Ctrl+wheel zooms")
           .arg(kSourceColor.name(), kAdditionColor.name(),
                kRemovalColor.name()));
   legend_label->setTextFormat(Qt::RichText);
+  // Wrap so the long hint text doesn't dictate the dialog's minimum width.
+  legend_label->setWordWrap(true);
   main_layout->addWidget(legend_label);
 
   // Edit panel: undo/redo/delete/clear + unified region table
@@ -1177,6 +1249,28 @@ void DropoutEditorDialog::onAdditionModifyRequested(
   after.additions[index] = new_region;
   pushEditCommand(frame_id, std::move(after), "Move dropout");
   selectRegion(DropoutFrameView::RegionKind::Addition, index);
+}
+
+void DropoutEditorDialog::onSourceResizeRequested(
+    int index, const orc::presenters::DropoutRegion& new_region) {
+  if (!loaded_frame_id_.has_value()) {
+    return;
+  }
+  const uint64_t frame_id = *loaded_frame_id_;
+  const auto& sources = frame_view_->getSourceDropouts();
+  if (index < 0 || index >= static_cast<int>(sources.size())) {
+    return;
+  }
+
+  // Resize-by-replacement: mark the source dropout removed and add a region
+  // covering the resized extent as one undoable command. The result is a
+  // normal addition, so further move/resize/delete work as usual.
+  auto after = frameEditState(frame_id);
+  after.removals.push_back(sources[index]);
+  after.additions.push_back(new_region);
+  const int new_index = static_cast<int>(after.additions.size()) - 1;
+  pushEditCommand(frame_id, std::move(after), "Resize source dropout");
+  selectRegion(DropoutFrameView::RegionKind::Addition, new_index);
 }
 
 void DropoutEditorDialog::deleteOrToggleSelection() {

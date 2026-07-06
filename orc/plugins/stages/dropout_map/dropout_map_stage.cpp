@@ -117,7 +117,8 @@ std::vector<DropoutRun> DropoutMappedFrameRepresentation::get_dropout_hints(
 // ============================================================================
 
 DropoutMapStage::DropoutMapStage() {
-  set_configuration_status(orc::ConfigurationStatus::Red);
+  // Yellow, not Red: the stage runs fine with an empty map (pass-through).
+  set_configuration_status(orc::ConfigurationStatus::Yellow);
 }
 
 std::vector<ArtifactPtr> DropoutMapStage::execute(
@@ -186,7 +187,7 @@ bool DropoutMapStage::set_parameters(
   }
   const bool has_map = !dropout_map_str_.empty() && dropout_map_str_ != "[]";
   set_configuration_status(has_map ? orc::ConfigurationStatus::Green
-                                   : orc::ConfigurationStatus::Red);
+                                   : orc::ConfigurationStatus::Yellow);
   return true;
 }
 

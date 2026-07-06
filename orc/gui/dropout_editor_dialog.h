@@ -49,6 +49,9 @@
  * - Drag on an empty area to add a dropout region
  * - Click a region to select it; drag a selected addition to move it
  * - Drag the end handles of a selected addition to resize it
+ * - Drag the end handles of a selected source dropout to resize it by
+ *   replacement: the dialog marks the source dropout removed and creates an
+ *   addition covering the new extent in one undoable step
  * - Right-click for context actions (delete / mark removed / restore)
  *
  * The widget does not mutate the dropout map itself: completed interactions
@@ -147,6 +150,16 @@ class DropoutFrameView : public FrameViewportWidget {
       int index, const orc::presenters::DropoutRegion& new_region);
 
   /**
+   * @brief Emitted when a resize drag of a source dropout's handle completes
+   *
+   * The source list itself is never modified; the dialog is expected to mark
+   * the source dropout removed and add new_region as an addition in a single
+   * undoable command.
+   */
+  void sourceResizeRequested(int index,
+                             const orc::presenters::DropoutRegion& new_region);
+
+  /**
    * @brief Emitted on right-click; kind is None when no region was hit
    */
   void contextMenuRequested(RegionKind kind, int index,
@@ -166,7 +179,9 @@ class DropoutFrameView : public FrameViewportWidget {
     PendingMove,  ///< Pressed on an addition; becomes Moving past a threshold
     Moving,       ///< Dragging a selected addition (line + samples)
     ResizingLeft,
-    ResizingRight
+    ResizingRight,
+    ResizingSourceLeft,  ///< Resizing a source dropout (replace-on-release)
+    ResizingSourceRight
   };
 
   struct Hit {
@@ -177,8 +192,12 @@ class DropoutFrameView : public FrameViewportWidget {
   };
 
   /// Widget-space hit test against the drawn overlay bands (and the selected
-  /// addition's resize handles).
+  /// region's resize handles).
   Hit hitTest(const QPointF& widget_pos) const;
+
+  /// Selected region whose end handles are active: the selected addition, or
+  /// the selected source dropout when it is not marked removed.
+  const orc::presenters::DropoutRegion* resizableSelectedRegion() const;
 
   /// Widget-space rectangle of a region's overlay band.
   QRectF regionBandRect(const orc::presenters::DropoutRegion& region,
@@ -218,6 +237,9 @@ class DropoutFrameView : public FrameViewportWidget {
   QPoint drag_start_image_;    // Image pixel at press
   QPoint drag_current_image_;  // For Adding preview
   QPointF drag_start_widget_;
+  // Live extent during a source-resize drag; sources stay untouched so
+  // removal entries keep matching them by exact region identity.
+  orc::presenters::DropoutRegion source_resize_preview_;
 };
 
 /**
@@ -340,6 +362,8 @@ class DropoutEditorDialog : public QDialog {
   void onViewSelectionChanged(DropoutFrameView::RegionKind kind, int index);
   void onRegionAddRequested(const orc::presenters::DropoutRegion& region);
   void onAdditionModifyRequested(
+      int index, const orc::presenters::DropoutRegion& new_region);
+  void onSourceResizeRequested(
       int index, const orc::presenters::DropoutRegion& new_region);
   void onContextMenuRequested(DropoutFrameView::RegionKind kind, int index,
                               const QPoint& global_pos);
