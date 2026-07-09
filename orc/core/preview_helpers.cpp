@@ -296,6 +296,11 @@ PreviewImage render_standard_preview(
       uint32_t samples_this_line = static_cast<uint32_t>(
           std::min<uint64_t>(remaining, line_len - sample_in_line));
 
+      // Progress guard: a malformed/out-of-range dropout offset can make this
+      // zero (sample_in_line == line_len, or line_len == 0), which would spin
+      // the render worker forever. Bail out rather than hang (issue #209).
+      if (samples_this_line == 0) break;
+
       int32_t field = 1;
       int32_t line_in_field = static_cast<int32_t>(flat_line);
       switch (video_params->system) {

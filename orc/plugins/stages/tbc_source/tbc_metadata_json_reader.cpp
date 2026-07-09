@@ -196,8 +196,15 @@ bool TBCMetadataJsonReader::open(const std::string& json_path) {
       std::vector<DropoutInfo> orc_dos;
       orc_dos.reserve(static_cast<size_t>(dos.size()));
       for (int32_t i = 0; i < dos.size(); ++i) {
+        // fieldLine is 1-based. Guard against the unsigned underflow that a
+        // fieldLine of 0 (or out-of-range value from an older/interrupted
+        // ld-decode) would otherwise produce (0 - 1 == 0xFFFFFFFF), which fed
+        // a pathological ~2^64 sample offset into the preview geometry loops
+        // and hung the render worker (issue #209).
+        const auto field_line = dos.fieldLine(i);
+        if (field_line < 1) continue;
         DropoutInfo di;
-        di.line = static_cast<uint32_t>(dos.fieldLine(i)) - 1;
+        di.line = static_cast<uint32_t>(field_line - 1);
         di.start_sample = static_cast<uint32_t>(dos.startx(i));
         di.end_sample = static_cast<uint32_t>(dos.endx(i));
         orc_dos.push_back(di);

@@ -424,6 +424,14 @@ void MainWindow::onCoordinatorError(uint64_t request_id, QString message) {
   ORC_LOG_ERROR("Coordinator error (request {}): {}", request_id,
                 message.toStdString());
 
+  // Clear any in-flight preview render state. A preview/available-outputs
+  // request that resolves via the error signal (e.g. a null render presenter
+  // because a stage plugin is missing) would otherwise leave the "Rendering..."
+  // title/timer armed forever — this is the root of issue #209's stuck preview.
+  // endPreviewRenderInFlight() was previously only reachable from
+  // onPreviewReady.
+  endPreviewRenderInFlight();
+
   // Show error in status bar for other errors
   statusBar()->showMessage(QString("Error: %1").arg(message), 5000);
 }

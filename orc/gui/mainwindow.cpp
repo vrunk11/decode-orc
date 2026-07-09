@@ -40,6 +40,8 @@
 #include "snranalysisdialog.h"
 #include "stage_help_dialog.h"
 #include "stageparameterdialog.h"
+#include "theme_controller.h"
+#include "theme_manager.h"
 #include "vbidialog.h"
 #include "version.h"
 #include "videoparameterobserverdialog.h"
@@ -52,6 +54,7 @@ class Project;
 class ObservationContext;
 }  // namespace orc
 
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -71,6 +74,7 @@ class ObservationContext;
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMoveEvent>
@@ -773,6 +777,39 @@ void MainWindow::setupMenus() {
     orc::PluginManagerDialog dlg(this);
     dlg.exec();
   });
+
+  // Themes submenu: overrides the --theme command-line option at runtime.
+  tools_menu->addSeparator();
+  auto* theme_menu = tools_menu->addMenu("&Themes");
+  auto* theme_group = new QActionGroup(this);
+  theme_group->setExclusive(true);
+
+  const struct {
+    const char* label;
+    ThemeManager::Mode mode;
+  } theme_items[] = {
+      {"&Auto", ThemeManager::Mode::Auto},
+      {"&Dark", ThemeManager::Mode::Dark},
+      {"&Light", ThemeManager::Mode::Light},
+  };
+
+  const ThemeManager::Mode current_mode =
+      ThemeController::instance() ? ThemeController::instance()->mode()
+                                  : ThemeManager::Mode::Auto;
+
+  for (const auto& item : theme_items) {
+    QAction* theme_action = theme_menu->addAction(item.label);
+    theme_action->setCheckable(true);
+    theme_action->setChecked(item.mode == current_mode);
+    theme_group->addAction(theme_action);
+
+    const ThemeManager::Mode mode = item.mode;
+    connect(theme_action, &QAction::triggered, this, [mode]() {
+      if (auto* controller = ThemeController::instance()) {
+        controller->setMode(mode);
+      }
+    });
+  }
 
   // Help menu
   auto* help_menu = menuBar()->addMenu("&Help");
@@ -2442,9 +2479,11 @@ void MainWindow::onTriggerStage(const orc::NodeID& node_id) {
     trigger_progress_dialog_->setWindowModality(Qt::ApplicationModal);
     trigger_progress_dialog_->setMinimumDuration(0);
     trigger_progress_dialog_->setValue(0);
+    // No activateWindow(): requesting activation on a short-lived modal leaves
+    // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+    trigger_progress_dialog_->setAttribute(Qt::WA_ShowWithoutActivating);
     trigger_progress_dialog_->show();
     trigger_progress_dialog_->raise();
-    trigger_progress_dialog_->activateWindow();
 
     // Connect cancel button
     connect(trigger_progress_dialog_, &QProgressDialog::canceled, this,
@@ -3706,9 +3745,11 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     prog_dialog->setMinimumDuration(0);
     prog_dialog->setCancelButton(nullptr);
     prog_dialog->setValue(0);
+    // No activateWindow(): requesting activation on a short-lived modal leaves
+    // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+    prog_dialog->setAttribute(Qt::WA_ShowWithoutActivating);
     prog_dialog->show();
     prog_dialog->raise();
-    prog_dialog->activateWindow();
 
     // Show the dialog (but it will be empty until data arrives)
     dialog->show();
@@ -3770,9 +3811,12 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
                   prog_dialog->setMinimumDuration(0);
                   prog_dialog->setCancelButton(nullptr);
                   prog_dialog->setValue(0);
+                  // No activateWindow(): requesting activation on a short-lived
+                  // modal leaves the GNOME/Wayland startup "busy" cursor
+                  // spinner stuck after it closes.
+                  prog_dialog->setAttribute(Qt::WA_ShowWithoutActivating);
                   prog_dialog->show();
                   prog_dialog->raise();
-                  prog_dialog->activateWindow();
 
                   auto mode = dialog->getCurrentMode();
                   uint64_t request_id =
@@ -3804,9 +3848,11 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     prog_dialog->setMinimumDuration(0);
     prog_dialog->setCancelButton(nullptr);
     prog_dialog->setValue(0);
+    // No activateWindow(): requesting activation on a short-lived modal leaves
+    // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+    prog_dialog->setAttribute(Qt::WA_ShowWithoutActivating);
     prog_dialog->show();
     prog_dialog->raise();
-    prog_dialog->activateWindow();
 
     // Show the dialog (but it will be empty until data arrives)
     dialog->show();
@@ -3875,9 +3921,11 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     prog_dialog->setMinimumDuration(0);
     prog_dialog->setCancelButton(nullptr);
     prog_dialog->setValue(0);
+    // No activateWindow(): requesting activation on a short-lived modal leaves
+    // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+    prog_dialog->setAttribute(Qt::WA_ShowWithoutActivating);
     prog_dialog->show();
     prog_dialog->raise();
-    prog_dialog->activateWindow();
 
     // Show the dialog (but it will be empty until data arrives)
     dialog->show();
@@ -3971,9 +4019,11 @@ QProgressDialog* MainWindow::createAnalysisProgressDialog(
   dialog->setMinimumDuration(0);
   dialog->setCancelButton(nullptr);  // No cancel for now
   dialog->setValue(0);
+  // No activateWindow(): requesting activation on a short-lived modal leaves
+  // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+  dialog->setAttribute(Qt::WA_ShowWithoutActivating);
   dialog->show();
   dialog->raise();
-  dialog->activateWindow();
 
   existingDialog = dialog;
   return dialog;
