@@ -68,9 +68,14 @@ inline std::pair<size_t, size_t> frame_flat_offset_to_line_sample(
             static_cast<size_t>(flat_offset % spl_nominal)};
   }
   // PAL: integer division by spl_nominal gives a good first estimate; correct
-  // one step at a time until we find the line that brackets flat_offset.
+  // one step at a time until we find the line that brackets flat_offset. For a
+  // valid in-range offset this converges in a handful of steps (PAL has at most
+  // 4 extra-sample lines). Cap the search so a pathological (e.g. overflowed)
+  // offset falls back to the nominal estimate instead of spinning forever —
+  // callers still make progress and skip the out-of-range region (issue #209).
   size_t est = static_cast<size_t>(flat_offset / spl_nominal);
-  for (;;) {
+  constexpr size_t kMaxLineSearchSteps = 4096;
+  for (size_t step = 0; step < kMaxLineSearchSteps; ++step) {
     size_t line_start =
         frame_line_sample_offset(VideoSystem::PAL, spl_nominal, est);
     size_t line_len =
@@ -83,6 +88,9 @@ inline std::pair<size_t, size_t> frame_flat_offset_to_line_sample(
       return {est, static_cast<size_t>(flat_offset - line_start)};
     }
   }
+  // Fallback: nominal mapping. sample_in_line (0) stays < line_len so the
+  // caller's loop still advances and terminates.
+  return {static_cast<size_t>(flat_offset / spl_nominal), 0};
 }
 
 }  // namespace orc

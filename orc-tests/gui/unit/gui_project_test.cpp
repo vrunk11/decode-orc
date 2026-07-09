@@ -86,10 +86,13 @@ TEST(GUIProjectTest, LoadFromFile_DelegatesToPresenterBuildsDagAndStoresPath) {
       .WillOnce(Return(true));
   EXPECT_CALL(*mock_presenter, buildDAG())
       .WillOnce(Return(std::make_shared<int>(42)));
+  // getNodes() is consulted both by the missing-plugin guard (which rejects a
+  // project referencing an unregistered stage) and by hasSource(); with no
+  // nodes neither reports a problem and the load proceeds.
   EXPECT_CALL(*mock_presenter, getNodes())
-      .WillOnce(Return(std::vector<orc::presenters::NodeInfo>{}));
+      .WillRepeatedly(Return(std::vector<orc::presenters::NodeInfo>{}));
   EXPECT_CALL(*mock_presenter, listAllStages())
-      .WillOnce(Return(std::vector<orc::presenters::StageInfo>{}));
+      .WillRepeatedly(Return(std::vector<orc::presenters::StageInfo>{}));
 
   QString error;
   EXPECT_TRUE(project.loadFromFile("/tmp/test-load.orcprj", &error));

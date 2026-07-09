@@ -287,25 +287,36 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     const int32_t f1_vfr = 1;
     const int32_t f2_vfr = 2;
 
+    // Upper bound on a valid field-relative line index. Reject out-of-range
+    // lines (including a -1 produced by an upstream underflow) before feeding
+    // them to the frame-geometry math — an out-of-range line yields a
+    // pathological ~2^64 sample offset that hangs the preview render worker
+    // (issue #209).
+    const int32_t max_field_lines =
+        (sys == VideoSystem::PAL)     ? kPalField1Lines
+        : (sys == VideoSystem::NTSC)  ? kNtscField1Lines
+        : (sys == VideoSystem::PAL_M) ? kPalMField1Lines
+                                      : 0;
+
+    const auto emit_run = [&](const DropoutInfo& d, int32_t vfr_field) {
+      if (d.end_sample < d.start_sample) return;
+      const int32_t line = static_cast<int32_t>(d.line);
+      if (line < 0 || line >= max_field_lines) return;
+      const uint64_t flat_start = dropout_util::field_line_to_frame_sample(
+          sys, vfr_field, line, static_cast<int32_t>(d.start_sample));
+      const uint32_t count = d.end_sample - d.start_sample + 1;
+      result.push_back({id, flat_start, count, 100});
+    };
+
     if (tbc_f1_idx < field_meta_.size()) {
       for (const auto& d : field_meta_[tbc_f1_idx].dropouts) {
-        if (d.end_sample < d.start_sample) continue;
-        const uint64_t flat_start = dropout_util::field_line_to_frame_sample(
-            sys, f1_vfr, static_cast<int32_t>(d.line),
-            static_cast<int32_t>(d.start_sample));
-        const uint32_t count = d.end_sample - d.start_sample + 1;
-        result.push_back({id, flat_start, count, 100});
+        emit_run(d, f1_vfr);
       }
     }
 
     if (tbc_f2_idx < field_meta_.size()) {
       for (const auto& d : field_meta_[tbc_f2_idx].dropouts) {
-        if (d.end_sample < d.start_sample) continue;
-        const uint64_t flat_start = dropout_util::field_line_to_frame_sample(
-            sys, f2_vfr, static_cast<int32_t>(d.line),
-            static_cast<int32_t>(d.start_sample));
-        const uint32_t count = d.end_sample - d.start_sample + 1;
-        result.push_back({id, flat_start, count, 100});
+        emit_run(d, f2_vfr);
       }
     }
 

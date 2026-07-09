@@ -556,8 +556,13 @@ void TBCMetadataSqliteReader::read_all_dropouts() {
     DropoutInfo dropout;
     dropout.start_sample = static_cast<uint32_t>(impl_->get_int(stmt, 1));
     dropout.end_sample = static_cast<uint32_t>(impl_->get_int(stmt, 2));
-    // TBC database uses 1-based line numbers; convert to 0-based.
-    dropout.line = static_cast<uint32_t>(impl_->get_int(stmt, 3)) - 1;
+    // TBC database uses 1-based line numbers; convert to 0-based. Guard against
+    // the unsigned underflow that a value of 0 (or out-of-range) would produce
+    // (0 - 1 == 0xFFFFFFFF), which fed a pathological offset into the preview
+    // geometry loops and hung the render worker (issue #209).
+    const int64_t field_line = impl_->get_int(stmt, 3);
+    if (field_line < 1) continue;
+    dropout.line = static_cast<uint32_t>(field_line - 1);
 
     impl_->dropout_cache_[field_id].push_back(dropout);
   }
