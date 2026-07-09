@@ -64,6 +64,7 @@ bool EfmProcessor::beginStream(const std::string& outputFilename,
   m_totalTValues = totalTValues;
   m_processedTValues = 0;
   m_lastProgress = 0;
+  m_lastError.clear();
 
   // Apply decoder configuration
   m_f2SectionCorrection.setNoTimecodes(m_noTimecodes);
@@ -149,18 +150,36 @@ bool EfmProcessor::finishStream() {
   bool success = true;
   if (!m_f2SectionCorrection.isValid()) {
     success = false;
-    ORC_LOG_WARN("Decoding FAILED");
-    ORC_LOG_WARN(
-        "F2 Section Correction stage did not complete lead-in detection "
-        "successfully.");
-    ORC_LOG_WARN(
-        "This could be due to invalid input data or due to missing timecode "
-        "information in the input EFM.");
-    ORC_LOG_WARN(
-        "If you think the input EFM is valid - try running again with the "
-        "--no-timecodes option "
-        "(in case the input EFM is not ECMA-130 compliant and does not contain "
-        "timecodes).");
+
+    // Build a message that names the actual failure so the user knows what to
+    // do, rather than a bare "returned false".  The two diagnostic counters
+    // distinguish "no EFM frame sync at all" from "decoded, but no usable
+    // lead-in timecodes".
+    const int32_t received = m_f2SectionCorrection.receivedSections();
+    const int32_t validMeta = m_f2SectionCorrection.validMetadataSections();
+
+    if (received == 0) {
+      m_lastError =
+          "EFM lead-in not found: no F2 sections could be decoded from the "
+          "EFM data at all (frame sync failed). The EFM appears to be invalid, "
+          "corrupt, or not actually EFM data.";
+    } else if (validMeta == 0) {
+      m_lastError =
+          "EFM lead-in not found: sections were decoded but none carried valid "
+          "subcode timecodes. This is normal for early CAV LaserDiscs that "
+          "pre-date the EFM timecode specification - enable the 'No Timecodes' "
+          "parameter on the EFM sink stage and try again.";
+    } else {
+      m_lastError =
+          "EFM lead-in not found: no run of consecutive sections with valid, "
+          "contiguous timecodes was located. The input EFM may be too short or "
+          "too damaged near the start, or may lack ECMA-130 timecodes - if you "
+          "believe the EFM is valid, enable the 'No Timecodes' parameter on "
+          "the "
+          "EFM sink stage and try again.";
+    }
+
+    ORC_LOG_WARN("Decoding FAILED: {}", m_lastError);
   } else {
     ORC_LOG_INFO("Decoding complete");
 

@@ -34,9 +34,16 @@ F2SectionCorrection::F2SectionCorrection()
       m_qmode4Sections(0),
       m_absoluteStartTime(59, 59, 74),
       m_absoluteEndTime(0, 0, 0),
-      m_noTimecodes(false) {}
+      m_noTimecodes(false),
+      m_receivedSections(0),
+      m_validMetadataSections(0) {}
 
 void F2SectionCorrection::pushSection(const F2Section& data) {
+  // Track how much genuinely reached this stage so a failed lead-in can be
+  // explained: no sections at all means frame sync never happened.
+  ++m_receivedSections;
+  if (data.metadata.isValid()) ++m_validMetadataSections;
+
   // Add the data to the input buffer
   m_inputBuffer.push(data);
 

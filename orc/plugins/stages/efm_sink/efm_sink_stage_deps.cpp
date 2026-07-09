@@ -100,8 +100,11 @@ EFMSinkDecodeResult EFMSinkStageDeps::decode_efm(
 
   const bool ok = processor.finishStream();
   if (!ok) {
-    return {false,
-            "Error: EFMSink: EfmProcessor::finishStream() returned false"};
+    std::string reason = processor.lastError();
+    if (reason.empty()) {
+      reason = "EFM decoding did not complete successfully";
+    }
+    return {false, "Error: EFMSink: " + reason};
   }
 
   if (progress_callback_) {

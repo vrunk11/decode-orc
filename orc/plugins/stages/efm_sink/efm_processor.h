@@ -55,6 +55,10 @@ class EfmProcessor {
   void pushChunk(const std::vector<uint8_t>& chunk);
   bool finishStream();
 
+  // When finishStream() returns false, this holds a human-readable explanation
+  // of why decoding did not succeed (empty on success).
+  const std::string& lastError() const { return m_lastError; }
+
   // Convenience wrapper: buffers all t-values then calls the streaming API.
   bool processFromBuffer(const std::vector<uint8_t>& tValues,
                          const std::string& outputFilename);
@@ -159,6 +163,9 @@ class EfmProcessor {
   int64_t m_totalTValues{0};
   int64_t m_processedTValues{0};
   int m_lastProgress{0};
+
+  // Explanation set when finishStream() fails (see lastError()).
+  std::string m_lastError;
 
   // -----------------------------------------------------------------------
   // Internal helpers

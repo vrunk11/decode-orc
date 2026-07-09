@@ -94,7 +94,9 @@ std::vector<ParameterDescriptor> EFMSinkStage::get_parameter_descriptors(
     ParameterDescriptor desc;
     desc.name = "no_timecodes";
     desc.display_name = "No Timecodes";
-    desc.description = "Disable timecode output";
+    desc.description =
+        "Disable timecode verification during decode. Needed for early CAV "
+        "discs that pre-date the EFM timecode specification.";
     desc.type = ParameterType::BOOL;
     desc.constraints.default_value = false;
     descriptors.push_back(desc);

@@ -28,6 +28,15 @@ class F2SectionCorrection : public Decoder {
   void setNoTimecodes(bool noTimecodes);
   void showStatistics() const;
 
+  // Diagnostics used to build a meaningful error when lead-in never locks:
+  //   receivedSections()      - total F2 sections handed to pushSection().  If
+  //                             zero, EFM/F3 frame sync never happened at all.
+  //   validMetadataSections() - of those, how many carried valid subcode
+  //                             metadata.  If zero (but sections were received)
+  //                             the stream decoded but has no usable timecodes.
+  int32_t receivedSections() const { return m_receivedSections; }
+  int32_t validMetadataSections() const { return m_validMetadataSections; }
+
  private:
   void processQueue();
 
@@ -73,6 +82,10 @@ class F2SectionCorrection : public Decoder {
 
   // Timecode handling
   bool m_noTimecodes;
+
+  // Diagnostic counters (see receivedSections() / validMetadataSections())
+  int32_t m_receivedSections;
+  int32_t m_validMetadataSections;
 };
 
 #endif  // DEC_F2SECTIONCORRECTION_H
