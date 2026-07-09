@@ -207,4 +207,44 @@ TEST(PreviewHelpersTest,
   EXPECT_EQ(image.dropout_regions[1].end_sample, 300u);
 }
 
+// Regression (issue #209): a malformed/out-of-range dropout in older ld-decode
+// metadata could underflow a field-line to -1, producing a ~2^64 sample offset
+// that spun the PAL bracket search in frame_flat_offset_to_line_sample forever
+// — hanging the (single) render worker so the preview stuck on "Rendering..."
+// and no stage could trigger. The search must now always terminate and honour
+// its sample_in_line < line_len invariant.
+TEST(FrameLineUtilTest, FlatOffsetToLineSample_TerminatesOnPathologicalOffset) {
+  // Offset far beyond any real frame, as produced by an underflowed field line.
+  const uint64_t pathological = static_cast<uint64_t>(-1) - 5;
+  auto [line, sample_in_line] = orc::frame_flat_offset_to_line_sample(
+      orc::VideoSystem::PAL, kPalWidth, pathological);
+
+  // Must return (no hang) and keep the invariant the caller's loop relies on to
+  // make progress: the sample offset never reaches the line length.
+  const size_t line_len =
+      orc::frame_line_sample_count(orc::VideoSystem::PAL, kPalWidth, line);
+  EXPECT_LT(sample_in_line, line_len);
+}
+
+// Regression (issue #209): rendering a preview whose dropout hints contain an
+// out-of-range offset must complete rather than hang the render worker.
+TEST(PreviewHelpersTest, RenderStandardPreview_TerminatesOnPathologicalHint) {
+  auto representation = std::make_shared<FakePalYcRepresentation>();
+
+  std::vector<orc::DropoutRun> hints;
+  orc::DropoutRun run;
+  run.frame_id = 0;
+  run.sample_start = static_cast<uint64_t>(-1) - 50;  // absurd offset
+  run.sample_count = 100;
+  run.severity = 100;
+  hints.push_back(run);
+  representation->set_dropout_hints(std::move(hints));
+
+  // A hang here would time the test out; reaching the assertion proves the
+  // dropout loop's zero-progress guard terminates the render.
+  const auto image = orc::PreviewHelpers::render_standard_preview(
+      representation, "sequential_clamped", 0);
+  EXPECT_TRUE(image.is_valid());
+}
+
 }  // namespace orc_unit_test
