@@ -2442,9 +2442,11 @@ void MainWindow::onTriggerStage(const orc::NodeID& node_id) {
     trigger_progress_dialog_->setWindowModality(Qt::ApplicationModal);
     trigger_progress_dialog_->setMinimumDuration(0);
     trigger_progress_dialog_->setValue(0);
+    // No activateWindow(): requesting activation on a short-lived modal leaves
+    // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+    trigger_progress_dialog_->setAttribute(Qt::WA_ShowWithoutActivating);
     trigger_progress_dialog_->show();
     trigger_progress_dialog_->raise();
-    trigger_progress_dialog_->activateWindow();
 
     // Connect cancel button
     connect(trigger_progress_dialog_, &QProgressDialog::canceled, this,
@@ -3706,9 +3708,11 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     prog_dialog->setMinimumDuration(0);
     prog_dialog->setCancelButton(nullptr);
     prog_dialog->setValue(0);
+    // No activateWindow(): requesting activation on a short-lived modal leaves
+    // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+    prog_dialog->setAttribute(Qt::WA_ShowWithoutActivating);
     prog_dialog->show();
     prog_dialog->raise();
-    prog_dialog->activateWindow();
 
     // Show the dialog (but it will be empty until data arrives)
     dialog->show();
@@ -3770,9 +3774,12 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
                   prog_dialog->setMinimumDuration(0);
                   prog_dialog->setCancelButton(nullptr);
                   prog_dialog->setValue(0);
+                  // No activateWindow(): requesting activation on a short-lived
+                  // modal leaves the GNOME/Wayland startup "busy" cursor
+                  // spinner stuck after it closes.
+                  prog_dialog->setAttribute(Qt::WA_ShowWithoutActivating);
                   prog_dialog->show();
                   prog_dialog->raise();
-                  prog_dialog->activateWindow();
 
                   auto mode = dialog->getCurrentMode();
                   uint64_t request_id =
@@ -3804,9 +3811,11 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     prog_dialog->setMinimumDuration(0);
     prog_dialog->setCancelButton(nullptr);
     prog_dialog->setValue(0);
+    // No activateWindow(): requesting activation on a short-lived modal leaves
+    // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+    prog_dialog->setAttribute(Qt::WA_ShowWithoutActivating);
     prog_dialog->show();
     prog_dialog->raise();
-    prog_dialog->activateWindow();
 
     // Show the dialog (but it will be empty until data arrives)
     dialog->show();
@@ -3875,9 +3884,11 @@ void MainWindow::runAnalysisForNode(const orc::AnalysisToolInfo& tool_info,
     prog_dialog->setMinimumDuration(0);
     prog_dialog->setCancelButton(nullptr);
     prog_dialog->setValue(0);
+    // No activateWindow(): requesting activation on a short-lived modal leaves
+    // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+    prog_dialog->setAttribute(Qt::WA_ShowWithoutActivating);
     prog_dialog->show();
     prog_dialog->raise();
-    prog_dialog->activateWindow();
 
     // Show the dialog (but it will be empty until data arrives)
     dialog->show();
@@ -3971,9 +3982,11 @@ QProgressDialog* MainWindow::createAnalysisProgressDialog(
   dialog->setMinimumDuration(0);
   dialog->setCancelButton(nullptr);  // No cancel for now
   dialog->setValue(0);
+  // No activateWindow(): requesting activation on a short-lived modal leaves
+  // the GNOME/Wayland startup "busy" cursor spinner stuck after it closes.
+  dialog->setAttribute(Qt::WA_ShowWithoutActivating);
   dialog->show();
   dialog->raise();
-  dialog->activateWindow();
 
   existingDialog = dialog;
   return dialog;
