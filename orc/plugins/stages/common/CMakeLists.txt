@@ -6,3 +6,4 @@
 # SPDX-FileCopyrightText: 2026 Simon Inns
 
 add_subdirectory(audio-resample)
+add_subdirectory(efm-decode)

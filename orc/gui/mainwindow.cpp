@@ -36,6 +36,7 @@
 #include "presenters/include/video_parameter_observation_presenter.h"
 #include "previewdialog.h"
 #include "projectpropertiesdialog.h"
+#include "quick_project_planner.h"
 #include "render_coordinator.h"
 #include "snranalysisdialog.h"
 #include "stage_help_dialog.h"
@@ -1538,39 +1539,47 @@ void MainWindow::quickProject(const QString& filename) {
 
   // Build the downstream chain fed by an already-created and configured source
   // node.  For ld-decode sources a dropout correction stage is inserted before
-  // the video sink, and when the source carries an EFM sidecar an EFM audio
-  // sink is attached to the dropout corrector's output.  For any other decoder
-  // the source is wired straight to the video sink.  Returns true on success;
-  // on failure it shows an error dialog and returns false.
+  // the video sink.  When the source carries an EFM sidecar, an EFM audio
+  // decode transform is spliced into the video chain so the video sink embeds
+  // the disc's digital audio, and a parallel EFM audio sink is attached (for a
+  // standalone WAV).  For any other decoder the source is wired straight to
+  // the video sink.  Returns true on success; on failure it shows an error
+  // dialog and returns false.
   auto build_downstream = [&](orc::NodeID source_node_id, double base_x,
                               double base_y, bool has_efm_sidecar) -> bool {
+    const orc::gui::QuickProjectDownstreamPlan plan =
+        orc::gui::plan_quick_project_downstream(is_ld_decode, has_efm_sidecar);
+
     double x = base_x;
     orc::NodeID video_upstream = source_node_id;  // node feeding the video sink
+    // Node IDs of the video chain: index 0 = source, index i = the i-th
+    // transform. Parallel sink branches attach by index.
+    std::vector<orc::NodeID> chain_nodes{source_node_id};
 
-    if (is_ld_decode) {
+    for (const std::string& stage_name : plan.video_transforms) {
       x += grid_spacing_x;
-      ORC_LOG_INFO("Adding dropout correction stage");
-      orc::NodeID doc_node_id;
+      ORC_LOG_INFO("Adding {} stage", stage_name);
+      orc::NodeID node_id;
       try {
-        doc_node_id =
-            project_.presenter()->addNode("dropout_correct", x, base_y);
+        node_id = project_.presenter()->addNode(stage_name, x, base_y);
       } catch (const std::exception& e) {
         QMessageBox::critical(
             this, "Error",
-            QString("Failed to add dropout correction stage: %1")
-                .arg(e.what()));
+            QString("Failed to add %1 stage: %2")
+                .arg(QString::fromStdString(stage_name), e.what()));
         return false;
       }
       try {
-        project_.presenter()->addEdge(source_node_id, doc_node_id);
+        project_.presenter()->addEdge(video_upstream, node_id);
       } catch (const std::exception& e) {
         QMessageBox::critical(
             this, "Error",
-            QString("Failed to connect source to dropout correction stage: %1")
-                .arg(e.what()));
+            QString("Failed to connect to %1 stage: %2")
+                .arg(QString::fromStdString(stage_name), e.what()));
         return false;
       }
-      video_upstream = doc_node_id;
+      video_upstream = node_id;
+      chain_nodes.push_back(node_id);
     }
 
     x += grid_spacing_x;
@@ -1591,8 +1600,10 @@ void MainWindow::quickProject(const QString& filename) {
       return false;
     }
 
-    if (is_ld_decode && has_efm_sidecar) {
+    if (plan.add_efm_audio_sink) {
       ORC_LOG_INFO("Adding EFM audio sink stage");
+      const orc::NodeID efm_branch_upstream =
+          chain_nodes[plan.efm_sink_attach_index];
       orc::NodeID efm_node_id;
       try {
         efm_node_id = project_.presenter()->addNode("EFMSink", x,
@@ -1604,7 +1615,7 @@ void MainWindow::quickProject(const QString& filename) {
         return false;
       }
       try {
-        project_.presenter()->addEdge(video_upstream, efm_node_id);
+        project_.presenter()->addEdge(efm_branch_upstream, efm_node_id);
       } catch (const std::exception& e) {
         QMessageBox::critical(
             this, "Error",

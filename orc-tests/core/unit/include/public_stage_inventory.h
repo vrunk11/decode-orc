@@ -81,6 +81,10 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
        }},
       {"mask_line", PublicStageFamily::Transform, true,
        [] { return orc::StageRegistry::instance().create_stage("mask_line"); }},
+      {"efm_audio_decode", PublicStageFamily::Transform, true,
+       [] {
+         return orc::StageRegistry::instance().create_stage("efm_audio_decode");
+       }},
       {"video_sink", PublicStageFamily::Sink, true,
        [] {
          return orc::StageRegistry::instance().create_stage("video_sink");
