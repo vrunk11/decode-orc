@@ -18,6 +18,7 @@
 #include <orc/stage/node_type.h>
 #include <orc/stage/observation_context.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <map>
@@ -67,6 +68,9 @@ class MockTBCSourceStageDeps : public orc::ITBCSourceStageDeps {
 
   MOCK_METHOD(bool, has_audio_file, (const std::string& pcm_path),
               (const, override));
+
+  MOCK_METHOD(std::optional<uint64_t>, get_audio_pair_count,
+              (const std::string& pcm_path), (const, override));
 
   MOCK_METHOD(std::vector<int16_t>, read_audio_samples_at,
               (const std::string& pcm_path, size_t stereo_pair_offset,
@@ -689,6 +693,214 @@ TEST(TBCSourceStageTest, NtscAudio_ResampleDeferredUntilFirstAudioAccess) {
   // Times(1) expectation above would fail otherwise).
   const auto samples1 = vfr->get_audio_samples(0, 1);
   EXPECT_FALSE(samples1.empty());
+}
+
+// ===========================================================================
+// PCM audio timing declaration and lock conversion (pcm_audio_timing /
+// lock_audio) — all four combinations
+// ===========================================================================
+
+namespace {
+
+// Common NTSC two-frame source with a PCM sidecar; returns the VFR.
+orc::VideoFrameRepresentation* execute_ntsc_audio_source(
+    orc::TBCSourceStage& stage,
+    const std::shared_ptr<NiceMock<MockTBCSourceStageDeps>>& deps,
+    std::vector<orc::ArtifactPtr>& outputs_keepalive,
+    const std::map<std::string, orc::ParameterValue>& extra_params,
+    int32_t num_fields = 4, int32_t pairs_per_field = 735) {
+  ON_CALL(*deps, validate_input_file(_, _)).WillByDefault(Return(true));
+  ON_CALL(*deps, load_video_params(_, _))
+      .WillByDefault([num_fields](const std::string&, std::string&) {
+        return std::optional<orc::TBCVideoParams>{
+            make_ntsc_video_params(num_fields)};
+      });
+  ON_CALL(*deps, load_all_field_meta(_, _))
+      .WillByDefault(
+          [num_fields, pairs_per_field](const std::string&, std::string&) {
+            return make_ntsc_field_meta(num_fields, pairs_per_field);
+          });
+  ON_CALL(*deps, has_audio_file(_)).WillByDefault(Return(true));
+  ON_CALL(*deps, has_efm_file(_)).WillByDefault(Return(false));
+  ON_CALL(*deps, has_ac3_files(_, _)).WillByDefault(Return(false));
+
+  std::map<std::string, orc::ParameterValue> params{
+      {"input_path", std::string("/tmp/test.tbc")},
+      {"pcm_path", std::string("/tmp/test.pcm")}};
+  params.insert(extra_params.begin(), extra_params.end());
+
+  orc::ObservationContext ctx;
+  outputs_keepalive = stage.execute({}, params, ctx);
+  if (outputs_keepalive.size() != 1) return nullptr;
+  return dynamic_cast<orc::VideoFrameRepresentation*>(
+      outputs_keepalive.front().get());
+}
+
+}  // namespace
+
+// Combination 1 — free_running + lock_audio=true (the defaults): locked
+// track via the deferred resample.  Covered in depth by
+// NtscAudio_ResampleDeferredUntilFirstAudioAccess above; here we pin the
+// explicit-parameter spelling to the same behaviour.
+TEST(TBCSourceAudioTimingTest, FreeRunningLocked_DescriptorIsLocked) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  orc::TBCSourceStage stage(deps);
+  std::vector<orc::ArtifactPtr> outputs;
+  auto* vfr = execute_ntsc_audio_source(
+      stage, deps, outputs,
+      {{"pcm_audio_timing", std::string("free_running")},
+       {"lock_audio", true}});
+  ASSERT_NE(vfr, nullptr);
+
+  const auto desc = vfr->get_audio_track_descriptor(0);
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_TRUE(desc->locked);
+  EXPECT_EQ(desc->sample_rate.num, 44100000u);
+  EXPECT_EQ(desc->sample_rate.den, 1001u);
+  // Locked output: the stream accessors are inert.
+  EXPECT_EQ(vfr->get_audio_stream_pair_count(0), 0u);
+  EXPECT_TRUE(vfr->get_audio_stream_samples(0, 0, 16).empty());
+}
+
+// Combination 2 — frame_locked declaration: the PCM is served verbatim via
+// the per-field metadata offsets, with no resample and no whole-file read.
+TEST(TBCSourceAudioTimingTest, DeclaredLocked_ServedViaMetadataOffsets) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  orc::TBCSourceStage stage(deps);
+  std::vector<orc::ArtifactPtr> outputs;
+
+  constexpr int32_t kPairsPerField = 735;  // NTSC locked layout: 1470/frame
+  auto* vfr = execute_ntsc_audio_source(
+      stage, deps, outputs, {{"pcm_audio_timing", std::string("frame_locked")}},
+      4, kPairsPerField);
+  ASSERT_NE(vfr, nullptr);
+
+  const auto desc = vfr->get_audio_track_descriptor(0);
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_TRUE(desc->locked);
+  EXPECT_EQ(desc->sample_rate.num, 44100000u);
+  EXPECT_EQ(desc->sample_rate.den, 1001u);
+
+  // Frame 1's window starts after frame 0's two fields (2 × 735 pairs).
+  EXPECT_EQ(vfr->get_audio_sample_count(0, 1), 1470u);
+  EXPECT_CALL(*deps, read_audio_samples_at("/tmp/test.pcm", 1470u, 1470u))
+      .Times(1)
+      .WillOnce([](const std::string&, size_t, size_t count) {
+        return std::vector<int16_t>(count * 2, int16_t{7});
+      });
+  const auto samples = vfr->get_audio_samples(0, 1);
+  ASSERT_EQ(samples.size(), 1470u * 2);
+  EXPECT_EQ(samples[0], int16_t{7});
+}
+
+// Combination 3 — free_running + lock_audio=false: the PCM is carried
+// verbatim as a free-running 44100 Hz track via the stream accessors.
+TEST(TBCSourceAudioTimingTest, FreeRunningUnlocked_ServedViaStreamAccessors) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  ON_CALL(*deps, get_audio_pair_count(_))
+      .WillByDefault(Return(std::optional<uint64_t>{5000}));
+  orc::TBCSourceStage stage(deps);
+  std::vector<orc::ArtifactPtr> outputs;
+  auto* vfr =
+      execute_ntsc_audio_source(stage, deps, outputs, {{"lock_audio", false}});
+  ASSERT_NE(vfr, nullptr);
+
+  const auto desc = vfr->get_audio_track_descriptor(0);
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_FALSE(desc->locked);
+  EXPECT_EQ(desc->sample_rate.num, 44100u);
+  EXPECT_EQ(desc->sample_rate.den, 1u);
+
+  // The per-frame accessors are inert for a free-running track.
+  EXPECT_EQ(vfr->get_audio_sample_count(0, 0), 0u);
+  EXPECT_TRUE(vfr->get_audio_samples(0, 0).empty());
+
+  // Stream length comes from the file (deps get_audio_pair_count).
+  EXPECT_EQ(vfr->get_audio_stream_pair_count(0), 5000u);
+
+  // Reads translate directly to PCM pair offsets, clamped at end-of-stream.
+  EXPECT_CALL(*deps, read_audio_samples_at("/tmp/test.pcm", 4990u, 10u))
+      .Times(1)
+      .WillOnce([](const std::string&, size_t, size_t count) {
+        return std::vector<int16_t>(count * 2, int16_t{3});
+      });
+  const auto tail = vfr->get_audio_stream_samples(0, 4990, 100);
+  EXPECT_EQ(tail.size(), 10u * 2);
+
+  // Past-the-end reads return nothing without touching the file.
+  EXPECT_TRUE(vfr->get_audio_stream_samples(0, 5000, 10).empty());
+}
+
+// Combination 4 — declared frame_locked wins over lock_audio (the conversion
+// parameter is meaningless for an already-locked sidecar): still served
+// verbatim via the metadata offsets, never resampled.
+TEST(TBCSourceAudioTimingTest, DeclaredLocked_IgnoresLockAudioFlag) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  orc::TBCSourceStage stage(deps);
+  std::vector<orc::ArtifactPtr> outputs;
+  auto* vfr = execute_ntsc_audio_source(
+      stage, deps, outputs,
+      {{"pcm_audio_timing", std::string("frame_locked")},
+       {"lock_audio", false}});
+  ASSERT_NE(vfr, nullptr);
+
+  const auto desc = vfr->get_audio_track_descriptor(0);
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_TRUE(desc->locked);
+  EXPECT_EQ(vfr->get_audio_sample_count(0, 0), 1470u);
+  EXPECT_EQ(vfr->get_audio_stream_pair_count(0), 0u);
+}
+
+// Changing the audio timing parameters must invalidate the cached
+// representation — the audio behaviour is part of the output contract.
+TEST(TBCSourceAudioTimingTest, TimingParameterChangeInvalidatesCache) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  orc::TBCSourceStage stage(deps);
+
+  std::vector<orc::ArtifactPtr> outputs1;
+  auto* vfr1 = execute_ntsc_audio_source(stage, deps, outputs1, {});
+  std::vector<orc::ArtifactPtr> outputs2;
+  auto* vfr2 =
+      execute_ntsc_audio_source(stage, deps, outputs2, {{"lock_audio", false}});
+  ASSERT_NE(vfr1, nullptr);
+  ASSERT_NE(vfr2, nullptr);
+  EXPECT_NE(vfr1, vfr2);
+}
+
+TEST(TBCSourceAudioTimingTest, SetParameters_AcceptsLockAudioBool) {
+  auto deps = std::make_shared<NiceMock<MockTBCSourceStageDeps>>();
+  orc::TBCSourceStage stage(deps);
+  EXPECT_TRUE(stage.set_parameters({{"lock_audio", false}}));
+  EXPECT_FALSE(stage.set_parameters({{"lock_audio", std::string("false")}}));
+}
+
+TEST(TBCSourceAudioTimingTest, Descriptors_IncludeAudioTimingParameters) {
+  orc::TBCSourceStage stage;
+  const auto descs = stage.get_parameter_descriptors();
+
+  const auto timing = std::find_if(descs.begin(), descs.end(),
+                                   [](const orc::ParameterDescriptor& d) {
+                                     return d.name == "pcm_audio_timing";
+                                   });
+  ASSERT_NE(timing, descs.end());
+  EXPECT_EQ(timing->type, orc::ParameterType::STRING);
+  ASSERT_TRUE(timing->constraints.default_value.has_value());
+  EXPECT_EQ(std::get<std::string>(*timing->constraints.default_value),
+            "free_running");
+  ASSERT_EQ(timing->constraints.allowed_strings.size(), 2u);
+
+  const auto lock = std::find_if(
+      descs.begin(), descs.end(),
+      [](const orc::ParameterDescriptor& d) { return d.name == "lock_audio"; });
+  ASSERT_NE(lock, descs.end());
+  EXPECT_EQ(lock->type, orc::ParameterType::BOOL);
+  ASSERT_TRUE(lock->constraints.default_value.has_value());
+  EXPECT_EQ(std::get<bool>(*lock->constraints.default_value), true);
+  // Hidden when the sidecar is declared frame-locked.
+  ASSERT_TRUE(lock->constraints.depends_on.has_value());
+  EXPECT_EQ(lock->constraints.depends_on->parameter_name, "pcm_audio_timing");
+  ASSERT_EQ(lock->constraints.depends_on->required_values.size(), 1u);
+  EXPECT_EQ(lock->constraints.depends_on->required_values[0], "free_running");
 }
 
 }  // namespace orc_unit_test

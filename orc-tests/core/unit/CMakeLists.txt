@@ -17,6 +17,7 @@ function(orc_add_core_unit_tests target labels)
     add_executable(${target} ${ARGN})
         target_include_directories(${target} PRIVATE
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/audio_sink
+                ${CMAKE_SOURCE_DIR}/orc/plugins/stages/common
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/daphne_vbi_sink
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/ld_sink
                 ${CMAKE_SOURCE_DIR}/orc/plugins/stages/raw_efm_sink
@@ -28,6 +29,10 @@ function(orc_add_core_unit_tests target labels)
             orc-core
             GTest::gmock_main
     )
+
+        if(TARGET orc-audio-resample)
+                target_link_libraries(${target} orc-audio-resample)
+        endif()
 
     target_compile_definitions(${target} PRIVATE
             ORC_STAGE_PLUGIN_BUILD_DIR="${CMAKE_BINARY_DIR}/lib/orc-stage-plugins"
@@ -90,6 +95,7 @@ orc_add_core_unit_tests(
         stages/tbc_source/pal_tbc_converter_test.cpp
         stages/tbc_source/ntsc_tbc_converter_test.cpp
         stages/cvbs_source/cvbs_source_stage_test.cpp
+        stages/audio_resample/audio_resampler_test.cpp
 )
 
 orc_add_core_unit_tests(

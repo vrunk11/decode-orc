@@ -104,17 +104,24 @@ sqlite3* create_sidecar_db(const std::string& path, const char* schema_sql,
   return db;
 }
 
+// One row of the .meta audio_track table (CVBS file format spec v1.2.0).
+struct CVBSAudioTrackMetaRow {
+  int32_t track_number = 0;
+  std::string description;  // empty = NULL
+  bool locked = false;
+};
+
 // Write the core <base>.meta metadata database.
-// CVBS file format spec: Metadata Schema (PRAGMA user_version = 8).
+// CVBS file format spec: Metadata Schema (PRAGMA user_version = 9).
 bool write_core_metadata(const std::string& meta_path, VideoSystem system,
                          const CVBSSinkWriteConfig& config,
                          uint64_t frames_written,
                          std::optional<int32_t> black_level,
                          bool has_nonstandard_values,
-                         std::optional<bool> audio_locked,
+                         const std::vector<CVBSAudioTrackMetaRow>& audio_tracks,
                          std::string& error_message) {
   constexpr const char* kSchema =
-      "PRAGMA user_version = 8;"
+      "PRAGMA user_version = 9;"
       "CREATE TABLE cvbs_file ("
       "    cvbs_file_id                INTEGER PRIMARY KEY,"
       "    preset                      TEXT    NOT NULL"
@@ -142,8 +149,13 @@ bool write_core_metadata(const std::string& meta_path, VideoSystem system,
       "number_of_sequential_frames >= 1),"
       "    black_level                 INTEGER,"
       "    has_nonstandard_values      BOOLEAN,"
-      "    audio_locked                BOOLEAN,"
       "    capture_notes               TEXT"
+      ");"
+      "CREATE TABLE audio_track ("
+      "    track_number                INTEGER PRIMARY KEY"
+      "        CHECK (track_number BETWEEN 0 AND 15),"
+      "    description                 TEXT,"
+      "    audio_locked                BOOLEAN NOT NULL"
       ");";
 
   sqlite3* db = create_sidecar_db(meta_path, kSchema, error_message);
@@ -152,8 +164,8 @@ bool write_core_metadata(const std::string& meta_path, VideoSystem system,
   constexpr const char* kInsert =
       "INSERT INTO cvbs_file (cvbs_file_id, preset, sample_encoding_preset, "
       "signal_state_preset, signal_type, decoder, number_of_sequential_frames, "
-      "black_level, has_nonstandard_values, audio_locked, capture_notes) "
-      "VALUES (1, ?, ?, 'STANDARD_TBC_LOCKED', ?, 'other', ?, ?, ?, ?, ?)";
+      "black_level, has_nonstandard_values, capture_notes) "
+      "VALUES (1, ?, ?, 'STANDARD_TBC_LOCKED', ?, 'other', ?, ?, ?, ?)";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db, kInsert, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -178,24 +190,53 @@ bool write_core_metadata(const std::string& meta_path, VideoSystem system,
   } else {
     sqlite3_bind_null(stmt, 6);
   }
-  if (audio_locked.has_value()) {
-    sqlite3_bind_int(stmt, 7, *audio_locked ? 1 : 0);
+  if (!config.capture_notes.empty()) {
+    sqlite3_bind_text(stmt, 7, config.capture_notes.c_str(), -1,
+                      SQLITE_TRANSIENT);
   } else {
     sqlite3_bind_null(stmt, 7);
   }
-  if (!config.capture_notes.empty()) {
-    sqlite3_bind_text(stmt, 8, config.capture_notes.c_str(), -1,
-                      SQLITE_TRANSIENT);
-  } else {
-    sqlite3_bind_null(stmt, 8);
-  }
 
-  const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+  bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
   if (!ok) {
     error_message =
         "Failed to write metadata row: " + std::string(sqlite3_errmsg(db));
   }
   sqlite3_finalize(stmt);
+
+  // Per-track rows (CVBS file format spec v1.2.0): one per track file.
+  if (ok && !audio_tracks.empty()) {
+    constexpr const char* kTrackInsert =
+        "INSERT INTO audio_track (track_number, description, audio_locked) "
+        "VALUES (?, ?, ?)";
+    sqlite3_stmt* track_stmt = nullptr;
+    if (sqlite3_prepare_v2(db, kTrackInsert, -1, &track_stmt, nullptr) !=
+        SQLITE_OK) {
+      error_message = "Failed to prepare audio_track insert: " +
+                      std::string(sqlite3_errmsg(db));
+      ok = false;
+    } else {
+      for (const CVBSAudioTrackMetaRow& row : audio_tracks) {
+        sqlite3_bind_int(track_stmt, 1, row.track_number);
+        if (!row.description.empty()) {
+          sqlite3_bind_text(track_stmt, 2, row.description.c_str(), -1,
+                            SQLITE_TRANSIENT);
+        } else {
+          sqlite3_bind_null(track_stmt, 2);
+        }
+        sqlite3_bind_int(track_stmt, 3, row.locked ? 1 : 0);
+        if (sqlite3_step(track_stmt) != SQLITE_DONE) {
+          error_message = "Failed to write audio_track row: " +
+                          std::string(sqlite3_errmsg(db));
+          ok = false;
+          break;
+        }
+        sqlite3_reset(track_stmt);
+      }
+      sqlite3_finalize(track_stmt);
+    }
+  }
+
   sqlite3_close(db);
   return ok;
 }
@@ -635,11 +676,18 @@ CVBSSinkWriteResult CVBSSinkStageDeps::write_cvbs(
 
   // --- Write the .meta core metadata ---
   std::string err;
-  const std::optional<bool> audio_locked_meta =
-      write_audio ? std::optional<bool>(true) : std::nullopt;
+  std::vector<CVBSAudioTrackMetaRow> audio_track_rows;
+  if (write_audio) {
+    // This sink currently exports pipeline track 0 as container track 00.
+    CVBSAudioTrackMetaRow row;
+    row.track_number = 0;
+    row.description = audio_track_desc ? audio_track_desc->name : "";
+    row.locked = true;
+    audio_track_rows.push_back(std::move(row));
+  }
   if (!write_core_metadata(base + ".meta", system, config, frames_written,
                            black_level_override, has_nonstandard_values,
-                           audio_locked_meta, err)) {
+                           audio_track_rows, err)) {
     return {false, frames_written, err};
   }
 

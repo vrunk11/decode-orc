@@ -1,7 +1,8 @@
 /*
  * File:        audio_resampler.cpp
- * Module:      orc-stage-plugin-tbc-source
- * Purpose:     SoXR-based audio resampler for NTSC/PAL_M frame-locked audio
+ * Module:      orc-audio-resample (shared stage-plugin library)
+ * Purpose:     SoXR-based stereo audio resampling between the free-running
+ *              44100 Hz rate and the frame-locked rates
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -22,7 +23,7 @@ namespace orc {
 // resample
 // ---------------------------------------------------------------------------
 
-std::vector<int16_t> NtscPalMAudioResampler::resample(
+std::vector<int16_t> AudioResampler::resample(
     const std::vector<int16_t>& input_stereo, double in_rate, double out_rate) {
   if (input_stereo.empty()) return {};
 
@@ -47,7 +48,7 @@ std::vector<int16_t> NtscPalMAudioResampler::resample(
   soxr_t soxr = soxr_create(in_rate, out_rate, kChannels, &err, &io_spec,
                             &quality, nullptr);
   if (!soxr || err) {
-    ORC_LOG_ERROR("NtscPalMAudioResampler: soxr_create failed: {}",
+    ORC_LOG_ERROR("AudioResampler: soxr_create failed: {}",
                   err ? err : "null handle");
     if (soxr) soxr_delete(soxr);
     return {};
@@ -60,7 +61,7 @@ std::vector<int16_t> NtscPalMAudioResampler::resample(
   err = soxr_process(soxr, input_stereo.data(), in_frames, &idone,
                      output.data(), out_estimate, &odone);
   if (err) {
-    ORC_LOG_WARN("NtscPalMAudioResampler: soxr_process error: {}", err);
+    ORC_LOG_WARN("AudioResampler: soxr_process error: {}", err);
     soxr_delete(soxr);
     output.resize(odone * kChannels);
     return output;
@@ -79,40 +80,49 @@ std::vector<int16_t> NtscPalMAudioResampler::resample(
 }
 
 // ---------------------------------------------------------------------------
-// resample_and_segment
+// lock_and_segment
 // ---------------------------------------------------------------------------
 
-std::vector<std::vector<int16_t>> NtscPalMAudioResampler::resample_and_segment(
-    const std::vector<int16_t>& raw_stereo_44100, size_t frame_count) {
-  // NTSC/PAL_M locked rate: 44100000/1001 Hz ≈ 44055.944 Hz.
-  constexpr double kInRate = 44100.0;
-  constexpr double kOutRate = 44100000.0 / 1001.0;
+std::vector<std::vector<int16_t>> AudioResampler::lock_and_segment(
+    const std::vector<int16_t>& raw_stereo_44100, VideoSystem system,
+    size_t frame_count) {
+  const size_t pairs_per_frame =
+      static_cast<size_t>(locked_audio_pairs_per_frame(system));
 
   std::vector<std::vector<int16_t>> frames(frame_count);
+  if (pairs_per_frame == 0) return frames;
 
   if (raw_stereo_44100.empty() || frame_count == 0) {
     for (auto& f : frames) {
-      f.assign(kPairsPerFrame * 2, 0);
+      f.assign(pairs_per_frame * 2, 0);
     }
     return frames;
   }
 
-  const std::vector<int16_t> resampled =
-      resample(raw_stereo_44100, kInRate, kOutRate);
+  // PAL locked audio is already 44100 Hz — segmentation only. NTSC/PAL-M is
+  // pulled down to 44100000/1001 Hz first (SoXR HQ, duration-preserving).
+  std::vector<int16_t> resampled;
+  const std::vector<int16_t>* locked_stream = &raw_stereo_44100;
+  if (system != VideoSystem::PAL) {
+    resampled =
+        resample(raw_stereo_44100, kFreeRunningRateHz, kNtscLockedRateHz);
+    locked_stream = &resampled;
+  }
 
   for (size_t i = 0; i < frame_count; ++i) {
-    const size_t src_start = i * kPairsPerFrame * 2;
-    const size_t src_end = src_start + kPairsPerFrame * 2;
+    const size_t src_start = i * pairs_per_frame * 2;
+    const size_t src_end = src_start + pairs_per_frame * 2;
 
-    frames[i].resize(kPairsPerFrame * 2, 0);
+    frames[i].resize(pairs_per_frame * 2, 0);
 
-    if (src_start < resampled.size()) {
-      const size_t available = std::min(src_end, resampled.size()) - src_start;
-      std::memcpy(frames[i].data(), resampled.data() + src_start,
+    if (src_start < locked_stream->size()) {
+      const size_t available =
+          std::min(src_end, locked_stream->size()) - src_start;
+      std::memcpy(frames[i].data(), locked_stream->data() + src_start,
                   available * sizeof(int16_t));
-      // Remaining bytes are already zero from resize().
+      // Remaining values are already zero from resize().
     }
-    // When src_start >= resampled.size() the frame is silent (all zeros).
+    // When src_start >= locked_stream->size() the frame is silent (all zeros).
   }
 
   return frames;

@@ -55,7 +55,7 @@ Decisions already made (with the project owner):
 | Decision | Choice |
 |----------|--------|
 | EFM audio decode placement | Dedicated transform stage; decode pipeline moves to a shared library |
-| CVBS spec | Extended with a per-track metadata table; file-level `audio_locked` deprecated |
+| CVBS spec | Extended with a per-track metadata table; file-level `audio_locked` removed (the spec describes only the current version) |
 | External audio | New import transform stage (not source-stage parameters) |
 | SDK compatibility | Clean replacement of the single-track VFR accessors; host ABI bump (5 → 6) |
 
@@ -244,11 +244,13 @@ cvbs_source and audio_sink.
 
 - Probes `<basename>_audio_00.wav` … `_audio_15.wav`; each existing file
   becomes a track, preserving container track numbers as pipeline indices.
-- Per-track descriptors come from the extended `.meta` `audio_track` table
-  (§7) — timing is declared per track, so no declaration parameter is
-  needed. Legacy files without the table fall back to the file-level
-  `audio_locked` flag applied to all tracks, `origin: UNKNOWN`,
-  `name: "Track NN"`.
+- Per-track descriptions and lock modes come from the extended `.meta`
+  `audio_track` table (§7) — timing is declared per track, so no declaration
+  parameter is needed. All CVBS tracks report `origin: UNKNOWN` (the
+  container carries no origin metadata). Tracks without a table row —
+  including manual-encoding mode, where no metadata is read — default to
+  free-running with `name: "Track NN"`. No backwards compatibility with
+  pre-v1.2.0 metadata: only the current spec is read.
 - Free-running tracks are now served via the stream accessors
   (44-byte-header WAV, seek to `first_pair × 4` bytes), removing the current
   early-return.
@@ -468,9 +470,8 @@ quick-project wiring (§6) follows this ordering.
 - Writes **every** pipeline track to `<basename>_audio_NN.wav`, NN = pipeline
   track index, both locked and free-running (free-running at 44100 Hz with
   authoritative header, per spec).
-- Writes the new per-track `audio_track` metadata table (§7).
-- Legacy file-level `audio_locked` is still written for old readers: `TRUE`/
-  `FALSE` when all tracks share one mode, `NULL` when mixed or no audio.
+- Writes the new per-track `audio_track` metadata table (§7). The removed
+  file-level `cvbs_file.audio_locked` column is not written.
 
 ### 5.4 efm_sink, raw_efm_sink, ac3rf_sink
 
@@ -506,16 +507,21 @@ content:
   | Column | Type | Meaning |
   |--------|------|---------|
   | `track_number` | INTEGER PK (0–15) | Matches `_audio_NN.wav` naming |
-  | `name` | TEXT | Human-readable track name |
-  | `origin` | TEXT | `analogue` \| `hifi` \| `efm` \| `imported` \| `derived` \| `unknown` |
+  | `description` | TEXT | Human-readable track description |
   | `audio_locked` | BOOLEAN | Per-track lock mode |
 
-- Per-track `audio_locked` semantics are identical to the current file-level
+  The container carries no origin column — `AudioTrackOrigin` is a
+  pipeline-model concept only; tracks read from CVBS files report
+  `origin: UNKNOWN`.
+
+- Per-track `audio_locked` semantics match the previous file-level
   definition (locked = preset rational rate, exact pairs/frame; free-running
   = 44100 Hz, header authoritative; shared frame-0 origin).
-- File-level `cvbs_file.audio_locked` is **deprecated**: writers populate it
-  only when all tracks share a mode (else `NULL`); readers must prefer the
-  `audio_track` table when present.
+- File-level `cvbs_file.audio_locked` is **removed** — the spec describes
+  only the current version, so the column is gone from the `cvbs_file`
+  schema and writers no longer emit it. Readers validate against the
+  current spec only (no backwards compatibility with pre-v1.2.0 metadata);
+  tracks without an `audio_track` row are treated as free-running.
 - Track files need not be contiguous, but `track_number` must match the file
   suffix. Stereo 16-bit PCM remains the only permitted encoding.
 
@@ -545,9 +551,9 @@ Per AGENTS.md §4 (unit-first, mocked, deterministic):
   with N tracks exercised through every remapping wrapper (frame_map,
   source_align, stacker) verifying locked remap and time-domain
   free-running remap (§4.5). Labels: `unit`, `contracts`.
-- **Sources**: mocked-deps tests for cvbs_source track enumeration, legacy
-  `audio_locked` fallback, free-running stream reads; tbc_source track-0
-  descriptor. Labels: `unit`, `sources`.
+- **Sources**: mocked-deps tests for cvbs_source track enumeration,
+  no-table free-running defaults, free-running stream reads; tbc_source
+  track-0 descriptor. Labels: `unit`, `sources`.
 - **Transforms**: efm_audio_decode with a mocked decode dependency
   (t-value gathering, cache-file serving, once-only decode); channel-map
   routing math; align window assembly incl. edge silence; import validation.
@@ -588,7 +594,7 @@ Per AGENTS.md §4 (unit-first, mocked, deterministic):
 
 1. Extend the CVBS file format specification in its own repository
    (`cvbs-file-format-specification`) with the `audio_track` table and
-   deprecation of file-level `audio_locked` (§7); tag the new spec version;
+   removal of file-level `audio_locked` (§7); tag the new spec version;
    advance the `docs-tech/cvbs-file-format-specification` sub-module pin in
    decode-orc. Ordered first: the cvbs_source work below (and cvbs_sink in
    Phase 5) cites the tagged spec.
@@ -600,7 +606,8 @@ Per AGENTS.md §4 (unit-first, mocked, deterministic):
    *Acceptance*: existing resampler unit tests pass against the shared lib;
    SDK gates pass.
 3. cvbs_source: enumerate `_audio_00..15.wav` into tracks; serve
-   free-running tracks via stream accessors; legacy metadata fallback; add
+   free-running tracks via stream accessors; no-table free-running default;
+   add
    `lock_audio` (free-running → locked resample, lazy per track);
    `instructions.md`.
    *Acceptance*: mocked-deps unit tests for enumeration, descriptors,
@@ -652,7 +659,7 @@ Per AGENTS.md §4 (unit-first, mocked, deterministic):
    cursors; per-stream true sample rates (44056 fix); free-running feed with
    sub-range start offset; stream titles; silence-fallback rate fix;
    `instructions.md`.
-3. cvbs_sink: write all tracks + `audio_track` metadata; legacy flag rule;
+3. cvbs_sink: write all tracks + `audio_track` metadata;
    `instructions.md`.
    *Acceptance (all)*: mocked unit tests per sink; a functional multi-track
    round-trip (cvbs_sink → cvbs_source) verifying descriptors and samples.

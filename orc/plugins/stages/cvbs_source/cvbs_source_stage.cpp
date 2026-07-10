@@ -24,10 +24,13 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+
+#include "audio-resample/audio_resampler.h"
 
 namespace orc {
 
@@ -65,6 +68,31 @@ std::string derive_sidecar_path(const std::string& input_path,
   const fs::path p(input_path);
   return (p.parent_path() / p.stem()).string() + suffix;
 }
+
+// Zero-padded two-digit audio track suffix: 0 → "00", 15 → "15".
+std::string audio_track_suffix(int32_t track_number) {
+  std::string s = std::to_string(track_number);
+  return (s.size() < 2 ? "0" + s : s);
+}
+
+// ---------------------------------------------------------------------------
+// Audio track state
+// ---------------------------------------------------------------------------
+
+// One pipeline audio track backed by a <basename>_audio_NN.wav sidecar.
+struct CVBSAudioTrackState {
+  int32_t container_number = 0;  // NN in the _audio_NN.wav filename
+  std::string wav_path;
+  AudioTrackDescriptor descriptor;  // describes this stage's OUTPUT
+  // Frame-locked serving: exact stereo pairs per frame for the system.
+  uint32_t pairs_per_frame = 0;
+  // Total stereo pairs in the WAV payload (stream length for free-running
+  // serving; whole-stream read size for lock conversion).
+  uint64_t stream_total_pairs = 0;
+  // True when the container track is free-running but lock_audio requested a
+  // frame-locked output: the stream is lazily resampled on first access.
+  bool needs_lock_conversion = false;
+};
 
 // ---------------------------------------------------------------------------
 // Sample encoding normalisation
@@ -187,12 +215,12 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
       std::string sample_encoding, SourceParameters video_params,
       std::optional<int32_t> ntsc_j_black_level,
       // Sidecars
-      std::vector<DropoutRun> dropout_runs, bool has_audio,
-      bool audio_locked_flag, std::string wav_path,
-      uint32_t audio_pairs_per_frame, bool has_efm, std::string efm_data_path,
-      std::vector<CVBSExtensionFrameRef> efm_table, bool has_ac3,
-      std::string ac3_data_path, std::vector<CVBSExtensionFrameRef> ac3_table,
-      std::string c_path, ArtifactID artifact_id, Provenance provenance)
+      std::vector<DropoutRun> dropout_runs,
+      std::vector<CVBSAudioTrackState> audio_tracks, bool has_efm,
+      std::string efm_data_path, std::vector<CVBSExtensionFrameRef> efm_table,
+      bool has_ac3, std::string ac3_data_path,
+      std::vector<CVBSExtensionFrameRef> ac3_table, std::string c_path,
+      ArtifactID artifact_id, Provenance provenance)
       : Artifact(std::move(artifact_id), std::move(provenance)),
         system_(system),
         frame_count_(static_cast<size_t>(frame_count)),
@@ -206,17 +234,20 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
         ntsc_j_black_level_(ntsc_j_black_level),
         blanking_level_(video_params_.blanking_level),
         dropout_runs_(std::move(dropout_runs)),
-        has_audio_(has_audio),
-        audio_locked_flag_(audio_locked_flag),
-        wav_path_(std::move(wav_path)),
-        audio_pairs_per_frame_(audio_pairs_per_frame),
+        audio_tracks_(std::move(audio_tracks)),
+        locked_conversion_once_(audio_tracks_.size()),
+        locked_conversion_frames_(audio_tracks_.size()),
         has_efm_(has_efm),
         efm_data_path_(std::move(efm_data_path)),
         efm_table_(std::move(efm_table)),
         has_ac3_(has_ac3),
         ac3_data_path_(std::move(ac3_data_path)),
         ac3_table_(std::move(ac3_table)),
-        c_path_(std::move(c_path)) {}
+        c_path_(std::move(c_path)) {
+    for (auto& flag : locked_conversion_once_) {
+      flag = std::make_unique<std::once_flag>();
+    }
+  }
 
   // --------------------------------------------------------------------------
   // Artifact
@@ -298,39 +329,71 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   // --------------------------------------------------------------------------
   // Audio
   // --------------------------------------------------------------------------
-  // The _audio_00.wav sidecar is served as a single track (track 0). Only
-  // frame-locked audio is currently readable; free-running sidecars are
-  // reported in the descriptor but the stream accessors are not yet
-  // implemented, so they return the base-class 0 / {}.
-  size_t audio_track_count() const override { return has_audio_ ? 1 : 0; }
+  // Every <basename>_audio_NN.wav sidecar is one pipeline track, in ascending
+  // container-number order.  Frame-locked tracks are read per frame from the
+  // WAV at exact pairs-per-frame offsets; free-running tracks are served via
+  // the stream accessors; tracks converted by lock_audio are lazily resampled
+  // on first access (whole stream, once per track).
+  size_t audio_track_count() const override { return audio_tracks_.size(); }
 
   std::optional<AudioTrackDescriptor> get_audio_track_descriptor(
       size_t track) const override {
-    if (!has_audio_ || track != 0) return std::nullopt;
-    AudioTrackDescriptor desc;
-    desc.name = "Track 00";
-    desc.origin = AudioTrackOrigin::UNKNOWN;
-    desc.locked = audio_locked_flag_;
-    desc.sample_rate = audio_locked_flag_ ? locked_audio_sample_rate(system_)
-                                          : kFreeRunningAudioRate;
-    return desc;
+    if (track >= audio_tracks_.size()) return std::nullopt;
+    return audio_tracks_[track].descriptor;
   }
 
   uint32_t get_audio_sample_count(size_t track, FrameID id) const override {
-    if (track != 0 || !has_audio_ || !audio_locked_flag_ || !has_frame(id)) {
-      return 0;
+    if (track >= audio_tracks_.size() || !has_frame(id)) return 0;
+    const CVBSAudioTrackState& state = audio_tracks_[track];
+    if (!state.descriptor.locked) return 0;
+
+    if (state.needs_lock_conversion) {
+      ensure_locked_conversion(track);
+      const auto& frames = locked_conversion_frames_[track];
+      const size_t idx = static_cast<size_t>(id);
+      return idx < frames.size() ? static_cast<uint32_t>(frames[idx].size() / 2)
+                                 : 0;
     }
-    return audio_pairs_per_frame_;
+    return state.pairs_per_frame;
   }
 
   std::vector<int16_t> get_audio_samples(size_t track,
                                          FrameID id) const override {
-    if (track != 0 || !has_audio_ || !audio_locked_flag_ || !has_frame(id)) {
-      return {};
+    if (track >= audio_tracks_.size() || !has_frame(id)) return {};
+    const CVBSAudioTrackState& state = audio_tracks_[track];
+    if (!state.descriptor.locked) return {};
+
+    if (state.needs_lock_conversion) {
+      ensure_locked_conversion(track);
+      const auto& frames = locked_conversion_frames_[track];
+      const size_t idx = static_cast<size_t>(id);
+      return idx < frames.size() ? frames[idx] : std::vector<int16_t>{};
     }
-    const size_t pair_offset = static_cast<size_t>(id) * audio_pairs_per_frame_;
-    return deps_->read_audio_samples_at(wav_path_, pair_offset,
-                                        audio_pairs_per_frame_);
+
+    const size_t pair_offset = static_cast<size_t>(id) * state.pairs_per_frame;
+    return deps_->read_audio_samples_at(state.wav_path, pair_offset,
+                                        state.pairs_per_frame);
+  }
+
+  uint64_t get_audio_stream_pair_count(size_t track) const override {
+    if (track >= audio_tracks_.size()) return 0;
+    const CVBSAudioTrackState& state = audio_tracks_[track];
+    if (state.descriptor.locked) return 0;
+    return state.stream_total_pairs;
+  }
+
+  std::vector<int16_t> get_audio_stream_samples(
+      size_t track, uint64_t first_pair, uint32_t pair_count) const override {
+    if (track >= audio_tracks_.size()) return {};
+    const CVBSAudioTrackState& state = audio_tracks_[track];
+    if (state.descriptor.locked) return {};
+    if (first_pair >= state.stream_total_pairs || pair_count == 0) return {};
+    const uint64_t available = state.stream_total_pairs - first_pair;
+    const uint32_t clamped =
+        static_cast<uint32_t>(std::min<uint64_t>(available, pair_count));
+    return deps_->read_audio_samples_at(state.wav_path,
+                                        static_cast<size_t>(first_pair),
+                                        static_cast<size_t>(clamped));
   }
 
   // --------------------------------------------------------------------------
@@ -483,12 +546,29 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   static constexpr size_t kFrameCacheSize = 150;
   mutable LRUCache<FrameID, DecodedFrame> frame_cache_{kFrameCacheSize};
 
+  // lock_audio conversion: lazily read a free-running track's whole stream
+  // and resample/segment it into frame-locked blocks, once per track.
+  // Whole-stream because the SoXR pull-down is not seekable; the result is
+  // held in RAM (a free-running track is ~10 MB/minute).  Thread-safe: audio
+  // accessors are const and may be called concurrently.
+  void ensure_locked_conversion(size_t track) const {
+    std::call_once(*locked_conversion_once_[track], [this, track] {
+      const CVBSAudioTrackState& state = audio_tracks_[track];
+      if (state.stream_total_pairs == 0) return;
+      const std::vector<int16_t> raw = deps_->read_audio_samples_at(
+          state.wav_path, 0, static_cast<size_t>(state.stream_total_pairs));
+      if (raw.empty()) return;
+      locked_conversion_frames_[track] =
+          AudioResampler::lock_and_segment(raw, system_, frame_count_);
+    });
+  }
+
   std::vector<DropoutRun> dropout_runs_;
 
-  bool has_audio_ = false;
-  bool audio_locked_flag_ = false;
-  std::string wav_path_;
-  uint32_t audio_pairs_per_frame_ = 0;
+  std::vector<CVBSAudioTrackState> audio_tracks_;
+  mutable std::vector<std::unique_ptr<std::once_flag>> locked_conversion_once_;
+  mutable std::vector<std::vector<std::vector<int16_t>>>
+      locked_conversion_frames_;
 
   bool has_efm_ = false;
   std::string efm_data_path_;
@@ -554,7 +634,7 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
 
     constexpr const char* kSql =
         "SELECT preset, sample_encoding_preset, signal_state_preset, "
-        "signal_type, number_of_sequential_frames, audio_locked, black_level "
+        "signal_type, number_of_sequential_frames, black_level "
         "FROM cvbs_file ORDER BY cvbs_file_id LIMIT 1";
 
     sqlite3_stmt* stmt = nullptr;
@@ -588,12 +668,7 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     }
 
     if (sqlite3_column_type(stmt, 5) != SQLITE_NULL) {
-      const std::string al = col_str(5);
-      rec.audio_locked = (al == "TRUE" || al == "1");
-    }
-
-    if (sqlite3_column_type(stmt, 6) != SQLITE_NULL) {
-      rec.ntsc_j_black_level = sqlite3_column_int(stmt, 6);
+      rec.ntsc_j_black_level = sqlite3_column_int(stmt, 5);
     }
 
     sqlite3_finalize(stmt);
@@ -690,14 +765,63 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     return runs;
   }
 
-  std::optional<CVBSAudioSidecarInfo> get_audio_info(
+  std::optional<uint64_t> get_audio_pair_count(
       const std::string& wav_path) const override {
     namespace fs = std::filesystem;
     std::error_code ec;
-    if (!fs::exists(wav_path, ec)) return std::nullopt;
-    // The audio_locked flag comes from the .meta file, not the WAV.
-    // This method simply confirms the WAV exists.
-    return CVBSAudioSidecarInfo{false};
+    const uintmax_t size = fs::file_size(wav_path, ec);
+    if (ec) return std::nullopt;
+    // 44-byte RIFF header, then interleaved int16_t pairs (4 bytes each).
+    constexpr uintmax_t kWavHeaderBytes = 44;
+    if (size < kWavHeaderBytes) return 0;
+    return static_cast<uint64_t>((size - kWavHeaderBytes) / 4);
+  }
+
+  std::optional<std::vector<CVBSAudioTrackRecord>> load_audio_track_table(
+      const std::string& meta_path, std::string& error_message) const override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::exists(meta_path, ec)) return std::nullopt;
+
+    sqlite3* db = nullptr;
+    if (sqlite3_open_v2(meta_path.c_str(), &db, SQLITE_OPEN_READONLY,
+                        nullptr) != SQLITE_OK) {
+      error_message = "Failed to open metadata '" + meta_path + "'";
+      if (db) sqlite3_close(db);
+      return std::nullopt;
+    }
+
+    // CVBS file format spec v1.2.0: one audio_track row per track file.
+    constexpr const char* kSql =
+        "SELECT track_number, description, audio_locked FROM audio_track "
+        "ORDER BY track_number";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, kSql, -1, &stmt, nullptr) != SQLITE_OK) {
+      // Table absent — legacy metadata, not an error.
+      sqlite3_close(db);
+      return std::nullopt;
+    }
+
+    std::vector<CVBSAudioTrackRecord> records;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      CVBSAudioTrackRecord rec;
+      rec.track_number = sqlite3_column_int(stmt, 0);
+      if (sqlite3_column_type(stmt, 1) != SQLITE_NULL) {
+        const unsigned char* v = sqlite3_column_text(stmt, 1);
+        if (v) rec.description = reinterpret_cast<const char*>(v);
+      }
+      if (sqlite3_column_type(stmt, 2) != SQLITE_NULL) {
+        const std::string al =
+            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        rec.locked = (al == "TRUE" || al == "1");
+      }
+      records.push_back(std::move(rec));
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return records;
   }
 
   std::vector<int16_t> read_audio_samples_at(
@@ -899,6 +1023,14 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   const std::string single_path = get_str_param("input_path");
   const std::string manual_encoding = get_str_param("sample_encoding");
 
+  bool lock_audio = false;
+  {
+    const auto it = parameters.find("lock_audio");
+    if (it != parameters.end() && std::holds_alternative<bool>(it->second)) {
+      lock_audio = std::get<bool>(it->second);
+    }
+  }
+
   const bool is_yc = !y_path.empty() && !c_path.empty();
   const std::string input_path = is_yc ? y_path : single_path;
 
@@ -915,7 +1047,8 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
 
   const std::string cache_key =
       (is_yc ? (y_path + "|" + c_path) : input_path) + "|" +
-      (use_metadata ? std::string("meta") : manual_encoding);
+      (use_metadata ? std::string("meta") : manual_encoding) +
+      (lock_audio ? "|lock_audio" : "");
   if (cached_representation_ && cached_input_path_ == cache_key) {
     return {cached_representation_};
   }
@@ -936,7 +1069,6 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   std::string encoding;
   std::string signal_type;
   int32_t meta_frame_count = 0;
-  std::optional<bool> audio_locked_meta;
   std::optional<int32_t> ntsc_j_black_level;
 
   if (use_metadata) {
@@ -976,7 +1108,6 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
     encoding = meta.sample_encoding_preset;
     signal_type = meta.signal_type;
     meta_frame_count = meta.number_of_sequential_frames;
-    audio_locked_meta = meta.audio_locked;
     ntsc_j_black_level = meta.ntsc_j_black_level;
   } else {
     // Manual mode: no .meta sidecar required. The video standard is fixed by
@@ -1059,18 +1190,66 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
       derive_sidecar_path(input_path, ".dropouts.meta");
   auto dropout_runs = deps_->load_dropout_sidecar(dropout_path, do_err);
 
-  // Audio
-  const std::string wav_path = derive_sidecar_path(input_path, "_audio_00.wav");
-  const auto audio_info = deps_->get_audio_info(wav_path);
-  const bool has_audio = audio_info.has_value();
-  // The frame-locked flag only exists in the .meta sidecar; without metadata
-  // any audio is treated as free-running.
-  const bool audio_locked_flag = has_audio && audio_locked_meta.value_or(false);
+  // Audio: probe <basename>_audio_00.wav … _audio_15.wav; every existing
+  // file becomes a pipeline track, in ascending container-number order.
+  // Per-track description and lock mode come from the .meta audio_track
+  // table (CVBS file format spec v1.2.0); tracks without a table row —
+  // including manual-encoding mode, where no metadata is read — default to
+  // free-running with names of the form "Track NN".  The CVBS metadata
+  // carries no origin information, so every track reports
+  // AudioTrackOrigin::UNKNOWN.
+  std::optional<std::vector<CVBSAudioTrackRecord>> audio_track_table;
+  if (use_metadata) {
+    std::string at_err;
+    audio_track_table = deps_->load_audio_track_table(
+        derive_sidecar_path(input_path, ".meta"), at_err);
+  }
 
-  // Audio pairs per frame: PAL 44100/25=1764, NTSC/PAL_M 44100×1001/30000≈1470.
-  uint32_t audio_pairs = 0;
-  if (has_audio && audio_locked_flag) {
-    audio_pairs = (system_ == VideoSystem::PAL) ? 1764u : 1470u;
+  std::vector<CVBSAudioTrackState> audio_tracks;
+  for (int32_t nn = 0; nn < static_cast<int32_t>(kMaxAudioTracks); ++nn) {
+    const std::string track_wav_path = derive_sidecar_path(
+        input_path, "_audio_" + audio_track_suffix(nn) + ".wav");
+    const auto pair_count = deps_->get_audio_pair_count(track_wav_path);
+    if (!pair_count) continue;  // file absent
+
+    CVBSAudioTrackState state;
+    state.container_number = nn;
+    state.wav_path = track_wav_path;
+    state.stream_total_pairs = *pair_count;
+
+    // Container-declared descriptor. Defaults (no audio_track row):
+    // free-running, name from the container track number.
+    state.descriptor.name = "Track " + audio_track_suffix(nn);
+    state.descriptor.origin = AudioTrackOrigin::UNKNOWN;
+    state.descriptor.locked = false;
+    if (audio_track_table) {
+      const auto rec = std::find_if(
+          audio_track_table->begin(), audio_track_table->end(),
+          [nn](const CVBSAudioTrackRecord& r) { return r.track_number == nn; });
+      if (rec != audio_track_table->end()) {
+        if (rec->description && !rec->description->empty()) {
+          state.descriptor.name = *rec->description;
+        }
+        state.descriptor.locked = rec->locked;
+      }
+    }
+
+    // lock_audio converts free-running container tracks into frame-locked
+    // pipeline tracks (lazy, on first access); already-locked tracks are
+    // unaffected.  The descriptor always describes the OUTPUT.
+    if (!state.descriptor.locked && lock_audio) {
+      state.needs_lock_conversion = true;
+      state.descriptor.locked = true;
+    }
+
+    state.descriptor.sample_rate = state.descriptor.locked
+                                       ? locked_audio_sample_rate(system_)
+                                       : kFreeRunningAudioRate;
+    if (state.descriptor.locked) {
+      state.pairs_per_frame = locked_audio_pairs_per_frame(system_);
+    }
+
+    audio_tracks.push_back(std::move(state));
   }
 
   // EFM
@@ -1102,10 +1281,10 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
       video_system_to_string(system_) + " CVBS " + signal_type_display;
 
   ORC_LOG_INFO(
-      "{}: loaded '{}' — {} {} frames, encoding {}, audio {}, "
+      "{}: loaded '{}' — {} {} frames, encoding {}, {} audio track(s), "
       "EFM {}, AC3 {}",
       stage_name_, input_path, frame_count, video_system_to_string(system_),
-      encoding, has_audio ? "yes" : "no", has_efm ? "yes" : "no",
+      encoding, audio_tracks.size(), has_efm ? "yes" : "no",
       has_ac3 ? "yes" : "no");
 
   // --- Frame geometry parameters ---
@@ -1124,10 +1303,9 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
   auto representation = std::make_shared<CVBSDecodedFrameRepresentation>(
       system_, frame_count, frame_samples, frame_height_lines,
       src_params.frame_width_nominal, deps_, input_path, encoding, src_params,
-      ntsc_j_black_level, std::move(dropout_runs), has_audio, audio_locked_flag,
-      wav_path, audio_pairs, has_efm, efm_data_path, std::move(efm_table),
-      has_ac3, ac3_data_path, std::move(ac3_table),
-      is_yc ? c_path : std::string{},
+      ntsc_j_black_level, std::move(dropout_runs), std::move(audio_tracks),
+      has_efm, efm_data_path, std::move(efm_table), has_ac3, ac3_data_path,
+      std::move(ac3_table), is_yc ? c_path : std::string{},
       ArtifactID(std::string(stage_name_) + ":" + cache_key), std::move(prov));
 
   cached_representation_ = representation;
@@ -1214,6 +1392,23 @@ FixedFormatCVBSSourceStage::get_parameter_descriptors(
     desc.push_back(pd);
   }
 
+  {
+    ParameterDescriptor pd;
+    pd.name = "lock_audio";
+    pd.display_name = "Lock Audio To Frames";
+    pd.description =
+        "Resample every free-running audio track into a frame-locked track "
+        "(SoXR HQ, duration- and sync-preserving). Already-locked tracks are "
+        "unaffected. Disabled (default), the container's audio timing is "
+        "preserved as-is. Frame-locked tracks follow the video through frame "
+        "remapping and can be stacked; free-running tracks are carried as a "
+        "stream.";
+    pd.type = ParameterType::BOOL;
+    pd.constraints.required = false;
+    pd.constraints.default_value = false;
+    desc.push_back(pd);
+  }
+
   return desc;
 }
 
@@ -1222,7 +1417,8 @@ FixedFormatCVBSSourceStage::get_parameters() const {
   return {{"input_path", input_path_},
           {"y_path", y_path_},
           {"c_path", c_path_},
-          {"sample_encoding", sample_encoding_}};
+          {"sample_encoding", sample_encoding_},
+          {"lock_audio", lock_audio_}};
 }
 
 bool FixedFormatCVBSSourceStage::set_parameters(
@@ -1236,6 +1432,9 @@ bool FixedFormatCVBSSourceStage::set_parameters(
       c_path_ = std::get<std::string>(value);
     } else if (key == "sample_encoding") {
       sample_encoding_ = std::get<std::string>(value);
+    } else if (key == "lock_audio") {
+      if (!std::holds_alternative<bool>(value)) return false;
+      lock_audio_ = std::get<bool>(value);
     } else {
       ORC_LOG_WARN("{}: unknown parameter '{}'", stage_name_, key);
       return false;

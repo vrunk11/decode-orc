@@ -39,15 +39,15 @@ struct CVBSMetadataRecord {
   std::string signal_state_preset;     // must be STANDARD_TBC_LOCKED
   std::string signal_type;             // composite / yc
   int32_t number_of_sequential_frames = 0;
-  // audio_locked: true=frame-locked, false=free-running, nullopt=absent/NULL
-  std::optional<bool> audio_locked;
   // NTSC-J only: explicit black level stored in the 10-bit domain.
   std::optional<int32_t> ntsc_j_black_level;
 };
 
-// Information returned from an audio WAV sidecar.
-struct CVBSAudioSidecarInfo {
-  bool audio_locked = false;  // true = frame-locked, false = free-running
+// One row of the .meta audio_track table (CVBS file format spec v1.2.0).
+struct CVBSAudioTrackRecord {
+  int32_t track_number = 0;  // 0–15, matches the _audio_NN.wav suffix
+  std::optional<std::string> description;  // human-readable; nullopt = NULL
+  bool locked = false;                     // per-track lock mode
 };
 
 // Dependency injection interface for the CVBS source stage.
@@ -81,10 +81,19 @@ class ICVBSSourceStageDeps {
       const std::string& dropout_meta_path,
       std::string& error_message) const = 0;
 
-  // Check whether <basename>_audio_00.wav exists.
-  // Returns nullopt when the file is absent (no error).
-  virtual std::optional<CVBSAudioSidecarInfo> get_audio_info(
+  // Total number of stereo pairs in the WAV's data payload
+  // ((file size − 44-byte header) / 4).  Returns nullopt when the file is
+  // absent (no error) — this doubles as the per-track existence probe for
+  // the <basename>_audio_00.wav … _audio_15.wav enumeration.
+  virtual std::optional<uint64_t> get_audio_pair_count(
       const std::string& wav_path) const = 0;
+
+  // Load all rows of the audio_track table from <basename>.meta
+  // (CVBS file format spec v1.2.0).  Returns nullopt when the metadata file
+  // or the table is absent (legacy pre-v1.2.0 file, no error).
+  virtual std::optional<std::vector<CVBSAudioTrackRecord>>
+  load_audio_track_table(const std::string& meta_path,
+                         std::string& error_message) const = 0;
 
   // Read stereo_pair_count interleaved int16_t pairs starting at
   // stereo_pair_offset from the WAV data (header already stripped).
@@ -133,6 +142,14 @@ class ICVBSSourceStageDeps {
 //   y_path           – path to the luma channel file (.y) for YC mode
 //   c_path           – path to the chroma channel file (.c) for YC mode
 //   sample_encoding  – "From metadata" (default) or an explicit encoding
+//   lock_audio       – resample free-running audio tracks into frame-locked
+//                      tracks (default false: container timing preserved)
+//
+// Audio: every <basename>_audio_00.wav … _audio_15.wav sidecar becomes a
+// track.  Per-track descriptions and lock modes come from the .meta
+// audio_track table; tracks without a table row are treated as free-running.
+// Frame-locked tracks are served per frame; free-running tracks are served
+// via the stream accessors.
 //
 // YC mode is active when both y_path and c_path are non-empty; composite mode
 // uses input_path.  The two modes are mutually exclusive; the parameter
@@ -159,7 +176,7 @@ class FixedFormatCVBSSourceStage : public DAGStage,
   }
 
   // DAGStage interface
-  std::string version() const override { return "2.0.0"; }
+  std::string version() const override { return "2.1.0"; }
   ORC_STAGE_INSTRUCTIONS_MD
 
   NodeTypeInfo get_node_type_info() const override {
@@ -209,6 +226,7 @@ class FixedFormatCVBSSourceStage : public DAGStage,
   std::string y_path_;           // YC mode: luma path
   std::string c_path_;           // YC mode: chroma path
   std::string sample_encoding_;  // "From metadata" (default) or explicit
+  bool lock_audio_ = false;      // resample free-running tracks to locked
 
   mutable std::mutex execute_mutex_;
   mutable std::string cached_input_path_;

@@ -16,7 +16,7 @@
 #include <limits>
 #include <utility>
 
-#include "free_running_resampler.h"
+#include "audio-resample/audio_resampler.h"
 
 namespace orc {
 namespace {
@@ -226,7 +226,7 @@ AudioSinkWriteResult AudioSinkStageDeps::write_free_running(
                        "Resampling audio to 44100 Hz");
   }
 
-  const std::vector<int16_t> resampled = FreeRunningAudioResampler::resample(
+  const std::vector<int16_t> resampled = AudioResampler::resample(
       locked_stream, kNtscLockedRate, static_cast<double>(kStandardRateHz));
   if (resampled.empty()) {
     writer->close();

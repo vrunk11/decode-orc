@@ -17,7 +17,10 @@ orc_add_stage_plugin(
     SOURCES ${STAGE_PLUGIN_SOURCES}
     # SQLite is used by cvbs_source_stage.cpp; declared here because the
     # SDK no longer propagates host third-party dependencies to plugins.
-    LINK_LIBRARIES SQLite::SQLite3
+    # orc-audio-resample is the shared SoXR-based free-running↔locked
+    # resampler (orc/plugins/stages/common/audio-resample), used for the
+    # lock_audio conversion.
+    LINK_LIBRARIES orc-audio-resample SQLite::SQLite3
 )
 
 # Install plugin

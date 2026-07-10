@@ -75,6 +75,21 @@ inline constexpr AudioSampleRate locked_audio_sample_rate(VideoSystem system) {
   }
 }
 
+// Exact stereo pairs per video frame for a frame-locked track:
+//   PAL 44100/25 = 1764; NTSC/PAL-M 44100000/1001 ÷ 30000/1001 = 1470.
+// Unknown systems have no defined locked layout; 0 is returned.
+inline constexpr uint32_t locked_audio_pairs_per_frame(VideoSystem system) {
+  switch (system) {
+    case VideoSystem::PAL:
+      return 1764;
+    case VideoSystem::NTSC:
+    case VideoSystem::PAL_M:
+      return 1470;
+    default:
+      return 0;
+  }
+}
+
 // Stream pair offset corresponding to the START of frame |frame_index| for a
 // free-running track, computed with exact 64-bit rational arithmetic:
 //   round(frame_index × rate / frame_rate)

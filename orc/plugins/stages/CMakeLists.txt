@@ -1,3 +1,4 @@
+add_subdirectory(common)
 add_subdirectory(audio_sink)
 add_subdirectory(tbc_source)
 add_subdirectory(cvbs_source)
