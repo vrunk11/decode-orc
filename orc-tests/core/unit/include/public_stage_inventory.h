@@ -85,6 +85,20 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
        [] {
          return orc::StageRegistry::instance().create_stage("efm_audio_decode");
        }},
+      {"audio_track_import", PublicStageFamily::Transform, true,
+       [] {
+         return orc::StageRegistry::instance().create_stage(
+             "audio_track_import");
+       }},
+      {"audio_channel_map", PublicStageFamily::Transform, true,
+       [] {
+         return orc::StageRegistry::instance().create_stage(
+             "audio_channel_map");
+       }},
+      {"audio_align", PublicStageFamily::Transform, true,
+       [] {
+         return orc::StageRegistry::instance().create_stage("audio_align");
+       }},
       {"video_sink", PublicStageFamily::Sink, true,
        [] {
          return orc::StageRegistry::instance().create_stage("video_sink");

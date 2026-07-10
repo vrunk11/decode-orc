@@ -387,24 +387,36 @@ std::vector<DropoutRun> StackedVideoFrameRepresentation::get_dropout_hints(
 // ── Audio
 // ─────────────────────────────────────────────────────────────────────
 
-size_t StackedVideoFrameRepresentation::audio_track_count() const {
+std::shared_ptr<const VideoFrameRepresentation>
+StackedVideoFrameRepresentation::reference_audio_source() const {
   for (const auto& src : sources_) {
     if (src && src->has_audio()) {
-      return src->audio_track_count();
+      return src;
     }
   }
-  return 0;
+  return nullptr;
+}
+
+bool StackedVideoFrameRepresentation::track_locked_in_all_sources(
+    size_t track) const {
+  for (const auto& src : sources_) {
+    if (!src) return false;
+    const auto desc = src->get_audio_track_descriptor(track);
+    if (!desc || !desc->locked) return false;
+  }
+  return true;
+}
+
+size_t StackedVideoFrameRepresentation::audio_track_count() const {
+  const auto ref = reference_audio_source();
+  return ref ? ref->audio_track_count() : 0;
 }
 
 std::optional<AudioTrackDescriptor>
 StackedVideoFrameRepresentation::get_audio_track_descriptor(
     size_t track) const {
-  for (const auto& src : sources_) {
-    if (src && src->has_audio()) {
-      return src->get_audio_track_descriptor(track);
-    }
-  }
-  return std::nullopt;
+  const auto ref = reference_audio_source();
+  return ref ? ref->get_audio_track_descriptor(track) : std::nullopt;
 }
 
 uint32_t StackedVideoFrameRepresentation::get_audio_sample_count(
@@ -419,38 +431,70 @@ uint32_t StackedVideoFrameRepresentation::get_audio_sample_count(
 
 std::vector<int16_t> StackedVideoFrameRepresentation::get_audio_samples(
     size_t track, FrameID id) const {
-  if (!has_audio()) {
+  const auto ref = reference_audio_source();
+  if (!ref) {
+    return {};
+  }
+  const auto desc = ref->get_audio_track_descriptor(track);
+  if (!desc) {
+    return {};
+  }
+  if (!desc->locked) {
+    // Free-running tracks answer the locked accessors with {} — they are
+    // served through the stream accessors from the reference source.
     return {};
   }
 
-  if (track != 0) {
-    // Only track 0 is stacked; other tracks pass through from the first
-    // source carrying audio (multi-track stacking arrives with the
-    // frame-manipulation generalisation).
-    for (const auto& src : sources_) {
-      if (src && src->has_audio() && src->has_frame(id)) {
-        return src->get_audio_samples(track, id);
+  if (!track_locked_in_all_sources(track)) {
+    // Tracks not common to all inputs pass through from the per-frame best
+    // source (falling back to the first source that carries the frame).
+    const auto src_ids = collect_source_frame_ids(id);
+    const size_t best = get_best_source_index(id);
+    if (best < sources_.size() && src_ids[best] != UINT64_MAX &&
+        sources_[best] && track < sources_[best]->audio_track_count()) {
+      return sources_[best]->get_audio_samples(track, src_ids[best]);
+    }
+    for (size_t i = 0; i < sources_.size(); ++i) {
+      if (sources_[i] && src_ids[i] != UINT64_MAX &&
+          track < sources_[i]->audio_track_count()) {
+        return sources_[i]->get_audio_samples(track, src_ids[i]);
       }
     }
     return {};
   }
 
+  const FrameID key = audio_cache_key(id, track);
   {
     std::lock_guard<std::mutex> lk(cache_mutex_);
-    if (const auto* p = stacked_audio_.get_ptr(id)) {
+    if (const auto* p = stacked_audio_.get_ptr(key)) {
       return *p;
     }
   }
 
   size_t best = get_best_source_index(id);
   auto src_ids = collect_source_frame_ids(id);
-  auto result = stage_->stack_audio(src_ids, sources_, best);
+  auto result = stage_->stack_audio(track, src_ids, sources_, best);
 
   std::lock_guard<std::mutex> lk(cache_mutex_);
-  if (!stacked_audio_.contains(id)) {
-    stacked_audio_.put(id, result);
+  if (!stacked_audio_.contains(key)) {
+    stacked_audio_.put(key, result);
   }
   return result;
+}
+
+uint64_t StackedVideoFrameRepresentation::get_audio_stream_pair_count(
+    size_t track) const {
+  // Free-running streams are never combined; they pass through from the
+  // reference source unchanged.
+  const auto ref = reference_audio_source();
+  return ref ? ref->get_audio_stream_pair_count(track) : 0;
+}
+
+std::vector<int16_t> StackedVideoFrameRepresentation::get_audio_stream_samples(
+    size_t track, uint64_t first_pair, uint32_t pair_count) const {
+  const auto ref = reference_audio_source();
+  return ref ? ref->get_audio_stream_samples(track, first_pair, pair_count)
+             : std::vector<int16_t>{};
 }
 
 // ── EFM ──────────────────────────────────────────────────────────────────────
@@ -508,8 +552,6 @@ std::vector<ArtifactPtr> StackerStage::execute(
     const std::vector<ArtifactPtr>& inputs,
     const std::map<std::string, ParameterValue>& parameters,
     ObservationContext& observation_context) {
-  (void)observation_context;
-
   if (inputs.empty()) {
     throw DAGExecutionError("StackerStage requires at least 1 input");
   }
@@ -525,6 +567,42 @@ std::vector<ArtifactPtr> StackerStage::execute(
           "StackerStage: input is not a VideoFrameRepresentation");
     }
     sources.push_back(vfr);
+  }
+
+  // Free-running tracks are never combined (independent captures share no
+  // sample clock — sample-wise mean/median would comb-filter the audio).
+  // Only the reference source's free-running tracks pass through; warn when
+  // other inputs' free-running tracks are discarded.
+  if (sources.size() > 1) {
+    size_t reference = sources.size();
+    for (size_t i = 0; i < sources.size(); ++i) {
+      if (sources[i] && sources[i]->has_audio()) {
+        reference = i;
+        break;
+      }
+    }
+    std::string discarded;
+    for (size_t i = 0; i < sources.size(); ++i) {
+      if (i == reference || !sources[i]) continue;
+      for (size_t track = 0; track < sources[i]->audio_track_count(); ++track) {
+        const auto desc = sources[i]->get_audio_track_descriptor(track);
+        if (desc && !desc->locked) {
+          if (!discarded.empty()) discarded += ", ";
+          discarded +=
+              "input " + std::to_string(i) + " track " + std::to_string(track);
+        }
+      }
+    }
+    if (!discarded.empty()) {
+      const std::string message =
+          "free-running audio tracks are never combined; discarding " +
+          discarded +
+          " (only the reference source's free-running tracks pass through). "
+          "Lock audio at the sources to stack analogue audio.";
+      observation_context.set(FieldID(0), "stacker",
+                              "free_running_tracks_discarded", message);
+      ORC_LOG_WARN("StackerStage: {}", message);
+    }
   }
 
   // Serialize access to cached_output_ and cached_sources_: two concurrent
@@ -1093,31 +1171,20 @@ std::vector<int16_t> StackerStage::diff_dod(const std::vector<int16_t>& input,
 // ── Audio / EFM ──────────────────────────────────────────────────────────────
 
 std::vector<int16_t> StackerStage::stack_audio(
-    const std::vector<FrameID>& source_ids,
+    size_t track, const std::vector<FrameID>& source_ids,
     const std::vector<std::shared_ptr<const VideoFrameRepresentation>>& sources,
     size_t best_src) const {
   if (m_audio_stacking_mode == AudioStackingMode::DISABLED) {
     if (best_src < sources.size() && source_ids[best_src] != UINT64_MAX &&
         sources[best_src] && sources[best_src]->has_audio()) {
-      return sources[best_src]->get_audio_samples(0, source_ids[best_src]);
+      return sources[best_src]->get_audio_samples(track, source_ids[best_src]);
     }
     return {};
   }
 
-  // Free-running track 0: pass from the first unlocked source unchanged
-  // (its per-frame accessor returns {} — free-running streams are never
-  // combined).
-  for (size_t i = 0; i < sources.size(); ++i) {
-    if (source_ids[i] == UINT64_MAX || !sources[i]) {
-      continue;
-    }
-    const auto desc = sources[i]->get_audio_track_descriptor(0);
-    if (desc && !desc->locked) {
-      return sources[i]->get_audio_samples(0, source_ids[i]);
-    }
-  }
-
-  // Locked audio: collect and stack.
+  // Locked audio: collect and stack. The caller only invokes this for tracks
+  // locked in every source; skipping unlocked descriptors here is a safety
+  // net (free-running streams are never combined).
   std::vector<std::vector<int16_t>> all_audio;
   for (size_t i = 0; i < sources.size(); ++i) {
     if (source_ids[i] == UINT64_MAX || !sources[i]) {
@@ -1126,7 +1193,11 @@ std::vector<int16_t> StackerStage::stack_audio(
     if (!sources[i]->has_audio() || !sources[i]->has_frame(source_ids[i])) {
       continue;
     }
-    auto s = sources[i]->get_audio_samples(0, source_ids[i]);
+    const auto desc = sources[i]->get_audio_track_descriptor(track);
+    if (!desc || !desc->locked) {
+      continue;
+    }
+    auto s = sources[i]->get_audio_samples(track, source_ids[i]);
     if (!s.empty()) {
       all_audio.push_back(std::move(s));
     }

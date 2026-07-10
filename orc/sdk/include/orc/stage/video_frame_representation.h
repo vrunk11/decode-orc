@@ -249,9 +249,13 @@ class VideoFrameRepresentation {
 //    A stage that remaps frame IDs MUST override every per-frame accessor in
 //    this group so IDs are translated on the way through. For audio that
 //    means the LOCKED per-frame accessors (get_audio_sample_count /
-//    get_audio_samples, per track); the free-running stream accessors
+//    get_audio_samples, per track). The free-running stream accessors
 //    (get_audio_stream_pair_count / get_audio_stream_samples) carry no frame
-//    IDs and forward untouched.
+//    IDs; a stage that changes frame TIMING (trim, pad, reorder) MUST also
+//    remap them in the time domain — derive the output stream from the frame
+//    mapping using audio_stream_pair_offset() (audio_track.h) so window
+//    boundaries agree pipeline-wide. Stages that keep frame timing unchanged
+//    leave the stream accessors forwarding untouched.
 //
 // 2. Derived accessors — implemented here in terms of this object's own
 //    virtual primitives, never forwarded:

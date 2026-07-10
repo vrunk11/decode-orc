@@ -65,6 +65,9 @@ function(orc_add_core_unit_tests target labels)
                         orc-stage-plugin-ld-sink
                         orc-stage-plugin-efm-sink
                         orc-stage-plugin-efm-audio-decode
+                        orc-stage-plugin-audio-track-import
+                        orc-stage-plugin-audio-channel-map
+                        orc-stage-plugin-audio-align
                         orc-stage-plugin-raw-efm-sink
                         orc-stage-plugin-ac3rf-sink
                         orc-stage-plugin-dropout-analysis-sink
@@ -112,6 +115,9 @@ orc_add_core_unit_tests(
         stages/source_align/source_align_stage_test.cpp
         stages/mask_line/mask_line_stage_test.cpp
         stages/efm_audio_decode/efm_audio_decode_stage_test.cpp
+        stages/audio_track_import/audio_track_import_stage_test.cpp
+        stages/audio_channel_map/audio_channel_map_stage_test.cpp
+        stages/audio_align/audio_align_stage_test.cpp
 )
 
 orc_add_core_unit_tests(

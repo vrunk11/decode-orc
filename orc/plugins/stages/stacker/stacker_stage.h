@@ -79,15 +79,23 @@ class StackedVideoFrameRepresentation : public VideoFrameRepresentationWrapper,
   // Hints — after stacking only residual dropouts remain
   std::vector<DropoutRun> get_dropout_hints(FrameID id) const override;
 
-  // Audio — track count and descriptors come from the first source carrying
-  // audio; locked track 0 is stacked per the audio_stacking parameter (see
-  // design §11.4)
+  // Audio — track count and descriptors come from the reference source (the
+  // first source carrying audio). Every locked track present and locked in
+  // ALL inputs is stacked per the audio_stacking parameter; locked tracks
+  // not common to all inputs pass through from the per-frame best source.
+  // Free-running tracks are NEVER combined (independent captures share no
+  // sample clock): their streams pass through from the reference source
+  // unchanged and other inputs' free-running tracks are discarded (the stage
+  // emits a warning observation at execute time).
   size_t audio_track_count() const override;
   std::optional<AudioTrackDescriptor> get_audio_track_descriptor(
       size_t track) const override;
   uint32_t get_audio_sample_count(size_t track, FrameID id) const override;
   std::vector<int16_t> get_audio_samples(size_t track,
                                          FrameID id) const override;
+  uint64_t get_audio_stream_pair_count(size_t track) const override;
+  std::vector<int16_t> get_audio_stream_samples(
+      size_t track, uint64_t first_pair, uint32_t pair_count) const override;
 
   // EFM
   bool has_efm() const override;
@@ -130,6 +138,21 @@ class StackedVideoFrameRepresentation : public VideoFrameRepresentationWrapper,
 
   // Build the per-source frame ID vector for stacking (colour-frame aligned)
   std::vector<FrameID> collect_source_frame_ids(FrameID ref_id) const;
+
+  // The reference source for audio metadata and free-running streams: the
+  // first source carrying audio (nullptr when none does).
+  std::shared_ptr<const VideoFrameRepresentation> reference_audio_source()
+      const;
+
+  // True when |track| exists and is locked in every source — the
+  // precondition for combining it across inputs.
+  bool track_locked_in_all_sources(size_t track) const;
+
+  // stacked_audio_ is keyed per (frame, track); kMaxAudioTracks = 16 leaves
+  // the low 4 bits for the track index.
+  static FrameID audio_cache_key(FrameID id, size_t track) {
+    return (id << 4) | static_cast<FrameID>(track);
+  }
 };
 
 // ============================================================================
@@ -261,7 +284,7 @@ class StackerStage : public DAGStage,
 
   // Audio and EFM stacking helpers
   std::vector<int16_t> stack_audio(
-      const std::vector<FrameID>& source_ids,
+      size_t track, const std::vector<FrameID>& source_ids,
       const std::vector<std::shared_ptr<const VideoFrameRepresentation>>&
           sources,
       size_t best_src) const;

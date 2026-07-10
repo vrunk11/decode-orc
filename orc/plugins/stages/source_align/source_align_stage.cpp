@@ -34,7 +34,13 @@ class AlignedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
         Artifact(ArtifactID("aligned_source_" + std::to_string(source_index) +
                             "_offset_" + std::to_string(offset)),
                  Provenance{}),
-        offset_(offset) {}
+        offset_(offset) {
+    if (source_) {
+      if (auto params = source_->get_video_parameters()) {
+        system_ = params->system;
+      }
+    }
+  }
 
   std::string type_name() const override {
     return "aligned_source_frame_representation";
@@ -123,8 +129,7 @@ class AlignedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
     return runs;
   }
 
-  // Per-frame (locked) audio / EFM / AC3 must follow the shifted frame IDs;
-  // free-running stream accessors forward untouched via the wrapper base.
+  // Per-frame (locked) audio / EFM / AC3 must follow the shifted frame IDs.
   uint32_t get_audio_sample_count(size_t track, FrameID id) const override {
     return source_ ? source_->get_audio_sample_count(track, id + offset_) : 0;
   }
@@ -133,6 +138,24 @@ class AlignedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
                                          FrameID id) const override {
     return source_ ? source_->get_audio_samples(track, id + offset_)
                    : std::vector<int16_t>{};
+  }
+
+  // Free-running tracks shift in the TIME domain: trimming offset_ leading
+  // frames trims audio_stream_pair_offset(offset_) leading stream pairs, so
+  // the track stays in sync with the shifted video (an implicit per-track
+  // align).
+  uint64_t get_audio_stream_pair_count(size_t track) const override {
+    if (!source_) return 0;
+    const uint64_t total = source_->get_audio_stream_pair_count(track);
+    const uint64_t trim = stream_trim_pairs(track);
+    return total > trim ? total - trim : 0;
+  }
+
+  std::vector<int16_t> get_audio_stream_samples(
+      size_t track, uint64_t first_pair, uint32_t pair_count) const override {
+    if (!source_) return {};
+    return source_->get_audio_stream_samples(
+        track, first_pair + stream_trim_pairs(track), pair_count);
   }
 
   uint32_t get_efm_sample_count(FrameID id) const override {
@@ -154,7 +177,16 @@ class AlignedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
   }
 
  private:
+  // Leading stream pairs to trim for |track|: 0 for locked or unknown tracks
+  // (their stream accessors answer 0 / {} at the source anyway).
+  uint64_t stream_trim_pairs(size_t track) const {
+    const auto desc = source_->get_audio_track_descriptor(track);
+    if (!desc || desc->locked) return 0;
+    return audio_stream_pair_offset(offset_, desc->sample_rate, system_);
+  }
+
   FrameID offset_;
+  VideoSystem system_ = VideoSystem::Unknown;
 };
 
 // ============================================================================
@@ -281,17 +313,69 @@ class PaddedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
   }
 
   // Per-frame (locked) audio / EFM / AC3 must follow the shifted frame IDs;
-  // padding frames carry no audio, EFM, or AC3 data. Free-running stream
-  // accessors forward untouched via the wrapper base.
+  // padding frames carry locked-size silence for locked audio tracks (so the
+  // track keeps its exact pairs-per-frame layout) and no EFM or AC3 data.
   uint32_t get_audio_sample_count(size_t track, FrameID id) const override {
-    if (id < pad_count_ || !source_) return 0;
+    if (!source_) return 0;
+    if (id < pad_count_) {
+      const auto desc = source_->get_audio_track_descriptor(track);
+      if (!desc || !desc->locked) return 0;
+      return locked_audio_pairs_per_frame(pad_system_);
+    }
     return source_->get_audio_sample_count(track, id - pad_count_);
   }
 
   std::vector<int16_t> get_audio_samples(size_t track,
                                          FrameID id) const override {
-    if (id < pad_count_ || !source_) return {};
+    if (!source_) return {};
+    if (id < pad_count_) {
+      const auto desc = source_->get_audio_track_descriptor(track);
+      if (!desc || !desc->locked) return {};
+      const uint32_t pairs = locked_audio_pairs_per_frame(pad_system_);
+      return std::vector<int16_t>(static_cast<size_t>(pairs) * 2, 0);
+    }
     return source_->get_audio_samples(track, id - pad_count_);
+  }
+
+  // Free-running tracks shift in the TIME domain: prepending pad_count_
+  // padding frames prepends audio_stream_pair_offset(pad_count_) silence
+  // pairs, so the track stays in sync with the padded video.
+  uint64_t get_audio_stream_pair_count(size_t track) const override {
+    if (!source_) return 0;
+    const uint64_t total = source_->get_audio_stream_pair_count(track);
+    return total + stream_lead_in_pairs(track);
+  }
+
+  std::vector<int16_t> get_audio_stream_samples(
+      size_t track, uint64_t first_pair, uint32_t pair_count) const override {
+    if (!source_) return {};
+    const uint64_t lead_in = stream_lead_in_pairs(track);
+    if (lead_in == 0) {
+      return source_->get_audio_stream_samples(track, first_pair, pair_count);
+    }
+    const uint64_t total =
+        source_->get_audio_stream_pair_count(track) + lead_in;
+    if (first_pair >= total) return {};
+    const uint32_t clamped = static_cast<uint32_t>(
+        std::min<uint64_t>(pair_count, total - first_pair));
+
+    std::vector<int16_t> out;
+    out.reserve(static_cast<size_t>(clamped) * 2);
+    uint64_t pos = first_pair;
+    uint32_t remaining = clamped;
+    if (pos < lead_in) {
+      const uint32_t silence =
+          static_cast<uint32_t>(std::min<uint64_t>(lead_in - pos, remaining));
+      out.insert(out.end(), static_cast<size_t>(silence) * 2, 0);
+      pos += silence;
+      remaining -= silence;
+    }
+    if (remaining > 0) {
+      const auto src =
+          source_->get_audio_stream_samples(track, pos - lead_in, remaining);
+      out.insert(out.end(), src.begin(), src.end());
+    }
+    return out;
   }
 
   uint32_t get_efm_sample_count(FrameID id) const override {
@@ -318,6 +402,14 @@ class PaddedSourceFrameRepresentation : public VideoFrameRepresentationWrapper,
   void ensure_black_frame() const {
     if (!black_frame_.empty() || pad_samples_total_ == 0) return;
     black_frame_.assign(pad_samples_total_, blanking_level_);
+  }
+
+  // Silence stream pairs prepended for |track|: 0 for locked or unknown
+  // tracks (their stream accessors answer 0 / {} at the source anyway).
+  uint64_t stream_lead_in_pairs(size_t track) const {
+    const auto desc = source_->get_audio_track_descriptor(track);
+    if (!desc || desc->locked) return 0;
+    return audio_stream_pair_offset(pad_count_, desc->sample_rate, pad_system_);
   }
 
   size_t pad_count_;
