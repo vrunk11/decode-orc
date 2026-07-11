@@ -65,7 +65,7 @@ function(orc_add_core_unit_tests target labels)
                         orc-stage-plugin-ld-sink
                         orc-stage-plugin-efm-sink
                         orc-stage-plugin-efm-audio-decode
-                        orc-stage-plugin-audio-track-import
+                        orc-stage-plugin-audio-import
                         orc-stage-plugin-audio-channel-map
                         orc-stage-plugin-audio-align
                         orc-stage-plugin-raw-efm-sink
@@ -115,7 +115,7 @@ orc_add_core_unit_tests(
         stages/source_align/source_align_stage_test.cpp
         stages/mask_line/mask_line_stage_test.cpp
         stages/efm_audio_decode/efm_audio_decode_stage_test.cpp
-        stages/audio_track_import/audio_track_import_stage_test.cpp
+        stages/audio_import/audio_import_stage_test.cpp
         stages/audio_channel_map/audio_channel_map_stage_test.cpp
         stages/audio_align/audio_align_stage_test.cpp
 )
@@ -162,7 +162,7 @@ orc_add_core_unit_tests(
         contracts/project_to_dag_contract_test.cpp
         contracts/plugin_safe_call_test.cpp
         contracts/video_frame_representation_wrapper_contract_test.cpp
-        contracts/audio_track_contract_test.cpp
+        contracts/audio_channel_pair_contract_test.cpp
 )
 
 # ---------------------------------------------------------------------------

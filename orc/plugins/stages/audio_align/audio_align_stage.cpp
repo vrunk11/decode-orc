@@ -1,7 +1,8 @@
 /*
  * File:        audio_align_stage.cpp
  * Module:      orc-stage-plugin-audio_align
- * Purpose:     Per-track audio sync adjustment transform stage (VFrameR)
+ * Purpose:     Per-channel-pair audio sync adjustment transform stage
+ *              (VFrameR)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -19,58 +20,90 @@
 
 namespace orc {
 
-// ============================================================================
-// AlignedAudioTrackRepresentation
-// ============================================================================
+namespace {
 
-std::vector<int16_t> AlignedAudioTrackRepresentation::get_audio_samples(
-    size_t track, FrameID id) const {
-  if (!source_) return {};
-  if (track != target_track_) return source_->get_audio_samples(track, id);
-  const auto desc = source_->get_audio_track_descriptor(track);
-  if (!desc || !desc->locked) {
-    // Free-running tracks answer the locked accessors with {}; forwarding
-    // preserves that.
-    return source_->get_audio_samples(track, id);
+// Frame index n whose audio window contains absolute stereo-pair position
+// |pos|: audio_pair_offset(n) <= pos < audio_pair_offset(n + 1). The cadence
+// is exactly periodic (PAL 1920 pairs/frame; NTSC/PAL-M 8008 pairs per
+// 5-frame sequence, SMPTE 272M-1994 §14.3), so the rational estimate is at
+// most one frame off and each adjustment loop runs at most once.
+uint64_t frame_containing_pair(uint64_t pos, VideoSystem system) {
+  switch (system) {
+    case VideoSystem::PAL:
+      return pos / 1920u;
+    case VideoSystem::NTSC:
+    case VideoSystem::PAL_M: {
+      uint64_t n = pos * 5u / 8008u;
+      while (audio_pair_offset(n + 1, system) <= pos) ++n;
+      while (n > 0 && audio_pair_offset(n, system) > pos) --n;
+      return n;
+    }
+    default:
+      return 0;
   }
-  return assemble_locked_window(id);
 }
 
-std::vector<int16_t> AlignedAudioTrackRepresentation::assemble_locked_window(
+}  // namespace
+
+// ============================================================================
+// AlignedAudioChannelPairRepresentation
+// ============================================================================
+
+std::vector<int32_t> AlignedAudioChannelPairRepresentation::get_audio_samples(
+    size_t pair, FrameID id) const {
+  if (!source_) return {};
+  if (pair >= source_->audio_channel_pair_count()) return {};
+  if (pair != target_pair_) return source_->get_audio_samples(pair, id);
+  return assemble_shifted_window(id);
+}
+
+std::vector<int32_t>
+AlignedAudioChannelPairRepresentation::assemble_shifted_window(
     FrameID id) const {
-  // Locked tracks carry a constant number of stereo pairs per frame (PAL
-  // 1764, NTSC/PAL-M 1470), so this frame's own pair count doubles as the
-  // global frame-window stride when mapping track positions to frames.
-  const int64_t pairs =
-      static_cast<int64_t>(source_->get_audio_sample_count(target_track_, id));
+  // The output window for frame |id| covers absolute stream pair positions
+  // [audio_pair_offset(id) - offset, audio_pair_offset(id + 1) - offset).
+  // Cumulative audio_pair_offset() arithmetic — never a constant per-frame
+  // stride — keeps the NTSC/PAL-M 1602/1601 cadence exact when the window
+  // crosses frame boundaries.
+  const auto params = source_->get_video_parameters();
+  const VideoSystem system = params ? params->system : VideoSystem::Unknown;
+  const int64_t pairs = static_cast<int64_t>(audio_pairs_in_frame(id, system));
   if (pairs <= 0) return {};
 
   const auto range = source_->frame_range();
-  if (id < range.first) return {};
-  const int64_t index =
-      static_cast<int64_t>(id) - static_cast<int64_t>(range.first);
-  const int64_t last_index =
-      static_cast<int64_t>(range.last) - static_cast<int64_t>(range.first);
+  if (range.empty() || id < range.first || id > range.last) return {};
+
+  // Stream extent in absolute pair coordinates.
+  const int64_t stream_begin =
+      static_cast<int64_t>(audio_pair_offset(range.first, system));
+  const int64_t stream_end =
+      static_cast<int64_t>(audio_pair_offset(range.last + 1, system));
 
   // A positive offset delays the audio relative to the video, so output
   // position q reads source position q - offset.
-  std::vector<int16_t> out(static_cast<size_t>(pairs) * 2, 0);
-  int64_t src_pos = index * pairs - offset_pairs_;
+  std::vector<int32_t> out(static_cast<size_t>(pairs) * 2, 0);
+  int64_t src_pos =
+      static_cast<int64_t>(audio_pair_offset(id, system)) - offset_pairs_;
   int64_t out_pair = 0;
   while (out_pair < pairs) {
-    if (src_pos < 0) {
-      // Before the start of the track: leave silence.
-      const int64_t skip = std::min(-src_pos, pairs - out_pair);
+    if (src_pos < stream_begin) {
+      // Before the start of the stream: leave silence.
+      const int64_t skip = std::min(stream_begin - src_pos, pairs - out_pair);
       src_pos += skip;
       out_pair += skip;
       continue;
     }
-    const int64_t src_frame = src_pos / pairs;
-    if (src_frame > last_index) break;  // past the end: silence tail
-    const int64_t within = src_pos % pairs;
-    const int64_t take = std::min(pairs - within, pairs - out_pair);
-    const auto src = source_->get_audio_samples(
-        target_track_, range.first + static_cast<FrameID>(src_frame));
+    if (src_pos >= stream_end) break;  // past the end: silence tail
+
+    const uint64_t src_frame =
+        frame_containing_pair(static_cast<uint64_t>(src_pos), system);
+    const int64_t frame_start =
+        static_cast<int64_t>(audio_pair_offset(src_frame, system));
+    const int64_t frame_pairs =
+        static_cast<int64_t>(audio_pairs_in_frame(src_frame, system));
+    const int64_t within = src_pos - frame_start;
+    const int64_t take = std::min(frame_pairs - within, pairs - out_pair);
+    const auto src = source_->get_audio_samples(target_pair_, src_frame);
     for (int64_t p = 0; p < take; ++p) {
       const size_t sp = static_cast<size_t>(within + p) * 2;
       if (sp + 1 < src.size()) {
@@ -80,65 +113,6 @@ std::vector<int16_t> AlignedAudioTrackRepresentation::assemble_locked_window(
     }
     src_pos += take;
     out_pair += take;
-  }
-  return out;
-}
-
-uint64_t AlignedAudioTrackRepresentation::get_audio_stream_pair_count(
-    size_t track) const {
-  if (!source_) return 0;
-  const uint64_t total = source_->get_audio_stream_pair_count(track);
-  if (track != target_track_) return total;
-  const auto desc = source_->get_audio_track_descriptor(track);
-  if (!desc || desc->locked) return total;
-  if (offset_pairs_ >= 0) {
-    return total + static_cast<uint64_t>(offset_pairs_);
-  }
-  const uint64_t trim = static_cast<uint64_t>(-offset_pairs_);
-  return total > trim ? total - trim : 0;
-}
-
-std::vector<int16_t> AlignedAudioTrackRepresentation::get_audio_stream_samples(
-    size_t track, uint64_t first_pair, uint32_t pair_count) const {
-  if (!source_) return {};
-  if (track != target_track_) {
-    return source_->get_audio_stream_samples(track, first_pair, pair_count);
-  }
-  const auto desc = source_->get_audio_track_descriptor(track);
-  if (!desc || desc->locked) {
-    return source_->get_audio_stream_samples(track, first_pair, pair_count);
-  }
-
-  if (offset_pairs_ < 0) {
-    // Advanced audio: the stream starts |offset_pairs_| pairs in.
-    const uint64_t trim = static_cast<uint64_t>(-offset_pairs_);
-    return source_->get_audio_stream_samples(track, first_pair + trim,
-                                             pair_count);
-  }
-
-  // Delayed audio: silence lead-in of offset_pairs_ pairs, then the source
-  // stream from position first_pair - offset_pairs_.
-  const uint64_t total = get_audio_stream_pair_count(track);
-  if (first_pair >= total) return {};
-  const uint32_t clamped =
-      static_cast<uint32_t>(std::min<uint64_t>(pair_count, total - first_pair));
-  const uint64_t lead_in = static_cast<uint64_t>(offset_pairs_);
-
-  std::vector<int16_t> out;
-  out.reserve(static_cast<size_t>(clamped) * 2);
-  uint32_t remaining = clamped;
-  uint64_t pos = first_pair;
-  if (pos < lead_in) {
-    const uint32_t silence =
-        static_cast<uint32_t>(std::min<uint64_t>(lead_in - pos, remaining));
-    out.insert(out.end(), static_cast<size_t>(silence) * 2, 0);
-    pos += silence;
-    remaining -= silence;
-  }
-  if (remaining > 0) {
-    const auto src =
-        source_->get_audio_stream_samples(track, pos - lead_in, remaining);
-    out.insert(out.end(), src.begin(), src.end());
   }
   return out;
 }
@@ -169,12 +143,13 @@ std::vector<ArtifactPtr> AudioAlignStage::execute(
 
   if (!parameters.empty()) set_parameters(parameters);
 
-  const size_t track = static_cast<size_t>(track_);
-  if (track >= vfr->audio_track_count()) {
-    throw DAGExecutionError("AudioAlignStage: track " + std::to_string(track_) +
+  const size_t pair = static_cast<size_t>(channel_pair_);
+  if (pair >= vfr->audio_channel_pair_count()) {
+    throw DAGExecutionError("AudioAlignStage: channel pair " +
+                            std::to_string(channel_pair_) +
                             " is out of range: the input carries " +
-                            std::to_string(vfr->audio_track_count()) +
-                            " audio track(s)");
+                            std::to_string(vfr->audio_channel_pair_count()) +
+                            " audio channel pair(s)");
   }
 
   auto output = process(vfr);
@@ -186,9 +161,10 @@ std::vector<ArtifactPtr> AudioAlignStage::execute(
   }
 
   std::vector<ArtifactPtr> outputs;
-  outputs.push_back(std::const_pointer_cast<AlignedAudioTrackRepresentation>(
-      std::dynamic_pointer_cast<const AlignedAudioTrackRepresentation>(
-          output)));
+  outputs.push_back(
+      std::const_pointer_cast<AlignedAudioChannelPairRepresentation>(
+          std::dynamic_pointer_cast<
+              const AlignedAudioChannelPairRepresentation>(output)));
   return outputs;
 }
 
@@ -196,20 +172,14 @@ std::shared_ptr<const VideoFrameRepresentation> AudioAlignStage::process(
     std::shared_ptr<const VideoFrameRepresentation> source) const {
   if (!source) return nullptr;
 
-  // Convert the millisecond offset to whole stereo pairs at the target
-  // track's exact rational rate.
-  const auto desc =
-      source->get_audio_track_descriptor(static_cast<size_t>(track_));
-  const AudioSampleRate rate =
-      (desc && desc->sample_rate.num != 0 && desc->sample_rate.den != 0)
-          ? desc->sample_rate
-          : kFreeRunningAudioRate;
-  const int64_t offset_pairs = static_cast<int64_t>(
-      std::llround(offset_ms_ * rate.num / (1000.0 * rate.den)));
+  // SMPTE 272M-1994 §1.2: every channel pair is 48000 Hz synchronous, so a
+  // millisecond offset converts at exactly 48 stereo pairs per millisecond.
+  const int64_t offset_pairs = static_cast<int64_t>(std::llround(
+      offset_ms_ * static_cast<double>(kAudioSampleRateHz) / 1000.0));
 
   if (offset_pairs == 0) return source;
-  return std::make_shared<AlignedAudioTrackRepresentation>(
-      std::move(source), static_cast<size_t>(track_), offset_pairs);
+  return std::make_shared<AlignedAudioChannelPairRepresentation>(
+      std::move(source), static_cast<size_t>(channel_pair_), offset_pairs);
 }
 
 std::vector<ParameterDescriptor> AudioAlignStage::get_parameter_descriptors(
@@ -220,14 +190,15 @@ std::vector<ParameterDescriptor> AudioAlignStage::get_parameter_descriptors(
 
   {
     ParameterDescriptor desc;
-    desc.name = "track";
-    desc.display_name = "Track";
+    desc.name = "channel_pair";
+    desc.display_name = "Channel pair";
     desc.description =
-        "Audio track to shift (0-based, matching the CVBS container track "
-        "numbering)";
+        "Audio channel pair to shift (0-based, matching the CVBS container "
+        "channel-pair numbering)";
     desc.type = ParameterType::INT32;
     desc.constraints.min_value = int32_t{0};
-    desc.constraints.max_value = static_cast<int32_t>(kMaxAudioTracks) - 1;
+    desc.constraints.max_value =
+        static_cast<int32_t>(kMaxAudioChannelPairs) - 1;
     desc.constraints.default_value = int32_t{0};
     descriptors.push_back(desc);
   }
@@ -249,19 +220,19 @@ std::vector<ParameterDescriptor> AudioAlignStage::get_parameter_descriptors(
 }
 
 std::map<std::string, ParameterValue> AudioAlignStage::get_parameters() const {
-  return {{"track", track_}, {"offset_ms", offset_ms_}};
+  return {{"channel_pair", channel_pair_}, {"offset_ms", offset_ms_}};
 }
 
 bool AudioAlignStage::set_parameters(
     const std::map<std::string, ParameterValue>& params) {
   for (const auto& [key, value] : params) {
-    if (key == "track") {
+    if (key == "channel_pair") {
       const auto* v = std::get_if<int32_t>(&value);
-      if (!v || *v < 0 || *v >= static_cast<int32_t>(kMaxAudioTracks)) {
-        ORC_LOG_ERROR("AudioAlignStage: invalid track parameter");
+      if (!v || *v < 0 || *v >= static_cast<int32_t>(kMaxAudioChannelPairs)) {
+        ORC_LOG_ERROR("AudioAlignStage: invalid channel_pair parameter");
         return false;
       }
-      track_ = *v;
+      channel_pair_ = *v;
     } else if (key == "offset_ms") {
       const auto* v = std::get_if<double>(&value);
       if (!v) {

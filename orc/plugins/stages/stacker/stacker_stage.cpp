@@ -397,73 +397,51 @@ StackedVideoFrameRepresentation::reference_audio_source() const {
   return nullptr;
 }
 
-bool StackedVideoFrameRepresentation::track_locked_in_all_sources(
-    size_t track) const {
+bool StackedVideoFrameRepresentation::pair_in_all_sources(size_t pair) const {
   for (const auto& src : sources_) {
-    if (!src) return false;
-    const auto desc = src->get_audio_track_descriptor(track);
-    if (!desc || !desc->locked) return false;
+    if (!src || pair >= src->audio_channel_pair_count()) return false;
   }
   return true;
 }
 
-size_t StackedVideoFrameRepresentation::audio_track_count() const {
+size_t StackedVideoFrameRepresentation::audio_channel_pair_count() const {
   const auto ref = reference_audio_source();
-  return ref ? ref->audio_track_count() : 0;
+  return ref ? ref->audio_channel_pair_count() : 0;
 }
 
-std::optional<AudioTrackDescriptor>
-StackedVideoFrameRepresentation::get_audio_track_descriptor(
-    size_t track) const {
+std::optional<AudioChannelPairDescriptor>
+StackedVideoFrameRepresentation::get_audio_channel_pair_descriptor(
+    size_t pair) const {
   const auto ref = reference_audio_source();
-  return ref ? ref->get_audio_track_descriptor(track) : std::nullopt;
+  return ref ? ref->get_audio_channel_pair_descriptor(pair) : std::nullopt;
 }
 
-uint32_t StackedVideoFrameRepresentation::get_audio_sample_count(
-    size_t track, FrameID id) const {
-  for (const auto& src : sources_) {
-    if (src && src->has_audio() && src->has_frame(id)) {
-      return src->get_audio_sample_count(track, id);
-    }
-  }
-  return 0;
-}
-
-std::vector<int16_t> StackedVideoFrameRepresentation::get_audio_samples(
-    size_t track, FrameID id) const {
+std::vector<int32_t> StackedVideoFrameRepresentation::get_audio_samples(
+    size_t pair, FrameID id) const {
   const auto ref = reference_audio_source();
-  if (!ref) {
-    return {};
-  }
-  const auto desc = ref->get_audio_track_descriptor(track);
-  if (!desc) {
-    return {};
-  }
-  if (!desc->locked) {
-    // Free-running tracks answer the locked accessors with {} — they are
-    // served through the stream accessors from the reference source.
+  if (!ref || pair >= ref->audio_channel_pair_count()) {
     return {};
   }
 
-  if (!track_locked_in_all_sources(track)) {
-    // Tracks not common to all inputs pass through from the per-frame best
+  if (!pair_in_all_sources(pair)) {
+    // Pairs not common to all inputs pass through from the per-frame best
     // source (falling back to the first source that carries the frame).
     const auto src_ids = collect_source_frame_ids(id);
     const size_t best = get_best_source_index(id);
     if (best < sources_.size() && src_ids[best] != UINT64_MAX &&
-        sources_[best] && track < sources_[best]->audio_track_count()) {
-      return sources_[best]->get_audio_samples(track, src_ids[best]);
+        sources_[best] && pair < sources_[best]->audio_channel_pair_count()) {
+      return sources_[best]->get_audio_samples(pair, src_ids[best]);
     }
     for (size_t i = 0; i < sources_.size(); ++i) {
       if (sources_[i] && src_ids[i] != UINT64_MAX &&
-          track < sources_[i]->audio_track_count()) {
-        return sources_[i]->get_audio_samples(track, src_ids[i]);
+          pair < sources_[i]->audio_channel_pair_count()) {
+        return sources_[i]->get_audio_samples(pair, src_ids[i]);
       }
     }
     return {};
   }
 
-  const FrameID key = audio_cache_key(id, track);
+  const FrameID key = audio_cache_key(id, pair);
   {
     std::lock_guard<std::mutex> lk(cache_mutex_);
     if (const auto* p = stacked_audio_.get_ptr(key)) {
@@ -473,28 +451,13 @@ std::vector<int16_t> StackedVideoFrameRepresentation::get_audio_samples(
 
   size_t best = get_best_source_index(id);
   auto src_ids = collect_source_frame_ids(id);
-  auto result = stage_->stack_audio(track, src_ids, sources_, best);
+  auto result = stage_->stack_audio(pair, src_ids, sources_, best);
 
   std::lock_guard<std::mutex> lk(cache_mutex_);
   if (!stacked_audio_.contains(key)) {
     stacked_audio_.put(key, result);
   }
   return result;
-}
-
-uint64_t StackedVideoFrameRepresentation::get_audio_stream_pair_count(
-    size_t track) const {
-  // Free-running streams are never combined; they pass through from the
-  // reference source unchanged.
-  const auto ref = reference_audio_source();
-  return ref ? ref->get_audio_stream_pair_count(track) : 0;
-}
-
-std::vector<int16_t> StackedVideoFrameRepresentation::get_audio_stream_samples(
-    size_t track, uint64_t first_pair, uint32_t pair_count) const {
-  const auto ref = reference_audio_source();
-  return ref ? ref->get_audio_stream_samples(track, first_pair, pair_count)
-             : std::vector<int16_t>{};
 }
 
 // ── EFM ──────────────────────────────────────────────────────────────────────
@@ -551,7 +514,7 @@ StackerStage::StackerStage() = default;
 std::vector<ArtifactPtr> StackerStage::execute(
     const std::vector<ArtifactPtr>& inputs,
     const std::map<std::string, ParameterValue>& parameters,
-    ObservationContext& observation_context) {
+    ObservationContext& /*observation_context*/) {
   if (inputs.empty()) {
     throw DAGExecutionError("StackerStage requires at least 1 input");
   }
@@ -567,42 +530,6 @@ std::vector<ArtifactPtr> StackerStage::execute(
           "StackerStage: input is not a VideoFrameRepresentation");
     }
     sources.push_back(vfr);
-  }
-
-  // Free-running tracks are never combined (independent captures share no
-  // sample clock — sample-wise mean/median would comb-filter the audio).
-  // Only the reference source's free-running tracks pass through; warn when
-  // other inputs' free-running tracks are discarded.
-  if (sources.size() > 1) {
-    size_t reference = sources.size();
-    for (size_t i = 0; i < sources.size(); ++i) {
-      if (sources[i] && sources[i]->has_audio()) {
-        reference = i;
-        break;
-      }
-    }
-    std::string discarded;
-    for (size_t i = 0; i < sources.size(); ++i) {
-      if (i == reference || !sources[i]) continue;
-      for (size_t track = 0; track < sources[i]->audio_track_count(); ++track) {
-        const auto desc = sources[i]->get_audio_track_descriptor(track);
-        if (desc && !desc->locked) {
-          if (!discarded.empty()) discarded += ", ";
-          discarded +=
-              "input " + std::to_string(i) + " track " + std::to_string(track);
-        }
-      }
-    }
-    if (!discarded.empty()) {
-      const std::string message =
-          "free-running audio tracks are never combined; discarding " +
-          discarded +
-          " (only the reference source's free-running tracks pass through). "
-          "Lock audio at the sources to stack analogue audio.";
-      observation_context.set(FieldID(0), "stacker",
-                              "free_running_tracks_discarded", message);
-      ORC_LOG_WARN("StackerStage: {}", message);
-    }
   }
 
   // Serialize access to cached_output_ and cached_sources_: two concurrent
@@ -1170,34 +1097,30 @@ std::vector<int16_t> StackerStage::diff_dod(const std::vector<int16_t>& input,
 
 // ── Audio / EFM ──────────────────────────────────────────────────────────────
 
-std::vector<int16_t> StackerStage::stack_audio(
-    size_t track, const std::vector<FrameID>& source_ids,
+std::vector<int32_t> StackerStage::stack_audio(
+    size_t pair, const std::vector<FrameID>& source_ids,
     const std::vector<std::shared_ptr<const VideoFrameRepresentation>>& sources,
     size_t best_src) const {
   if (m_audio_stacking_mode == AudioStackingMode::DISABLED) {
     if (best_src < sources.size() && source_ids[best_src] != UINT64_MAX &&
         sources[best_src] && sources[best_src]->has_audio()) {
-      return sources[best_src]->get_audio_samples(track, source_ids[best_src]);
+      return sources[best_src]->get_audio_samples(pair, source_ids[best_src]);
     }
     return {};
   }
 
-  // Locked audio: collect and stack. The caller only invokes this for tracks
-  // locked in every source; skipping unlocked descriptors here is a safety
-  // net (free-running streams are never combined).
-  std::vector<std::vector<int16_t>> all_audio;
+  // Inputs are stacked at the same frame ID across sources, so per-frame
+  // pair counts always agree (audio_pairs_in_frame is a model invariant).
+  std::vector<std::vector<int32_t>> all_audio;
   for (size_t i = 0; i < sources.size(); ++i) {
     if (source_ids[i] == UINT64_MAX || !sources[i]) {
       continue;
     }
-    if (!sources[i]->has_audio() || !sources[i]->has_frame(source_ids[i])) {
+    if (pair >= sources[i]->audio_channel_pair_count() ||
+        !sources[i]->has_frame(source_ids[i])) {
       continue;
     }
-    const auto desc = sources[i]->get_audio_track_descriptor(track);
-    if (!desc || !desc->locked) {
-      continue;
-    }
-    auto s = sources[i]->get_audio_samples(track, source_ids[i]);
+    auto s = sources[i]->get_audio_samples(pair, source_ids[i]);
     if (!s.empty()) {
       all_audio.push_back(std::move(s));
     }
@@ -1211,9 +1134,9 @@ std::vector<int16_t> StackerStage::stack_audio(
   }
 
   size_t n = all_audio[0].size();
-  std::vector<int16_t> result(n);
+  std::vector<int32_t> result(n);
   for (size_t si = 0; si < n; ++si) {
-    std::vector<int16_t> vals;
+    std::vector<int32_t> vals;
     for (const auto& a : all_audio) {
       if (si < a.size()) {
         vals.push_back(a[si]);
@@ -1279,18 +1202,30 @@ std::vector<uint8_t> StackerStage::stack_efm(
   return result;
 }
 
-int16_t StackerStage::audio_mean(const std::vector<int16_t>& v) const {
+namespace {
+
+// Saturate a combined audio value to the 24-bit two's-complement range
+// carried in int32_t (see audio_channel_pair.h).
+int32_t saturate_audio_24bit(int64_t value) {
+  constexpr int64_t kMin = -8388608;
+  constexpr int64_t kMax = 8388607;
+  return static_cast<int32_t>(std::clamp(value, kMin, kMax));
+}
+
+}  // namespace
+
+int32_t StackerStage::audio_mean(const std::vector<int32_t>& v) const {
   if (v.empty()) {
     return 0;
   }
   int64_t s = 0;
-  for (int16_t x : v) {
+  for (int32_t x : v) {
     s += x;
   }
-  return static_cast<int16_t>(s / static_cast<int64_t>(v.size()));
+  return saturate_audio_24bit(s / static_cast<int64_t>(v.size()));
 }
 
-int16_t StackerStage::audio_median(std::vector<int16_t> v) const {
+int32_t StackerStage::audio_median(std::vector<int32_t> v) const {
   if (v.empty()) {
     return 0;
   }
@@ -1301,10 +1236,10 @@ int16_t StackerStage::audio_median(std::vector<int16_t> v) const {
     std::nth_element(v.begin(),
                      v.begin() + static_cast<std::ptrdiff_t>((n - 1) / 2),
                      v.end());
-    return static_cast<int16_t>(
-        (static_cast<int32_t>(v[(n - 1) / 2]) + v[n / 2]) / 2);
+    return saturate_audio_24bit(
+        (static_cast<int64_t>(v[(n - 1) / 2]) + v[n / 2]) / 2);
   }
-  return v[n / 2];
+  return saturate_audio_24bit(v[n / 2]);
 }
 
 uint8_t StackerStage::efm_mean(const std::vector<uint8_t>& v) const {

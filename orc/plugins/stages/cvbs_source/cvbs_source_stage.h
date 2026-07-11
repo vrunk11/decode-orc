@@ -44,10 +44,12 @@ struct CVBSMetadataRecord {
 };
 
 // One row of the .meta audio_track table (CVBS file format spec v1.2.0).
+// The pipeline has no free-running audio regime, so audio_locked is read but
+// ignored; the v1.3.0 audio_channel_pair table replaces this in Phase 2.
 struct CVBSAudioTrackRecord {
   int32_t track_number = 0;  // 0–15, matches the _audio_NN.wav suffix
   std::optional<std::string> description;  // human-readable; nullopt = NULL
-  bool locked = false;                     // per-track lock mode
+  bool locked = false;                     // legacy lock mode (ignored)
 };
 
 // Dependency injection interface for the CVBS source stage.
@@ -83,9 +85,15 @@ class ICVBSSourceStageDeps {
 
   // Total number of stereo pairs in the WAV's data payload
   // ((file size − 44-byte header) / 4).  Returns nullopt when the file is
-  // absent (no error) — this doubles as the per-track existence probe for
+  // absent (no error) — this doubles as the per-file existence probe for
   // the <basename>_audio_00.wav … _audio_15.wav enumeration.
   virtual std::optional<uint64_t> get_audio_pair_count(
+      const std::string& wav_path) const = 0;
+
+  // nSamplesPerSec from the WAV's RIFF fmt header.  Returns nullopt when the
+  // file is absent or the header cannot be read; callers fall back to the
+  // pipeline rate (48000 Hz) so such files pass through unresampled.
+  virtual std::optional<uint32_t> get_audio_sample_rate(
       const std::string& wav_path) const = 0;
 
   // Load all rows of the audio_track table from <basename>.meta
@@ -142,14 +150,14 @@ class ICVBSSourceStageDeps {
 //   y_path           – path to the luma channel file (.y) for YC mode
 //   c_path           – path to the chroma channel file (.c) for YC mode
 //   sample_encoding  – "From metadata" (default) or an explicit encoding
-//   lock_audio       – resample free-running audio tracks into frame-locked
-//                      tracks (default false: container timing preserved)
 //
 // Audio: every <basename>_audio_00.wav … _audio_15.wav sidecar becomes a
-// track.  Per-track descriptions and lock modes come from the .meta
-// audio_track table; tracks without a table row are treated as free-running.
-// Frame-locked tracks are served per frame; free-running tracks are served
-// via the stream accessors.
+// pipeline audio channel pair, in ascending container-number order (capped
+// at kMaxAudioChannelPairs).  Per-pair descriptions come from the .meta
+// audio_track table; pairs without a table row derive a "Track NN" name.
+// Each pair's 16-bit WAV payload is lazily widened to the 24-bit-in-int32
+// carrier and resampled to 48 kHz synchronous cadence blocks on first audio
+// access (SoXR HQ; a 48000 Hz payload passes through unresampled).
 //
 // YC mode is active when both y_path and c_path are non-empty; composite mode
 // uses input_path.  The two modes are mutually exclusive; the parameter
@@ -226,7 +234,6 @@ class FixedFormatCVBSSourceStage : public DAGStage,
   std::string y_path_;           // YC mode: luma path
   std::string c_path_;           // YC mode: chroma path
   std::string sample_encoding_;  // "From metadata" (default) or explicit
-  bool lock_audio_ = false;      // resample free-running tracks to locked
 
   mutable std::mutex execute_mutex_;
   mutable std::string cached_input_path_;

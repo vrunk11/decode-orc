@@ -20,7 +20,6 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -88,26 +87,16 @@ class FrameMappedRepresentation : public VideoFrameRepresentationWrapper,
     return source_ ? source_->get_video_parameters() : std::nullopt;
   }
 
-  // Audio — locked tracks remap in lockstep with the frame mapping; track
+  // Audio — channel pairs remap in lockstep with the frame mapping; pair
   // count and descriptors forward from the source via the wrapper base.
-  // Free-running tracks remap in the TIME domain: the output stream is the
-  // concatenation of each output frame's source time window
-  // [offset(m), offset(m + 1)) derived with audio_stream_pair_offset()
-  // (silence for padding frames). A contiguous mapping therefore reduces to
-  // one exact slice of the source stream. Served lazily by translating
-  // requested pair ranges — no stream is materialised.
-  uint32_t get_audio_sample_count(size_t track, FrameID id) const override;
-  std::vector<int16_t> get_audio_samples(size_t track,
+  // Every output frame p serves exactly audio_pairs_in_frame(p) stereo
+  // pairs: padding frames carry cadence-sized silence, and a mapping that
+  // breaks the NTSC/PAL-M five-frame audio sequence phase
+  // (SMPTE 272M-1994 §14.3) truncates one trailing pair or appends one
+  // trailing silence pair. Phase-preserving mappings and all PAL mappings
+  // are sample-exact.
+  std::vector<int32_t> get_audio_samples(size_t pair,
                                          FrameID id) const override;
-  uint64_t get_audio_stream_pair_count(size_t track) const override;
-  std::vector<int16_t> get_audio_stream_samples(
-      size_t track, uint64_t first_pair, uint32_t pair_count) const override;
-
-  // Number of window joins in |mapping| that are not phase-continuous for a
-  // free-running track: every join except real frame m followed by real
-  // frame m + 1, or padding followed by padding (silence into silence).
-  static size_t count_free_running_discontinuities(
-      const std::vector<FrameID>& mapping);
 
   // EFM / AC3
   bool has_efm() const override { return source_ ? source_->has_efm() : false; }
@@ -127,31 +116,10 @@ class FrameMappedRepresentation : public VideoFrameRepresentationWrapper,
   // Descriptors for padding frames (keyed by output FrameID value)
   std::vector<PaddingDescriptor> padding_descriptors_;
 
-  // Pre-allocated silence buffer returned for locked audio on padding frames.
-  mutable std::vector<int16_t> silence_audio_;
-
   // Resolve output FrameID → entry in frame_mapping_
   std::optional<size_t> resolve_index(FrameID id) const;
   bool is_padding(size_t index) const;
   const PaddingDescriptor* find_padding(FrameID output_id) const;
-
-  // Lazily built time-domain remap of one free-running track: cumulative
-  // output pair offsets per window (size N + 1), plus the track's rate and
-  // the video system needed to translate window positions back to source
-  // stream offsets.
-  struct StreamMap {
-    std::vector<uint64_t> cumulative;
-    AudioSampleRate rate{0, 1};
-    VideoSystem system = VideoSystem::Unknown;
-  };
-
-  // Returns the stream map for |track|, building it on first use; nullptr
-  // when the track is locked, unknown, or lacks the geometry to remap (the
-  // stream then forwards untouched via the wrapper base). Thread-safe.
-  const StreamMap* ensure_stream_map(size_t track) const;
-
-  mutable std::map<size_t, StreamMap> stream_maps_;
-  mutable std::mutex stream_map_mutex_;
 
   // Black sample buffer for padding frames
   mutable std::vector<sample_type> black_frame_;

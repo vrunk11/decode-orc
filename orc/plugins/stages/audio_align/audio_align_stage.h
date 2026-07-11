@@ -1,8 +1,9 @@
 /*
  * File:        audio_align_stage.h
  * Module:      orc-stage-plugin-audio_align
- * Purpose:     Per-track audio sync adjustment transform stage (VFrameR) —
- *              shifts one audio track in time relative to the video
+ * Purpose:     Per-channel-pair audio sync adjustment transform stage
+ *              (VFrameR) — shifts one audio channel pair in time relative
+ *              to the video
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -13,7 +14,7 @@
 #include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
 #include <orc/stage/artifact.h>
-#include <orc/stage/audio_track.h>
+#include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/stage_parameter.h>
 #include <orc/stage/video_frame_representation.h>
 
@@ -25,54 +26,54 @@
 namespace orc {
 
 // ============================================================================
-// AlignedAudioTrackRepresentation
+// AlignedAudioChannelPairRepresentation
 // ============================================================================
-// Wraps a VideoFrameRepresentation and shifts one audio track in time by a
-// whole number of stereo pairs. Video, dropout hints, EFM/AC3 signal data and
-// non-targeted audio tracks pass through untouched. A positive pair offset
-// delays the audio relative to the video (inserts lead-in silence); a
+// Wraps a VideoFrameRepresentation and shifts one audio channel pair in time
+// by a whole number of stereo pairs. Video, dropout hints, EFM/AC3 signal
+// data and non-targeted channel pairs pass through untouched. A positive pair
+// offset delays the audio relative to the video (inserts lead-in silence); a
 // negative offset advances it (trims from the start).
 //
-// Locked tracks: per-frame pair counts are unchanged — each frame's window is
-// assembled from the neighbouring frames' samples, silence-filling past
-// either end of the frame range, so the track stays spec-conformant locked
-// audio. Free-running tracks: the stream origin shifts — silence pairs are
-// prepended (positive) or trimmed from the start (negative) and the stream
-// pair count adjusts accordingly.
+// Per-frame pair counts are unchanged by the shift — each output frame |id|
+// serves exactly audio_pairs_in_frame(id) pairs, assembled from the source
+// frames whose windows contain the shifted positions and silence-filled past
+// either end of the stream. Window boundaries are computed with cumulative
+// audio_pair_offset() arithmetic, so the NTSC/PAL-M 1602/1601 cadence is
+// handled exactly across frame boundaries.
 //
 // Thread safety: stateless after construction; safe for concurrent reads.
-class AlignedAudioTrackRepresentation : public VideoFrameRepresentationWrapper,
-                                        public Artifact {
+class AlignedAudioChannelPairRepresentation
+    : public VideoFrameRepresentationWrapper,
+      public Artifact {
  public:
-  // |offset_pairs| is the offset in whole stereo pairs at the target track's
-  // exact rational rate (positive = delay audio).
-  AlignedAudioTrackRepresentation(
-      std::shared_ptr<const VideoFrameRepresentation> source, size_t track,
-      int64_t offset_pairs)
+  // |offset_pairs| is the offset in whole stereo pairs at the synchronous
+  // 48000 Hz rate (positive = delay audio).
+  AlignedAudioChannelPairRepresentation(
+      std::shared_ptr<const VideoFrameRepresentation> source,
+      size_t channel_pair, int64_t offset_pairs)
       : VideoFrameRepresentationWrapper(std::move(source)),
         Artifact(ArtifactID("audio_align"), Provenance{}),
-        target_track_(track),
+        target_pair_(channel_pair),
         offset_pairs_(offset_pairs) {}
 
   std::string type_name() const override {
-    return "aligned_audio_track_representation";
+    return "aligned_audio_channel_pair_representation";
   }
 
-  // --- Audio tracks: only the target track's samples change ----------------
-  // (track count, descriptors, and per-frame pair counts forward untouched)
+  // --- Audio: only the target channel pair's samples change -----------------
+  // (pair count and descriptors forward untouched; per-frame pair counts are
+  // a model invariant and unchanged by the shift)
 
-  std::vector<int16_t> get_audio_samples(size_t track,
+  std::vector<int32_t> get_audio_samples(size_t pair,
                                          FrameID id) const override;
-  uint64_t get_audio_stream_pair_count(size_t track) const override;
-  std::vector<int16_t> get_audio_stream_samples(
-      size_t track, uint64_t first_pair, uint32_t pair_count) const override;
 
  private:
-  // Assembles the shifted window of a locked track for frame |id| from the
-  // neighbouring frames' samples, silence-filling past either end.
-  std::vector<int16_t> assemble_locked_window(FrameID id) const;
+  // Assembles the shifted window of the target channel pair for frame |id|
+  // from the neighbouring frames' samples, silence-filling past either end
+  // of the stream.
+  std::vector<int32_t> assemble_shifted_window(FrameID id) const;
 
-  size_t target_track_;
+  size_t target_pair_;
   int64_t offset_pairs_;
 };
 
@@ -91,8 +92,8 @@ class AudioAlignStage : public DAGStage,
     return NodeTypeInfo{NodeType::TRANSFORM,
                         "audio_align",
                         "Audio Align",
-                        "Shift one audio track in time relative to the video "
-                        "to correct audio/video sync",
+                        "Shift one audio channel pair in time relative to the "
+                        "video to correct audio/video sync",
                         1,
                         1,
                         1,
@@ -125,7 +126,7 @@ class AudioAlignStage : public DAGStage,
   StagePreviewCapability get_preview_capability() const override;
 
  private:
-  int32_t track_ = 0;
+  int32_t channel_pair_ = 0;
   double offset_ms_ = 0.0;
 
   mutable std::shared_ptr<const VideoFrameRepresentation> cached_output_;

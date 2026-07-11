@@ -10,7 +10,7 @@
 #include "audio_sink_stage.h"
 
 #include <orc/plugin/orc_plugin_services.h>
-#include <orc/stage/audio_track.h>
+#include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/common_types.h>
 #include <orc/stage/logging.h>
 
@@ -53,6 +53,7 @@ std::vector<ArtifactPtr> AudioSinkStage::execute(
 
 std::vector<ParameterDescriptor> AudioSinkStage::get_parameter_descriptors(
     VideoSystem project_format, SourceType source_type) const {
+  (void)project_format;
   (void)source_type;
   std::vector<ParameterDescriptor> descriptors;
 
@@ -69,49 +70,25 @@ std::vector<ParameterDescriptor> AudioSinkStage::get_parameter_descriptors(
     descriptors.push_back(desc);
   }
 
-  // track parameter — which pipeline audio track to write. Track indices are
-  // 0-based, matching the CVBS container's _audio_NN.wav numbering.
+  // track parameter — which audio channel pair to write. Channel pair
+  // indices are 0-based, matching the CVBS container's _audio_<p>.wav
+  // numbering.
   {
     ParameterDescriptor desc;
     desc.name = "track";
-    desc.display_name = "Audio Track";
+    desc.display_name = "Audio Channel Pair";
     desc.description =
-        "Pipeline audio track to write (0-based, matching the CVBS container "
-        "track numbering). The input may carry up to " +
-        std::to_string(kMaxAudioTracks) +
-        " stereo tracks; triggering fails if the selected track does not "
-        "exist.";
+        "Audio channel pair to write (0-based, matching the CVBS container "
+        "channel pair numbering). The input may carry up to " +
+        std::to_string(kMaxAudioChannelPairs) +
+        " stereo channel pairs; triggering fails if the selected channel "
+        "pair does not exist.";
     desc.type = ParameterType::INT32;
     desc.constraints.required = false;
     desc.constraints.min_value = static_cast<int32_t>(0);
-    desc.constraints.max_value = static_cast<int32_t>(kMaxAudioTracks - 1);
+    desc.constraints.max_value =
+        static_cast<int32_t>(kMaxAudioChannelPairs - 1);
     desc.constraints.default_value = static_cast<int32_t>(0);
-    descriptors.push_back(desc);
-  }
-
-  // sample_rate_mode parameter — only meaningful for NTSC/PAL-M, where the
-  // pipeline's frame-locked audio rate (44100000/1001 Hz ≈ 44055.94 Hz)
-  // differs from the standard free-running 44100 Hz. PAL locked audio is
-  // already at 44100 Hz, so the parameter is omitted for PAL projects.
-  // Free-running tracks are written verbatim at 44100 Hz; the mode is
-  // ignored for them.
-  if (project_format != VideoSystem::PAL) {
-    ParameterDescriptor desc;
-    desc.name = "sample_rate_mode";
-    desc.display_name = "Sample Rate Mode";
-    desc.description =
-        "Output sample rate for NTSC/PAL-M audio. " +
-        std::string(kSampleRateModeLocked) +
-        " writes the frame-locked samples unmodified with the WAV header "
-        "declaring the NTSC frame-rate-matched rate of 44,056 Hz. " +
-        std::string(kSampleRateModeFreeRunning) +
-        " resamples the audio to standard free-running 44,100 Hz. Ignored "
-        "for PAL sources, whose locked audio is already at 44,100 Hz.";
-    desc.type = ParameterType::STRING;
-    desc.constraints.required = false;
-    desc.constraints.default_value = std::string(kSampleRateModeLocked);
-    desc.constraints.allowed_strings.push_back(kSampleRateModeLocked);
-    desc.constraints.allowed_strings.push_back(kSampleRateModeFreeRunning);
     descriptors.push_back(desc);
   }
 
@@ -176,37 +153,20 @@ bool AudioSinkStage::trigger(
       throw std::runtime_error("output_path parameter is empty");
     }
 
-    // Optional track selection; defaults to track 0.
-    size_t track = 0;
-    const auto track_it = parameters.find("track");
-    if (track_it != parameters.end()) {
-      if (!std::holds_alternative<int32_t>(track_it->second)) {
+    // Optional channel pair selection; defaults to channel pair 0.
+    size_t pair = 0;
+    const auto pair_it = parameters.find("track");
+    if (pair_it != parameters.end()) {
+      if (!std::holds_alternative<int32_t>(pair_it->second)) {
         throw std::runtime_error("track parameter must be an integer");
       }
-      const int32_t track_value = std::get<int32_t>(track_it->second);
-      if (track_value < 0 ||
-          track_value >= static_cast<int32_t>(kMaxAudioTracks)) {
+      const int32_t pair_value = std::get<int32_t>(pair_it->second);
+      if (pair_value < 0 ||
+          pair_value >= static_cast<int32_t>(kMaxAudioChannelPairs)) {
         throw std::runtime_error("track parameter must be between 0 and " +
-                                 std::to_string(kMaxAudioTracks - 1));
+                                 std::to_string(kMaxAudioChannelPairs - 1));
       }
-      track = static_cast<size_t>(track_value);
-    }
-
-    // Optional sample-rate mode; defaults to frame-locked output.
-    AudioSinkSampleRateMode sample_rate_mode = AudioSinkSampleRateMode::kLocked;
-    const auto mode_it = parameters.find("sample_rate_mode");
-    if (mode_it != parameters.end()) {
-      if (!std::holds_alternative<std::string>(mode_it->second)) {
-        throw std::runtime_error("sample_rate_mode parameter must be a string");
-      }
-      const std::string& mode = std::get<std::string>(mode_it->second);
-      if (mode == kSampleRateModeFreeRunning) {
-        sample_rate_mode = AudioSinkSampleRateMode::kFreeRunning;
-      } else if (mode != kSampleRateModeLocked) {
-        throw std::runtime_error("sample_rate_mode must be '" +
-                                 std::string(kSampleRateModeLocked) + "' or '" +
-                                 std::string(kSampleRateModeFreeRunning) + "'");
-      }
+      pair = static_cast<size_t>(pair_value);
     }
 
     ORC_LOG_INFO("AudioSink: Writing audio to {}", output_path);
@@ -220,7 +180,7 @@ bool AudioSinkStage::trigger(
     }
 
     const auto write_result =
-        deps->write_audio_wav(vfr.get(), output_path, track, sample_rate_mode);
+        deps->write_audio_wav(vfr.get(), output_path, pair);
     if (!write_result.success) {
       last_status_ = "Error: " + write_result.error_message;
       ORC_LOG_ERROR("AudioSink: {}", write_result.error_message);

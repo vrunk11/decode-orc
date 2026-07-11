@@ -54,15 +54,15 @@ This stage reads AC3 RF samples from the incoming stream, decodes the RF-modulat
 
 **Use this stage when:**
 
-* Your source contains analogue audio tracks
+* Your source carries audio channel pairs
 * You want to export audio independently of video output
 * You want to inspect or process audio externally
 
 **What it does**
 
-This stage extracts analogue audio samples from the incoming stream and writes them to a standard WAV file. Audio remains synchronised to the processed video timeline, so any frame trimming or reordering performed upstream is reflected in the output.
+This stage extracts one audio channel pair from the incoming stream and writes it to a standard WAV file. Audio remains synchronised to the processed video timeline, so any frame trimming or reordering performed upstream is reflected in the output.
 
-The pipeline carries audio frame-locked to the video. For PAL (25 fps) the locked rate is exactly 44,100 Hz. For NTSC and PAL-M (30000/1001 fps) the locked rate is 44100000/1001 Hz ≈ 44,055.94 Hz, and the `sample_rate_mode` parameter selects how that audio is exported.
+The pipeline carries stereo audio channel pairs at exactly 48,000 Hz, frame-locked (synchronous) to the video for every system, following SMPTE 272M-1994. The WAV output declares 48,000 Hz; no resampling is performed.
 
 **Parameters**
 
@@ -70,10 +70,9 @@ The pipeline carries audio frame-locked to the video. For PAL (25 fps) the locke
     - Path to the output WAV file.
     - Required.
 
-* `sample_rate_mode` (string, NTSC/PAL-M projects only)
-    - `locked_44056` (default) — writes the frame-locked samples unmodified; the WAV header declares 44,056 Hz. No resampling; samples remain bit-identical to the pipeline audio.
-    - `free_running_44100` — resamples the audio (SoXR, HQ) to standard free-running 44,100 Hz for tools that expect the standard rate. Duration and A/V sync are preserved.
-    - Not shown for PAL projects, whose locked audio is already at 44,100 Hz.
+* `track` (integer)
+    - Audio channel pair to write, 0-based (0–7), matching the CVBS container's `_audio_<p>.wav` numbering.
+    - Default 0. Triggering fails if the selected channel pair does not exist.
 
 **Notes**
 

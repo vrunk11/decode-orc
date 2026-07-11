@@ -13,7 +13,6 @@
 #include <orc/stage/logging.h>
 #include <orc/stage/preview_helpers.h>
 
-#include <algorithm>
 #include <sstream>
 
 namespace orc {
@@ -221,145 +220,32 @@ std::vector<DropoutRun> FrameMappedRepresentation::get_dropout_hints(
   return runs;
 }
 
-uint32_t FrameMappedRepresentation::get_audio_sample_count(size_t track,
-                                                           FrameID id) const {
+std::vector<int32_t> FrameMappedRepresentation::get_audio_samples(
+    size_t pair, FrameID id) const {
   auto idx = resolve_index(id);
-  if (!idx || is_padding(*idx)) return 0;
-  return source_ ? source_->get_audio_sample_count(track, frame_mapping_[*idx])
-                 : 0;
-}
+  if (!idx || !source_) return {};
+  if (pair >= source_->audio_channel_pair_count()) return {};
 
-std::vector<int16_t> FrameMappedRepresentation::get_audio_samples(
-    size_t track, FrameID id) const {
-  auto idx = resolve_index(id);
-  if (!idx) return {};
-  if (is_padding(*idx)) {
-    // Padding frames get silence only for locked tracks; free-running tracks
-    // have no per-frame samples.
-    if (!source_) return {};
-    const auto desc = source_->get_audio_track_descriptor(track);
-    if (!desc || !desc->locked) return {};
-    auto params = source_->get_video_parameters();
-    if (!params) return {};
-    const size_t pairs = locked_audio_pairs_per_frame(params->system);
-    if (pairs == 0) return {};
-    if (silence_audio_.size() != pairs * 2) {
-      silence_audio_.assign(pairs * 2, 0);
-    }
-    return silence_audio_;
-  }
-  return source_ ? source_->get_audio_samples(track, frame_mapping_[*idx])
-                 : std::vector<int16_t>{};
-}
-
-const FrameMappedRepresentation::StreamMap*
-FrameMappedRepresentation::ensure_stream_map(size_t track) const {
-  if (!source_) return nullptr;
-  const auto desc = source_->get_audio_track_descriptor(track);
-  if (!desc || desc->locked) return nullptr;
   const auto params = source_->get_video_parameters();
-  if (!params || params->system == VideoSystem::Unknown) return nullptr;
-  if (desc->sample_rate.num == 0 || desc->sample_rate.den == 0) return nullptr;
+  const VideoSystem system = params ? params->system : VideoSystem::Unknown;
+  // Every output frame must serve exactly audio_pairs_in_frame(id) stereo
+  // pairs regardless of the mapped source frame's native count.
+  const size_t out_pairs = audio_pairs_in_frame(id, system);
 
-  std::lock_guard<std::mutex> lk(stream_map_mutex_);
-  auto it = stream_maps_.find(track);
-  if (it != stream_maps_.end()) return &it->second;
-
-  StreamMap map;
-  map.rate = desc->sample_rate;
-  map.system = params->system;
-  map.cumulative.reserve(frame_mapping_.size() + 1);
-  map.cumulative.push_back(0);
-  const FrameID src_first = source_->frame_range().first;
-  uint64_t total = 0;
-  for (size_t i = 0; i < frame_mapping_.size(); ++i) {
-    // Window sizes come from the cumulative offset helper: per-frame pair
-    // counts are NOT constant (44100 Hz NTSC alternates 1471/1472 pairs).
-    // Padding frames contribute a silence window sized at the OUTPUT
-    // position; real frames contribute their source frame's window.
-    const uint64_t m = (frame_mapping_[i] == kPaddingFrameID)
-                           ? static_cast<uint64_t>(i)
-                           : frame_mapping_[i] - src_first;
-    total += audio_stream_pair_offset(m + 1, map.rate, map.system) -
-             audio_stream_pair_offset(m, map.rate, map.system);
-    map.cumulative.push_back(total);
-  }
-  auto [ins, inserted] = stream_maps_.emplace(track, std::move(map));
-  (void)inserted;
-  return &ins->second;
-}
-
-uint64_t FrameMappedRepresentation::get_audio_stream_pair_count(
-    size_t track) const {
-  const StreamMap* map = ensure_stream_map(track);
-  if (!map) {
-    return source_ ? source_->get_audio_stream_pair_count(track) : 0;
-  }
-  return map->cumulative.back();
-}
-
-std::vector<int16_t> FrameMappedRepresentation::get_audio_stream_samples(
-    size_t track, uint64_t first_pair, uint32_t pair_count) const {
-  const StreamMap* map = ensure_stream_map(track);
-  if (!map) {
-    return source_ ? source_->get_audio_stream_samples(track, first_pair,
-                                                       pair_count)
-                   : std::vector<int16_t>{};
+  if (is_padding(*idx)) {
+    // Padding frames carry cadence-sized silence.
+    return std::vector<int32_t>(out_pairs * 2, 0);
   }
 
-  const uint64_t total = map->cumulative.back();
-  if (first_pair >= total) return {};
-  const uint32_t clamped =
-      static_cast<uint32_t>(std::min<uint64_t>(pair_count, total - first_pair));
-
-  // Locate the first window covering first_pair, then stitch the requested
-  // range across window boundaries.
-  const size_t start_window =
-      static_cast<size_t>(std::upper_bound(map->cumulative.begin(),
-                                           map->cumulative.end(), first_pair) -
-                          map->cumulative.begin()) -
-      1;
-  const FrameID src_first = source_->frame_range().first;
-
-  std::vector<int16_t> result;
-  result.reserve(static_cast<size_t>(clamped) * 2);
-  uint64_t pos = first_pair;
-  uint32_t remaining = clamped;
-  for (size_t w = start_window; remaining > 0 && w < frame_mapping_.size();
-       ++w) {
-    const uint64_t window_end = map->cumulative[w + 1];
-    if (pos >= window_end) continue;  // zero-length window
-    const uint32_t take =
-        static_cast<uint32_t>(std::min<uint64_t>(window_end - pos, remaining));
-    if (frame_mapping_[w] == kPaddingFrameID) {
-      result.insert(result.end(), static_cast<size_t>(take) * 2, 0);
-    } else {
-      const uint64_t m = frame_mapping_[w] - src_first;
-      const uint64_t src_start =
-          audio_stream_pair_offset(m, map->rate, map->system) +
-          (pos - map->cumulative[w]);
-      auto chunk = source_->get_audio_stream_samples(track, src_start, take);
-      // Silence-fill short source reads so window alignment is preserved.
-      chunk.resize(static_cast<size_t>(take) * 2, 0);
-      result.insert(result.end(), chunk.begin(), chunk.end());
-    }
-    pos += take;
-    remaining -= take;
-  }
-  return result;
-}
-
-size_t FrameMappedRepresentation::count_free_running_discontinuities(
-    const std::vector<FrameID>& mapping) {
-  size_t discontinuities = 0;
-  for (size_t i = 1; i < mapping.size(); ++i) {
-    const bool prev_pad = mapping[i - 1] == kPaddingFrameID;
-    const bool cur_pad = mapping[i] == kPaddingFrameID;
-    if (prev_pad && cur_pad) continue;  // silence into silence
-    if (!prev_pad && !cur_pad && mapping[i] == mapping[i - 1] + 1) continue;
-    ++discontinuities;
-  }
-  return discontinuities;
+  auto samples = source_->get_audio_samples(pair, frame_mapping_[*idx]);
+  if (samples.empty() || out_pairs == 0) return samples;
+  // SMPTE 272M-1994 §14.3: NTSC/PAL-M frames carry 1602 or 1601 stereo pairs
+  // by position in the five-frame audio sequence. A mapping that breaks the
+  // sequence phase changes the required count by one pair — truncate one
+  // trailing pair or append one trailing silence pair. Phase-preserving
+  // mappings and all PAL mappings leave the window untouched.
+  samples.resize(out_pairs * 2, 0);
+  return samples;
 }
 
 uint32_t FrameMappedRepresentation::get_efm_sample_count(FrameID id) const {
@@ -735,34 +621,6 @@ std::vector<ArtifactPtr> FrameMapStage::execute(
     if (!gap_positions.empty()) {
       observation_context.set(FieldID(0), "frame_map", "gap_positions",
                               gap_positions);
-    }
-  }
-
-  // Free-running tracks are remapped in the time domain by stitching
-  // per-frame windows; joins at mapping discontinuities are not
-  // phase-continuous, so tell the user which tracks are affected.
-  const size_t discontinuities =
-      FrameMappedRepresentation::count_free_running_discontinuities(mapping);
-  if (discontinuities > 0) {
-    std::string affected_tracks;
-    for (size_t track = 0; track < source->audio_track_count(); ++track) {
-      const auto desc = source->get_audio_track_descriptor(track);
-      if (!desc || desc->locked) continue;
-      if (!affected_tracks.empty()) affected_tracks += ", ";
-      affected_tracks += std::to_string(track);
-    }
-    if (!affected_tracks.empty()) {
-      const std::string message =
-          "free-running track(s) " + affected_tracks + " remapped with " +
-          std::to_string(discontinuities) +
-          " discontinuities — audible clicks possible; lock audio at the "
-          "source for gapless stacking/reordering";
-      observation_context.set(FieldID(0), "frame_map", "free_running_audio",
-                              message);
-      observation_context.set(FieldID(0), "frame_map",
-                              "free_running_discontinuities",
-                              static_cast<int64_t>(discontinuities));
-      ORC_LOG_INFO("FrameMapStage: {}", message);
     }
   }
 

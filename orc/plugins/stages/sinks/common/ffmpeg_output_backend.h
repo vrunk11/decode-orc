@@ -10,7 +10,7 @@
 #ifndef ORC_CORE_FFMPEG_OUTPUT_BACKEND_H
 #define ORC_CORE_FFMPEG_OUTPUT_BACKEND_H
 
-#include <orc/stage/audio_track.h>
+#include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/eia608_decoder.h>
 #include <orc/stage/field_id.h>
 #include <orc/stage/frame_id.h>
@@ -73,23 +73,17 @@ class FFmpegOutputBackend : public OutputBackend {
   AVFrame* filtered_frame_ = nullptr;  // Reused for buffersink output
   std::string video_filter_desc_;      // Combined chain; empty = passthrough
 
-  // Audio structures — one encoder per embedded pipeline track.
+  // Audio structures — one encoder per embedded audio channel pair. Every
+  // stream is declared at kAudioSampleRateHz (48000 Hz), the only pipeline
+  // audio rate (SMPTE 272M-1994 §1.2, exact for all video systems).
   struct AudioTrackEncoder {
-    size_t track_index = 0;           // Pipeline track index
-    AudioTrackDescriptor descriptor;  // Name, origin, lock mode, exact rate
-    int sample_rate = 44100;          // Integer rate declared to the encoder
+    size_t track_index = 0;                 // Pipeline channel pair index
+    AudioChannelPairDescriptor descriptor;  // Name and origin
     AVCodecContext* codec_ctx = nullptr;
     AVStream* stream = nullptr;
     AVFrame* frame = nullptr;
     int64_t pts = 0;
     std::vector<int16_t> buffer;  // Pending interleaved S16 samples
-
-    // Free-running feed state (descriptor.locked == false). The stream is
-    // consumed by its own pair cursor rather than the video frame cursor;
-    // per-frame windows come from audio_stream_pair_offset().
-    uint64_t next_pair = 0;    // Absolute stream pair cursor
-    uint64_t total_pairs = 0;  // Stream length in pairs
-    uint64_t frames_fed = 0;   // Video frames fed so far
   };
   std::vector<AudioTrackEncoder> audio_encoders_;
   AVPacket* audio_packet_ = nullptr;  // Shared scratch packet
@@ -97,8 +91,6 @@ class FFmpegOutputBackend : public OutputBackend {
   uint64_t start_field_index_ = 0;
   uint64_t num_fields_ = 0;
   uint64_t current_field_for_audio_ = 0;
-  uint64_t rep_first_frame_ = 0;  // First FrameID of the representation
-                                  // (free-running stream pair 0 origin)
   bool embed_audio_ = false;
   std::string audio_tracks_option_;  // "all" or comma-separated indices
   double audio_gain_ = 1.0;  // Linear gain applied to embedded audio samples
@@ -165,11 +157,13 @@ class FFmpegOutputBackend : public OutputBackend {
   // Send one frame to the encoder and write the resulting packets.
   // frame may be nullptr to flush the encoder.
   bool encodeVideoFrame(AVFrame* frame);
-  // Set up one encoder per selected audio track (audio_tracks_option_).
+  // Set up one encoder per selected audio channel pair (audio_tracks_option_).
   bool setupAudioEncoders();
   bool setupAudioEncoderForTrack(AudioTrackEncoder& track);
-  // Gather one video frame's worth of samples for the given track (locked:
-  // per-frame accessor; free-running: stream window for the frame).
+  // Gather one video frame's worth of samples for the given channel pair,
+  // narrowed from the 24-bit-in-int32 pipeline carrier to S16 (>> 8);
+  // frames without audio yield cadence-sized silence
+  // (audio_pairs_in_frame()).
   std::vector<int16_t> gatherAudioForFrame(AudioTrackEncoder& track,
                                            FrameID frame_id);
   // Encode full encoder-frame-size chunks from the track's pending buffer.

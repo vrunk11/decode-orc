@@ -2,7 +2,7 @@
  * File:        efm_audio_decode_stage_test.cpp
  * Module:      orc-core-tests
  * Purpose:     Unit tests for EFMAudioDecodeStage (lazy EFM decode, appended
- *              free-running track, pass-through forwarding)
+ *              synchronous channel pair, pass-through forwarding)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -12,9 +12,12 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/observation_context.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <vector>
 
 #include "../../include/video_frame_representation_artifact_mock.h"
 
@@ -34,6 +37,10 @@ class MockEFMAudioDecodeDeps : public orc::IEFMAudioDecodeDeps {
               (override));
   MOCK_METHOD((std::vector<int16_t>), read_cache_pairs,
               (uint64_t first_pair, uint32_t pair_count), (const, override));
+  MOCK_METHOD(bool, write_synchronous_cache,
+              (const std::vector<int32_t>& samples), (override));
+  MOCK_METHOD((std::vector<int32_t>), read_synchronous_pairs,
+              (uint64_t first_pair, uint32_t pair_count), (const, override));
 };
 
 const orc::ParameterDescriptor* find_descriptor(
@@ -45,13 +52,23 @@ const orc::ParameterDescriptor* find_descriptor(
   return it == descs.end() ? nullptr : &(*it);
 }
 
-// Runs the stage over a mock source with |source_tracks| existing audio
-// tracks and returns the output representation.
+// Gives the mock source a video system and frame count so the lazy decode
+// path can compute the cadence.
+void configure_video(NiceMock<MockVideoFrameRepresentationArtifact>& vfr,
+                     orc::VideoSystem system, size_t frame_count) {
+  orc::SourceParameters params;
+  params.system = system;
+  ON_CALL(vfr, get_video_parameters()).WillByDefault(Return(params));
+  ON_CALL(vfr, frame_count()).WillByDefault(Return(frame_count));
+}
+
+// Runs the stage over a mock source with |source_pairs| existing audio
+// channel pairs and returns the output representation.
 std::shared_ptr<const orc::VideoFrameRepresentation> make_output(
     orc::EFMAudioDecodeStage& stage,
     std::shared_ptr<NiceMock<MockVideoFrameRepresentationArtifact>> vfr,
-    size_t source_tracks) {
-  ON_CALL(*vfr, audio_track_count()).WillByDefault(Return(source_tracks));
+    size_t source_pairs) {
+  ON_CALL(*vfr, audio_channel_pair_count()).WillByDefault(Return(source_pairs));
   orc::ObservationContext ctx;
   auto outputs = stage.execute({vfr}, {}, ctx);
   EXPECT_EQ(outputs.size(), 1u);
@@ -108,117 +125,213 @@ TEST(EFMAudioDecodeStageTest, Execute_ThrowsOnMissingOrNonVfrInput) {
   EXPECT_THROW(stage.execute({}, {}, ctx), orc::DAGExecutionError);
 }
 
-TEST(EFMAudioDecodeStageTest, Execute_ThrowsWhenTrackCapReached) {
+TEST(EFMAudioDecodeStageTest, Execute_ThrowsWhenPairCapReached) {
   orc::EFMAudioDecodeStage stage;
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
-  ON_CALL(*vfr, audio_track_count())
-      .WillByDefault(Return(orc::kMaxAudioTracks));
+  ON_CALL(*vfr, audio_channel_pair_count())
+      .WillByDefault(Return(orc::kMaxAudioChannelPairs));
 
+  // Cap-exceeded input errors out; no pair is appended.
   orc::ObservationContext ctx;
   EXPECT_THROW(stage.execute({vfr}, {}, ctx), orc::DAGExecutionError);
 }
 
-TEST(EFMAudioDecodeStageTest, Execute_AppendsFreeRunningEfmTrack) {
+TEST(EFMAudioDecodeStageTest, Execute_AppendsEfmChannelPair) {
   orc::EFMAudioDecodeStage stage;
   auto deps = std::make_shared<StrictMock<MockEFMAudioDecodeDeps>>();
   stage.set_deps_override(deps);
 
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
-  const orc::AudioTrackDescriptor source_desc{
-      "Analogue", orc::AudioTrackOrigin::ANALOGUE, true, {44100, 1}};
-  ON_CALL(*vfr, get_audio_track_descriptor(0))
+  const orc::AudioChannelPairDescriptor source_desc{"Analogue",
+                                                    orc::AudioOrigin::ANALOGUE};
+  ON_CALL(*vfr, get_audio_channel_pair_descriptor(0))
       .WillByDefault(Return(source_desc));
 
   auto output = make_output(stage, vfr, 1);
 
-  EXPECT_EQ(output->audio_track_count(), 2u);
+  EXPECT_EQ(output->audio_channel_pair_count(), 2u);
   EXPECT_TRUE(output->has_audio());
 
-  // Source track descriptor forwards untouched.
-  const auto fwd = output->get_audio_track_descriptor(0);
+  // Source pair descriptor forwards untouched.
+  const auto fwd = output->get_audio_channel_pair_descriptor(0);
   ASSERT_TRUE(fwd.has_value());
   EXPECT_EQ(fwd->name, "Analogue");
-  EXPECT_EQ(fwd->origin, orc::AudioTrackOrigin::ANALOGUE);
-  EXPECT_TRUE(fwd->locked);
+  EXPECT_EQ(fwd->origin, orc::AudioOrigin::ANALOGUE);
 
-  // Appended track is the free-running EFM digital audio track.
-  const auto efm = output->get_audio_track_descriptor(1);
+  // Appended pair is the EFM digital audio channel pair — and none of this
+  // metadata access triggers a decode (StrictMock deps).
+  const auto efm = output->get_audio_channel_pair_descriptor(1);
   ASSERT_TRUE(efm.has_value());
   EXPECT_EQ(efm->name, "EFM digital audio");
-  EXPECT_EQ(efm->origin, orc::AudioTrackOrigin::EFM);
-  EXPECT_FALSE(efm->locked);
-  EXPECT_EQ(efm->sample_rate.num, 44100u);
-  EXPECT_EQ(efm->sample_rate.den, 1u);
-
-  // Free-running track answers the locked accessors with 0 / {} — and none
-  // of this metadata access triggers a decode (StrictMock deps).
-  EXPECT_EQ(output->get_audio_sample_count(1, orc::FrameID(0)), 0u);
-  EXPECT_TRUE(output->get_audio_samples(1, orc::FrameID(0)).empty());
+  EXPECT_EQ(efm->origin, orc::AudioOrigin::EFM);
 }
 
-TEST(EFMAudioDecodeStageTest, LockedAudioAccess_ForwardsToSourceTracks) {
+TEST(EFMAudioDecodeStageTest, OutOfRangePair_AnswersEmptyAndNullopt) {
   orc::EFMAudioDecodeStage stage;
   auto deps = std::make_shared<StrictMock<MockEFMAudioDecodeDeps>>();
   stage.set_deps_override(deps);
 
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
-  const std::vector<int16_t> frame_samples{1, -1, 2, -2};
-  ON_CALL(*vfr, get_audio_sample_count(0, orc::FrameID(7)))
-      .WillByDefault(Return(2u));
+  auto output = make_output(stage, vfr, 1);
+
+  // One source pair plus the appended EFM pair — index 2 is out of range.
+  EXPECT_FALSE(output->get_audio_channel_pair_descriptor(2).has_value());
+  EXPECT_TRUE(output->get_audio_samples(2, orc::FrameID(0)).empty());
+}
+
+TEST(EFMAudioDecodeStageTest, AudioAccess_ForwardsToSourcePairs) {
+  orc::EFMAudioDecodeStage stage;
+  auto deps = std::make_shared<StrictMock<MockEFMAudioDecodeDeps>>();
+  stage.set_deps_override(deps);
+
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  const std::vector<int32_t> frame_samples{1 << 8, -(1 << 8), 2 << 8,
+                                           -(2 << 8)};
   ON_CALL(*vfr, get_audio_samples(0, orc::FrameID(7)))
       .WillByDefault(Return(frame_samples));
-  ON_CALL(*vfr, get_audio_stream_pair_count(0)).WillByDefault(Return(42u));
 
   auto output = make_output(stage, vfr, 1);
 
-  EXPECT_EQ(output->get_audio_sample_count(0, orc::FrameID(7)), 2u);
+  // Source-pair sample access forwards and never touches the decode deps
+  // (StrictMock).
   EXPECT_EQ(output->get_audio_samples(0, orc::FrameID(7)), frame_samples);
-  EXPECT_EQ(output->get_audio_stream_pair_count(0), 42u);
 }
 
-TEST(EFMAudioDecodeStageTest, StreamAccess_DecodesLazilyAndOnlyOnce) {
+TEST(EFMAudioDecodeStageTest, SampleAccess_DecodesResamplesAndCachesOnce_Pal) {
   orc::EFMAudioDecodeStage stage;
   auto deps = std::make_shared<StrictMock<MockEFMAudioDecodeDeps>>();
   stage.set_deps_override(deps);
 
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  constexpr size_t kFrames = 2;
+  configure_video(*vfr, orc::VideoSystem::PAL, kFrames);
   auto output = make_output(stage, vfr, 1);
 
-  // No decode so far (StrictMock would have failed). First stream access
-  // triggers exactly one decode; repeated access reuses the result.
+  // Raw decoded CD audio: 2 PAL frames' worth at 44.1 kHz (1764 pairs per
+  // frame). Zero-valued samples convert to zero exactly through the widening
+  // and the linear SoXR resampler, making the cached stream deterministic.
+  constexpr uint64_t kRawPairs = 44100 / 25 * kFrames;
+  const std::vector<int16_t> raw(kRawPairs * 2, 0);
+
+  // No decode so far (StrictMock would have failed). The first sample access
+  // triggers exactly one decode → raw read → convert → cache-write sequence.
   EXPECT_CALL(*deps, decode_to_cache(_, _))
       .Times(1)
-      .WillOnce(Return(orc::EFMAudioDecodeResult{true, "", 100}));
+      .WillOnce(Return(orc::EFMAudioDecodeResult{true, "", kRawPairs}));
+  EXPECT_CALL(*deps, read_cache_pairs(0, static_cast<uint32_t>(kRawPairs)))
+      .Times(1)
+      .WillOnce(Return(raw));
+  EXPECT_CALL(*deps, write_synchronous_cache(_))
+      .Times(1)
+      .WillOnce([](const std::vector<int32_t>& samples) {
+        // The converted stream is cadence-aligned: exactly
+        // audio_pair_offset(frame_count) = 2 × 1920 stereo pairs, silent.
+        EXPECT_EQ(samples.size(),
+                  orc::audio_pair_offset(kFrames, orc::VideoSystem::PAL) * 2);
+        EXPECT_TRUE(std::all_of(samples.begin(), samples.end(),
+                                [](int32_t v) { return v == 0; }));
+        return true;
+      });
 
-  EXPECT_EQ(output->get_audio_stream_pair_count(1), 100u);
-  EXPECT_EQ(output->get_audio_stream_pair_count(1), 100u);
+  // Frame 0 is served from pair offset 0; frame 1 from pair offset 1920.
+  const std::vector<int32_t> frame0_block(1920 * 2, 5 << 8);
+  const std::vector<int32_t> frame1_block(1920 * 2, 42 << 8);
+  EXPECT_CALL(*deps, read_synchronous_pairs(0, 1920))
+      .WillOnce(Return(frame0_block));
+  EXPECT_CALL(*deps, read_synchronous_pairs(1920, 1920))
+      .WillOnce(Return(frame1_block));
 
-  // Reads are clamped to the decoded stream length before hitting the cache.
-  const std::vector<int16_t> tail{10, -10, 11, -11};
-  EXPECT_CALL(*deps, read_cache_pairs(98, 2)).WillOnce(Return(tail));
-  EXPECT_EQ(output->get_audio_stream_samples(1, 98, 50), tail);
-
-  // Requests entirely past the end never touch the cache.
-  EXPECT_TRUE(output->get_audio_stream_samples(1, 100, 4).empty());
+  EXPECT_EQ(output->get_audio_samples(1, orc::FrameID(0)), frame0_block);
+  EXPECT_EQ(output->get_audio_samples(1, orc::FrameID(1)), frame1_block);
 }
 
-TEST(EFMAudioDecodeStageTest, StreamAccess_FailedDecodeYieldsEmptyTrack) {
+TEST(EFMAudioDecodeStageTest, SampleAccess_ServesNtscCadenceSizedBlocks) {
   orc::EFMAudioDecodeStage stage;
   auto deps = std::make_shared<StrictMock<MockEFMAudioDecodeDeps>>();
   stage.set_deps_override(deps);
 
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  constexpr size_t kFrames = 5;
+  configure_video(*vfr, orc::VideoSystem::NTSC, kFrames);
+  auto output = make_output(stage, vfr, 0);
+
+  constexpr uint64_t kRawPairs = 7357;  // ≈ 5 NTSC frames at 44.1 kHz
+  EXPECT_CALL(*deps, decode_to_cache(_, _))
+      .Times(1)
+      .WillOnce(Return(orc::EFMAudioDecodeResult{true, "", kRawPairs}));
+  EXPECT_CALL(*deps, read_cache_pairs(0, static_cast<uint32_t>(kRawPairs)))
+      .Times(1)
+      .WillOnce(Return(std::vector<int16_t>(kRawPairs * 2, 0)));
+  EXPECT_CALL(*deps, write_synchronous_cache(_))
+      .Times(1)
+      .WillOnce([](const std::vector<int32_t>& samples) {
+        // SMPTE 272M-1994 §14.3: one full audio frame sequence = 8008 pairs.
+        EXPECT_EQ(samples.size(), 8008u * 2);
+        return true;
+      });
+
+  // SMPTE 272M-1994 §14.3 Table 1 cadence: frame 0 carries 1602 pairs from
+  // offset 0; frame 1 carries 1601 pairs from offset 1602.
+  EXPECT_CALL(*deps, read_synchronous_pairs(0, 1602))
+      .WillOnce(Return(std::vector<int32_t>(1602 * 2, 7)));
+  EXPECT_CALL(*deps, read_synchronous_pairs(1602, 1601))
+      .WillOnce(Return(std::vector<int32_t>(1601 * 2, 9)));
+
+  EXPECT_EQ(output->get_audio_samples(0, orc::FrameID(0)).size(), 1602u * 2);
+  EXPECT_EQ(output->get_audio_samples(0, orc::FrameID(1)).size(), 1601u * 2);
+}
+
+TEST(EFMAudioDecodeStageTest, ShortCacheRead_IsSilencePaddedToCadenceSize) {
+  orc::EFMAudioDecodeStage stage;
+  auto deps = std::make_shared<StrictMock<MockEFMAudioDecodeDeps>>();
+  stage.set_deps_override(deps);
+
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  configure_video(*vfr, orc::VideoSystem::PAL, 1);
+  auto output = make_output(stage, vfr, 0);
+
+  EXPECT_CALL(*deps, decode_to_cache(_, _))
+      .WillOnce(Return(orc::EFMAudioDecodeResult{true, "", 10}));
+  EXPECT_CALL(*deps, read_cache_pairs(0, 10))
+      .WillOnce(Return(std::vector<int16_t>(20, 0)));
+  EXPECT_CALL(*deps, write_synchronous_cache(_)).WillOnce(Return(true));
+
+  // The cache answers a single stereo pair; the served block must still be
+  // exactly audio_pairs_in_frame = 1920 pairs, silence-padded at the tail.
+  EXPECT_CALL(*deps, read_synchronous_pairs(0, 1920))
+      .WillOnce(Return(std::vector<int32_t>{123 << 8, -(123 << 8)}));
+
+  const auto samples = output->get_audio_samples(0, orc::FrameID(0));
+  ASSERT_EQ(samples.size(), 1920u * 2);
+  EXPECT_EQ(samples[0], 123 << 8);
+  EXPECT_EQ(samples[1], -(123 << 8));
+  EXPECT_TRUE(std::all_of(samples.begin() + 2, samples.end(),
+                          [](int32_t v) { return v == 0; }));
+}
+
+TEST(EFMAudioDecodeStageTest, FailedDecode_ServesSilenceAndDecodesOnlyOnce) {
+  orc::EFMAudioDecodeStage stage;
+  auto deps = std::make_shared<StrictMock<MockEFMAudioDecodeDeps>>();
+  stage.set_deps_override(deps);
+
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  configure_video(*vfr, orc::VideoSystem::PAL, 3);
   auto output = make_output(stage, vfr, 0);
 
   // A failed decode (e.g. an EFM data disc) is attempted only once and
-  // leaves the appended track empty.
+  // leaves the appended pair silent — cadence-sized zero blocks, and the
+  // synchronous cache is never touched (StrictMock).
   EXPECT_CALL(*deps, decode_to_cache(_, _))
       .Times(1)
       .WillOnce(
           Return(orc::EFMAudioDecodeResult{false, "no EFM t-values found", 0}));
 
-  EXPECT_EQ(output->get_audio_stream_pair_count(0), 0u);
-  EXPECT_TRUE(output->get_audio_stream_samples(0, 0, 16).empty());
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    const auto samples = output->get_audio_samples(0, orc::FrameID(0));
+    ASSERT_EQ(samples.size(), 1920u * 2);
+    EXPECT_TRUE(std::all_of(samples.begin(), samples.end(),
+                            [](int32_t v) { return v == 0; }));
+  }
 }
 
 TEST(EFMAudioDecodeStageTest, Parameters_ArePassedToDecode) {
@@ -227,7 +340,8 @@ TEST(EFMAudioDecodeStageTest, Parameters_ArePassedToDecode) {
   stage.set_deps_override(deps);
 
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
-  ON_CALL(*vfr, audio_track_count()).WillByDefault(Return(0u));
+  ON_CALL(*vfr, audio_channel_pair_count()).WillByDefault(Return(0u));
+  configure_video(*vfr, orc::VideoSystem::PAL, 1);
 
   orc::ObservationContext ctx;
   auto outputs = stage.execute(
@@ -241,9 +355,10 @@ TEST(EFMAudioDecodeStageTest, Parameters_ArePassedToDecode) {
                    const orc::EFMAudioDecodeOptions& options) {
         EXPECT_TRUE(options.no_timecodes);
         EXPECT_TRUE(options.no_audio_concealment);
-        return orc::EFMAudioDecodeResult{true, "", 1};
+        // Failing the decode keeps the test focused on option forwarding.
+        return orc::EFMAudioDecodeResult{false, "stop here", 0};
       });
-  EXPECT_EQ(output->get_audio_stream_pair_count(0), 1u);
+  EXPECT_EQ(output->get_audio_samples(0, orc::FrameID(0)).size(), 1920u * 2);
 }
 
 }  // namespace

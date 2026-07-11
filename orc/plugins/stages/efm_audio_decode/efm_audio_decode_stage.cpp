@@ -14,82 +14,129 @@
 #include <orc/stage/preview_helpers.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <variant>
 
+#include "audio-resample/audio_resampler.h"
 #include "efm_audio_decode_stage_deps.h"
 
 namespace orc {
 
+namespace {
+
+// IEC 60908 (CD-DA): EFM decodes to 44.1 kHz 16-bit stereo audio.
+constexpr double kCdSampleRateHz = 44100.0;
+
+}  // namespace
+
 // ============================================================================
-// EFMAudioTrackRepresentation
+// EFMAudioChannelPairRepresentation
 // ============================================================================
 
-std::optional<AudioTrackDescriptor>
-EFMAudioTrackRepresentation::get_audio_track_descriptor(size_t track) const {
-  if (track == efm_track_index()) {
-    return AudioTrackDescriptor{"EFM digital audio", AudioTrackOrigin::EFM,
-                                /*locked=*/false, kFreeRunningAudioRate};
+std::optional<AudioChannelPairDescriptor>
+EFMAudioChannelPairRepresentation::get_audio_channel_pair_descriptor(
+    size_t pair) const {
+  if (pair == efm_pair_index()) {
+    return AudioChannelPairDescriptor{"EFM digital audio", AudioOrigin::EFM};
   }
-  return source_ ? source_->get_audio_track_descriptor(track) : std::nullopt;
+  // Out-of-range indices fall through to the source, which answers nullopt.
+  return source_ ? source_->get_audio_channel_pair_descriptor(pair)
+                 : std::nullopt;
 }
 
-uint32_t EFMAudioTrackRepresentation::get_audio_sample_count(size_t track,
-                                                             FrameID id) const {
-  if (track == efm_track_index()) return 0;  // free-running track
-  return source_ ? source_->get_audio_sample_count(track, id) : 0;
-}
-
-std::vector<int16_t> EFMAudioTrackRepresentation::get_audio_samples(
-    size_t track, FrameID id) const {
-  if (track == efm_track_index()) return {};  // free-running track
-  return source_ ? source_->get_audio_samples(track, id)
-                 : std::vector<int16_t>{};
-}
-
-uint64_t EFMAudioTrackRepresentation::get_audio_stream_pair_count(
-    size_t track) const {
-  if (track != efm_track_index()) {
-    return source_ ? source_->get_audio_stream_pair_count(track) : 0;
+std::vector<int32_t> EFMAudioChannelPairRepresentation::get_audio_samples(
+    size_t pair, FrameID id) const {
+  if (pair != efm_pair_index()) {
+    // Out-of-range indices fall through to the source, which answers {}.
+    return source_ ? source_->get_audio_samples(pair, id)
+                   : std::vector<int32_t>{};
   }
+
   ensure_decoded();
-  return decode_result_.success ? decode_result_.stream_pair_count : 0;
+
+  const auto params = source_ ? source_->get_video_parameters() : std::nullopt;
+  const VideoSystem system = params ? params->system : VideoSystem::Unknown;
+  const uint32_t block_pairs = audio_pairs_in_frame(id, system);
+  if (block_pairs == 0) return {};
+
+  // The contract requires exactly audio_pairs_in_frame(id, system) pairs:
+  // start from silence and overlay whatever the cache holds, so a failed
+  // decode or a short cache read still serves a full cadence-sized block.
+  std::vector<int32_t> samples(static_cast<size_t>(block_pairs) * 2, 0);
+  if (synchronous_audio_ready_) {
+    const std::vector<int32_t> cached = deps_->read_synchronous_pairs(
+        audio_pair_offset(id, system), block_pairs);
+    std::copy_n(cached.begin(), std::min(cached.size(), samples.size()),
+                samples.begin());
+  }
+  return samples;
 }
 
-std::vector<int16_t> EFMAudioTrackRepresentation::get_audio_stream_samples(
-    size_t track, uint64_t first_pair, uint32_t pair_count) const {
-  if (track != efm_track_index()) {
-    return source_ ? source_->get_audio_stream_samples(track, first_pair,
-                                                       pair_count)
-                   : std::vector<int16_t>{};
-  }
-  ensure_decoded();
-  if (!decode_result_.success ||
-      first_pair >= decode_result_.stream_pair_count) {
-    return {};
-  }
-  const uint64_t available = decode_result_.stream_pair_count - first_pair;
-  const uint32_t clamped_count =
-      static_cast<uint32_t>(std::min<uint64_t>(pair_count, available));
-  return deps_->read_cache_pairs(first_pair, clamped_count);
-}
-
-void EFMAudioTrackRepresentation::ensure_decoded() const {
+void EFMAudioChannelPairRepresentation::ensure_decoded() const {
   std::call_once(decode_once_, [this] {
     if (!source_) {
-      decode_result_ = {false, "no source representation", 0};
+      ORC_LOG_ERROR(
+          "EFMAudioDecode: no source representation; the EFM audio channel "
+          "pair will be silent");
       return;
     }
-    ORC_LOG_INFO("EFMAudioDecode: starting lazy EFM audio decode");
-    decode_result_ = deps_->decode_to_cache(*source_, options_);
-    if (decode_result_.success) {
-      ORC_LOG_INFO("EFMAudioDecode: decoded {} stereo pairs of EFM audio",
-                   decode_result_.stream_pair_count);
-    } else {
+    const auto params = source_->get_video_parameters();
+    const VideoSystem system = params ? params->system : VideoSystem::Unknown;
+    const size_t frame_count = source_->frame_count();
+    if (system == VideoSystem::Unknown || frame_count == 0) {
       ORC_LOG_ERROR(
-          "EFMAudioDecode: EFM audio decode failed ({}); the EFM audio track "
-          "will be empty",
-          decode_result_.error_message);
+          "EFMAudioDecode: unknown video system or empty frame range; the "
+          "EFM audio channel pair will be silent");
+      return;
     }
+
+    ORC_LOG_INFO("EFMAudioDecode: starting lazy EFM audio decode");
+    const EFMAudioDecodeResult decode_result =
+        deps_->decode_to_cache(*source_, options_);
+    if (!decode_result.success) {
+      ORC_LOG_ERROR(
+          "EFMAudioDecode: EFM audio decode failed ({}); the EFM audio "
+          "channel pair will be silent",
+          decode_result.error_message);
+      return;
+    }
+    ORC_LOG_INFO("EFMAudioDecode: decoded {} stereo pairs of EFM audio",
+                 decode_result.stream_pair_count);
+
+    // Pull the raw decoded CD audio (44.1 kHz 16-bit stereo) and convert it
+    // to the pipeline form: widen to the 24-bit-in-int32 carrier, resample
+    // 44100 → 48000 Hz, and segment into cadence-sized per-frame blocks
+    // totalling exactly audio_pair_offset(frame_count) pairs.
+    const uint32_t raw_pairs = static_cast<uint32_t>(std::min<uint64_t>(
+        decode_result.stream_pair_count, std::numeric_limits<uint32_t>::max()));
+    const std::vector<int32_t> widened =
+        AudioResampler::widen_16_to_24(deps_->read_cache_pairs(0, raw_pairs));
+    std::vector<std::vector<int32_t>> frames =
+        AudioResampler::resample_to_synchronous(widened, kCdSampleRateHz,
+                                                system, frame_count);
+
+    // Flatten the cadence-aligned blocks into the synchronous scratch cache;
+    // per-frame serving seeks by audio_pair_offset(id, system).
+    std::vector<int32_t> flat;
+    flat.reserve(static_cast<size_t>(audio_pair_offset(frame_count, system)) *
+                 2);
+    for (auto& frame : frames) {
+      flat.insert(flat.end(), frame.begin(), frame.end());
+      frame.clear();
+      frame.shrink_to_fit();
+    }
+    if (!deps_->write_synchronous_cache(flat)) {
+      ORC_LOG_ERROR(
+          "EFMAudioDecode: failed to store the converted synchronous audio; "
+          "the EFM audio channel pair will be silent");
+      return;
+    }
+    synchronous_audio_ready_ = true;
+    ORC_LOG_INFO(
+        "EFMAudioDecode: converted EFM audio to {} synchronous 48 kHz stereo "
+        "pairs across {} frames",
+        flat.size() / 2, frame_count);
   });
 }
 
@@ -119,21 +166,22 @@ std::vector<ArtifactPtr> EFMAudioDecodeStage::execute(
 
   if (!parameters.empty()) set_parameters(parameters);
 
-  // The track cap is enforced at every track-adding stage, not just at the
+  // The pair cap is enforced at every pair-adding stage, not just at the
   // container sink, so a DAG that validates also exports.
-  if (vfr->audio_track_count() >= kMaxAudioTracks) {
+  if (vfr->audio_channel_pair_count() >= kMaxAudioChannelPairs) {
     throw DAGExecutionError(
-        "EFMAudioDecodeStage: cannot append the EFM audio track: the input "
-        "already carries the maximum of " +
-        std::to_string(kMaxAudioTracks) + " audio tracks");
+        "EFMAudioDecodeStage: cannot append the EFM audio channel pair: the "
+        "input already carries the maximum of " +
+        std::to_string(kMaxAudioChannelPairs) + " audio channel pairs");
   }
 
   auto output = process(vfr);
   cached_output_ = output;
 
   std::vector<ArtifactPtr> outputs;
-  outputs.push_back(std::const_pointer_cast<EFMAudioTrackRepresentation>(
-      std::dynamic_pointer_cast<const EFMAudioTrackRepresentation>(output)));
+  outputs.push_back(std::const_pointer_cast<EFMAudioChannelPairRepresentation>(
+      std::dynamic_pointer_cast<const EFMAudioChannelPairRepresentation>(
+          output)));
   return outputs;
 }
 
@@ -146,7 +194,7 @@ std::shared_ptr<const VideoFrameRepresentation> EFMAudioDecodeStage::process(
   EFMAudioDecodeOptions options;
   options.no_timecodes = no_timecodes_;
   options.no_audio_concealment = no_audio_concealment_;
-  return std::make_shared<EFMAudioTrackRepresentation>(
+  return std::make_shared<EFMAudioChannelPairRepresentation>(
       std::move(source), std::move(deps), options);
 }
 

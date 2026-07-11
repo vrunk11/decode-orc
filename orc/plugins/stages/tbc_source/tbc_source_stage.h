@@ -121,13 +121,20 @@ class ITBCSourceStageDeps {
   // Audio: returns true when the PCM sidecar exists.
   virtual bool has_audio_file(const std::string& pcm_path) const = 0;
 
+  // PCM layout metadata (pcm_audio_parameters table, or the legacy JSON
+  // pcmAudioParameters block) from the metadata sidecar. Returns nullopt when
+  // the metadata carries no PCM parameters.
+  virtual std::optional<PcmAudioParameters> load_pcm_audio_parameters(
+      const std::string& db_path) const = 0;
+
   // Total number of stereo pairs in the raw PCM sidecar (file size / 4).
   // Returns nullopt when the file is absent or unreadable.
   virtual std::optional<uint64_t> get_audio_pair_count(
       const std::string& pcm_path) const = 0;
 
-  // Read stereo_pair_count interleaved int16_t stereo pairs starting at
-  // stereo_pair_offset from the raw PCM sidecar (no WAV header).
+  // Read stereo_pair_count interleaved signed little-endian int16_t stereo
+  // pairs starting at stereo_pair_offset from the raw PCM sidecar (no WAV
+  // header).
   virtual std::vector<int16_t> read_audio_samples_at(
       const std::string& pcm_path, size_t stereo_pair_offset,
       size_t stereo_pair_count) const = 0;
@@ -170,14 +177,9 @@ class ITBCSourceStageDeps {
 //   c_path           — chroma .tbc file     (required for YC mode)
 //   db_path          — .tbc.json.db         (optional; auto-derived from
 //                      input_path)
-//   pcm_path         — audio .pcm sidecar   (optional)
-//   pcm_audio_timing — declared timing of the .pcm sidecar:
-//                      "free_running" (default, a 44100 Hz stream) or
-//                      "frame_locked" (already at the preset locked rate,
-//                      laid out per the per-field audio sample counts)
-//   lock_audio       — free-running sidecars only: resample the PCM into a
-//                      frame-locked track (default true, today's behaviour);
-//                      false serves it verbatim as a free-running track
+//   pcm_path         — audio .pcm sidecar   (optional; raw signed-LE 16-bit
+//                      stereo, always converted on ingest to the 48 kHz
+//                      24-bit synchronous pipeline form)
 //   efm_path         — EFM .efm sidecar     (optional)
 //   ac3rf_path       — AC3 .ac3sym sidecar  (optional)
 //
@@ -195,7 +197,7 @@ class TBCSourceStage : public DAGStage,
   }
 
   // DAGStage interface
-  std::string version() const override { return "2.1.0"; }
+  std::string version() const override { return "3.0.0"; }
   ORC_STAGE_INSTRUCTIONS_MD
 
   NodeTypeInfo get_node_type_info() const override {

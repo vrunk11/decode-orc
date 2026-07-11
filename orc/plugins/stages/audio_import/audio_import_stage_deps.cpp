@@ -1,15 +1,14 @@
 /*
- * File:        audio_track_import_stage_deps.cpp
- * Module:      orc-stage-plugin-audio_track_import
- * Purpose:     Production dependencies for AudioTrackImportStage
+ * File:        audio_import_stage_deps.cpp
+ * Module:      orc-stage-plugin-audio_import
+ * Purpose:     Production dependencies for AudioImportStage
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#include "audio_track_import_stage_deps.h"
+#include "audio_import_stage_deps.h"
 
-#include <algorithm>
 #include <array>
 #include <cstring>
 #include <fstream>
@@ -28,9 +27,19 @@ uint32_t read_u32_le(const uint8_t* p) {
          (static_cast<uint32_t>(p[3]) << 24);
 }
 
+// 3-byte little-endian two's-complement sample, sign-extended into the
+// 24-bit-in-int32 carrier (−8388608 … 8388607).
+int32_t read_s24_le(const uint8_t* p) {
+  uint32_t u = static_cast<uint32_t>(p[0]) |
+               (static_cast<uint32_t>(p[1]) << 8) |
+               (static_cast<uint32_t>(p[2]) << 16);
+  if (u & 0x00800000u) u |= 0xFF000000u;
+  return static_cast<int32_t>(u);
+}
+
 }  // namespace
 
-WavProbeResult AudioTrackImportDeps::open(const std::string& wav_path) {
+WavProbeResult AudioImportDeps::open(const std::string& wav_path) {
   WavProbeResult result;
 
   std::ifstream file(wav_path, std::ios::binary);
@@ -112,38 +121,64 @@ WavProbeResult AudioTrackImportDeps::open(const std::string& wav_path) {
     result.error = "not stereo (" + std::to_string(channels) + " channel(s))";
     return result;
   }
-  if (bits_per_sample != 16) {
-    result.error =
-        "not 16-bit (" + std::to_string(bits_per_sample) + " bits/sample)";
+  if (bits_per_sample != 16 && bits_per_sample != 24) {
+    result.error = "not 16- or 24-bit (" + std::to_string(bits_per_sample) +
+                   " bits/sample)";
+    return result;
+  }
+  if (sample_rate == 0) {
+    result.error = "invalid sample rate (0 Hz)";
     return result;
   }
 
+  // Bytes per stereo pair: 16-bit = 2 × 2 bytes; 24-bit = 2 × 3 bytes.
+  const uint64_t bytes_per_pair = (bits_per_sample == 16) ? 4 : 6;
+
   wav_path_ = wav_path;
+  bits_per_sample_ = bits_per_sample;
   data_offset_ = data_offset;
-  data_pairs_ = data_size / 4;  // 2 channels × 2 bytes per sample
+  data_pairs_ = data_size / bytes_per_pair;
 
   result.valid = true;
   result.sample_rate = sample_rate;
+  result.bits_per_sample = bits_per_sample;
   result.pair_count = data_pairs_;
   return result;
 }
 
-std::vector<int16_t> AudioTrackImportDeps::read_pairs(
-    uint64_t first_pair, uint32_t pair_count) const {
-  if (wav_path_.empty() || first_pair >= data_pairs_) return {};
-  const uint32_t clamped = static_cast<uint32_t>(
-      std::min<uint64_t>(pair_count, data_pairs_ - first_pair));
-  if (clamped == 0) return {};
+std::vector<int16_t> AudioImportDeps::read_all_pairs_16() const {
+  if (wav_path_.empty() || bits_per_sample_ != 16 || data_pairs_ == 0) {
+    return {};
+  }
 
   std::ifstream file(wav_path_, std::ios::binary);
   if (!file) return {};
-  file.seekg(static_cast<std::streamoff>(data_offset_ + first_pair * 4),
-             std::ios::beg);
-  std::vector<int16_t> samples(static_cast<size_t>(clamped) * 2);
+  file.seekg(static_cast<std::streamoff>(data_offset_), std::ios::beg);
+  std::vector<int16_t> samples(static_cast<size_t>(data_pairs_) * 2);
   file.read(reinterpret_cast<char*>(samples.data()),
             static_cast<std::streamsize>(samples.size() * sizeof(int16_t)));
   const auto words_read = static_cast<size_t>(file.gcount()) / sizeof(int16_t);
   samples.resize((words_read / 2) * 2);  // whole pairs only
+  return samples;
+}
+
+std::vector<int32_t> AudioImportDeps::read_all_pairs_24() const {
+  if (wav_path_.empty() || bits_per_sample_ != 24 || data_pairs_ == 0) {
+    return {};
+  }
+
+  std::ifstream file(wav_path_, std::ios::binary);
+  if (!file) return {};
+  file.seekg(static_cast<std::streamoff>(data_offset_), std::ios::beg);
+  std::vector<uint8_t> bytes(static_cast<size_t>(data_pairs_) * 6);
+  file.read(reinterpret_cast<char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+  const auto pairs_read = static_cast<size_t>(file.gcount()) / 6;
+
+  std::vector<int32_t> samples(pairs_read * 2);
+  for (size_t i = 0; i < samples.size(); ++i) {
+    samples[i] = read_s24_le(bytes.data() + i * 3);
+  }
   return samples;
 }
 

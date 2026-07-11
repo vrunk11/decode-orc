@@ -13,7 +13,7 @@ Writes the incoming video stream using the selected sample encoding, plus a `.me
 Associated data are written automatically as sidecar files when present in the incoming stream:
 
 - `.dropouts.meta` — dropout annotations (dropout extension format)
-- `_audio_00.wav` … `_audio_15.wav` — stereo PCM audio, one file per pipeline audio track (up to 16), with the file number matching the pipeline track index. Frame-locked and free-running tracks are both written: frame-locked tracks follow the output frame sequence at the preset locked rate (header 44,100 Hz for PAL, 44,056 Hz for NTSC/PAL-M), and free-running tracks (for example decoded EFM digital audio) are written verbatim at 44,100 Hz with the header authoritative. Each track's description and lock mode is recorded in the `.meta` `audio_track` table (CVBS file format spec v1.2.0).
+- `_audio_00.wav` … — stereo PCM audio, one file per pipeline audio channel pair (up to 8), with the file number matching the pipeline pair index. All pipeline audio is 48 kHz synchronous (frame-locked), so every file follows the output frame sequence with a 48,000 Hz header; frames without audio are written as silence so all pair files stay frame-aligned and equal-length. Each pair's description is recorded in the `.meta` `audio_track` table (`audio_locked` is always `TRUE` — there is no free-running audio regime).
 - `.efm` + `.efm.meta` — EFM t-value data
 - `.ac3` + `.ac3.meta` — AC3 RF data
 
@@ -33,7 +33,7 @@ Optional free-text notes written to the `.meta` file. When left empty, no notes 
 - The output signal type (`composite` vs `yc`) follows the project type and cannot be overridden — Y/C cannot be derived from a composite signal.
 - `signal_state_preset` in the output `.meta` is always `STANDARD_TBC_LOCKED` and cannot be overridden.
 - Sidecar files for dropout, audio, EFM, and AC3 data are written automatically alongside the main output when those data streams are present; absent streams produce no sidecar files (this is not an error).
-- Every pipeline audio track is exported — there is no track selection at this sink. Per-track lock modes and descriptions are recorded in the `.meta` `audio_track` table.
+- Every pipeline audio channel pair is exported — there is no pair selection at this sink. Per-pair descriptions are recorded in the `.meta` `audio_track` table.
 - The output is compatible with the CVBS Source stage for round-trip workflows.
 
 ## Status Indicator

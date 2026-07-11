@@ -23,23 +23,30 @@ namespace {
 
 constexpr uint64_t kBytesPerStereoPair = 4;  // 2 channels x int16_t
 
-// Unique scratch path for the decoded PCM cache. Uniqueness comes from the
-// steady-clock tick count plus the owning object's address, which is enough
-// to keep concurrent pipelines in the same process apart.
-std::filesystem::path make_cache_path(const void* owner) {
+// 2 channels x int32_t in the converted synchronous cache.
+constexpr uint64_t kBytesPerSynchronousStereoPair = 8;
+
+// Unique scratch path for a decoded-audio cache file. Uniqueness comes from
+// the steady-clock tick count plus the owning object's address, which is
+// enough to keep concurrent pipelines in the same process apart.
+std::filesystem::path make_cache_path(const void* owner,
+                                      const std::string& extension) {
   const auto ticks =
       std::chrono::steady_clock::now().time_since_epoch().count();
   return std::filesystem::temp_directory_path() /
          ("orc-efm-audio-" + std::to_string(ticks) + "-" +
-          std::to_string(reinterpret_cast<uintptr_t>(owner)) + ".pcm");
+          std::to_string(reinterpret_cast<uintptr_t>(owner)) + extension);
 }
 
 }  // namespace
 
 EFMAudioDecodeDeps::~EFMAudioDecodeDeps() {
+  std::error_code ec;
   if (!cache_path_.empty()) {
-    std::error_code ec;
     std::filesystem::remove(cache_path_, ec);
+  }
+  if (!sync_cache_path_.empty()) {
+    std::filesystem::remove(sync_cache_path_, ec);
   }
 }
 
@@ -69,7 +76,7 @@ EFMAudioDecodeResult EFMAudioDecodeDeps::decode_to_cache(
   }
   ORC_LOG_DEBUG("EFMAudioDecodeDeps: buffered {} t-values", efm_buffer.size());
 
-  const std::filesystem::path cache_path = make_cache_path(this);
+  const std::filesystem::path cache_path = make_cache_path(this, ".pcm");
 
   // Audio-mode decode to headerless PCM: the cache holds exactly the decoded
   // 44.1 kHz interleaved stereo int16_t stream, so pair offsets map directly
@@ -120,6 +127,67 @@ std::vector<int16_t> EFMAudioDecodeDeps::read_cache_pairs(
   // Truncate a short read to whole stereo pairs.
   const uint64_t pairs_read =
       static_cast<uint64_t>(file.gcount()) / kBytesPerStereoPair;
+  samples.resize(static_cast<size_t>(pairs_read) * 2);
+  return samples;
+}
+
+bool EFMAudioDecodeDeps::write_synchronous_cache(
+    const std::vector<int32_t>& samples) {
+  const std::filesystem::path sync_path = make_cache_path(this, ".s32");
+
+  {
+    std::ofstream file(sync_path, std::ios::binary | std::ios::trunc);
+    if (!file) {
+      ORC_LOG_ERROR(
+          "EFMAudioDecodeDeps: cannot create synchronous audio cache file {}",
+          sync_path.string());
+      return false;
+    }
+    file.write(reinterpret_cast<const char*>(samples.data()),
+               static_cast<std::streamsize>(samples.size() * sizeof(int32_t)));
+    if (!file) {
+      ORC_LOG_ERROR(
+          "EFMAudioDecodeDeps: failed writing synchronous audio cache file {}",
+          sync_path.string());
+      std::error_code ec;
+      std::filesystem::remove(sync_path, ec);
+      return false;
+    }
+  }
+
+  sync_cache_path_ = sync_path;
+
+  // The raw 44.1 kHz cache is no longer needed once the converted stream is
+  // on disk; drop it to halve the scratch footprint.
+  if (!cache_path_.empty()) {
+    std::error_code ec;
+    std::filesystem::remove(cache_path_, ec);
+    cache_path_.clear();
+  }
+  return true;
+}
+
+std::vector<int32_t> EFMAudioDecodeDeps::read_synchronous_pairs(
+    uint64_t first_pair, uint32_t pair_count) const {
+  if (sync_cache_path_.empty() || pair_count == 0) return {};
+
+  std::ifstream file(sync_cache_path_, std::ios::binary);
+  if (!file) {
+    ORC_LOG_ERROR(
+        "EFMAudioDecodeDeps: cannot open synchronous audio cache file {}",
+        sync_cache_path_.string());
+    return {};
+  }
+
+  file.seekg(
+      static_cast<std::streamoff>(first_pair * kBytesPerSynchronousStereoPair));
+  std::vector<int32_t> samples(static_cast<size_t>(pair_count) * 2);
+  file.read(reinterpret_cast<char*>(samples.data()),
+            static_cast<std::streamsize>(samples.size() * sizeof(int32_t)));
+
+  // Truncate a short read to whole stereo pairs.
+  const uint64_t pairs_read =
+      static_cast<uint64_t>(file.gcount()) / kBytesPerSynchronousStereoPair;
   samples.resize(static_cast<size_t>(pairs_read) * 2);
   return samples;
 }

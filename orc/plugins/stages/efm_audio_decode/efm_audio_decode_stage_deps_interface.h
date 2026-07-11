@@ -32,13 +32,16 @@ struct EFMAudioDecodeResult {
 };
 
 // Dependency seam for EFMAudioDecodeStage: performs the whole-stream EFM
-// decode into a scratch cache and serves stereo-pair reads from it. Split out
-// so unit tests can mock the decode and file access (no filesystem in unit
-// tests).
+// decode into a scratch cache, serves stereo-pair reads from it, and holds
+// the converted synchronous (48 kHz 24-bit-in-int32, cadence-aligned)
+// pipeline stream. Split out so unit tests can mock the decode and file
+// access (no filesystem in unit tests).
 //
-// Thread safety: decode_to_cache() is called at most once per instance (the
-// caller serialises via std::call_once); read_cache_pairs() may be called
-// from any thread after decode_to_cache() has returned successfully.
+// Thread safety: decode_to_cache(), read_cache_pairs(0, …) for the raw
+// conversion read, and write_synchronous_cache() are called at most once per
+// instance (the caller serialises via std::call_once);
+// read_synchronous_pairs() may be called from any thread after
+// write_synchronous_cache() has returned successfully.
 class IEFMAudioDecodeDeps {
  public:
   virtual ~IEFMAudioDecodeDeps() = default;
@@ -51,10 +54,24 @@ class IEFMAudioDecodeDeps {
       const EFMAudioDecodeOptions& options) = 0;
 
   // Reads up to |pair_count| stereo pairs starting at |first_pair| from the
-  // cache written by decode_to_cache(). Returns interleaved L,R samples;
-  // short reads are truncated to whole pairs. Empty when no cache exists.
+  // raw 44.1 kHz cache written by decode_to_cache(). Returns interleaved L,R
+  // samples; short reads are truncated to whole pairs. Empty when no cache
+  // exists.
   virtual std::vector<int16_t> read_cache_pairs(uint64_t first_pair,
                                                 uint32_t pair_count) const = 0;
+
+  // Stores the converted pipeline stream — 48 kHz synchronous,
+  // 24-bit-in-int32, interleaved stereo, cadence-aligned so stereo pair
+  // audio_pair_offset(id, system) starts frame |id| — in the scratch cache,
+  // replacing the raw decoded cache. Returns false on I/O failure.
+  virtual bool write_synchronous_cache(const std::vector<int32_t>& samples) = 0;
+
+  // Reads up to |pair_count| stereo pairs starting at |first_pair| from the
+  // synchronous cache written by write_synchronous_cache(). Returns
+  // interleaved L,R int32 values; short reads are truncated to whole pairs.
+  // Empty when no cache exists.
+  virtual std::vector<int32_t> read_synchronous_pairs(
+      uint64_t first_pair, uint32_t pair_count) const = 0;
 };
 
 }  // namespace orc

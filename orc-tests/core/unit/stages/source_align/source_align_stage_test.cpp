@@ -194,15 +194,30 @@ TEST(SourceAlignStageTest,
   }
 }
 
-// ── Audio track handling through the alignment decorators ───────────────────
+// ── Audio channel pairs through the alignment decorators ────────────────────
 
 namespace {
 
-// PAL source with 10 frames and two audio tracks: locked track 0 and
-// free-running track 1 (44100 Hz, 5000 pairs). PAL keeps the stream shift a
-// constant 1764 pairs per frame, so a 2-frame offset is exactly 3528 pairs.
+// Interleaved stereo samples for source frame |frame|: stereo pair p carries
+// the value frame × 10000 + p on both channels, sized to the frame's native
+// SMPTE 272M-1994 §14.3 cadence count — so any output sample is traceable to
+// its source frame and in-frame pair position.
+std::vector<int32_t> frame_audio(uint64_t frame, orc::VideoSystem system) {
+  const uint32_t pairs = orc::audio_pairs_in_frame(frame, system);
+  std::vector<int32_t> samples;
+  samples.reserve(static_cast<size_t>(pairs) * 2);
+  for (uint32_t p = 0; p < pairs; ++p) {
+    const auto value = static_cast<int32_t>(frame * 10000 + p);
+    samples.push_back(value);
+    samples.push_back(value);
+  }
+  return samples;
+}
+
+// 10-frame mocked source carrying one audio channel pair whose per-frame
+// samples come from frame_audio(); no filesystem or real media involved.
 std::shared_ptr<NiceMock<MockVideoFrameRepresentationArtifact>>
-make_two_track_pal_source() {
+make_audio_source(orc::VideoSystem system) {
   auto source =
       std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
   ON_CALL(*source, type_name()).WillByDefault(Return("test_vfr_artifact"));
@@ -210,22 +225,20 @@ make_two_track_pal_source() {
       .WillByDefault(Return(orc::FrameIDRange{0u, 9u}));
   ON_CALL(*source, frame_count()).WillByDefault(Return(10u));
   orc::SourceParameters params;
-  params.system = orc::VideoSystem::PAL;
+  params.system = system;
   params.frame_width_nominal = 4;
   params.frame_height = 4;
   params.blanking_level = 256;
   ON_CALL(*source, get_video_parameters()).WillByDefault(Return(params));
 
-  ON_CALL(*source, audio_track_count()).WillByDefault(Return(2u));
-  ON_CALL(*source, get_audio_track_descriptor(0))
-      .WillByDefault(Return(orc::AudioTrackDescriptor{
-          "Analogue", orc::AudioTrackOrigin::ANALOGUE, true,
-          orc::locked_audio_sample_rate(orc::VideoSystem::PAL)}));
-  ON_CALL(*source, get_audio_track_descriptor(1))
-      .WillByDefault(Return(orc::AudioTrackDescriptor{
-          "EFM digital audio", orc::AudioTrackOrigin::EFM, false,
-          orc::kFreeRunningAudioRate}));
-  ON_CALL(*source, get_audio_stream_pair_count(1)).WillByDefault(Return(5000u));
+  ON_CALL(*source, audio_channel_pair_count()).WillByDefault(Return(1u));
+  ON_CALL(*source, get_audio_channel_pair_descriptor(0))
+      .WillByDefault(Return(orc::AudioChannelPairDescriptor{
+          "Analogue", orc::AudioOrigin::ANALOGUE}));
+  ON_CALL(*source, get_audio_samples(0, ::testing::_))
+      .WillByDefault(::testing::Invoke([system](size_t, orc::FrameID id) {
+        return frame_audio(id, system);
+      }));
   return source;
 }
 
@@ -243,69 +256,139 @@ std::shared_ptr<orc::VideoFrameRepresentation> align_one(
 
 }  // namespace
 
-TEST(SourceAlignStageTest, TrimMode_ShiftsFreeRunningStreamInTimeDomain) {
+TEST(SourceAlignStageTest, TrimMode_PairCountAndDescriptorForwardFromSource) {
   orc::SourceAlignStage stage;
-  auto source = make_two_track_pal_source();
-  // Trimming 2 leading frames trims 2 × 1764 = 3528 leading stream pairs.
-  ON_CALL(*source, get_audio_stream_samples(1, 3528, 4))
-      .WillByDefault(Return(std::vector<int16_t>{1, 1, 2, 2, 3, 3, 4, 4}));
+  auto source = make_audio_source(orc::VideoSystem::PAL);
 
   auto aligned = align_one(stage, source, "first_common_frame", "1+2");
   ASSERT_NE(aligned, nullptr);
 
-  EXPECT_EQ(aligned->get_audio_stream_pair_count(1), 5000u - 3528u);
-  EXPECT_EQ(aligned->get_audio_stream_samples(1, 0, 4),
-            (std::vector<int16_t>{1, 1, 2, 2, 3, 3, 4, 4}));
-
-  // Locked tracks keep per-frame remapping and untouched stream accessors.
-  ON_CALL(*source, get_audio_samples(0, orc::FrameID{2}))
-      .WillByDefault(Return(std::vector<int16_t>{7, 7}));
-  EXPECT_EQ(aligned->get_audio_samples(0, orc::FrameID{0}),
-            (std::vector<int16_t>{7, 7}));
-  EXPECT_EQ(aligned->get_audio_stream_pair_count(0), 0u);
+  EXPECT_EQ(aligned->audio_channel_pair_count(), 1u);
+  const auto desc = aligned->get_audio_channel_pair_descriptor(0);
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_EQ(desc->name, "Analogue");
+  EXPECT_EQ(desc->origin, orc::AudioOrigin::ANALOGUE);
 }
 
-TEST(SourceAlignStageTest, PadMode_PrependsFreeRunningSilenceInTimeDomain) {
+TEST(SourceAlignStageTest, TrimMode_PalAudioFollowsShiftedFramesSampleExact) {
   orc::SourceAlignStage stage;
-  auto source = make_two_track_pal_source();
-  ON_CALL(*source, get_audio_stream_samples(1, 0, 2))
-      .WillByDefault(Return(std::vector<int16_t>{21, 21, 22, 22}));
+  auto source = make_audio_source(orc::VideoSystem::PAL);
+
+  // PAL is constant-cadence (1920 pairs per frame), so any trim offset is
+  // sample-exact: output frame 0 serves source frame 2's audio untouched.
+  auto aligned = align_one(stage, source, "first_common_frame", "1+2");
+  ASSERT_NE(aligned, nullptr);
+
+  const auto samples = aligned->get_audio_samples(0, orc::FrameID{0});
+  EXPECT_EQ(samples, frame_audio(2, orc::VideoSystem::PAL));
+  EXPECT_EQ(samples.size(), 1920u * 2u);
+}
+
+TEST(SourceAlignStageTest, TrimMode_PhasePreservingNtscOffsetIsSampleExact) {
+  orc::SourceAlignStage stage;
+  auto source = make_audio_source(orc::VideoSystem::NTSC);
+
+  // Offset 5 preserves the SMPTE 272M five-frame audio sequence phase, so
+  // every shifted frame is served sample-exact.
+  auto aligned = align_one(stage, source, "first_common_frame", "1+5");
+  ASSERT_NE(aligned, nullptr);
+
+  for (uint64_t p = 0; p < 5; ++p) {
+    EXPECT_EQ(aligned->get_audio_samples(0, orc::FrameID{p}),
+              frame_audio(p + 5, orc::VideoSystem::NTSC))
+        << "output frame " << p;
+  }
+}
+
+TEST(SourceAlignStageTest, TrimMode_PhaseBreakingNtscOffsetObeysOnePairRule) {
+  orc::SourceAlignStage stage;
+  auto source = make_audio_source(orc::VideoSystem::NTSC);
+
+  // Offset 1 breaks the SMPTE 272M-1994 §14.3 five-frame sequence phase.
+  auto aligned = align_one(stage, source, "first_common_frame", "1+1");
+  ASSERT_NE(aligned, nullptr);
+
+  // Output frame 0 needs 1602 pairs; source frame 1 natively carries 1601 —
+  // one trailing silence pair is appended.
+  const auto padded = aligned->get_audio_samples(0, orc::FrameID{0});
+  ASSERT_EQ(padded.size(), 1602u * 2u);
+  const auto native1 = frame_audio(1, orc::VideoSystem::NTSC);
+  EXPECT_TRUE(std::equal(native1.begin(), native1.end(), padded.begin()));
+  EXPECT_EQ(padded[padded.size() - 2], 0);
+  EXPECT_EQ(padded[padded.size() - 1], 0);
+
+  // Output frame 1 needs 1601 pairs; source frame 2 natively carries 1602 —
+  // the trailing pair is truncated.
+  const auto truncated = aligned->get_audio_samples(0, orc::FrameID{1});
+  ASSERT_EQ(truncated.size(), 1601u * 2u);
+  auto expected = frame_audio(2, orc::VideoSystem::NTSC);
+  expected.resize(1601u * 2u);
+  EXPECT_EQ(truncated, expected);
+}
+
+TEST(SourceAlignStageTest, PadMode_PaddingFramesCarryCadenceSizedSilence) {
+  orc::SourceAlignStage stage;
+  auto source = make_audio_source(orc::VideoSystem::NTSC);
 
   auto padded = align_one(stage, source, "pad_for_alignment", "1+2");
   ASSERT_NE(padded, nullptr);
 
-  // 2 padding frames prepend 3528 silence pairs.
-  EXPECT_EQ(padded->get_audio_stream_pair_count(1), 5000u + 3528u);
+  // Silence blocks are sized by the OUTPUT frame's cadence position
+  // (SMPTE 272M-1994 §14.3): 1602 pairs at index 0, 1601 at index 1.
+  const auto silence0 = padded->get_audio_samples(0, orc::FrameID{0});
+  EXPECT_EQ(silence0.size(), 1602u * 2u);
+  EXPECT_TRUE(std::all_of(silence0.begin(), silence0.end(),
+                          [](int32_t s) { return s == 0; }));
+  const auto silence1 = padded->get_audio_samples(0, orc::FrameID{1});
+  EXPECT_EQ(silence1.size(), 1601u * 2u);
+  EXPECT_TRUE(std::all_of(silence1.begin(), silence1.end(),
+                          [](int32_t s) { return s == 0; }));
 
-  // A read straddling the silence/source boundary: 2 silence pairs then the
-  // first 2 source pairs.
-  EXPECT_EQ(padded->get_audio_stream_samples(1, 3526, 4),
-            (std::vector<int16_t>{0, 0, 0, 0, 21, 21, 22, 22}));
+  // Out-of-range pairs stay empty, including on padding frames.
+  EXPECT_TRUE(padded->get_audio_samples(1, orc::FrameID{0}).empty());
 }
 
-TEST(SourceAlignStageTest, PadMode_LockedPaddingFramesCarrySilence) {
+TEST(SourceAlignStageTest, PadMode_ShiftedRealFramesObeyOnePairRule) {
   orc::SourceAlignStage stage;
-  auto source = make_two_track_pal_source();
+  auto source = make_audio_source(orc::VideoSystem::NTSC);
+
+  // Pad count 1 breaks the SMPTE 272M-1994 §14.3 five-frame sequence phase.
+  auto padded = align_one(stage, source, "pad_for_alignment", "1+1");
+  ASSERT_NE(padded, nullptr);
+
+  // Output frame 1 needs 1601 pairs; source frame 0 natively carries 1602 —
+  // the trailing pair is truncated.
+  const auto truncated = padded->get_audio_samples(0, orc::FrameID{1});
+  ASSERT_EQ(truncated.size(), 1601u * 2u);
+  auto expected = frame_audio(0, orc::VideoSystem::NTSC);
+  expected.resize(1601u * 2u);
+  EXPECT_EQ(truncated, expected);
+
+  // Output frame 2 needs 1602 pairs; source frame 1 natively carries 1601 —
+  // one trailing silence pair is appended.
+  const auto appended = padded->get_audio_samples(0, orc::FrameID{2});
+  ASSERT_EQ(appended.size(), 1602u * 2u);
+  const auto native1 = frame_audio(1, orc::VideoSystem::NTSC);
+  EXPECT_TRUE(std::equal(native1.begin(), native1.end(), appended.begin()));
+  EXPECT_EQ(appended[appended.size() - 2], 0);
+  EXPECT_EQ(appended[appended.size() - 1], 0);
+}
+
+TEST(SourceAlignStageTest, PadMode_PalAudioFollowsShiftedFramesSampleExact) {
+  orc::SourceAlignStage stage;
+  auto source = make_audio_source(orc::VideoSystem::PAL);
 
   auto padded = align_one(stage, source, "pad_for_alignment", "1+2");
   ASSERT_NE(padded, nullptr);
 
-  // ITU-R BT.1700 PAL locked layout: 1764 stereo pairs per frame of silence
-  // on padding frames, so the locked track keeps its exact per-frame layout.
-  EXPECT_EQ(padded->get_audio_sample_count(0, orc::FrameID{0}), 1764u);
+  // PAL is constant-cadence, so shifted real frames are sample-exact and
+  // padding silence is the constant 1920 pairs.
   const auto silence = padded->get_audio_samples(0, orc::FrameID{1});
-  ASSERT_EQ(silence.size(), 1764u * 2u);
+  ASSERT_EQ(silence.size(), 1920u * 2u);
   EXPECT_TRUE(std::all_of(silence.begin(), silence.end(),
-                          [](int16_t s) { return s == 0; }));
-
-  // Free-running tracks have no per-frame samples on padding frames.
-  EXPECT_EQ(padded->get_audio_sample_count(1, orc::FrameID{0}), 0u);
-
-  // Real frames shift by the pad count.
-  ON_CALL(*source, get_audio_samples(0, orc::FrameID{0}))
-      .WillByDefault(Return(std::vector<int16_t>{9, 9}));
+                          [](int32_t s) { return s == 0; }));
   EXPECT_EQ(padded->get_audio_samples(0, orc::FrameID{2}),
-            (std::vector<int16_t>{9, 9}));
+            frame_audio(0, orc::VideoSystem::PAL));
 }
 
 }  // namespace orc_unit_test

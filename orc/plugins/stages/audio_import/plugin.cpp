@@ -1,7 +1,7 @@
 /*
  * File:        plugin.cpp
- * Module:      orc-stage-plugin-audio_track_import
- * Purpose:     Runtime plugin bundle for AudioTrackImportStage
+ * Module:      orc-stage-plugin-audio_import
+ * Purpose:     Runtime plugin bundle for AudioImportStage
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -9,7 +9,7 @@
 
 #include <orc/plugin/orc_plugin_sdk.h>
 
-#include "audio_track_import_stage.h"
+#include "audio_import_stage.h"
 
 #ifndef ORC_STAGE_PLUGIN_VERSION
 #define ORC_STAGE_PLUGIN_VERSION "dev"
@@ -18,10 +18,10 @@
 namespace {
 
 constexpr orc::StagePluginDescriptor kPluginDescriptor =
-    ORC_STAGE_PLUGIN_DESCRIPTOR("decode-orc.stage.audio_track_import",
+    ORC_STAGE_PLUGIN_DESCRIPTOR("decode-orc.stage.audio_import",
                                 ORC_STAGE_PLUGIN_VERSION, "GPL-3.0-or-later",
                                 true);
 
 }  // namespace
 
-ORC_DEFINE_STAGE_PLUGIN(kPluginDescriptor, orc::AudioTrackImportStage)
+ORC_DEFINE_STAGE_PLUGIN(kPluginDescriptor, orc::AudioImportStage)

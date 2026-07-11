@@ -58,7 +58,7 @@ automatically. The complete allowlisted `<orc/stage/...>` set is:
 | Group | Headers |
 |-------|---------|
 | Stage model | `stage.h`, `triggerable_stage.h`, `stage_parameter.h`, `parameter_types.h`, `node_type.h`, `node_id.h`, `artifact.h`, `analysis_sink_results.h` |
-| Frame / signal model | `audio_track.h`, `video_frame_representation.h`, `video_metadata_types.h`, `frame_descriptor.h`, `frame_id.h`, `field_id.h`, `frame_line_util.h`, `common_types.h`, `cvbs_signal_constants.h`, `orc_source_parameters.h`, `dropout_run.h`, `dropout_util.h`, `dropout_decision.h` |
+| Frame / signal model | `audio_channel_pair.h`, `video_frame_representation.h`, `video_metadata_types.h`, `frame_descriptor.h`, `frame_id.h`, `field_id.h`, `frame_line_util.h`, `common_types.h`, `cvbs_signal_constants.h`, `orc_source_parameters.h`, `dropout_run.h`, `dropout_util.h`, `dropout_decision.h` |
 | Observation model | `observation_context.h`, `observation_context_interface.h`, `observation_schema.h`, `observers/observer.h`, `observers/biphase_observer.h`, `observers/black_psnr_observer.h`, `observers/burst_level_observer.h`, `observers/closed_caption_observer.h`, `observers/white_snr_observer.h` |
 | Preview contract | `stage_preview_capability.h`, `stage_custom_preview_renderer.h`, `colour_preview_provider.h`, `colour_preview_conversion.h`, `preview_helpers.h`, `preview_stage_types.h`, `orc_preview_types.h`, `orc_preview_carriers.h`, `orc_rendering.h`, `orc_vectorscope.h` |
 | Utilities | `logging.h`, `lru_cache.h`, `file_io_interface.h`, `eia608_decoder.h`, `error_types.h` |
@@ -370,10 +370,10 @@ The accessors fall into two groups:
   audio / EFM / AC3 accessors. A stage whose output differs from its input
   for one of these **must** override it. A stage that remaps frame IDs must
   override every per-frame accessor in this group so IDs are translated —
-  for audio that means the frame-locked per-track accessors
-  (`get_audio_sample_count` / `get_audio_samples`); the free-running stream
-  accessors (`get_audio_stream_pair_count` / `get_audio_stream_samples`)
-  carry no frame IDs and forward untouched.
+  for audio that means `get_audio_samples` (per channel pair): the output
+  frame at timeline index *p* must serve exactly `audio_pairs_in_frame(p)`
+  pairs, truncating or silence-padding by one pair when the mapping breaks
+  the NTSC/PAL-M cadence phase (see `<orc/stage/audio_channel_pair.h>`).
 - **Derived accessors** (`get_line`, `get_line_samples`, `get_frame_copy`,
   `get_line_luma`, `get_line_chroma`): implemented by the wrapper in terms
   of the object's own virtual primitives, never forwarded. Overriding the
@@ -598,6 +598,7 @@ compatibility mechanism.
 | 4 | 2 | Decode-Orc 2.0: `VideoFrameRepresentation` replaces `VideoFieldRepresentation` as the primary frame-data contract; `DAGStage::execute()` operates on frame-based artifacts; `DropoutRun` replaces `DropoutRegion`; `FieldID`/`FieldIDRange` removed — use `FrameID`/`FrameIDRange`. All plugins must be rebuilt against the v2.0 SDK |
 | 5 | 2 | `StagePluginDescriptor` gains the appended `toolchain_tag` field (populate with `ORC_SDK_TOOLCHAIN_TAG`); the loader requires the plugin's tag to equal the host's exactly. Registration helpers (`ORC_STAGE_PLUGIN_DESCRIPTOR`, `ORC_DEFINE_STAGE_PLUGIN`) added in `<orc/plugin/orc_plugin_registration.h>` |
 | 6 | 2 | Multi-track audio: `VideoFrameRepresentation`'s single-track audio accessors (`audio_locked()`, `get_audio_sample_count(FrameID)`, `get_audio_samples(FrameID)`) are replaced by a track-indexed API — `audio_track_count()`, `get_audio_track_descriptor(track)`, per-track frame-locked accessors, and per-track free-running stream accessors (`get_audio_stream_pair_count` / `get_audio_stream_samples`). New contract header `<orc/stage/audio_track.h>` (`AudioTrackDescriptor`, `AudioSampleRate`, `AudioTrackOrigin`, `kMaxAudioTracks`, `audio_stream_pair_offset()`). The vtable layout change requires all plugins to be rebuilt |
+| 7 | 2 | Channel-pair audio (SMPTE 272M-1994): the track-indexed audio API is replaced by the channel-pair API — `audio_channel_pair_count()`, `get_audio_channel_pair_descriptor(pair)`, and `get_audio_samples(pair, id)` returning 24-bit-in-int32 samples. All audio is 48 kHz frame-locked (synchronous); the free-running stream accessors are removed. Contract header `<orc/stage/audio_track.h>` is replaced by `<orc/stage/audio_channel_pair.h>` (`AudioChannelPairDescriptor`, `AudioOrigin`, `kMaxAudioChannelPairs`, `kAudioSampleRateHz`, `kAudioBitDepth`, `audio_pair_offset()`, `audio_pairs_in_frame()`). The vtable layout change requires all plugins to be rebuilt |
 
 ### When the host increments a version
 

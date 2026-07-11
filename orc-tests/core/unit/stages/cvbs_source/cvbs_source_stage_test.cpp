@@ -18,6 +18,7 @@
 #include "../../../../orc/plugins/stages/cvbs_source/cvbs_source_stage.h"
 
 #include <gtest/gtest.h>
+#include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/common_types.h>
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/dropout_run.h>
@@ -79,6 +80,10 @@ class FakeCVBSSourceStageDeps final : public ICVBSSourceStageDeps {
   // --- audio sidecars: full WAV path → payload samples (flat int16_t
   // buffer, header already stripped). Presence in the map = file exists.
   std::map<std::string, std::vector<int16_t>> audio_files;
+
+  // --- per-file WAV header sample rates; files without an entry report an
+  // unreadable header (the stage then falls back to 48000 Hz pass-through).
+  std::map<std::string, uint32_t> audio_sample_rates;
 
   // --- .meta audio_track table; nullopt = table absent (legacy metadata)
   std::optional<std::vector<CVBSAudioTrackRecord>> audio_track_table;
@@ -160,15 +165,27 @@ class FakeCVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     return static_cast<uint64_t>(it->second.size() / 2);
   }
 
+  std::optional<uint32_t> get_audio_sample_rate(
+      const std::string& path) const override {
+    const auto it = audio_sample_rates.find(path);
+    if (it == audio_sample_rates.end()) return std::nullopt;
+    return it->second;
+  }
+
   std::optional<std::vector<CVBSAudioTrackRecord>> load_audio_track_table(
       const std::string& /*path*/,
       std::string& /*error_message*/) const override {
     return audio_track_table;
   }
 
+  // Number of read_audio_samples_at calls — the synchronous conversion must
+  // read each pair's payload exactly once.
+  mutable int audio_read_calls = 0;
+
   std::vector<int16_t> read_audio_samples_at(
       const std::string& path, size_t stereo_pair_offset,
       size_t stereo_pair_count) const override {
+    ++audio_read_calls;
     const auto it = audio_files.find(path);
     if (it == audio_files.end()) return {};
     const std::vector<int16_t>& samples = it->second;
@@ -286,36 +303,33 @@ TEST(CVBSSourceStageIdentityTest, Stage_VersionIsCurrentPhase) {
 // Parameter descriptors
 // ===========================================================================
 
-TEST(CVBSSourceStageParamTest, UnknownSourceType_HasAllFiveParameters) {
+TEST(CVBSSourceStageParamTest, UnknownSourceType_HasAllFourParameters) {
   PALCVBSSourceStage stage;
   auto descs = stage.get_parameter_descriptors();
-  ASSERT_EQ(descs.size(), 5u);
+  ASSERT_EQ(descs.size(), 4u);
   EXPECT_EQ(descs[0].name, "input_path");
   EXPECT_EQ(descs[1].name, "y_path");
   EXPECT_EQ(descs[2].name, "c_path");
   EXPECT_EQ(descs[3].name, "sample_encoding");
-  EXPECT_EQ(descs[4].name, "lock_audio");
 }
 
 TEST(CVBSSourceStageParamTest, CompositeSourceType_OmitsYCPaths) {
   PALCVBSSourceStage stage;
   auto descs =
       stage.get_parameter_descriptors(VideoSystem::PAL, SourceType::Composite);
-  ASSERT_EQ(descs.size(), 3u);
+  ASSERT_EQ(descs.size(), 2u);
   EXPECT_EQ(descs[0].name, "input_path");
   EXPECT_EQ(descs[1].name, "sample_encoding");
-  EXPECT_EQ(descs[2].name, "lock_audio");
 }
 
 TEST(CVBSSourceStageParamTest, YCSourceType_OmitsCompositePath) {
   PALCVBSSourceStage stage;
   auto descs =
       stage.get_parameter_descriptors(VideoSystem::PAL, SourceType::YC);
-  ASSERT_EQ(descs.size(), 4u);
+  ASSERT_EQ(descs.size(), 3u);
   EXPECT_EQ(descs[0].name, "y_path");
   EXPECT_EQ(descs[1].name, "c_path");
   EXPECT_EQ(descs[2].name, "sample_encoding");
-  EXPECT_EQ(descs[3].name, "lock_audio");
 }
 
 TEST(CVBSSourceStageParamTest, SampleEncoding_DefaultsToFromMetadata) {
@@ -631,10 +645,9 @@ TEST(CVBSSourceManualEncodingTest, FromMetadataValue_StillRequiresMetadata) {
   expect_user_data_error(stage, p, "metadata");
 }
 
-TEST(CVBSSourceManualEncodingTest, AudioIsFreeRunningWithoutMetadata) {
-  // Frame-locked timing is declared only in the .meta audio_track table, so
-  // audio found alongside a metadata-less source must be treated as
-  // free-running.
+TEST(CVBSSourceManualEncodingTest, AudioWithoutMetadata_GetsDerivedName) {
+  // In manual-encoding mode no metadata is read, so a WAV sidecar still
+  // becomes a channel pair with a name derived from the container number.
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
   deps->metadata_available = false;
   deps->audio_files["/fake/video_audio_00.wav"] =
@@ -646,9 +659,10 @@ TEST(CVBSSourceManualEncodingTest, AudioIsFreeRunningWithoutMetadata) {
   auto vfr = execute_and_get_vfr(stage, p);
   ASSERT_NE(vfr, nullptr);
   EXPECT_TRUE(vfr->has_audio());
-  const auto desc = vfr->get_audio_track_descriptor(0);
+  const auto desc = vfr->get_audio_channel_pair_descriptor(0);
   ASSERT_TRUE(desc.has_value());
-  EXPECT_FALSE(desc->locked);
+  EXPECT_EQ(desc->name, "Track 00");
+  EXPECT_EQ(desc->origin, AudioOrigin::UNKNOWN);
 }
 
 TEST(CVBSSourceManualEncodingTest, EncodingChangeInvalidatesCache) {
@@ -1057,54 +1071,159 @@ TEST(CVBSSidecarDropoutTest, WithDropoutRuns_HintsReturnedForCorrectFrame) {
 
 TEST(CVBSSidecarAudioTest, NoAudioSidecar_HasAudioFalse) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
-  // audio_info = nullopt (default)
+  // audio_files empty (default): no channel pairs.
   PALCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
   ASSERT_NE(vfr, nullptr);
   EXPECT_FALSE(vfr->has_audio());
-  EXPECT_EQ(vfr->audio_track_count(), 0u);
-  EXPECT_FALSE(vfr->get_audio_track_descriptor(0).has_value());
-}
-
-TEST(CVBSSidecarAudioTest, AudioPresent_FreeRunning_HasAudioTrue_LockedFalse) {
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
-  deps->audio_files["/fake/video_audio_00.wav"] =
-      std::vector<int16_t>(200, int16_t{0});
-  PALCVBSSourceStage stage(deps);
-  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
-  ASSERT_NE(vfr, nullptr);
-  EXPECT_TRUE(vfr->has_audio());
-  const auto desc = vfr->get_audio_track_descriptor(0);
-  ASSERT_TRUE(desc.has_value());
-  EXPECT_FALSE(desc->locked);
+  EXPECT_EQ(vfr->audio_channel_pair_count(), 0u);
+  EXPECT_FALSE(vfr->get_audio_channel_pair_descriptor(0).has_value());
   EXPECT_TRUE(vfr->get_audio_samples(0, 0).empty());
 }
 
-TEST(CVBSSidecarAudioTest, AudioPresent_FrameLocked_ReturnsCorrectSamples) {
+TEST(CVBSSidecarAudioTest, AudioPresent_ServesWidenedInt32CadenceBlocks) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
-  CVBSAudioTrackRecord locked_rec;
-  locked_rec.track_number = 0;
-  locked_rec.locked = true;
-  deps->audio_track_table = std::vector<CVBSAudioTrackRecord>{locked_rec};
-  // PAL: 1764 stereo pairs per frame = 3528 int16_t values.
+  // Exactly one PAL frame of 48 kHz audio: 1920 stereo pairs of value 42.
   deps->audio_files["/fake/video_audio_00.wav"] =
-      std::vector<int16_t>(3528, int16_t{42});
+      std::vector<int16_t>(1920 * 2, int16_t{42});
+  deps->audio_sample_rates["/fake/video_audio_00.wav"] = 48000u;
   PALCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
   ASSERT_NE(vfr, nullptr);
   EXPECT_TRUE(vfr->has_audio());
-  const auto desc = vfr->get_audio_track_descriptor(0);
-  ASSERT_TRUE(desc.has_value());
-  EXPECT_TRUE(desc->locked);
-  EXPECT_EQ(vfr->get_audio_sample_count(0, 0), 1764u);
-  auto samples = vfr->get_audio_samples(0, 0);
-  ASSERT_EQ(samples.size(), 3528u);
-  EXPECT_EQ(samples[0], int16_t{42});
+  ASSERT_EQ(vfr->audio_channel_pair_count(), 1u);
+
+  // 48000 Hz input passes through unresampled; every sample is widened to
+  // the 24-bit-in-int32 carrier (<< 8).
+  const auto samples = vfr->get_audio_samples(0, 0);
+  ASSERT_EQ(samples.size(),
+            static_cast<size_t>(audio_pairs_in_frame(0, VideoSystem::PAL)) * 2);
+  EXPECT_EQ(samples[0], int32_t{42} << 8);
+  EXPECT_EQ(samples.back(), int32_t{42} << 8);
 }
 
-// --- Multi-track enumeration and per-track metadata (spec v1.2.0) ---
+TEST(CVBSSidecarAudioTest, Rate48000_PassthroughIsSampleExact) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  // Ramp payload: pair i carries value i in both channels.
+  std::vector<int16_t> payload;
+  for (int16_t i = 0; i < 1920; ++i) {
+    payload.push_back(i);
+    payload.push_back(i);
+  }
+  deps->audio_files["/fake/video_audio_00.wav"] = payload;
+  deps->audio_sample_rates["/fake/video_audio_00.wav"] = 48000u;
+  PALCVBSSourceStage stage(deps);
+  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
+  ASSERT_NE(vfr, nullptr);
 
-TEST(CVBSSidecarAudioTest, MultipleWavSidecars_BecomeTracksInOrder) {
+  const auto samples = vfr->get_audio_samples(0, 0);
+  ASSERT_EQ(samples.size(), 1920u * 2);
+  for (size_t i = 0; i < samples.size(); ++i) {
+    ASSERT_EQ(samples[i], static_cast<int32_t>(payload[i]) << 8)
+        << "sample " << i;
+  }
+}
+
+TEST(CVBSSidecarAudioTest, UnreadableHeader_DefaultsTo48kPassthrough) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  // No audio_sample_rates entry: the header rate is unreadable and the
+  // stage falls back to the pipeline rate (48000 Hz, no resampling).
+  deps->audio_files["/fake/video_audio_00.wav"] =
+      std::vector<int16_t>(1920 * 2, int16_t{3});
+  PALCVBSSourceStage stage(deps);
+  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
+  ASSERT_NE(vfr, nullptr);
+  const auto samples = vfr->get_audio_samples(0, 0);
+  ASSERT_EQ(samples.size(), 1920u * 2);
+  EXPECT_EQ(samples[0], int32_t{3} << 8);
+}
+
+TEST(CVBSSidecarAudioTest, LegacyRate44100_IsResampledTo48kCadence) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  // One PAL frame of legacy 44100 Hz audio (1764 pairs) at a DC level.
+  deps->audio_files["/fake/video_audio_00.wav"] =
+      std::vector<int16_t>(1764 * 2, int16_t{1000});
+  deps->audio_sample_rates["/fake/video_audio_00.wav"] = 44100u;
+  PALCVBSSourceStage stage(deps);
+  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
+  ASSERT_NE(vfr, nullptr);
+
+  // The output block is cadence-sized (1920 pairs at 48 kHz) and the DC
+  // level survives SoXR HQ resampling mid-stream (24-bit domain tolerance).
+  const auto samples = vfr->get_audio_samples(0, 0);
+  ASSERT_EQ(samples.size(), 1920u * 2);
+  const size_t mid = samples.size() / 2;
+  EXPECT_NEAR(static_cast<double>(samples[mid]),
+              static_cast<double>(int32_t{1000} << 8), 512.0);
+}
+
+TEST(CVBSSidecarAudioTest, ShortAudio_IsSilencePaddedToCadence) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  // Only 100 pairs of material for a 1920-pair PAL frame.
+  deps->audio_files["/fake/video_audio_00.wav"] =
+      std::vector<int16_t>(100 * 2, int16_t{7});
+  deps->audio_sample_rates["/fake/video_audio_00.wav"] = 48000u;
+  PALCVBSSourceStage stage(deps);
+  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
+  ASSERT_NE(vfr, nullptr);
+
+  const auto samples = vfr->get_audio_samples(0, 0);
+  ASSERT_EQ(samples.size(), 1920u * 2);
+  EXPECT_EQ(samples[0], int32_t{7} << 8);
+  EXPECT_EQ(samples[199], int32_t{7} << 8);
+  EXPECT_EQ(samples[200], 0);
+  EXPECT_EQ(samples.back(), 0);
+}
+
+TEST(CVBSSidecarAudioTest, NTSC_ServesCadenceSizedFrames) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("NTSC");
+  deps->metadata_record.number_of_sequential_frames = 2;
+  deps->payload_words = make_blank_payload_u16(
+      static_cast<size_t>(kNtscFrameSamples) * 2, kNtscBlanking);
+  // SMPTE 272M-1994 Section 14.3: frames 0/1 of the audio frame sequence
+  // carry 1602 and 1601 stereo pairs.
+  deps->audio_files["/fake/video_audio_00.wav"] =
+      std::vector<int16_t>((1602 + 1601) * 2, int16_t{11});
+  deps->audio_sample_rates["/fake/video_audio_00.wav"] = 48000u;
+  NTSCCVBSSourceStage stage(deps);
+  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
+  ASSERT_NE(vfr, nullptr);
+
+  EXPECT_EQ(vfr->get_audio_samples(0, 0).size(), 1602u * 2);
+  EXPECT_EQ(vfr->get_audio_samples(0, 1).size(), 1601u * 2);
+}
+
+TEST(CVBSSidecarAudioTest, WholeStreamIsReadOncePerPair) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->audio_files["/fake/video_audio_00.wav"] =
+      std::vector<int16_t>(1920 * 2, int16_t{1});
+  deps->audio_sample_rates["/fake/video_audio_00.wav"] = 48000u;
+  PALCVBSSourceStage stage(deps);
+  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
+  ASSERT_NE(vfr, nullptr);
+
+  // The lazy synchronous conversion reads the WAV payload exactly once,
+  // regardless of how many per-frame accesses follow.
+  EXPECT_EQ(deps->audio_read_calls, 0);
+  (void)vfr->get_audio_samples(0, 0);
+  (void)vfr->get_audio_samples(0, 0);
+  EXPECT_EQ(deps->audio_read_calls, 1);
+}
+
+TEST(CVBSSidecarAudioTest, OutOfRangePairOrFrame_ReturnsEmpty) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  deps->audio_files["/fake/video_audio_00.wav"] =
+      std::vector<int16_t>(1920 * 2, int16_t{1});
+  PALCVBSSourceStage stage(deps);
+  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
+  ASSERT_NE(vfr, nullptr);
+  EXPECT_TRUE(vfr->get_audio_samples(1, 0).empty());
+  EXPECT_TRUE(vfr->get_audio_samples(0, 1).empty());  // only one frame
+}
+
+// --- Multi-pair enumeration and per-pair metadata ---
+
+TEST(CVBSSidecarAudioTest, MultipleWavSidecars_BecomeChannelPairsInOrder) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
   deps->audio_files["/fake/video_audio_00.wav"] =
       std::vector<int16_t>(100, int16_t{1});
@@ -1115,173 +1234,64 @@ TEST(CVBSSidecarAudioTest, MultipleWavSidecars_BecomeTracksInOrder) {
   PALCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
   ASSERT_NE(vfr, nullptr);
-  ASSERT_EQ(vfr->audio_track_count(), 3u);
+  ASSERT_EQ(vfr->audio_channel_pair_count(), 3u);
 
-  // No audio_track rows: free-running defaults, name from the container
-  // track number, origin unknown.
-  const auto desc0 = vfr->get_audio_track_descriptor(0);
-  const auto desc1 = vfr->get_audio_track_descriptor(1);
-  const auto desc2 = vfr->get_audio_track_descriptor(2);
+  // No audio_track rows: names derive from the container track number,
+  // origin unknown (the CVBS metadata carries no origin information).
+  const auto desc0 = vfr->get_audio_channel_pair_descriptor(0);
+  const auto desc1 = vfr->get_audio_channel_pair_descriptor(1);
+  const auto desc2 = vfr->get_audio_channel_pair_descriptor(2);
   ASSERT_TRUE(desc0 && desc1 && desc2);
   EXPECT_EQ(desc0->name, "Track 00");
   EXPECT_EQ(desc1->name, "Track 01");
   EXPECT_EQ(desc2->name, "Track 15");
-  EXPECT_EQ(desc0->origin, AudioTrackOrigin::UNKNOWN);
-  EXPECT_FALSE(vfr->get_audio_track_descriptor(3).has_value());
-
-  // Free-running: per-track stream lengths come from each WAV.
-  EXPECT_EQ(vfr->get_audio_stream_pair_count(0), 50u);
-  EXPECT_EQ(vfr->get_audio_stream_pair_count(1), 100u);
-  EXPECT_EQ(vfr->get_audio_stream_pair_count(2), 150u);
+  EXPECT_EQ(desc0->origin, AudioOrigin::UNKNOWN);
+  EXPECT_FALSE(vfr->get_audio_channel_pair_descriptor(3).has_value());
 }
 
-TEST(CVBSSidecarAudioTest, AudioTrackTable_ProvidesDescriptors) {
+TEST(CVBSSidecarAudioTest, Enumeration_CapsAtMaxChannelPairs) {
+  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
+  for (int i = 0; i < 10; ++i) {
+    const std::string suffix = "0" + std::to_string(i);  // 00-09
+    deps->audio_files["/fake/video_audio_" + suffix + ".wav"] =
+        std::vector<int16_t>(100, int16_t{1});
+  }
+  PALCVBSSourceStage stage(deps);
+  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
+  ASSERT_NE(vfr, nullptr);
+  EXPECT_EQ(vfr->audio_channel_pair_count(), kMaxAudioChannelPairs);
+}
+
+TEST(CVBSSidecarAudioTest, AudioTrackTable_ProvidesDescriptorNames) {
   auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
   deps->audio_files["/fake/video_audio_00.wav"] =
-      std::vector<int16_t>(3528, int16_t{5});
+      std::vector<int16_t>(1920 * 2, int16_t{5});
   deps->audio_files["/fake/video_audio_01.wav"] =
       std::vector<int16_t>(400, int16_t{6});
   CVBSAudioTrackRecord rec0;
   rec0.track_number = 0;
   rec0.description = "Analogue";
-  rec0.locked = true;
+  rec0.locked = true;  // legacy column — ignored by the pipeline
   CVBSAudioTrackRecord rec1;
   rec1.track_number = 1;
   rec1.description = "EFM digital audio";
-  rec1.locked = false;
+  rec1.locked = false;  // legacy column — ignored by the pipeline
   deps->audio_track_table = std::vector<CVBSAudioTrackRecord>{rec0, rec1};
 
   PALCVBSSourceStage stage(deps);
   auto vfr = execute_and_get_vfr(stage, kDefaultParams);
   ASSERT_NE(vfr, nullptr);
-  ASSERT_EQ(vfr->audio_track_count(), 2u);
+  ASSERT_EQ(vfr->audio_channel_pair_count(), 2u);
 
-  const auto desc0 = vfr->get_audio_track_descriptor(0);
+  const auto desc0 = vfr->get_audio_channel_pair_descriptor(0);
   ASSERT_TRUE(desc0.has_value());
   EXPECT_EQ(desc0->name, "Analogue");
-  // The CVBS metadata carries no origin information.
-  EXPECT_EQ(desc0->origin, AudioTrackOrigin::UNKNOWN);
-  EXPECT_TRUE(desc0->locked);
-  EXPECT_EQ(desc0->sample_rate.num, 44100u);
-  EXPECT_EQ(desc0->sample_rate.den, 1u);
-  EXPECT_EQ(vfr->get_audio_sample_count(0, 0), 1764u);
+  EXPECT_EQ(desc0->origin, AudioOrigin::UNKNOWN);
 
-  const auto desc1 = vfr->get_audio_track_descriptor(1);
+  const auto desc1 = vfr->get_audio_channel_pair_descriptor(1);
   ASSERT_TRUE(desc1.has_value());
   EXPECT_EQ(desc1->name, "EFM digital audio");
-  EXPECT_FALSE(desc1->locked);
-  EXPECT_EQ(vfr->get_audio_stream_pair_count(1), 200u);
-}
-
-TEST(CVBSSidecarAudioTest, FreeRunningTrack_StreamReadsSeekIntoWav) {
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
-  // 100 pairs: pair i carries value i in both channels.
-  std::vector<int16_t> payload;
-  for (int16_t i = 0; i < 100; ++i) {
-    payload.push_back(i);
-    payload.push_back(i);
-  }
-  deps->audio_files["/fake/video_audio_00.wav"] = payload;
-
-  PALCVBSSourceStage stage(deps);
-  auto vfr = execute_and_get_vfr(stage, kDefaultParams);
-  ASSERT_NE(vfr, nullptr);
-
-  EXPECT_EQ(vfr->get_audio_stream_pair_count(0), 100u);
-  const auto middle = vfr->get_audio_stream_samples(0, 40, 10);
-  ASSERT_EQ(middle.size(), 20u);
-  EXPECT_EQ(middle[0], int16_t{40});
-  EXPECT_EQ(middle[19], int16_t{49});
-
-  // End-of-stream reads are clamped; past-the-end reads return nothing.
-  EXPECT_EQ(vfr->get_audio_stream_samples(0, 95, 10).size(), 10u);
-  EXPECT_TRUE(vfr->get_audio_stream_samples(0, 100, 10).empty());
-
-  // A free-running track answers no per-frame queries.
-  EXPECT_EQ(vfr->get_audio_sample_count(0, 0), 0u);
-}
-
-TEST(CVBSSidecarAudioTest, LockAudio_ConvertsFreeRunningTrackToLocked) {
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
-  // Exactly one PAL frame of audio at 44100 Hz: 1764 pairs, ramp values.
-  std::vector<int16_t> payload;
-  for (int32_t i = 0; i < 1764; ++i) {
-    payload.push_back(static_cast<int16_t>(i % 1000));
-    payload.push_back(static_cast<int16_t>(i % 1000));
-  }
-  deps->audio_files["/fake/video_audio_00.wav"] = payload;
-
-  PALCVBSSourceStage stage(deps);
-  std::map<std::string, ParameterValue> params = kDefaultParams;
-  params["lock_audio"] = true;
-  auto vfr = execute_and_get_vfr(stage, params);
-  ASSERT_NE(vfr, nullptr);
-
-  // The descriptor describes the OUTPUT: a locked track at the PAL rate.
-  const auto desc = vfr->get_audio_track_descriptor(0);
-  ASSERT_TRUE(desc.has_value());
-  EXPECT_TRUE(desc->locked);
-  EXPECT_EQ(desc->sample_rate.num, 44100u);
-  EXPECT_EQ(desc->sample_rate.den, 1u);
-  EXPECT_EQ(vfr->get_audio_stream_pair_count(0), 0u);
-
-  // PAL lock conversion is a same-rate segmentation — sample-exact.
-  EXPECT_EQ(vfr->get_audio_sample_count(0, 0), 1764u);
-  const auto samples = vfr->get_audio_samples(0, 0);
-  ASSERT_EQ(samples.size(), 3528u);
-  EXPECT_EQ(samples[0], int16_t{0});
-  EXPECT_EQ(samples[2], int16_t{1});
-  EXPECT_EQ(samples[3526], int16_t{1763 % 1000});
-}
-
-TEST(CVBSSidecarAudioTest, LockAudio_LeavesLockedTracksUntouched) {
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
-  CVBSAudioTrackRecord locked_rec;
-  locked_rec.track_number = 0;
-  locked_rec.locked = true;
-  deps->audio_track_table = std::vector<CVBSAudioTrackRecord>{locked_rec};
-  deps->audio_files["/fake/video_audio_00.wav"] =
-      std::vector<int16_t>(3528, int16_t{9});
-
-  PALCVBSSourceStage stage(deps);
-  std::map<std::string, ParameterValue> params = kDefaultParams;
-  params["lock_audio"] = true;
-  auto vfr = execute_and_get_vfr(stage, params);
-  ASSERT_NE(vfr, nullptr);
-
-  // Already-locked: served directly from per-frame WAV offsets, unresampled.
-  EXPECT_EQ(vfr->get_audio_sample_count(0, 0), 1764u);
-  const auto samples = vfr->get_audio_samples(0, 0);
-  ASSERT_EQ(samples.size(), 3528u);
-  EXPECT_EQ(samples[0], int16_t{9});
-}
-
-TEST(CVBSSidecarAudioTest, LockAudioParameterChange_InvalidatesCache) {
-  auto deps = std::make_shared<FakeCVBSSourceStageDeps>("PAL");
-  deps->audio_files["/fake/video_audio_00.wav"] =
-      std::vector<int16_t>(200, int16_t{0});
-  PALCVBSSourceStage stage(deps);
-  std::vector<ArtifactPtr> inputs;
-  ObservationContext obs;
-  auto r1 = stage.execute(inputs, kDefaultParams, obs);
-  std::map<std::string, ParameterValue> params = kDefaultParams;
-  params["lock_audio"] = true;
-  auto r2 = stage.execute(inputs, params, obs);
-  ASSERT_EQ(r1.size(), 1u);
-  ASSERT_EQ(r2.size(), 1u);
-  EXPECT_NE(r1.front().get(), r2.front().get());
-}
-
-TEST(CVBSSidecarAudioTest, LockAudioDescriptor_IsBoolDefaultFalse) {
-  PALCVBSSourceStage stage;
-  const auto descs = stage.get_parameter_descriptors();
-  const auto it = std::find_if(
-      descs.begin(), descs.end(),
-      [](const ParameterDescriptor& d) { return d.name == "lock_audio"; });
-  ASSERT_NE(it, descs.end());
-  EXPECT_EQ(it->type, ParameterType::BOOL);
-  ASSERT_TRUE(it->constraints.default_value.has_value());
-  EXPECT_EQ(std::get<bool>(*it->constraints.default_value), false);
+  EXPECT_EQ(desc1->origin, AudioOrigin::UNKNOWN);
 }
 
 // ===========================================================================

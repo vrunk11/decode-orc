@@ -2,8 +2,8 @@
  * File:        efm_audio_decode_stage.h
  * Module:      orc-stage-plugin-efm_audio_decode
  * Purpose:     EFM audio decode transform stage (VFrameR) — decodes the EFM
- *              t-value stream to CD audio and appends it as a free-running
- *              audio track
+ *              t-value stream to CD audio and appends it as a synchronous
+ *              audio channel pair
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -14,7 +14,7 @@
 #include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
 #include <orc/stage/artifact.h>
-#include <orc/stage/audio_track.h>
+#include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/stage_parameter.h>
 #include <orc/stage/video_frame_representation.h>
 
@@ -26,72 +26,78 @@
 namespace orc {
 
 // ============================================================================
-// EFMAudioTrackRepresentation
+// EFMAudioChannelPairRepresentation
 // ============================================================================
-// Wraps a VideoFrameRepresentation and appends one free-running audio track
-// carrying the decoded EFM digital audio ({origin: EFM, locked: false,
-// 44100/1 Hz}). Video, dropout hints, EFM/AC3 signal data and all existing
-// audio tracks pass through untouched.
+// Wraps a VideoFrameRepresentation and appends one audio channel pair
+// carrying the decoded EFM digital audio ({name: "EFM digital audio",
+// origin: EFM}) in the pipeline form: 48 kHz synchronous (frame-locked)
+// 24-bit-in-int32 stereo. Video, dropout hints, EFM/AC3 signal data and all
+// existing audio channel pairs pass through untouched.
 //
 // EFM decode is whole-stream sequential (CIRC interleaving spans sectors), so
 // it cannot run per-frame. The decode runs lazily, at most once, on the first
-// access to the appended track's stream accessors (std::call_once); decoded
-// audio is cached on disk by the deps. Video-only access never pays for the
-// decode. Pair 0 of the decoded stream is treated as synchronous with the
-// first frame of the wrapped representation.
+// sample access to the appended pair (std::call_once). The decoded CD audio
+// (IEC 60908: 44.1 kHz 16-bit stereo) is widened to the 24-bit carrier,
+// resampled 44100 → 48000 Hz, cadence-segmented via the shared resampler,
+// and stored in the deps' scratch cache as a raw int32 cadence-aligned
+// stream; per-frame serving seeks by audio_pair_offset(id, system).
+// Video-only access never pays for the decode. Pair 0 of the decoded stream
+// is treated as synchronous with the first frame of the wrapped
+// representation. A failed decode leaves the appended pair silent
+// (cadence-sized zero blocks). Bit-exact un-resampled CD audio remains
+// available via the EFM Decoder Sink.
 //
-// Thread safety: safe for concurrent reads; the lazy decode is serialised by
-// std::call_once and cache reads are stateless.
-class EFMAudioTrackRepresentation : public VideoFrameRepresentationWrapper,
-                                    public Artifact {
+// Thread safety: safe for concurrent reads; the lazy decode+conversion is
+// serialised by std::call_once and cache reads are stateless.
+class EFMAudioChannelPairRepresentation
+    : public VideoFrameRepresentationWrapper,
+      public Artifact {
  public:
-  EFMAudioTrackRepresentation(
+  EFMAudioChannelPairRepresentation(
       std::shared_ptr<const VideoFrameRepresentation> source,
       std::shared_ptr<IEFMAudioDecodeDeps> deps,
       const EFMAudioDecodeOptions& options)
       : VideoFrameRepresentationWrapper(std::move(source)),
-        Artifact(ArtifactID("efm_audio_track"), Provenance{}),
+        Artifact(ArtifactID("efm_audio_channel_pair"), Provenance{}),
         deps_(std::move(deps)),
         options_(options) {}
 
   std::string type_name() const override {
-    return "efm_audio_track_representation";
+    return "efm_audio_channel_pair_representation";
   }
 
-  // --- Audio tracks: source tracks forward; one EFM track is appended ------
+  // --- Audio channel pairs: source pairs forward; one EFM pair is appended --
 
-  size_t audio_track_count() const override { return source_track_count() + 1; }
+  size_t audio_channel_pair_count() const override {
+    return source_pair_count() + 1;
+  }
 
-  std::optional<AudioTrackDescriptor> get_audio_track_descriptor(
-      size_t track) const override;
+  std::optional<AudioChannelPairDescriptor> get_audio_channel_pair_descriptor(
+      size_t pair) const override;
 
-  // The appended track is free-running: locked per-frame accessors answer
-  // 0 / {} for it, per the VFR audio contract.
-  uint32_t get_audio_sample_count(size_t track, FrameID id) const override;
-  std::vector<int16_t> get_audio_samples(size_t track,
+  std::vector<int32_t> get_audio_samples(size_t pair,
                                          FrameID id) const override;
 
-  uint64_t get_audio_stream_pair_count(size_t track) const override;
-  std::vector<int16_t> get_audio_stream_samples(
-      size_t track, uint64_t first_pair, uint32_t pair_count) const override;
-
  private:
-  size_t source_track_count() const {
-    return source_ ? source_->audio_track_count() : 0;
+  size_t source_pair_count() const {
+    return source_ ? source_->audio_channel_pair_count() : 0;
   }
-  // The appended track is always the last index (track order is stable
-  // through the DAG; track-adding stages append).
-  size_t efm_track_index() const { return source_track_count(); }
+  // The appended pair is always the last index (pair order is stable through
+  // the DAG; pair-adding stages append).
+  size_t efm_pair_index() const { return source_pair_count(); }
 
-  // Runs the whole-stream EFM decode at most once; safe to call from any
-  // accessor thread. Failures are logged and leave the track empty.
+  // Runs the whole-stream EFM decode and the 48 kHz synchronous conversion
+  // at most once; safe to call from any accessor thread. Failures are logged
+  // and leave the appended pair silent.
   void ensure_decoded() const;
 
   std::shared_ptr<IEFMAudioDecodeDeps> deps_;
   EFMAudioDecodeOptions options_;
 
   mutable std::once_flag decode_once_;
-  mutable EFMAudioDecodeResult decode_result_;
+  // True when the synchronous cache holds the converted stream. Written
+  // under decode_once_; call_once synchronises readers.
+  mutable bool synchronous_audio_ready_ = false;
 };
 
 // ============================================================================
@@ -110,7 +116,7 @@ class EFMAudioDecodeStage : public DAGStage,
                         "efm_audio_decode",
                         "EFM Audio Decode",
                         "Decodes the EFM t-value stream to CD audio and "
-                        "appends it as a free-running audio track",
+                        "appends it as a synchronous audio channel pair",
                         1,
                         1,
                         1,

@@ -40,35 +40,35 @@ std::optional<AudioChannelMapOperation> parse_operation(
 // ChannelMappedRepresentation
 // ============================================================================
 
-size_t ChannelMappedRepresentation::audio_track_count() const {
-  return source_track_count() + (is_split() ? 1 : 0);
+size_t ChannelMappedRepresentation::audio_channel_pair_count() const {
+  return source_pair_count() + (is_split() ? 1 : 0);
 }
 
-size_t ChannelMappedRepresentation::source_track_for(size_t track) const {
-  if (is_split() && track == appended_track_index()) return target_track_;
-  return track;
+size_t ChannelMappedRepresentation::source_pair_for(size_t pair) const {
+  if (is_split() && pair == appended_pair_index()) return target_pair_;
+  return pair;
 }
 
 ChannelMappedRepresentation::ChannelFill
-ChannelMappedRepresentation::fill_for_track(size_t track) const {
+ChannelMappedRepresentation::fill_for_pair(size_t pair) const {
   switch (operation_) {
     case AudioChannelMapOperation::kSplitDualMono:
-      if (track == target_track_) return ChannelFill::kBothFromLeft;
-      if (track == appended_track_index()) return ChannelFill::kBothFromRight;
+      if (pair == target_pair_) return ChannelFill::kBothFromLeft;
+      if (pair == appended_pair_index()) return ChannelFill::kBothFromRight;
       return ChannelFill::kNone;
     case AudioChannelMapOperation::kLeftToBoth:
-      return track == target_track_ ? ChannelFill::kBothFromLeft
-                                    : ChannelFill::kNone;
+      return pair == target_pair_ ? ChannelFill::kBothFromLeft
+                                  : ChannelFill::kNone;
     case AudioChannelMapOperation::kRightToBoth:
-      return track == target_track_ ? ChannelFill::kBothFromRight
-                                    : ChannelFill::kNone;
+      return pair == target_pair_ ? ChannelFill::kBothFromRight
+                                  : ChannelFill::kNone;
     case AudioChannelMapOperation::kSwapChannels:
-      return track == target_track_ ? ChannelFill::kSwap : ChannelFill::kNone;
+      return pair == target_pair_ ? ChannelFill::kSwap : ChannelFill::kNone;
   }
   return ChannelFill::kNone;
 }
 
-void ChannelMappedRepresentation::apply_fill(std::vector<int16_t>& samples,
+void ChannelMappedRepresentation::apply_fill(std::vector<int32_t>& samples,
                                              ChannelFill fill) {
   if (fill == ChannelFill::kNone) return;
   // Interleaved stereo pairs (L, R, L, R, …); ignore a trailing odd sample.
@@ -94,47 +94,26 @@ void ChannelMappedRepresentation::apply_fill(std::vector<int16_t>& samples,
   }
 }
 
-std::optional<AudioTrackDescriptor>
-ChannelMappedRepresentation::get_audio_track_descriptor(size_t track) const {
+std::optional<AudioChannelPairDescriptor>
+ChannelMappedRepresentation::get_audio_channel_pair_descriptor(
+    size_t pair) const {
   if (!source_) return std::nullopt;
-  if (is_split() &&
-      (track == target_track_ || track == appended_track_index())) {
-    auto desc = source_->get_audio_track_descriptor(target_track_);
+  if (is_split() && (pair == target_pair_ || pair == appended_pair_index())) {
+    auto desc = source_->get_audio_channel_pair_descriptor(target_pair_);
     if (!desc) return std::nullopt;
-    desc->name += (track == target_track_) ? " (L)" : " (R)";
-    desc->origin = AudioTrackOrigin::DERIVED;
+    desc->name += (pair == target_pair_) ? " (L)" : " (R)";
+    desc->origin = AudioOrigin::DERIVED;
     return desc;
   }
-  if (track >= audio_track_count()) return std::nullopt;
-  return source_->get_audio_track_descriptor(track);
+  if (pair >= audio_channel_pair_count()) return std::nullopt;
+  return source_->get_audio_channel_pair_descriptor(pair);
 }
 
-uint32_t ChannelMappedRepresentation::get_audio_sample_count(size_t track,
-                                                             FrameID id) const {
-  if (!source_ || track >= audio_track_count()) return 0;
-  return source_->get_audio_sample_count(source_track_for(track), id);
-}
-
-std::vector<int16_t> ChannelMappedRepresentation::get_audio_samples(
-    size_t track, FrameID id) const {
-  if (!source_ || track >= audio_track_count()) return {};
-  auto samples = source_->get_audio_samples(source_track_for(track), id);
-  apply_fill(samples, fill_for_track(track));
-  return samples;
-}
-
-uint64_t ChannelMappedRepresentation::get_audio_stream_pair_count(
-    size_t track) const {
-  if (!source_ || track >= audio_track_count()) return 0;
-  return source_->get_audio_stream_pair_count(source_track_for(track));
-}
-
-std::vector<int16_t> ChannelMappedRepresentation::get_audio_stream_samples(
-    size_t track, uint64_t first_pair, uint32_t pair_count) const {
-  if (!source_ || track >= audio_track_count()) return {};
-  auto samples = source_->get_audio_stream_samples(source_track_for(track),
-                                                   first_pair, pair_count);
-  apply_fill(samples, fill_for_track(track));
+std::vector<int32_t> ChannelMappedRepresentation::get_audio_samples(
+    size_t pair, FrameID id) const {
+  if (!source_ || pair >= audio_channel_pair_count()) return {};
+  auto samples = source_->get_audio_samples(source_pair_for(pair), id);
+  apply_fill(samples, fill_for_pair(pair));
   return samples;
 }
 
@@ -164,22 +143,24 @@ std::vector<ArtifactPtr> AudioChannelMapStage::execute(
 
   if (!parameters.empty()) set_parameters(parameters);
 
-  const size_t track = static_cast<size_t>(track_);
-  if (track >= vfr->audio_track_count()) {
-    throw DAGExecutionError(
-        "AudioChannelMapStage: track " + std::to_string(track_) +
-        " is out of range: the input carries " +
-        std::to_string(vfr->audio_track_count()) + " audio track(s)");
+  const size_t pair = static_cast<size_t>(channel_pair_);
+  if (pair >= vfr->audio_channel_pair_count()) {
+    throw DAGExecutionError("AudioChannelMapStage: channel pair " +
+                            std::to_string(channel_pair_) +
+                            " is out of range: the input carries " +
+                            std::to_string(vfr->audio_channel_pair_count()) +
+                            " audio channel pair(s)");
   }
 
-  // The track cap is enforced at every track-adding stage, not just at the
-  // container sink, so a DAG that validates also exports.
+  // The channel-pair cap is enforced at every pair-adding stage, not just at
+  // the container sink, so a DAG that validates also exports.
   if (operation_ == kOpSplitDualMono &&
-      vfr->audio_track_count() >= kMaxAudioTracks) {
-    throw DAGExecutionError("AudioChannelMapStage: cannot split track " +
-                            std::to_string(track_) +
+      vfr->audio_channel_pair_count() >= kMaxAudioChannelPairs) {
+    throw DAGExecutionError("AudioChannelMapStage: cannot split channel pair " +
+                            std::to_string(channel_pair_) +
                             ": the input already carries the maximum of " +
-                            std::to_string(kMaxAudioTracks) + " audio tracks");
+                            std::to_string(kMaxAudioChannelPairs) +
+                            " audio channel pairs");
   }
 
   auto output = process(vfr);
@@ -196,7 +177,7 @@ std::shared_ptr<const VideoFrameRepresentation> AudioChannelMapStage::process(
   if (!source) return nullptr;
   const auto operation = parse_operation(operation_);
   return std::make_shared<ChannelMappedRepresentation>(
-      std::move(source), static_cast<size_t>(track_),
+      std::move(source), static_cast<size_t>(channel_pair_),
       operation.value_or(AudioChannelMapOperation::kSplitDualMono));
 }
 
@@ -209,14 +190,15 @@ AudioChannelMapStage::get_parameter_descriptors(VideoSystem project_format,
 
   {
     ParameterDescriptor desc;
-    desc.name = "track";
-    desc.display_name = "Track";
+    desc.name = "channel_pair";
+    desc.display_name = "Channel pair";
     desc.description =
-        "Audio track the operation applies to (0-based, matching the CVBS "
-        "container track numbering)";
+        "Audio channel pair the operation applies to (0-based, matching the "
+        "CVBS container channel-pair numbering)";
     desc.type = ParameterType::INT32;
     desc.constraints.min_value = int32_t{0};
-    desc.constraints.max_value = static_cast<int32_t>(kMaxAudioTracks) - 1;
+    desc.constraints.max_value =
+        static_cast<int32_t>(kMaxAudioChannelPairs) - 1;
     desc.constraints.default_value = int32_t{0};
     descriptors.push_back(desc);
   }
@@ -226,11 +208,11 @@ AudioChannelMapStage::get_parameter_descriptors(VideoSystem project_format,
     desc.name = "operation";
     desc.display_name = "Operation";
     desc.description =
-        "Channel routing operation: 'split_dual_mono' replaces the track "
-        "with '<name> (L)' in place and appends '<name> (R)' as a new track "
-        "(bilingual/dual-mono material); 'left_to_both' / 'right_to_both' "
-        "copy one channel to both in place; 'swap_channels' exchanges left "
-        "and right in place.";
+        "Channel routing operation: 'split_dual_mono' replaces the channel "
+        "pair with '<name> (L)' in place and appends '<name> (R)' as a new "
+        "channel pair (bilingual/dual-mono material); 'left_to_both' / "
+        "'right_to_both' copy one channel to both in place; 'swap_channels' "
+        "exchanges left and right in place.";
     desc.type = ParameterType::STRING;
     desc.constraints.default_value = std::string(kOpSplitDualMono);
     desc.constraints.allowed_strings = {kOpSplitDualMono, kOpLeftToBoth,
@@ -243,19 +225,19 @@ AudioChannelMapStage::get_parameter_descriptors(VideoSystem project_format,
 
 std::map<std::string, ParameterValue> AudioChannelMapStage::get_parameters()
     const {
-  return {{"track", track_}, {"operation", operation_}};
+  return {{"channel_pair", channel_pair_}, {"operation", operation_}};
 }
 
 bool AudioChannelMapStage::set_parameters(
     const std::map<std::string, ParameterValue>& params) {
   for (const auto& [key, value] : params) {
-    if (key == "track") {
+    if (key == "channel_pair") {
       const auto* v = std::get_if<int32_t>(&value);
-      if (!v || *v < 0 || *v >= static_cast<int32_t>(kMaxAudioTracks)) {
-        ORC_LOG_ERROR("AudioChannelMapStage: invalid track parameter");
+      if (!v || *v < 0 || *v >= static_cast<int32_t>(kMaxAudioChannelPairs)) {
+        ORC_LOG_ERROR("AudioChannelMapStage: invalid channel_pair parameter");
         return false;
       }
-      track_ = *v;
+      channel_pair_ = *v;
     } else if (key == "operation") {
       const auto* v = std::get_if<std::string>(&value);
       if (!v || !parse_operation(*v)) {

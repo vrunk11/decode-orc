@@ -291,7 +291,6 @@ bool FFmpegOutputBackend::initialize(const Configuration& config) {
   num_fields_ = config.num_fields;
   current_field_for_audio_ = start_field_index_;
   current_field_for_captions_ = start_field_index_;
-  rep_first_frame_ = vfr_ ? vfr_->frame_range().first : 0;
 
   audio_tracks_option_ = "all";
   auto tracks_it = config.options.find("audio_tracks");
@@ -1631,7 +1630,7 @@ std::string FFmpegOutputBackend::getFormatInfo() const {
 bool FFmpegOutputBackend::setupAudioEncoders() {
   std::string selection_error;
   const auto selection = parse_audio_track_selection(
-      audio_tracks_option_, vfr_->audio_track_count(), selection_error);
+      audio_tracks_option_, vfr_->audio_channel_pair_count(), selection_error);
   if (!selection) {
     ORC_LOG_ERROR("FFmpegOutputBackend: {}", selection_error);
     last_error_ = selection_error;
@@ -1640,35 +1639,20 @@ bool FFmpegOutputBackend::setupAudioEncoders() {
 
   audio_encoders_.clear();
   audio_encoders_.reserve(selection->size());
-  const uint64_t start_frame_offset =
-      (start_field_index_ / 2 >= rep_first_frame_)
-          ? start_field_index_ / 2 - rep_first_frame_
-          : 0;
 
   for (const size_t track_index : *selection) {
-    const auto descriptor = vfr_->get_audio_track_descriptor(track_index);
+    const auto descriptor =
+        vfr_->get_audio_channel_pair_descriptor(track_index);
     if (!descriptor) {
-      ORC_LOG_ERROR("FFmpegOutputBackend: Audio track {} has no descriptor",
-                    track_index);
+      ORC_LOG_ERROR(
+          "FFmpegOutputBackend: Audio channel pair {} has no descriptor",
+          track_index);
       return false;
     }
 
     AudioTrackEncoder track;
     track.track_index = track_index;
     track.descriptor = *descriptor;
-    // Per-stream sample rate honesty: locked NTSC/PAL-M tracks are declared
-    // at 44056 Hz (nearest integer to 44100000/1001); locked PAL and
-    // free-running tracks at 44100 Hz. Samples are never resampled.
-    track.sample_rate = audio_track_declared_rate(*descriptor);
-
-    if (!descriptor->locked) {
-      // Free-running tracks feed from their own stream cursor. When the
-      // export starts at frame k > 0 of the representation, the read begins
-      // at audio_stream_pair_offset(k).
-      track.total_pairs = vfr_->get_audio_stream_pair_count(track_index);
-      track.next_pair = audio_stream_pair_offset(
-          start_frame_offset, descriptor->sample_rate, video_system_);
-    }
 
     if (!setupAudioEncoderForTrack(track)) {
       // The AVStream (if created) is owned by format_ctx_; free the rest.
@@ -1739,12 +1723,15 @@ bool FFmpegOutputBackend::setupAudioEncoderForTrack(AudioTrackEncoder& track) {
     return false;
   }
 
-  // Configure audio encoder
+  // Configure audio encoder. Pipeline audio is always 48000 Hz synchronous
+  // (SMPTE 272M-1994 §1.2) — exact for every video system, so the declared
+  // rate is uniform and no resampling ever happens.
+  const int sample_rate = static_cast<int>(kAudioSampleRateHz);
   track.codec_ctx->codec_id = audio_codec_id;
   track.codec_ctx->codec_type = AVMEDIA_TYPE_AUDIO;
-  track.codec_ctx->sample_rate = track.sample_rate;
+  track.codec_ctx->sample_rate = sample_rate;
   track.codec_ctx->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
-  track.codec_ctx->time_base = {1, track.sample_rate};
+  track.codec_ctx->time_base = {1, sample_rate};
 
   // Codec-specific settings
   if (audio_codec_id == AV_CODEC_ID_AAC) {
@@ -1800,59 +1787,30 @@ bool FFmpegOutputBackend::setupAudioEncoderForTrack(AudioTrackEncoder& track) {
   }
 
   ORC_LOG_DEBUG(
-      "FFmpegOutputBackend: Audio encoder initialized for track {} '{}' "
-      "({} {} Hz stereo, {})",
-      track.track_index, track.descriptor.name, audio_codec->name,
-      track.sample_rate,
-      track.descriptor.locked ? "frame-locked" : "free-running");
+      "FFmpegOutputBackend: Audio encoder initialized for channel pair {} "
+      "'{}' ({} {} Hz stereo)",
+      track.track_index, track.descriptor.name, audio_codec->name, sample_rate);
   return true;
 }
 
 std::vector<int16_t> FFmpegOutputBackend::gatherAudioForFrame(
     AudioTrackEncoder& track, FrameID frame_id) {
-  if (track.descriptor.locked) {
-    auto samples = vfr_->get_audio_samples(track.track_index, frame_id);
-    if (samples.empty()) {
-      // No audio for this frame — generate silence to maintain A/V sync,
-      // sized from the track's declared rate (exact pairs per frame for
-      // locked tracks).
-      uint32_t sample_count =
-          vfr_->get_audio_sample_count(track.track_index, frame_id);
-      if (sample_count == 0) {
-        sample_count = locked_audio_pairs_per_frame(video_system_);
-      }
-      samples.resize(static_cast<size_t>(sample_count) * 2, 0);
-    }
-    return samples;
+  const std::vector<int32_t> carrier =
+      vfr_->get_audio_samples(track.track_index, frame_id);
+  if (carrier.empty()) {
+    // No audio for this frame — cadence-sized silence maintains A/V sync
+    // (SMPTE 272M-1994 §14.3 audio frame sequence).
+    const uint32_t pair_count = audio_pairs_in_frame(frame_id, video_system_);
+    return std::vector<int16_t>(static_cast<size_t>(pair_count) * 2, 0);
   }
 
-  // Free-running track: consume this video frame's time window
-  // [offset(r), offset(r+1)) from the stream, where r is the frame index
-  // relative to the export start. Cumulative offsets keep the window
-  // boundaries exact (NTSC windows alternate 1471/1472 pairs).
-  const uint64_t start_frame_offset =
-      (start_field_index_ / 2 >= rep_first_frame_)
-          ? start_field_index_ / 2 - rep_first_frame_
-          : 0;
-  const uint64_t r = start_frame_offset + track.frames_fed;
-  const uint64_t window_end = audio_stream_pair_offset(
-      r + 1, track.descriptor.sample_rate, video_system_);
-  const uint64_t window_pairs =
-      (window_end > track.next_pair) ? window_end - track.next_pair : 0;
-  ++track.frames_fed;
-
+  // Narrow the 24-bit-in-int32 pipeline carrier to the encoders' S16 feed by
+  // dropping the low 8 bits.
   std::vector<int16_t> samples;
-  samples.reserve(static_cast<size_t>(window_pairs) * 2);
-  if (track.next_pair < track.total_pairs && window_pairs > 0) {
-    const uint64_t available =
-        std::min<uint64_t>(window_pairs, track.total_pairs - track.next_pair);
-    samples = vfr_->get_audio_stream_samples(track.track_index, track.next_pair,
-                                             static_cast<uint32_t>(available));
+  samples.reserve(carrier.size());
+  for (const int32_t sample : carrier) {
+    samples.push_back(static_cast<int16_t>(sample >> 8));
   }
-  // Silence-pad a short or exhausted stream to the video frame's window so
-  // the audio stream tracks the video duration.
-  samples.resize(static_cast<size_t>(window_pairs) * 2, 0);
-  track.next_pair += window_pairs;
   return samples;
 }
 

@@ -1,8 +1,8 @@
 /*
  * File:        audio_track_selection.h
  * Module:      orc-core
- * Purpose:     Parses the video sink's audio_tracks parameter and derives
- *              per-track integer sample rates for embedded audio streams
+ * Purpose:     Parses the video sink's audio_tracks parameter selecting the
+ *              audio channel pairs to embed
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -11,8 +11,6 @@
 #ifndef ORC_CORE_AUDIO_TRACK_SELECTION_H
 #define ORC_CORE_AUDIO_TRACK_SELECTION_H
 
-#include <orc/stage/audio_track.h>
-
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -20,11 +18,11 @@
 
 namespace orc {
 
-// Parse an audio_tracks parameter value: "all" (every pipeline track) or a
-// comma-separated list of 0-based track indices, e.g. "0,2". Whitespace
-// around entries is ignored and duplicates are collapsed (first occurrence
-// wins). Returns nullopt and sets error on malformed input, an index outside
-// [0, track_count), or an empty selection.
+// Parse an audio_tracks parameter value: "all" (every pipeline audio channel
+// pair) or a comma-separated list of 0-based channel pair indices, e.g.
+// "0,2". Whitespace around entries is ignored and duplicates are collapsed
+// (first occurrence wins). Returns nullopt and sets error on malformed
+// input, an index outside [0, track_count), or an empty selection.
 inline std::optional<std::vector<size_t>> parse_audio_track_selection(
     const std::string& value, size_t track_count, std::string& error) {
   const auto trim = [](const std::string& s) {
@@ -83,20 +81,6 @@ inline std::optional<std::vector<size_t>> parse_audio_track_selection(
     return std::nullopt;
   }
   return selection;
-}
-
-// Nearest-integer sample rate for a track's exact rational rate, used for
-// the encoder/container declaration (containers carry integer rates):
-//   locked PAL / free-running   44100/1        -> 44100
-//   locked NTSC / PAL-M         44100000/1001  -> 44056 (1.3 ppm error,
-//                               vs 999 ppm if 44100 were declared)
-inline int audio_track_declared_rate(const AudioTrackDescriptor& descriptor) {
-  if (descriptor.sample_rate.num == 0 || descriptor.sample_rate.den == 0) {
-    return 44100;
-  }
-  const uint64_t num = descriptor.sample_rate.num;
-  const uint64_t den = descriptor.sample_rate.den;
-  return static_cast<int>((num + den / 2) / den);
 }
 
 }  // namespace orc

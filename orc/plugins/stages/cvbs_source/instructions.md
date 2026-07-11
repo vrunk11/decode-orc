@@ -16,13 +16,14 @@ The file-path parameters offered match the project's source type: a composite pr
 | CVBS Y (Luma) File Path (`y_path`) | Path to the luma channel file (`.y`). Y/C projects only; set together with `c_path`. |
 | CVBS C (Chroma) File Path (`c_path`) | Path to the chroma channel file (`.c`). Y/C projects only; set together with `y_path`. |
 | Sample Encoding (`sample_encoding`) | `From metadata` (default) reads the encoding from the `.meta` sidecar. Selecting `CVBS_U10_4FSC`, `CVBS_U16_4FSC`, `CVBS_TPG21_4FSC`, or `CVBS_S16_FSC` manually makes the sidecar optional. |
-| Lock Audio To Frames (`lock_audio`) | Enabled: every free-running audio track is resampled into a frame-locked track (SoXR HQ, duration- and sync-preserving); already-locked tracks are unaffected. Disabled (default): the container's audio timing is preserved as-is. |
+
+The `lock_audio` parameter has been removed: the pipeline no longer has a free-running audio regime. All audio is carried as 48 kHz synchronous (frame-locked) 24-bit stereo channel pairs, and source material at another rate is converted automatically on first access.
 
 ## What it does
 
 With **Sample Encoding** at its default (`From metadata`), the stage opens the `.meta` sidecar at execute time and reads the video standard, sample encoding, and signal state. If the signal state is not `STANDARD_TBC_LOCKED`, or the video standard does not match the stage, the stage reports a configuration error and stops.
 
-When a sample encoding is selected manually the `.meta` sidecar is ignored (it need not exist). The video standard comes from the stage itself, the signal is assumed to be TBC-locked, the frame count is measured from the file size, and any audio sidecar is treated as free-running (frame-locked audio requires the `audio_track` metadata table).
+When a sample encoding is selected manually the `.meta` sidecar is ignored (it need not exist). The video standard comes from the stage itself, the signal is assumed to be TBC-locked, the frame count is measured from the file size, and audio channel pairs carry derived names (the `audio_track` metadata table is not read).
 
 Each frame's sample words are read in order, applying the normalisation appropriate to the encoding:
 
@@ -35,11 +36,11 @@ Each frame carries a colour-frame index measured from the colour burst: 1–4 fo
 
 Dropout, audio, EFM, and AC3 sidecars are loaded automatically when the corresponding files are present alongside the primary data file.
 
-### Audio tracks
+### Audio channel pairs
 
-Every `<basename>_audio_00.wav` … `_audio_15.wav` sidecar becomes a pipeline audio track (track numbers are 0-based, matching the container's `_audio_NN` naming). Per-track description and frame-locked/free-running timing are read from the `.meta` file's `audio_track` table (CVBS file format specification v1.2.0). Tracks without a table row are treated as free-running, with names of the form `Track NN`.
+Every `<basename>_audio_00.wav` … `_audio_15.wav` sidecar becomes a pipeline audio channel pair, in ascending container-number order (the pipeline carries at most 8 pairs). Per-pair descriptions are read from the `.meta` file's `audio_track` table; pairs without a table row derive names of the form `Track NN`. The table's legacy `audio_locked` column is ignored — there is no free-running audio regime.
 
-Frame-locked tracks are served per video frame at the exact preset rate (PAL 44100 Hz, NTSC/PAL-M 44,100,000⁄1001 Hz); free-running tracks are served as a 44100 Hz stream. With **Lock Audio To Frames** enabled, free-running tracks are converted to frame-locked tracks on first access — enable this when the audio must follow frame remapping (trimming, mapping, stacking) downstream.
+All pipeline audio is 48 kHz synchronous (frame-locked) 24-bit stereo (SMPTE 272M-1994) and always follows frame remapping (trimming, mapping, stacking) downstream. On first audio access each pair's 16-bit WAV payload is widened to 24-bit and, using the WAV header sample rate, converted to the 48 kHz frame-locked form (SoXR HQ, duration- and sync-preserving); a payload already at 48000 Hz passes through unresampled, so legacy 44.1 kHz containers are converted and current containers are served as-is.
 
 ## Status Indicator
 

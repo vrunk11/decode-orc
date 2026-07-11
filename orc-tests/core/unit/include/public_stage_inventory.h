@@ -85,10 +85,9 @@ inline const std::vector<PublicStageSpec>& public_stage_specs() {
        [] {
          return orc::StageRegistry::instance().create_stage("efm_audio_decode");
        }},
-      {"audio_track_import", PublicStageFamily::Transform, true,
+      {"audio_import", PublicStageFamily::Transform, true,
        [] {
-         return orc::StageRegistry::instance().create_stage(
-             "audio_track_import");
+         return orc::StageRegistry::instance().create_stage("audio_import");
        }},
       {"audio_channel_map", PublicStageFamily::Transform, true,
        [] {

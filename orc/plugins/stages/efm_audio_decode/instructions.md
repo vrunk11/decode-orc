@@ -1,24 +1,24 @@
 # EFM Audio Decode
 
-Decodes the EFM t-value stream carried by the pipeline (LaserDisc digital audio) to CD audio and appends it to the representation as a new audio track. The appended track is free-running: an exactly 44100 Hz stereo stream, independent of video frame timing, whose first sample is synchronous with the first frame of this stage's input. The decoded audio is never resampled.
+Decodes the EFM t-value stream carried by the pipeline (LaserDisc digital audio) to CD audio and appends it to the representation as a new audio channel pair. The appended pair is in the standard pipeline audio form: 48 kHz synchronous (frame-locked) 24-bit stereo, converted from the decoded 44.1 kHz 16-bit CD audio at the point of production. Its first sample is synchronous with the first frame of this stage's input.
 
 ## When to use
 
-Use EFM Audio Decode on ld-decode LaserDisc sources that carry an `.efm` sidecar when you want the disc's digital audio available as a pipeline track — for example so the Video Sink embeds it alongside the analogue audio, or so the Audio Sink or CVBS Sink can export it. If you only want a standalone WAV file of the digital audio, the EFM Decoder Sink does that without adding a track.
+Use EFM Audio Decode on ld-decode LaserDisc sources that carry an `.efm` sidecar when you want the disc's digital audio available as a pipeline channel pair — for example so the Video Sink embeds it alongside the analogue audio, or so the Audio Sink or CVBS Sink can export it. If you want a bit-exact, un-resampled WAV file of the disc's CD audio, the EFM Decoder Sink does that without adding a channel pair.
 
-Place this stage after dropout correction and stacking so it decodes the best available EFM stream, and after any frame mapping or source alignment so the decoded track is born aligned to the output timeline.
+Place this stage after dropout correction and stacking so it decodes the best available EFM stream, and after any frame mapping or source alignment so the decoded pair is born aligned to the output timeline.
 
-This transform is audio-only. EFM data discs (ECMA-130 sectors) cannot become an audio track; on a data disc the decode fails and the appended track is empty (use the EFM Decoder Sink in data mode instead).
+This transform is audio-only. EFM data discs (ECMA-130 sectors) cannot become an audio channel pair; on a data disc the decode fails and the appended pair is silent (use the EFM Decoder Sink in data mode instead).
 
 ## What it does
 
-The stage wraps the incoming frame representation and appends one audio track (`EFM digital audio`, origin EFM, free-running, 44100 Hz). Video, dropout hints, undecoded EFM/AC3 signal data, and all existing audio tracks pass through untouched.
+The stage wraps the incoming frame representation and appends one audio channel pair (`EFM digital audio`, origin EFM). Video, dropout hints, undecoded EFM/AC3 signal data, and all existing audio channel pairs pass through untouched.
 
-EFM decoding is whole-stream sequential (the CIRC interleaving spans sectors), so it cannot run frame-by-frame. The decode therefore runs lazily, at most once, on the first access to the appended track's audio: the stage gathers the t-values across the input's full frame range, runs the shared EFM decode pipeline, and caches the decoded PCM in a scratch file on disk (decoded audio is roughly 635 MB per hour). Video-only preview and project validation never trigger the decode.
+EFM decoding is whole-stream sequential (the CIRC interleaving spans sectors), so it cannot run frame-by-frame. The decode therefore runs lazily, at most once, on the first access to the appended pair's audio: the stage gathers the t-values across the input's full frame range, runs the shared EFM decode pipeline, widens the decoded 44.1 kHz 16-bit CD audio to 24-bit, resamples it to 48 kHz (SoXR HQ), and caches the converted frame-locked PCM in a scratch file on disk. Video-only preview and project validation never trigger the decode.
 
-EFM decode start-up (sync acquisition) makes the track's time origin approximate; if the digital audio needs nudging relative to the video, apply a per-track sync adjustment downstream.
+EFM decode start-up (sync acquisition) makes the pair's time origin approximate; if the digital audio needs nudging relative to the video, apply a per-pair sync adjustment downstream (Audio Align).
 
-Appending the track counts toward the pipeline's 16-track limit; the stage fails validation if the input already carries 16 tracks.
+Appending the pair counts toward the pipeline's 8-channel-pair limit; the stage fails validation if the input already carries 8 channel pairs.
 
 ## Parameters
 

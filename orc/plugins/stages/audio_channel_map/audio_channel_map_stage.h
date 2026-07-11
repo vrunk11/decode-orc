@@ -2,7 +2,8 @@
  * File:        audio_channel_map_stage.h
  * Module:      orc-stage-plugin-audio_channel_map
  * Purpose:     Audio channel routing transform stage (VFrameR) — dual-mono
- *              split, mono fill, and channel swap for a target audio track
+ *              split, mono fill, and channel swap for a target audio
+ *              channel pair
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -13,7 +14,7 @@
 #include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
 #include <orc/stage/artifact.h>
-#include <orc/stage/audio_track.h>
+#include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/stage_parameter.h>
 #include <orc/stage/video_frame_representation.h>
 
@@ -23,7 +24,7 @@
 
 namespace orc {
 
-// One channel-routing operation applied to a single target track.
+// One channel-routing operation applied to a single target channel pair.
 enum class AudioChannelMapOperation {
   kSplitDualMono,  // target → "<name> (L)" in place + "<name> (R)" appended
   kLeftToBoth,     // in-place: left channel copied to both channels
@@ -35,48 +36,44 @@ enum class AudioChannelMapOperation {
 // ChannelMappedRepresentation
 // ============================================================================
 // Wraps a VideoFrameRepresentation and applies one channel-routing operation
-// to a single target audio track. Video, dropout hints, EFM/AC3 signal data
-// and non-targeted audio tracks pass through untouched.
+// to a single target audio channel pair. Video, dropout hints, EFM/AC3 signal
+// data and non-targeted channel pairs pass through untouched.
 //
-// split_dual_mono replaces the target track in place with the left-channel
-// mono track ("<name> (L)") and appends the right-channel mono track
-// ("<name> (R)") as the last track, so all other track indices are stable.
-// Both derived tracks report origin DERIVED and inherit the target's lock
-// state and sample rate.
+// split_dual_mono replaces the target pair in place with the left-channel
+// mono pair ("<name> (L)") and appends the right-channel mono pair
+// ("<name> (R)") as the last pair, so all other pair indices are stable.
+// Both derived pairs report origin DERIVED.
 //
-// The remap is a pure per-sample channel operation, so it works identically
-// on locked (per-frame) and free-running (stream) tracks.
+// The remap is a pure per-sample channel operation on the synchronous
+// 24-bit-in-int32 stereo pairs; timing and per-frame pair counts are
+// untouched.
 //
 // Thread safety: stateless after construction; safe for concurrent reads.
 class ChannelMappedRepresentation : public VideoFrameRepresentationWrapper,
                                     public Artifact {
  public:
   ChannelMappedRepresentation(
-      std::shared_ptr<const VideoFrameRepresentation> source, size_t track,
-      AudioChannelMapOperation operation)
+      std::shared_ptr<const VideoFrameRepresentation> source,
+      size_t channel_pair, AudioChannelMapOperation operation)
       : VideoFrameRepresentationWrapper(std::move(source)),
         Artifact(ArtifactID("audio_channel_map"), Provenance{}),
-        target_track_(track),
+        target_pair_(channel_pair),
         operation_(operation) {}
 
   std::string type_name() const override {
     return "channel_mapped_representation";
   }
 
-  // --- Audio tracks ---------------------------------------------------------
+  // --- Audio channel pairs --------------------------------------------------
 
-  size_t audio_track_count() const override;
-  std::optional<AudioTrackDescriptor> get_audio_track_descriptor(
-      size_t track) const override;
-  uint32_t get_audio_sample_count(size_t track, FrameID id) const override;
-  std::vector<int16_t> get_audio_samples(size_t track,
+  size_t audio_channel_pair_count() const override;
+  std::optional<AudioChannelPairDescriptor> get_audio_channel_pair_descriptor(
+      size_t pair) const override;
+  std::vector<int32_t> get_audio_samples(size_t pair,
                                          FrameID id) const override;
-  uint64_t get_audio_stream_pair_count(size_t track) const override;
-  std::vector<int16_t> get_audio_stream_samples(
-      size_t track, uint64_t first_pair, uint32_t pair_count) const override;
 
  private:
-  // How the channels of an output track derive from its source track.
+  // How the channels of an output pair derive from its source pair.
   enum class ChannelFill {
     kNone,           // pass through unchanged
     kBothFromLeft,   // L → both channels
@@ -84,23 +81,23 @@ class ChannelMappedRepresentation : public VideoFrameRepresentationWrapper,
     kSwap,           // exchange L and R
   };
 
-  size_t source_track_count() const {
-    return source_ ? source_->audio_track_count() : 0;
+  size_t source_pair_count() const {
+    return source_ ? source_->audio_channel_pair_count() : 0;
   }
   bool is_split() const {
     return operation_ == AudioChannelMapOperation::kSplitDualMono;
   }
-  // Index of the appended "(R)" track in split mode.
-  size_t appended_track_index() const { return source_track_count(); }
+  // Index of the appended "(R)" channel pair in split mode.
+  size_t appended_pair_index() const { return source_pair_count(); }
 
-  // Source track index serving output track |track| (appended → target).
-  size_t source_track_for(size_t track) const;
-  ChannelFill fill_for_track(size_t track) const;
+  // Source pair index serving output pair |pair| (appended → target).
+  size_t source_pair_for(size_t pair) const;
+  ChannelFill fill_for_pair(size_t pair) const;
 
   // Applies |fill| in place to interleaved stereo samples.
-  static void apply_fill(std::vector<int16_t>& samples, ChannelFill fill);
+  static void apply_fill(std::vector<int32_t>& samples, ChannelFill fill);
 
-  size_t target_track_;
+  size_t target_pair_;
   AudioChannelMapOperation operation_;
 };
 
@@ -119,9 +116,9 @@ class AudioChannelMapStage : public DAGStage,
     return NodeTypeInfo{NodeType::TRANSFORM,
                         "audio_channel_map",
                         "Audio Channel Map",
-                        "Route audio channels of one track: split dual-mono "
-                        "into two tracks, fill both channels from one, or "
-                        "swap channels",
+                        "Route audio channels of one channel pair: split "
+                        "dual-mono into two channel pairs, fill both channels "
+                        "from one, or swap channels",
                         1,
                         1,
                         1,
@@ -154,7 +151,7 @@ class AudioChannelMapStage : public DAGStage,
   StagePreviewCapability get_preview_capability() const override;
 
  private:
-  int32_t track_ = 0;
+  int32_t channel_pair_ = 0;
   std::string operation_ = "split_dual_mono";
 
   mutable std::shared_ptr<const VideoFrameRepresentation> cached_output_;

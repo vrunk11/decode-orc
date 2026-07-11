@@ -484,13 +484,14 @@ std::vector<ParameterDescriptor> VideoSinkStage::get_parameter_descriptors(
            ParameterDependency{"ffmpeg_format", {"mp4-h264", "mkv-ffv1"}}}},
       ParameterDescriptor{
           "audio_tracks",
-          "Audio Tracks",
-          "Which pipeline audio tracks to embed, one output audio stream per "
-          "track:\n"
-          "  all - embed every track carried by the input (default)\n"
-          "  0,2 - comma-separated 0-based track indices\n"
-          "Track indices match the CVBS container's _audio_NN.wav numbering. "
-          "The export fails if a listed track does not exist.",
+          "Audio Channel Pairs",
+          "Which audio channel pairs to embed, one output audio stream per "
+          "channel pair:\n"
+          "  all - embed every channel pair carried by the input (default)\n"
+          "  0,2 - comma-separated 0-based channel pair indices\n"
+          "Channel pair indices match the CVBS container's _audio_<p>.wav "
+          "numbering. The export fails if a listed channel pair does not "
+          "exist.",
           ParameterType::STRING,
           {{},
            {},

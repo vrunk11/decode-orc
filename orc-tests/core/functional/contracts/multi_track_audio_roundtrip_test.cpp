@@ -1,8 +1,9 @@
 /*
  * File:        multi_track_audio_roundtrip_test.cpp
  * Module:      orc-core-functional-tests
- * Purpose:     Multi-track audio round-trip through cvbs_sink and cvbs_source
- *              (real files: WAV sidecars and the .meta audio_track table)
+ * Purpose:     Channel-pair audio round-trip through cvbs_sink and
+ *              cvbs_source (real files: WAV sidecars and the .meta
+ *              audio_track table)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -10,15 +11,15 @@
 
 #include <gtest/gtest.h>
 #include <orc/stage/artifact.h>
-#include <orc/stage/audio_track.h>
+#include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/observation_context.h>
 #include <orc/stage/video_frame_representation.h>
 
-#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <string>
@@ -32,25 +33,31 @@ namespace orc_functional_test {
 namespace {
 
 constexpr size_t kFrameCount = 2;
-constexpr uint32_t kPalLockedPairsPerFrame = 1764;
-constexpr uint64_t kFreeRunningPairs = 5000;
+// SMPTE 272M-1994: PAL carries 1920 stereo pairs per frame at 48 kHz.
+constexpr uint32_t kPalPairsPerFrame = 1920;
 
-// Deterministic sample generators so the read-back comparison is exact.
-int16_t locked_sample(orc::FrameID frame_id, size_t index) {
-  return static_cast<int16_t>((frame_id * 1000 + index) % 30000);
+// Deterministic 24-bit-in-int32 sample generators.  Values are multiples of
+// 256 (zero low byte) so the container's 16-bit narrow (>> 8) and the
+// source's widen (<< 8) round-trip exactly.
+int32_t pair0_sample(orc::FrameID frame_id, size_t index) {
+  const int64_t modulo = static_cast<int64_t>(
+      (static_cast<uint64_t>(frame_id) * 1000 + index) % 30000);
+  return static_cast<int32_t>(modulo - 15000) << 8;
 }
 
-int16_t free_running_sample(uint64_t index) {
-  return static_cast<int16_t>((index * 7) % 20000);
+int32_t pair1_sample(orc::FrameID frame_id, size_t index) {
+  const int64_t modulo = static_cast<int64_t>(
+      (static_cast<uint64_t>(frame_id) * 700 + index * 7) % 20000);
+  return static_cast<int32_t>(modulo - 10000) << 8;
 }
 
-// Two PAL frames of synthetic video with two audio tracks: track 0
-// frame-locked ("Analogue"), track 1 free-running ("EFM digital audio").
-class MultiTrackVFR : public orc::VideoFrameRepresentation,
-                      public orc::Artifact {
+// Two PAL frames of synthetic video with two audio channel pairs:
+// pair 0 "Analogue" (ANALOGUE), pair 1 "EFM digital audio" (EFM).
+class ChannelPairVFR : public orc::VideoFrameRepresentation,
+                       public orc::Artifact {
  public:
-  MultiTrackVFR()
-      : orc::Artifact(orc::ArtifactID("multi_track_vfr"), orc::Provenance{}) {
+  ChannelPairVFR()
+      : orc::Artifact(orc::ArtifactID("channel_pair_vfr"), orc::Provenance{}) {
     for (size_t f = 0; f < kFrameCount; ++f) {
       std::vector<sample_type> frame(orc::kPalFrameSamples);
       for (size_t i = 0; i < frame.size(); ++i) {
@@ -60,7 +67,7 @@ class MultiTrackVFR : public orc::VideoFrameRepresentation,
     }
   }
 
-  std::string type_name() const override { return "MultiTrackVFR"; }
+  std::string type_name() const override { return "ChannelPairVFR"; }
 
   orc::FrameIDRange frame_range() const override {
     return {0, kFrameCount - 1};
@@ -87,52 +94,30 @@ class MultiTrackVFR : public orc::VideoFrameRepresentation,
     return (id < kFrameCount) ? frames_[id] : std::vector<sample_type>{};
   }
 
-  // Audio tracks
-  size_t audio_track_count() const override { return 2; }
+  // Audio channel pairs
+  size_t audio_channel_pair_count() const override { return 2; }
 
-  std::optional<orc::AudioTrackDescriptor> get_audio_track_descriptor(
-      size_t track) const override {
-    if (track == 0) {
-      return orc::AudioTrackDescriptor{"Analogue",
-                                       orc::AudioTrackOrigin::ANALOGUE, true,
-                                       orc::AudioSampleRate{44100, 1}};
+  std::optional<orc::AudioChannelPairDescriptor>
+  get_audio_channel_pair_descriptor(size_t pair) const override {
+    if (pair == 0) {
+      return orc::AudioChannelPairDescriptor{"Analogue",
+                                             orc::AudioOrigin::ANALOGUE};
     }
-    if (track == 1) {
-      return orc::AudioTrackDescriptor{"EFM digital audio",
-                                       orc::AudioTrackOrigin::EFM, false,
-                                       orc::AudioSampleRate{44100, 1}};
+    if (pair == 1) {
+      return orc::AudioChannelPairDescriptor{"EFM digital audio",
+                                             orc::AudioOrigin::EFM};
     }
     return std::nullopt;
   }
 
-  uint32_t get_audio_sample_count(size_t track,
-                                  orc::FrameID id) const override {
-    return (track == 0 && id < kFrameCount) ? kPalLockedPairsPerFrame : 0;
-  }
-
-  std::vector<int16_t> get_audio_samples(size_t track,
+  std::vector<int32_t> get_audio_samples(size_t pair,
                                          orc::FrameID id) const override {
-    if (track != 0 || id >= kFrameCount) return {};
-    std::vector<int16_t> samples(static_cast<size_t>(kPalLockedPairsPerFrame) *
+    if (pair > 1 || id >= kFrameCount) return {};
+    std::vector<int32_t> samples(static_cast<size_t>(orc::audio_pairs_in_frame(
+                                     id, orc::VideoSystem::PAL)) *
                                  2);
     for (size_t i = 0; i < samples.size(); ++i) {
-      samples[i] = locked_sample(id, i);
-    }
-    return samples;
-  }
-
-  uint64_t get_audio_stream_pair_count(size_t track) const override {
-    return (track == 1) ? kFreeRunningPairs : 0;
-  }
-
-  std::vector<int16_t> get_audio_stream_samples(
-      size_t track, uint64_t first_pair, uint32_t pair_count) const override {
-    if (track != 1 || first_pair >= kFreeRunningPairs) return {};
-    const uint64_t available =
-        std::min<uint64_t>(pair_count, kFreeRunningPairs - first_pair);
-    std::vector<int16_t> samples(static_cast<size_t>(available) * 2);
-    for (uint64_t i = 0; i < available * 2; ++i) {
-      samples[i] = free_running_sample(first_pair * 2 + i);
+      samples[i] = (pair == 0) ? pair0_sample(id, i) : pair1_sample(id, i);
     }
     return samples;
   }
@@ -141,16 +126,30 @@ class MultiTrackVFR : public orc::VideoFrameRepresentation,
   std::vector<std::vector<sample_type>> frames_;
 };
 
+// nSamplesPerSec from a WAV file's RIFF fmt header (LE word at byte 24).
+uint32_t read_wav_header_rate(const std::string& path) {
+  std::ifstream ifs(path, std::ios::binary);
+  if (!ifs.is_open()) return 0;
+  ifs.seekg(24, std::ios::beg);
+  uint8_t bytes[4] = {0, 0, 0, 0};
+  ifs.read(reinterpret_cast<char*>(bytes), sizeof(bytes));
+  if (!ifs.good()) return 0;
+  return static_cast<uint32_t>(bytes[0]) |
+         (static_cast<uint32_t>(bytes[1]) << 8) |
+         (static_cast<uint32_t>(bytes[2]) << 16) |
+         (static_cast<uint32_t>(bytes[3]) << 24);
+}
+
 }  // namespace
 
-TEST(MultiTrackAudioRoundTrip, CVBSSinkToCVBSSource_PreservesTracks) {
+TEST(MultiTrackAudioRoundTrip, CVBSSinkToCVBSSource_PreservesChannelPairs) {
   const std::filesystem::path dir =
       std::filesystem::path(::testing::TempDir()) / "orc_multi_track_roundtrip";
   std::filesystem::create_directories(dir);
   const std::string base = (dir / "roundtrip").string();
 
   // --- Write with the real cvbs_sink deps ---
-  MultiTrackVFR vfr;
+  ChannelPairVFR vfr;
   std::atomic<bool> cancel{false};
   orc::CVBSSinkStageDeps sink_deps;
   sink_deps.init({}, &cancel);
@@ -163,15 +162,20 @@ TEST(MultiTrackAudioRoundTrip, CVBSSinkToCVBSSource_PreservesTracks) {
 
   EXPECT_TRUE(std::filesystem::exists(base + ".composite"));
   EXPECT_TRUE(std::filesystem::exists(base + ".meta"));
-  EXPECT_TRUE(std::filesystem::exists(base + "_audio_00.wav"));
-  EXPECT_TRUE(std::filesystem::exists(base + "_audio_01.wav"));
+  ASSERT_TRUE(std::filesystem::exists(base + "_audio_00.wav"));
+  ASSERT_TRUE(std::filesystem::exists(base + "_audio_01.wav"));
 
-  // Locked track: 44-byte header + 2 frames × 1764 pairs × 4 bytes.
-  EXPECT_EQ(std::filesystem::file_size(base + "_audio_00.wav"),
-            44u + kFrameCount * kPalLockedPairsPerFrame * 4u);
-  // Free-running track: 44-byte header + 5000 pairs × 4 bytes.
-  EXPECT_EQ(std::filesystem::file_size(base + "_audio_01.wav"),
-            44u + kFreeRunningPairs * 4u);
+  // Each pair file: 44-byte header + 2 frames × 1920 pairs × 4 bytes
+  // (16-bit stereo container payload) — equal-length by construction.
+  const uintmax_t expected_size = 44u + kFrameCount * kPalPairsPerFrame * 4u;
+  EXPECT_EQ(std::filesystem::file_size(base + "_audio_00.wav"), expected_size);
+  EXPECT_EQ(std::filesystem::file_size(base + "_audio_01.wav"), expected_size);
+
+  // The pipeline is 48 kHz synchronous for every system (SMPTE 272M-1994).
+  EXPECT_EQ(read_wav_header_rate(base + "_audio_00.wav"),
+            orc::kAudioSampleRateHz);
+  EXPECT_EQ(read_wav_header_rate(base + "_audio_01.wav"),
+            orc::kAudioSampleRateHz);
 
   // --- Read back with the real cvbs_source stage ---
   orc::PALCVBSSourceStage source;
@@ -189,58 +193,40 @@ TEST(MultiTrackAudioRoundTrip, CVBSSinkToCVBSSource_PreservesTracks) {
   EXPECT_EQ(read_vfr->frame_count(), kFrameCount);
 
   // --- Descriptors round-trip via the .meta audio_track table ---
-  ASSERT_EQ(read_vfr->audio_track_count(), 2u);
+  ASSERT_EQ(read_vfr->audio_channel_pair_count(), 2u);
 
-  const auto track0 = read_vfr->get_audio_track_descriptor(0);
-  ASSERT_TRUE(track0.has_value());
-  EXPECT_EQ(track0->name, "Analogue");
-  EXPECT_TRUE(track0->locked);
+  const auto pair0 = read_vfr->get_audio_channel_pair_descriptor(0);
+  ASSERT_TRUE(pair0.has_value());
+  EXPECT_EQ(pair0->name, "Analogue");
   // The container carries no origin metadata.
-  EXPECT_EQ(track0->origin, orc::AudioTrackOrigin::UNKNOWN);
+  EXPECT_EQ(pair0->origin, orc::AudioOrigin::UNKNOWN);
 
-  const auto track1 = read_vfr->get_audio_track_descriptor(1);
-  ASSERT_TRUE(track1.has_value());
-  EXPECT_EQ(track1->name, "EFM digital audio");
-  EXPECT_FALSE(track1->locked);
-  EXPECT_EQ(track1->sample_rate.num, 44100u);
-  EXPECT_EQ(track1->sample_rate.den, 1u);
+  const auto pair1 = read_vfr->get_audio_channel_pair_descriptor(1);
+  ASSERT_TRUE(pair1.has_value());
+  EXPECT_EQ(pair1->name, "EFM digital audio");
+  EXPECT_EQ(pair1->origin, orc::AudioOrigin::UNKNOWN);
 
-  // --- Locked samples round-trip per frame ---
+  // --- Samples round-trip per frame, sample-exact ---
+  // The generators emit 24-bit values with a zero low byte, so the 16-bit
+  // container narrow (>> 8) and read-back widen (<< 8) are lossless; a
+  // 48000 Hz payload passes through the ingest conversion unresampled.
   for (orc::FrameID fid = 0; fid < kFrameCount; ++fid) {
-    EXPECT_EQ(read_vfr->get_audio_sample_count(0, fid),
-              kPalLockedPairsPerFrame);
-    const auto samples = read_vfr->get_audio_samples(0, fid);
-    ASSERT_EQ(samples.size(), static_cast<size_t>(kPalLockedPairsPerFrame) * 2);
-    bool all_equal = true;
-    for (size_t i = 0; i < samples.size(); ++i) {
-      if (samples[i] != locked_sample(fid, i)) {
-        all_equal = false;
-        break;
+    for (size_t pair = 0; pair < 2; ++pair) {
+      const auto samples = read_vfr->get_audio_samples(pair, fid);
+      ASSERT_EQ(samples.size(), static_cast<size_t>(kPalPairsPerFrame) * 2)
+          << "pair " << pair << " frame " << fid;
+      bool all_equal = true;
+      for (size_t i = 0; i < samples.size(); ++i) {
+        const int32_t expected =
+            (pair == 0) ? pair0_sample(fid, i) : pair1_sample(fid, i);
+        if (samples[i] != expected) {
+          all_equal = false;
+          break;
+        }
       }
+      EXPECT_TRUE(all_equal)
+          << "samples differ in pair " << pair << " frame " << fid;
     }
-    EXPECT_TRUE(all_equal) << "locked samples differ in frame " << fid;
-  }
-
-  // --- Free-running stream round-trips via the stream accessors ---
-  EXPECT_EQ(read_vfr->get_audio_stream_pair_count(1), kFreeRunningPairs);
-
-  const auto full_stream = read_vfr->get_audio_stream_samples(
-      1, 0, static_cast<uint32_t>(kFreeRunningPairs));
-  ASSERT_EQ(full_stream.size(), static_cast<size_t>(kFreeRunningPairs) * 2);
-  bool stream_equal = true;
-  for (size_t i = 0; i < full_stream.size(); ++i) {
-    if (full_stream[i] != free_running_sample(i)) {
-      stream_equal = false;
-      break;
-    }
-  }
-  EXPECT_TRUE(stream_equal) << "free-running stream differs";
-
-  // A mid-stream slice reads at the correct pair offset.
-  const auto slice = read_vfr->get_audio_stream_samples(1, 1000, 4);
-  ASSERT_EQ(slice.size(), 8u);
-  for (size_t i = 0; i < slice.size(); ++i) {
-    EXPECT_EQ(slice[i], free_running_sample(2000 + i));
   }
 
   std::error_code ec;

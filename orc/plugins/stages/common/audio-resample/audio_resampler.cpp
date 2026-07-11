@@ -1,8 +1,8 @@
 /*
  * File:        audio_resampler.cpp
  * Module:      orc-audio-resample (shared stage-plugin library)
- * Purpose:     SoXR-based stereo audio resampling between the free-running
- *              44100 Hz rate and the frame-locked rates
+ * Purpose:     SoXR-based stereo conversion of any-rate audio to the
+ *              synchronous 48 kHz 24-bit channel-pair pipeline form
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -20,12 +20,25 @@
 namespace orc {
 
 // ---------------------------------------------------------------------------
+// widen_16_to_24
+// ---------------------------------------------------------------------------
+
+std::vector<int32_t> AudioResampler::widen_16_to_24(
+    const std::vector<int16_t>& input) {
+  std::vector<int32_t> output(input.size());
+  std::transform(input.begin(), input.end(), output.begin(),
+                 [](int16_t s) { return static_cast<int32_t>(s) << 8; });
+  return output;
+}
+
+// ---------------------------------------------------------------------------
 // resample
 // ---------------------------------------------------------------------------
 
-std::vector<int16_t> AudioResampler::resample(
-    const std::vector<int16_t>& input_stereo, double in_rate, double out_rate) {
+std::vector<int32_t> AudioResampler::resample(
+    const std::vector<int32_t>& input_stereo, double in_rate, double out_rate) {
   if (input_stereo.empty()) return {};
+  if (in_rate == out_rate) return input_stereo;
 
   constexpr unsigned kChannels = 2;
   const size_t in_frames = input_stereo.size() / kChannels;
@@ -37,11 +50,13 @@ std::vector<int16_t> AudioResampler::resample(
           std::lround(static_cast<double>(in_frames) * out_rate / in_rate)) +
       static_cast<size_t>(kChannels) * 16;
 
-  std::vector<int16_t> output((out_estimate + 64) * kChannels, 0);
+  std::vector<int32_t> output((out_estimate + 64) * kChannels, 0);
 
-  // SoXR HQ quality, int16_t interleaved I/O.
-  // SOXR_INT16_I = signed 16-bit interleaved (all channels in one array).
-  const soxr_io_spec_t io_spec = soxr_io_spec(SOXR_INT16_I, SOXR_INT16_I);
+  // SoXR HQ quality, int32 interleaved I/O.
+  // SOXR_INT32_I = signed 32-bit interleaved (all channels in one array).
+  // The 24-bit-in-int32 carrier passes through unchanged in scale: SoXR is
+  // linear, so 24-bit-ranged input yields 24-bit-ranged output.
+  const soxr_io_spec_t io_spec = soxr_io_spec(SOXR_INT32_I, SOXR_INT32_I);
   const soxr_quality_spec_t quality = soxr_quality_spec(SOXR_HQ, 0);
 
   soxr_error_t err = nullptr;
@@ -80,49 +95,50 @@ std::vector<int16_t> AudioResampler::resample(
 }
 
 // ---------------------------------------------------------------------------
-// lock_and_segment
+// resample_to_synchronous
 // ---------------------------------------------------------------------------
 
-std::vector<std::vector<int16_t>> AudioResampler::lock_and_segment(
-    const std::vector<int16_t>& raw_stereo_44100, VideoSystem system,
-    size_t frame_count) {
-  const size_t pairs_per_frame =
-      static_cast<size_t>(locked_audio_pairs_per_frame(system));
+std::vector<std::vector<int32_t>> AudioResampler::resample_to_synchronous(
+    const std::vector<int32_t>& raw_stereo, double in_rate_hz,
+    VideoSystem system, size_t frame_count) {
+  std::vector<std::vector<int32_t>> frames(frame_count);
+  if (system == VideoSystem::Unknown) return frames;
 
-  std::vector<std::vector<int16_t>> frames(frame_count);
-  if (pairs_per_frame == 0) return frames;
-
-  if (raw_stereo_44100.empty() || frame_count == 0) {
-    for (auto& f : frames) {
-      f.assign(pairs_per_frame * 2, 0);
+  if (raw_stereo.empty() || frame_count == 0) {
+    for (size_t i = 0; i < frame_count; ++i) {
+      frames[i].assign(static_cast<size_t>(audio_pairs_in_frame(i, system)) * 2,
+                       0);
     }
     return frames;
   }
 
-  // PAL locked audio is already 44100 Hz — segmentation only. NTSC/PAL-M is
-  // pulled down to 44100000/1001 Hz first (SoXR HQ, duration-preserving).
-  std::vector<int16_t> resampled;
-  const std::vector<int16_t>* locked_stream = &raw_stereo_44100;
-  if (system != VideoSystem::PAL) {
-    resampled =
-        resample(raw_stereo_44100, kFreeRunningRateHz, kNtscLockedRateHz);
-    locked_stream = &resampled;
+  // Convert to the synchronous 48 kHz rate (no-op for 48 kHz input).
+  std::vector<int32_t> resampled;
+  const std::vector<int32_t>* stream = &raw_stereo;
+  if (in_rate_hz != static_cast<double>(kAudioSampleRateHz)) {
+    resampled = resample(raw_stereo, in_rate_hz,
+                         static_cast<double>(kAudioSampleRateHz));
+    stream = &resampled;
   }
 
+  // Segment into cadence-sized blocks; zero-pad short material and truncate
+  // excess so the blocks total exactly audio_pair_offset(frame_count) pairs.
   for (size_t i = 0; i < frame_count; ++i) {
-    const size_t src_start = i * pairs_per_frame * 2;
-    const size_t src_end = src_start + pairs_per_frame * 2;
+    const size_t block_pairs =
+        static_cast<size_t>(audio_pairs_in_frame(i, system));
+    const size_t src_start =
+        static_cast<size_t>(audio_pair_offset(i, system)) * 2;
+    const size_t src_end = src_start + block_pairs * 2;
 
-    frames[i].resize(pairs_per_frame * 2, 0);
+    frames[i].assign(block_pairs * 2, 0);
 
-    if (src_start < locked_stream->size()) {
-      const size_t available =
-          std::min(src_end, locked_stream->size()) - src_start;
-      std::memcpy(frames[i].data(), locked_stream->data() + src_start,
-                  available * sizeof(int16_t));
-      // Remaining values are already zero from resize().
+    if (src_start < stream->size()) {
+      const size_t available = std::min(src_end, stream->size()) - src_start;
+      std::memcpy(frames[i].data(), stream->data() + src_start,
+                  available * sizeof(int32_t));
+      // Remaining values are already zero from assign().
     }
-    // When src_start >= locked_stream->size() the frame is silent (all zeros).
+    // When src_start >= stream->size() the frame is silent (all zeros).
   }
 
   return frames;

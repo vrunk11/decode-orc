@@ -1,29 +1,28 @@
 # Audio Align
 
-Shifts one audio track in time relative to the video to correct audio/video synchronisation. Positive offsets delay the audio (insert lead-in); negative offsets advance it (trim from the start). Only the target track moves — video, all other tracks, and undecoded EFM/AC3 signal data are untouched.
+Shifts one audio channel pair in time relative to the video to correct audio/video synchronisation. Positive offsets delay the audio (insert lead-in); negative offsets advance it (trim from the start). Only the target channel pair moves — video, all other channel pairs, and undecoded EFM/AC3 signal data are untouched.
 
 ## When to use
 
-Use Audio Align when a track is consistently early or late against the picture — for example an EFM digital audio track whose decode start-up (sync acquisition) left it slightly offset, or an imported WAV that was captured with a different lead-in than the video. Add one instance per track that needs adjustment; multiple instances may target different tracks.
+Use Audio Align when a channel pair is consistently early or late against the picture — for example an EFM digital audio channel pair whose decode start-up (sync acquisition) left it slightly offset, or an imported WAV that was captured with a different lead-in than the video. Add one instance per channel pair that needs adjustment; multiple instances may target different channel pairs.
 
 ## What it does
 
-The stage wraps the incoming frame representation and serves the target track shifted by the requested offset, converted to a whole number of stereo pairs at the track's exact rational sample rate.
+The stage wraps the incoming frame representation and serves the target channel pair shifted by the requested offset, converted to a whole number of stereo pairs at the pipeline's synchronous 48 kHz rate (exactly 48 pairs per millisecond).
 
-- **Frame-locked tracks**: each frame's audio window is assembled from the neighbouring frames' samples, with silence filling past either end of the frame range. Per-frame pair counts are unchanged, so the track remains spec-conformant locked audio.
-- **Free-running tracks**: the stream origin shifts — positive offsets prepend silence pairs, negative offsets trim pairs from the start, and the reported stream length adjusts accordingly.
+Each frame's audio window is assembled from the neighbouring frames' samples, with silence filling past either end of the frame range. Per-frame sample counts are unchanged — including the NTSC/PAL-M 1602/1601 audio frame sequence — so the channel pair remains spec-conformant synchronous audio.
 
 Sample values and the sample rate are never changed; the shift is pure placement, no resampling.
 
-The stage fails validation when the target track does not exist on the input. A zero offset passes the input through unchanged.
+The stage fails validation when the target channel pair does not exist on the input. A zero offset passes the input through unchanged.
 
 ## Parameters
 
-### track
-Integer, 0–15, default `0`. The audio track to shift. Track numbers are 0-based, matching the CVBS container `_audio_NN.wav` numbering.
+### channel_pair
+Integer, 0–7, default `0`. The audio channel pair to shift. Channel-pair numbers are 0-based, matching the CVBS container `_audio_<n>.wav` numbering.
 
 ### offset_ms
-Floating point milliseconds, default `0.0`. Positive delays the audio relative to the video; negative advances it. The offset is rounded to the nearest whole stereo pair at the track's sample rate (about 0.023 ms resolution at 44.1 kHz).
+Floating point milliseconds, default `0.0`. Positive delays the audio relative to the video; negative advances it. The offset is rounded to the nearest whole stereo pair at 48 kHz (about 0.021 ms resolution).
 
 ## Tools
 

@@ -2,7 +2,7 @@
  * File:        audio_track_selection_test.cpp
  * Module:      orc-core-tests
  * Purpose:     Unit tests for the video sink audio_tracks parameter parser
- *              and per-track declared sample rates
+ *              (audio channel pair selection)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -65,31 +65,6 @@ TEST(AudioTrackSelectionTest, MalformedToken_FailsWithDiagnostic) {
   EXPECT_FALSE(orc::parse_audio_track_selection("0,,1", 2, error).has_value());
   EXPECT_FALSE(orc::parse_audio_track_selection("-1", 2, error).has_value());
   EXPECT_FALSE(orc::parse_audio_track_selection("0;1", 2, error).has_value());
-}
-
-TEST(AudioTrackSelectionTest, DeclaredRate_LockedPalAndFreeRunningAre44100) {
-  orc::AudioTrackDescriptor desc;
-  desc.locked = true;
-  desc.sample_rate = {44100, 1};
-  EXPECT_EQ(orc::audio_track_declared_rate(desc), 44100);
-
-  desc.locked = false;
-  EXPECT_EQ(orc::audio_track_declared_rate(desc), 44100);
-}
-
-TEST(AudioTrackSelectionTest, DeclaredRate_LockedNtscRoundsTo44056) {
-  // Nearest integer to the exact NTSC locked rate 44100000/1001 Hz
-  // (≈ 44055.944), not the free-running 44100.
-  orc::AudioTrackDescriptor desc;
-  desc.locked = true;
-  desc.sample_rate = {44100000, 1001};
-  EXPECT_EQ(orc::audio_track_declared_rate(desc), 44056);
-}
-
-TEST(AudioTrackSelectionTest, DeclaredRate_ZeroRateFallsBackToStandard) {
-  orc::AudioTrackDescriptor desc;
-  desc.sample_rate = {0, 1};
-  EXPECT_EQ(orc::audio_track_declared_rate(desc), 44100);
 }
 
 }  // namespace orc_unit_test

@@ -9,7 +9,7 @@
 
 #include "tbc_source_stage.h"
 
-#include <orc/stage/audio_track.h>
+#include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/dropout_util.h>
 #include <orc/stage/error_types.h>
@@ -152,9 +152,8 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
       std::string tbc_path,  // composite .tbc (or Y .tbc for YC)
       std::string c_path,    // chroma .tbc for YC mode; empty for composite
       std::string pcm_path, std::string efm_bin_path, std::string ac3_bin_path,
-      std::string ac3_meta_path, bool has_audio, bool pcm_declared_locked,
-      bool lock_audio, bool has_efm, bool has_ac3, ArtifactID artifact_id,
-      Provenance provenance)
+      std::string ac3_meta_path, bool has_audio, double pcm_sample_rate_hz,
+      bool has_efm, bool has_ac3, ArtifactID artifact_id, Provenance provenance)
       : Artifact(std::move(artifact_id), std::move(provenance)),
         video_params_(std::move(video_params)),
         source_params_(std::move(source_params)),
@@ -167,25 +166,19 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
         ac3_bin_path_(std::move(ac3_bin_path)),
         ac3_meta_path_(std::move(ac3_meta_path)),
         has_audio_(has_audio),
-        pcm_declared_locked_(pcm_declared_locked),
-        lock_audio_(lock_audio),
+        pcm_sample_rate_hz_(pcm_sample_rate_hz),
         has_efm_(has_efm),
         has_ac3_(has_ac3),
         is_yc_(!c_path_.empty()) {
-    // Pre-compute per-frame audio and EFM offsets from field metadata (cheap,
-    // metadata-only, no disk I/O).  The NTSC/PAL_M audio resample is deferred
-    // to first audio access (see ensure_ntsc_palM_audio) so it never runs on
-    // the source-execute / preview hot path — doing it eagerly here read the
-    // whole PCM and ran a full SoXR HQ pass, stalling the render worker on long
-    // NTSC sources even though video preview never needs audio (issue #209).
-    compute_audio_offsets();
+    // Pre-compute the raw audio length fallback and per-frame EFM offsets from
+    // field metadata (cheap, metadata-only, no disk I/O).  The audio ingest
+    // conversion is deferred to first audio access (see
+    // ensure_audio_converted) so it never runs on the source-execute / preview
+    // hot path — doing it eagerly here read the whole PCM and ran a full SoXR
+    // HQ pass, stalling the render worker on long sources even though video
+    // preview never needs audio (issue #209).
+    compute_audio_total_raw_pairs();
     compute_efm_offsets();
-    if (has_audio_ && !audio_output_locked()) {
-      // Free-running verbatim serving: the stream length comes from the file
-      // itself (authoritative), falling back to the metadata field counts.
-      stream_total_pairs_ = deps_->get_audio_pair_count(pcm_path_).value_or(
-          audio_total_raw_pairs_);
-    }
   }
 
   // --------------------------------------------------------------------------
@@ -343,93 +336,29 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   // --------------------------------------------------------------------------
   // Audio
   // --------------------------------------------------------------------------
-  // The PCM sidecar is served as a single track (track 0). Three regimes,
-  // selected by the pcm_audio_timing / lock_audio parameters:
-  //   - declared frame-locked: the PCM is already at the preset locked rate
-  //     and is served verbatim via the per-field metadata offsets.
-  //   - declared free-running + lock_audio: converted to a locked track.
-  //     PAL is a same-rate segmentation via the metadata offsets (44100 Hz is
-  //     the PAL locked rate); NTSC/PAL_M is a lazy SoXR resample to
-  //     44100000/1001 Hz (ensure_locked_ntsc_palM_audio()).
-  //   - declared free-running + !lock_audio: served verbatim as a
-  //     free-running stream via the stream accessors.
-  size_t audio_track_count() const override { return has_audio_ ? 1 : 0; }
-
-  std::optional<AudioTrackDescriptor> get_audio_track_descriptor(
-      size_t track) const override {
-    if (!has_audio_ || track != 0) return std::nullopt;
-    AudioTrackDescriptor desc;
-    desc.name = "Analogue";
-    desc.origin = AudioTrackOrigin::ANALOGUE;
-    desc.locked = audio_output_locked();
-    desc.sample_rate = desc.locked
-                           ? locked_audio_sample_rate(video_params_.system)
-                           : kFreeRunningAudioRate;
-    return desc;
+  // The PCM sidecar is served as a single channel pair (pair 0). The raw
+  // signed-LE 16-bit stereo stream (as written by ld-decode, nominally
+  // 44100 Hz) is always converted on ingest — for all systems including PAL —
+  // to the only permitted pipeline audio form: 48000 Hz synchronous
+  // 24-bit-in-int32 stereo (SMPTE 272M-1994 §1.2/§1.3).  The conversion is
+  // lazy: see ensure_audio_converted().
+  size_t audio_channel_pair_count() const override {
+    return has_audio_ ? 1 : 0;
   }
 
-  uint32_t get_audio_sample_count(size_t track, FrameID id) const override {
-    if (track != 0 || !has_audio_ || !audio_output_locked() || !has_frame(id)) {
-      return 0;
-    }
-    const size_t idx = static_cast<size_t>(id);
-
-    if (needs_lock_resample()) {
-      // NTSC/PAL_M lock conversion: fixed 1470 stereo pairs per frame after
-      // resampling.
-      ensure_locked_ntsc_palM_audio();
-      if (idx < resampled_audio_frames_.size() &&
-          !resampled_audio_frames_[idx].empty()) {
-        return static_cast<uint32_t>(resampled_audio_frames_[idx].size() / 2);
-      }
-      return 0;
-    }
-
-    // Verbatim locked serving: per-frame count from field metadata.
-    if (idx >= audio_frame_pair_counts_.size()) return 0;
-    return static_cast<uint32_t>(audio_frame_pair_counts_[idx]);
+  std::optional<AudioChannelPairDescriptor> get_audio_channel_pair_descriptor(
+      size_t pair) const override {
+    if (!has_audio_ || pair != 0) return std::nullopt;
+    return AudioChannelPairDescriptor{"Analogue", AudioOrigin::ANALOGUE};
   }
 
-  std::vector<int16_t> get_audio_samples(size_t track,
+  std::vector<int32_t> get_audio_samples(size_t pair,
                                          FrameID id) const override {
-    if (track != 0 || !has_audio_ || !audio_output_locked() || !has_frame(id)) {
-      return {};
-    }
+    if (pair != 0 || !has_audio_ || !has_frame(id)) return {};
+    ensure_audio_converted();
     const size_t idx = static_cast<size_t>(id);
-
-    if (needs_lock_resample()) {
-      // NTSC/PAL_M lock conversion: return pre-resampled block.
-      ensure_locked_ntsc_palM_audio();
-      if (idx < resampled_audio_frames_.size()) {
-        return resampled_audio_frames_[idx];
-      }
-      return {};
-    }
-
-    // Verbatim locked serving: read raw PCM using pre-computed per-frame
-    // offsets.
-    if (idx >= audio_frame_offsets_.size()) return {};
-    const size_t pair_offset = audio_frame_offsets_[idx];
-    const size_t pair_count = audio_frame_pair_counts_[idx];
-    if (pair_count == 0) return {};
-    return deps_->read_audio_samples_at(pcm_path_, pair_offset, pair_count);
-  }
-
-  uint64_t get_audio_stream_pair_count(size_t track) const override {
-    if (track != 0 || !has_audio_ || audio_output_locked()) return 0;
-    return stream_total_pairs_;
-  }
-
-  std::vector<int16_t> get_audio_stream_samples(
-      size_t track, uint64_t first_pair, uint32_t pair_count) const override {
-    if (track != 0 || !has_audio_ || audio_output_locked()) return {};
-    if (first_pair >= stream_total_pairs_ || pair_count == 0) return {};
-    const uint64_t available = stream_total_pairs_ - first_pair;
-    const uint32_t clamped =
-        static_cast<uint32_t>(std::min<uint64_t>(available, pair_count));
-    return deps_->read_audio_samples_at(pcm_path_,
-                                        static_cast<size_t>(first_pair),
-                                        static_cast<size_t>(clamped));
+    if (idx >= audio_frames_.size()) return {};
+    return audio_frames_[idx];
   }
 
   // --------------------------------------------------------------------------
@@ -791,82 +720,52 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
     return result;
   }
 
-  // Pre-compute cumulative audio stereo-pair offsets from per-field metadata.
-  // Verbatim locked serving (declared frame-locked, or PAL lock conversion):
-  // these offsets are used directly for raw PCM access.
-  // NTSC/PAL_M lock conversion: the total pair count is used to read the full
-  // PCM for resampling; per-frame offsets are not used for playback.
-  void compute_audio_offsets() {
+  // Sum the per-field audio sample counts from the metadata.  Used only as a
+  // fallback for the raw sidecar length when the file size is unavailable;
+  // the ingest conversion reads the whole stream regardless of the per-field
+  // layout.
+  void compute_audio_total_raw_pairs() {
     if (!has_audio_) return;
-    const size_t fc = frame_count();
-    audio_frame_offsets_.resize(fc, 0);
-    audio_frame_pair_counts_.resize(fc, 0);
-
     size_t cumulative = 0;
-    for (size_t frame_idx = 0; frame_idx < fc; ++frame_idx) {
-      const size_t fld1 = frame_idx * 2;
-      const size_t fld2 = fld1 + 1;
-
-      size_t pairs = 0;
-      if (fld1 < field_meta_.size()) {
-        if (const auto& cnt = field_meta_[fld1].audio_sample_count) {
-          pairs += static_cast<size_t>(*cnt);
-        }
+    for (const auto& fm : field_meta_) {
+      if (fm.audio_sample_count) {
+        cumulative += static_cast<size_t>(*fm.audio_sample_count);
       }
-      if (fld2 < field_meta_.size()) {
-        if (const auto& cnt = field_meta_[fld2].audio_sample_count) {
-          pairs += static_cast<size_t>(*cnt);
-        }
-      }
-
-      audio_frame_offsets_[frame_idx] = cumulative;
-      audio_frame_pair_counts_[frame_idx] = pairs;
-      cumulative += pairs;
     }
     audio_total_raw_pairs_ = cumulative;
   }
 
-  // True when this representation's audio output is a frame-locked track:
-  // either the PCM was declared already locked, or the user asked for the
-  // free-running sidecar to be converted (lock_audio).
-  bool audio_output_locked() const {
-    return pcm_declared_locked_ || lock_audio_;
-  }
-
-  // True when producing the locked track requires a SoXR resample: a
-  // free-running 44100 Hz sidecar converted for an NTSC/PAL_M preset
-  // (locked rate 44100000/1001 Hz).  PAL lock conversion is a same-rate
-  // segmentation served straight from the metadata offsets, and a declared
-  // frame-locked sidecar is always served verbatim.
-  bool needs_lock_resample() const {
-    return !pcm_declared_locked_ && lock_audio_ &&
-           video_params_.system != VideoSystem::PAL;
-  }
-
-  // NTSC/PAL_M lock conversion only: lazily read the entire raw PCM, resample
-  // to the frame-locked rate (44100000/1001 Hz), and cache per-frame
-  // 1470-pair blocks.  PAL audio (44100 Hz = locked rate) bypasses this
-  // entirely.
+  // Ingest conversion: lazily read the entire raw PCM sidecar, widen the
+  // 16-bit samples to the 24-bit-in-int32 carrier (<< 8), resample to the
+  // synchronous 48000 Hz rate (SMPTE 272M-1994 §1.2), and segment into
+  // cadence-sized per-frame blocks (§14.3 audio frame sequence: PAL 1920
+  // pairs constant, NTSC/PAL-M 1602/1601).  Applies to all systems including
+  // PAL (44100 → 48000).
   //
   // Runs at most once, on the first audio access, rather than in the
   // constructor: it reads the whole PCM (hundreds of MB for a feature-length
   // disc) and runs a full SoXR HQ pass, so doing it eagerly stalled the render
-  // worker on every source execute of a long NTSC source — even for video
-  // preview, which never needs audio (issue #209).  Only the audio / video
-  // (with embedded audio) sinks reach this.  Thread-safe: audio accessors are
-  // const and may be called concurrently.
-  void ensure_locked_ntsc_palM_audio() const {
-    std::call_once(ntsc_audio_once_, [this] {
+  // worker on every source execute of a long source — even for video preview,
+  // which never needs audio (issue #209).  Only the audio / video (with
+  // embedded audio) sinks reach this.  Thread-safe: audio accessors are const
+  // and may be called concurrently.
+  void ensure_audio_converted() const {
+    std::call_once(audio_once_, [this] {
       if (!has_audio_) return;
-      if (!needs_lock_resample()) return;
-      if (audio_total_raw_pairs_ == 0) return;
+      // The stream length comes from the file itself (authoritative), falling
+      // back to the metadata per-field counts.
+      const uint64_t total_pairs =
+          deps_->get_audio_pair_count(pcm_path_).value_or(
+              audio_total_raw_pairs_);
+      if (total_pairs == 0) return;
 
-      const std::vector<int16_t> raw =
-          deps_->read_audio_samples_at(pcm_path_, 0, audio_total_raw_pairs_);
+      const std::vector<int16_t> raw = deps_->read_audio_samples_at(
+          pcm_path_, 0, static_cast<size_t>(total_pairs));
       if (raw.empty()) return;
 
-      resampled_audio_frames_ = AudioResampler::lock_and_segment(
-          raw, video_params_.system, frame_count());
+      audio_frames_ = AudioResampler::resample_to_synchronous(
+          AudioResampler::widen_16_to_24(raw), pcm_sample_rate_hz_,
+          video_params_.system, frame_count());
     });
   }
 
@@ -915,29 +814,26 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   std::string ac3_bin_path_;
   std::string ac3_meta_path_;
   bool has_audio_ = false;
-  bool pcm_declared_locked_ = false;  // pcm_audio_timing = frame_locked
-  bool lock_audio_ = true;            // convert free-running PCM to locked
+  // Sidecar input rate for the ingest resample.  44100 Hz (the ld-decode
+  // default) unless the metadata pcm_audio_parameters declare otherwise.
+  double pcm_sample_rate_hz_ = 44100.0;
   bool has_efm_ = false;
   bool has_ac3_ = false;
   bool is_yc_ = false;
 
-  // Pre-computed audio layout (stereo pairs) for the verbatim locked paths.
-  std::vector<size_t> audio_frame_offsets_;
-  std::vector<size_t> audio_frame_pair_counts_;
+  // Fallback raw sidecar length (stereo pairs) from the metadata per-field
+  // counts, used when the file size is unavailable.
   size_t audio_total_raw_pairs_ = 0;
-
-  // Free-running verbatim serving: total stereo pairs in the PCM stream.
-  uint64_t stream_total_pairs_ = 0;
 
   // Pre-computed EFM layout (bytes) — cumulative offsets into the raw .efm
   // sidecar, one entry per frame.
   std::vector<size_t> efm_frame_offsets_;
   std::vector<size_t> efm_frame_byte_counts_;
 
-  // NTSC/PAL_M: per-frame resampled audio blocks (1470 stereo pairs each).
-  // Populated lazily by ensure_ntsc_palM_audio() on first audio access.
-  mutable std::once_flag ntsc_audio_once_;
-  mutable std::vector<std::vector<int16_t>> resampled_audio_frames_;
+  // Per-frame converted audio blocks (48 kHz 24-bit-in-int32, cadence-sized).
+  // Populated lazily by ensure_audio_converted() on first audio access.
+  mutable std::once_flag audio_once_;
+  mutable std::vector<std::vector<int32_t>> audio_frames_;
 
   static constexpr size_t kFrameCacheSize = 150;
   mutable LRUCache<FrameID, CachedFrame> frame_cache_{kFrameCacheSize};
@@ -1191,6 +1087,29 @@ class TBCSourceStageDeps final : public ITBCSourceStageDeps {
     return fs::exists(pcm_path, ec) && fs::is_regular_file(pcm_path, ec);
   }
 
+  std::optional<PcmAudioParameters> load_pcm_audio_parameters(
+      const std::string& db_path) const override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    // Try SQLite (.tbc.db) first.
+    if (fs::exists(db_path, ec)) {
+      TBCMetadataSqliteReader reader;
+      if (!reader.open(db_path)) return std::nullopt;
+      return reader.read_pcm_audio_parameters();
+    }
+
+    // Fall back to legacy JSON (.tbc.json).
+    const std::string json_path = json_path_from_db(db_path);
+    if (!json_path.empty() && fs::exists(json_path, ec)) {
+      auto reader = open_json_reader_cached(json_path);
+      if (!reader) return std::nullopt;
+      return reader->read_pcm_audio_parameters();
+    }
+
+    return std::nullopt;
+  }
+
   std::optional<uint64_t> get_audio_pair_count(
       const std::string& pcm_path) const override {
     namespace fs = std::filesystem;
@@ -1350,8 +1269,6 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
     const std::vector<ArtifactPtr>& inputs,
     const std::map<std::string, ParameterValue>& parameters,
     ObservationContext& observation_context) {
-  (void)observation_context;
-
   if (!inputs.empty()) {
     throw std::runtime_error("tbc_source stage must have no inputs");
   }
@@ -1377,24 +1294,8 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
     return {};
   }
 
-  // PCM sidecar timing declaration and lock conversion (defaults reproduce
-  // the historical behaviour: a free-running 44100 Hz sidecar converted to a
-  // frame-locked track).
-  const std::string pcm_timing = get_str("pcm_audio_timing");
-  const bool pcm_declared_locked = (pcm_timing == "frame_locked");
-  bool lock_audio = true;
-  {
-    const auto it = parameters.find("lock_audio");
-    if (it != parameters.end() && std::holds_alternative<bool>(it->second)) {
-      lock_audio = std::get<bool>(it->second);
-    }
-  }
-
-  // Cache key: primary TBC path plus the audio timing configuration (the
-  // representation's audio behaviour depends on it).
-  const std::string cache_key =
-      tbc_path + "|" + (pcm_declared_locked ? "frame_locked" : "free_running") +
-      "|" + (lock_audio ? "lock" : "nolock");
+  // Cache key: primary TBC path.
+  const std::string cache_key = tbc_path;
   {
     std::lock_guard<std::mutex> lock(execute_mutex_);
     if (cached_representation_ && cached_input_key_ == cache_key) {
@@ -1489,8 +1390,37 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
 
   // Determine sidecar availability.
   const int32_t frame_count = tvp.number_of_fields / 2;
-  const bool has_audio =
-      !sc.pcm_path.empty() && deps_->has_audio_file(sc.pcm_path);
+  bool has_audio = !sc.pcm_path.empty() && deps_->has_audio_file(sc.pcm_path);
+
+  // PCM layout metadata: when the sidecar metadata carries
+  // pcm_audio_parameters, validate the declared layout and honour the
+  // declared sample rate for the ingest resample.  The supported layout is
+  // signed little-endian 16-bit stereo (any sample rate — it is only the
+  // resampler input rate).  When absent, assume the ld-decode default of
+  // signed-LE 16-bit at 44100 Hz.
+  double pcm_sample_rate_hz = 44100.0;
+  if (has_audio) {
+    const auto pcm_meta = deps_->load_pcm_audio_parameters(sc.db_path);
+    if (pcm_meta && pcm_meta->is_valid()) {
+      if (!pcm_meta->is_signed || !pcm_meta->is_little_endian ||
+          pcm_meta->bits != 16) {
+        const std::string message =
+            "unsupported .pcm audio layout in metadata (bits=" +
+            std::to_string(pcm_meta->bits) + ", " +
+            (pcm_meta->is_signed ? "signed" : "unsigned") + ", " +
+            (pcm_meta->is_little_endian ? "little" : "big") +
+            "-endian); the supported layout is signed little-endian 16-bit — "
+            "audio disabled";
+        observation_context.set(FieldID(0), "tbc_source",
+                                "pcm_audio_unsupported", message);
+        ORC_LOG_WARN("tbc_source: {}", message);
+        has_audio = false;
+      } else {
+        pcm_sample_rate_hz = pcm_meta->sample_rate;
+      }
+    }
+  }
+
   // TBC EFM: the raw .efm sidecar holds one byte per T-value; per-field
   // T-value counts come from the TBC metadata (there is no .efm.meta index —
   // that sidecar is CVBS-only).  EFM is available only when the .efm file
@@ -1514,8 +1444,8 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
       is_yc ? c_path : std::string{}, has_audio ? sc.pcm_path : std::string{},
       has_efm ? sc.efm_path : std::string{},
       has_ac3 ? sc.ac3_path : std::string{}, has_ac3 ? ac3_meta : std::string{},
-      has_audio, pcm_declared_locked, lock_audio, has_efm, has_ac3,
-      ArtifactID{}, Provenance{});
+      has_audio, pcm_sample_rate_hz, has_efm, has_ac3, ArtifactID{},
+      Provenance{});
 
   // Update display name.
   const std::string new_display = make_display_name(tvp.system, is_yc);
@@ -1566,47 +1496,10 @@ std::vector<ParameterDescriptor> TBCSourceStage::get_parameter_descriptors(
                             ".tbcc"));
   descs.push_back(make_path(
       "pcm_path", "PCM Audio File Path",
-      "Path to the analogue audio .pcm sidecar (raw 16-bit stereo PCM at "
-      "44.1 kHz)",
+      "Path to the analogue audio .pcm sidecar (raw signed 16-bit stereo PCM "
+      "as written by ld-decode; always converted to 48 kHz 24-bit "
+      "frame-locked audio on ingest)",
       ".pcm"));
-
-  {
-    ParameterDescriptor d;
-    d.name = "pcm_audio_timing";
-    d.display_name = "PCM Audio Timing";
-    d.description =
-        "Declares the actual timing of the .pcm sidecar. 'free_running' "
-        "(default): the PCM is a free-running 44100 Hz stream, as written by "
-        "ld-decode. 'frame_locked': the PCM is already at the video "
-        "standard's frame-locked rate and is laid out per the metadata's "
-        "per-field audio sample counts; it is served directly with no "
-        "resampling.";
-    d.type = ParameterType::STRING;
-    d.constraints.required = false;
-    d.constraints.default_value = std::string("free_running");
-    d.constraints.allowed_strings = {"free_running", "frame_locked"};
-    descs.push_back(d);
-  }
-
-  {
-    ParameterDescriptor d;
-    d.name = "lock_audio";
-    d.display_name = "Lock Audio To Frames";
-    d.description =
-        "For a free-running .pcm sidecar: resample the audio into a "
-        "frame-locked track (SoXR HQ, duration- and sync-preserving). "
-        "Disable to keep the audio as a free-running 44100 Hz track. "
-        "Frame-locked tracks follow the video through frame remapping and "
-        "can be stacked; free-running tracks are carried as a stream.";
-    d.type = ParameterType::BOOL;
-    d.constraints.required = false;
-    d.constraints.default_value = true;
-    // Only meaningful for a free-running sidecar; a frame-locked declaration
-    // is served verbatim.
-    d.constraints.depends_on =
-        ParameterDependency{"pcm_audio_timing", {"free_running"}, true};
-    descs.push_back(d);
-  }
 
   descs.push_back(make_path("efm_path", "EFM Data File Path",
                             "Path to the EFM t-value .efm sidecar", ".efm"));
@@ -1622,13 +1515,8 @@ std::map<std::string, ParameterValue> TBCSourceStage::get_parameters() const {
 
 bool TBCSourceStage::set_parameters(
     const std::map<std::string, ParameterValue>& params) {
-  for (const auto& [k, v] : params) {
-    // lock_audio is the stage's only non-string parameter.
-    if (k == "lock_audio") {
-      if (!std::holds_alternative<bool>(v)) return false;
-      continue;
-    }
-    if (!std::holds_alternative<std::string>(v)) return false;
+  for (const auto& kv : params) {
+    if (!std::holds_alternative<std::string>(kv.second)) return false;
   }
   parameters_ = params;
 
