@@ -17,13 +17,13 @@ The file-path parameters offered match the project's source type: a composite pr
 | CVBS C (Chroma) File Path (`c_path`) | Path to the chroma channel file (`.c`). Y/C projects only; set together with `y_path`. |
 | Sample Encoding (`sample_encoding`) | `From metadata` (default) reads the encoding from the `.meta` sidecar. Selecting `CVBS_U10_4FSC`, `CVBS_U16_4FSC`, `CVBS_TPG21_4FSC`, or `CVBS_S16_FSC` manually makes the sidecar optional. |
 
-The `lock_audio` parameter has been removed: the pipeline no longer has a free-running audio regime. All audio is carried as 48 kHz synchronous (frame-locked) 24-bit stereo channel pairs, and source material at another rate is converted automatically on first access.
+The `lock_audio` parameter has been removed: the pipeline no longer has a free-running audio regime. All audio is carried as 48 kHz synchronous (frame-locked) 24-bit stereo channel pairs — the only audio format the CVBS file format specification (v1.3.0) permits.
 
 ## What it does
 
 With **Sample Encoding** at its default (`From metadata`), the stage opens the `.meta` sidecar at execute time and reads the video standard, sample encoding, and signal state. If the signal state is not `STANDARD_TBC_LOCKED`, or the video standard does not match the stage, the stage reports a configuration error and stops.
 
-When a sample encoding is selected manually the `.meta` sidecar is ignored (it need not exist). The video standard comes from the stage itself, the signal is assumed to be TBC-locked, the frame count is measured from the file size, and audio channel pairs carry derived names (the `audio_track` metadata table is not read).
+When a sample encoding is selected manually the `.meta` sidecar is ignored (it need not exist). The video standard comes from the stage itself, the signal is assumed to be TBC-locked, the frame count is measured from the file size, and audio channel pairs carry derived names (the `audio_channel_pair` metadata table is not read).
 
 Each frame's sample words are read in order, applying the normalisation appropriate to the encoding:
 
@@ -38,9 +38,9 @@ Dropout, audio, EFM, and AC3 sidecars are loaded automatically when the correspo
 
 ### Audio channel pairs
 
-Every `<basename>_audio_00.wav` … `_audio_15.wav` sidecar becomes a pipeline audio channel pair, in ascending container-number order (the pipeline carries at most 8 pairs). Per-pair descriptions are read from the `.meta` file's `audio_track` table; pairs without a table row derive names of the form `Track NN`. The table's legacy `audio_locked` column is ignored — there is no free-running audio regime.
+Every `<basename>_audio_0.wav` … `_audio_7.wav` sidecar (single-digit suffix, CVBS file format spec v1.3.0) becomes the pipeline audio channel pair with the same index. Container pair numbers need not be contiguous; absent intermediate numbers become silent placeholder pairs so pipeline indices always match container numbers. Per-pair descriptions are read from the `.meta` file's `audio_channel_pair` table; existing files without a table row (a spec violation) are reported as a warning and derive names of the form `Channel pair N`.
 
-All pipeline audio is 48 kHz synchronous (frame-locked) 24-bit stereo (SMPTE 272M-1994) and always follows frame remapping (trimming, mapping, stacking) downstream. On first audio access each pair's 16-bit WAV payload is widened to 24-bit and, using the WAV header sample rate, converted to the 48 kHz frame-locked form (SoXR HQ, duration- and sync-preserving); a payload already at 48000 Hz passes through unresampled, so legacy 44.1 kHz containers are converted and current containers are served as-is.
+Each file's RIFF header is validated against the specification — PCM, 2 channels, 48000 Hz, 24-bit signed little-endian — and mismatches are reported as errors (there is no conversion of non-conforming containers). All pair files must be equal-length, carrying exactly one cadence-sized block per frame; a length mismatch is reported as a warning and short frames are served as silence. Because the container payload is already in the pipeline audio form (48 kHz synchronous 24-bit stereo, SMPTE 272M-1994), frames are read directly from the file by cadence offset with no conversion.
 
 ## Status Indicator
 

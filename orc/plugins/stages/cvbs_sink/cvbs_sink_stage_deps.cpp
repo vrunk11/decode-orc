@@ -23,6 +23,8 @@
 #include <utility>
 #include <vector>
 
+#include "cvbs_sink_container.h"
+
 namespace orc {
 
 namespace {
@@ -105,63 +107,16 @@ sqlite3* create_sidecar_db(const std::string& path, const char* schema_sql,
   return db;
 }
 
-// One row of the .meta audio_track table (CVBS file format spec v1.2.0).
-// Pipeline audio is always synchronous (frame-locked), so audio_locked is
-// written as TRUE for every row; Phase 2 (CVBS spec v1.3.0) replaces this
-// table with audio_channel_pair, which has no lock column.
-struct CVBSAudioTrackMetaRow {
-  int32_t track_number = 0;
-  std::string description;  // empty = NULL
-};
-
 // Write the core <base>.meta metadata database.
-// CVBS file format spec: Metadata Schema (PRAGMA user_version = 9).
-bool write_core_metadata(const std::string& meta_path, VideoSystem system,
-                         const CVBSSinkWriteConfig& config,
-                         uint64_t frames_written,
-                         std::optional<int32_t> black_level,
-                         bool has_nonstandard_values,
-                         const std::vector<CVBSAudioTrackMetaRow>& audio_tracks,
-                         std::string& error_message) {
-  constexpr const char* kSchema =
-      "PRAGMA user_version = 9;"
-      "CREATE TABLE cvbs_file ("
-      "    cvbs_file_id                INTEGER PRIMARY KEY,"
-      "    preset                      TEXT    NOT NULL"
-      "        CHECK (preset IN ('NTSC', 'PAL', 'PAL_M')),"
-      "    sample_encoding_preset      TEXT    NOT NULL"
-      "        CHECK (sample_encoding_preset IN ('CVBS_U10_4FSC', "
-      "'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC', "
-      "'CVBS_S16_FSC')),"
-      "    signal_state_preset         TEXT    NOT NULL"
-      "        CHECK (signal_state_preset IN ("
-      "            'STANDARD_TBC_LOCKED',"
-      "            'STANDARD_TBC_UNLOCKED',"
-      "            'STANDARD_RAW',"
-      "            'NONSTANDARD_TBC_LOCKED',"
-      "            'NONSTANDARD_TBC_UNLOCKED',"
-      "            'NONSTANDARD_RAW'"
-      "        )),"
-      "    signal_type                 TEXT    NOT NULL"
-      "        CHECK (signal_type IN ('composite', 'yc')),"
-      "    decoder                     TEXT    NOT NULL,"
-      "    git_branch                  TEXT,"
-      "    git_commit                  TEXT,"
-      "    number_of_sequential_frames INTEGER"
-      "        CHECK (number_of_sequential_frames IS NULL OR "
-      "number_of_sequential_frames >= 1),"
-      "    black_level                 INTEGER,"
-      "    has_nonstandard_values      BOOLEAN,"
-      "    capture_notes               TEXT"
-      ");"
-      "CREATE TABLE audio_track ("
-      "    track_number                INTEGER PRIMARY KEY"
-      "        CHECK (track_number BETWEEN 0 AND 15),"
-      "    description                 TEXT,"
-      "    audio_locked                BOOLEAN NOT NULL"
-      ");";
-
-  sqlite3* db = create_sidecar_db(meta_path, kSchema, error_message);
+// CVBS file format spec v1.3.0: Metadata Schema (PRAGMA user_version = 10).
+bool write_core_metadata(
+    const std::string& meta_path, VideoSystem system,
+    const CVBSSinkWriteConfig& config, uint64_t frames_written,
+    std::optional<int32_t> black_level, bool has_nonstandard_values,
+    const std::vector<CVBSAudioChannelPairMetaRow>& audio_channel_pairs,
+    std::string& error_message) {
+  sqlite3* db =
+      create_sidecar_db(meta_path, kCVBSCoreMetaSchemaSql, error_message);
   if (!db) return false;
 
   constexpr const char* kInsert =
@@ -207,37 +162,36 @@ bool write_core_metadata(const std::string& meta_path, VideoSystem system,
   }
   sqlite3_finalize(stmt);
 
-  // Per-track rows (CVBS file format spec v1.2.0): one per track file.
-  if (ok && !audio_tracks.empty()) {
-    constexpr const char* kTrackInsert =
-        "INSERT INTO audio_track (track_number, description, audio_locked) "
-        "VALUES (?, ?, ?)";
-    sqlite3_stmt* track_stmt = nullptr;
-    if (sqlite3_prepare_v2(db, kTrackInsert, -1, &track_stmt, nullptr) !=
+  // Per-pair rows (CVBS file format spec v1.3.0): exactly one
+  // audio_channel_pair row per channel pair file.
+  if (ok && !audio_channel_pairs.empty()) {
+    constexpr const char* kPairInsert =
+        "INSERT INTO audio_channel_pair (channel_pair, description) "
+        "VALUES (?, ?)";
+    sqlite3_stmt* pair_stmt = nullptr;
+    if (sqlite3_prepare_v2(db, kPairInsert, -1, &pair_stmt, nullptr) !=
         SQLITE_OK) {
-      error_message = "Failed to prepare audio_track insert: " +
+      error_message = "Failed to prepare audio_channel_pair insert: " +
                       std::string(sqlite3_errmsg(db));
       ok = false;
     } else {
-      for (const CVBSAudioTrackMetaRow& row : audio_tracks) {
-        sqlite3_bind_int(track_stmt, 1, row.track_number);
+      for (const CVBSAudioChannelPairMetaRow& row : audio_channel_pairs) {
+        sqlite3_bind_int(pair_stmt, 1, row.channel_pair);
         if (!row.description.empty()) {
-          sqlite3_bind_text(track_stmt, 2, row.description.c_str(), -1,
+          sqlite3_bind_text(pair_stmt, 2, row.description.c_str(), -1,
                             SQLITE_TRANSIENT);
         } else {
-          sqlite3_bind_null(track_stmt, 2);
+          sqlite3_bind_null(pair_stmt, 2);
         }
-        // Every pipeline channel pair is synchronous (frame-locked).
-        sqlite3_bind_int(track_stmt, 3, 1);
-        if (sqlite3_step(track_stmt) != SQLITE_DONE) {
-          error_message = "Failed to write audio_track row: " +
+        if (sqlite3_step(pair_stmt) != SQLITE_DONE) {
+          error_message = "Failed to write audio_channel_pair row: " +
                           std::string(sqlite3_errmsg(db));
           ok = false;
           break;
         }
-        sqlite3_reset(track_stmt);
+        sqlite3_reset(pair_stmt);
       }
-      sqlite3_finalize(track_stmt);
+      sqlite3_finalize(pair_stmt);
     }
   }
 
@@ -365,61 +319,14 @@ bool write_extension_sidecar(const std::string& path,
 }
 
 // ---------------------------------------------------------------------------
-// WAV helpers
+// Stale output removal
 // ---------------------------------------------------------------------------
 
-void append_le16(std::vector<uint8_t>& out, uint16_t v) {
-  out.push_back(static_cast<uint8_t>(v & 0xFF));
-  out.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
-}
-
-void append_le32(std::vector<uint8_t>& out, uint32_t v) {
-  out.push_back(static_cast<uint8_t>(v & 0xFF));
-  out.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
-  out.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
-  out.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
-}
-
-// 44-byte canonical RIFF/WAVE header for 16-bit stereo PCM.
-// The pipeline carries 48 kHz synchronous (frame-locked) channel-pair audio
-// — SMPTE 272M-1994 §1.2 — so nSamplesPerSec is always 48000 (exact for all
-// systems).  The payload stays 16-bit in this phase; the CVBS spec v1.3.0
-// 24-bit writer lands with the Phase 2 container-conformance work.
-std::vector<uint8_t> make_wav_header(uint32_t sample_rate,
-                                     uint32_t data_bytes) {
-  constexpr uint16_t kChannels = 2;
-  constexpr uint16_t kBitsPerSample = 16;
-  constexpr uint16_t kBlockAlign = kChannels * kBitsPerSample / 8;
-
-  std::vector<uint8_t> header;
-  header.reserve(44);
-  header.insert(header.end(), {'R', 'I', 'F', 'F'});
-  append_le32(header, 36 + data_bytes);
-  header.insert(header.end(), {'W', 'A', 'V', 'E'});
-  header.insert(header.end(), {'f', 'm', 't', ' '});
-  append_le32(header, 16);  // fmt chunk size
-  append_le16(header, 1);   // PCM
-  append_le16(header, kChannels);
-  append_le32(header, sample_rate);
-  append_le32(header, sample_rate * kBlockAlign);  // byte rate
-  append_le16(header, kBlockAlign);
-  append_le16(header, kBitsPerSample);
-  header.insert(header.end(), {'d', 'a', 't', 'a'});
-  append_le32(header, data_bytes);
-  return header;
-}
-
-// <base>_audio_NN.wav path for a container track number (00–15).
-std::string audio_track_path(const std::string& base, size_t track_number) {
-  char suffix[16];
-  snprintf(suffix, sizeof(suffix), "_audio_%02zu.wav", track_number);
-  return base + suffix;
-}
-
-// Highest container track number swept when removing stale outputs.  The
-// legacy v1.2.0 container allowed 16 track files, so a previous run may have
-// left up to 16; the pipeline itself writes at most kMaxAudioChannelPairs.
-constexpr size_t kStaleAudioFileSweep = 16;
+// Highest legacy (CVBS spec v1.2.0) container track number swept when
+// removing stale outputs.  The legacy container allowed 16 two-digit track
+// files (_audio_00 … _audio_15), so a previous run of an older writer may
+// have left up to 16.
+constexpr size_t kStaleLegacyAudioFileSweep = 16;
 
 // Remove any output files from a previous run so a re-run never leaves a
 // stale sidecar describing data that is no longer being written.
@@ -431,8 +338,14 @@ void remove_stale_outputs(const std::string& base) {
   for (const char* ext : kExtensions) {
     std::filesystem::remove(base + ext, ec);
   }
-  for (size_t track = 0; track < kStaleAudioFileSweep; ++track) {
-    std::filesystem::remove(audio_track_path(base, track), ec);
+  for (size_t pair = 0; pair < kMaxAudioChannelPairs; ++pair) {
+    std::filesystem::remove(cvbs_audio_pair_path(base, pair), ec);
+  }
+  // Legacy v1.2.0 two-digit track files from a previous writer version.
+  for (size_t track = 0; track < kStaleLegacyAudioFileSweep; ++track) {
+    char suffix[16];
+    snprintf(suffix, sizeof(suffix), "_audio_%02zu.wav", track);
+    std::filesystem::remove(base + suffix, ec);
   }
 }
 
@@ -520,8 +433,8 @@ CVBSSinkWriteResult CVBSSinkStageDeps::write_cvbs(
   }
 
   // --- Extension streams (opened only when the input carries the data) ---
-  // Every pipeline audio channel pair is written to <base>_audio_NN.wav with
-  // NN = pipeline pair index.
+  // Every pipeline audio channel pair is written to <base>_audio_<p>.wav
+  // with p = pipeline pair index (single digit, CVBS spec v1.3.0).
   struct AudioChannelPairOutput {
     size_t pair = 0;
     AudioChannelPairDescriptor desc;
@@ -538,7 +451,7 @@ CVBSSinkWriteResult CVBSSinkStageDeps::write_cvbs(
     AudioChannelPairOutput output;
     output.pair = pair;
     output.desc = *desc;
-    output.path = audio_track_path(base, pair);
+    output.path = cvbs_audio_pair_path(base, pair);
     pair_outputs.push_back(std::move(output));
   }
   const bool write_efm = representation->has_efm();
@@ -547,13 +460,13 @@ CVBSSinkWriteResult CVBSSinkStageDeps::write_cvbs(
   // Audio is gathered frame by frame inside the frame loop, so the WAV data
   // size is only known afterwards; open with a placeholder header and patch
   // it once the loop completes.  All pipeline audio is 48 kHz synchronous
-  // (SMPTE 272M-1994 §1.2) — exact for every system.
+  // 24-bit (SMPTE 272M-1994 §1.2/§1.3) — exact for every system.
   for (AudioChannelPairOutput& pair_out : pair_outputs) {
     pair_out.out.open(pair_out.path, std::ios::binary | std::ios::trunc);
     if (!pair_out.out) {
       return {false, 0, "Failed to open output file: " + pair_out.path};
     }
-    const auto header = make_wav_header(kAudioSampleRateHz, 0);
+    const auto header = make_cvbs_audio_wav_header(0);
     pair_out.out.write(reinterpret_cast<const char*>(header.data()),
                        static_cast<std::streamsize>(header.size()));
   }
@@ -650,23 +563,14 @@ CVBSSinkWriteResult CVBSSinkStageDeps::write_cvbs(
     for (AudioChannelPairOutput& pair_out : pair_outputs) {
       // The producer serves exactly audio_pairs_in_frame(fid) stereo pairs;
       // frames without audio get cadence-sized silence so all pair files
-      // stay frame-aligned.
+      // stay frame-aligned and equal-length by construction.
       const auto audio = representation->get_audio_samples(pair_out.pair, fid);
       const size_t expected_values =
           static_cast<size_t>(audio_pairs_in_frame(fid, system)) * 2;
-      // Narrow the 24-bit-in-int32 carrier to the 16-bit container payload
-      // (>> 8, exactly reversing the ingest widening).  Phase 2 replaces
-      // this with the 24-bit writer.
-      std::vector<int16_t> narrowed(expected_values, 0);
-      const size_t copy_values = std::min(audio.size(), expected_values);
-      for (size_t i = 0; i < copy_values; ++i) {
-        narrowed[i] = static_cast<int16_t>(audio[i] >> 8);
-      }
-      pair_out.out.write(
-          reinterpret_cast<const char*>(narrowed.data()),
-          static_cast<std::streamsize>(narrowed.size() * sizeof(int16_t)));
-      pair_out.data_bytes +=
-          static_cast<uint32_t>(narrowed.size() * sizeof(int16_t));
+      const auto bytes = pack_audio_s24le(audio, expected_values);
+      pair_out.out.write(reinterpret_cast<const char*>(bytes.data()),
+                         static_cast<std::streamsize>(bytes.size()));
+      pair_out.data_bytes += static_cast<uint32_t>(bytes.size());
     }
 
     if (write_efm) {
@@ -712,8 +616,7 @@ CVBSSinkWriteResult CVBSSinkStageDeps::write_cvbs(
 
   // --- Finalise the WAV headers with the real data sizes ---
   for (AudioChannelPairOutput& pair_out : pair_outputs) {
-    const auto header =
-        make_wav_header(kAudioSampleRateHz, pair_out.data_bytes);
+    const auto header = make_cvbs_audio_wav_header(pair_out.data_bytes);
     pair_out.out.seekp(0, std::ios::beg);
     pair_out.out.write(reinterpret_cast<const char*>(header.data()),
                        static_cast<std::streamsize>(header.size()));
@@ -724,19 +627,19 @@ CVBSSinkWriteResult CVBSSinkStageDeps::write_cvbs(
   }
 
   // --- Write the .meta core metadata ---
-  // One audio_track row per channel-pair file (CVBS file format spec
-  // v1.2.0), NN = pipeline pair index.
+  // One audio_channel_pair row per channel-pair file (CVBS file format spec
+  // v1.3.0), channel_pair = pipeline pair index.
   std::string err;
-  std::vector<CVBSAudioTrackMetaRow> audio_track_rows;
+  std::vector<CVBSAudioChannelPairMetaRow> audio_pair_rows;
   for (const AudioChannelPairOutput& pair_out : pair_outputs) {
-    CVBSAudioTrackMetaRow row;
-    row.track_number = static_cast<int32_t>(pair_out.pair);
+    CVBSAudioChannelPairMetaRow row;
+    row.channel_pair = static_cast<int32_t>(pair_out.pair);
     row.description = pair_out.desc.name;
-    audio_track_rows.push_back(std::move(row));
+    audio_pair_rows.push_back(std::move(row));
   }
   if (!write_core_metadata(base + ".meta", system, config, frames_written,
                            black_level_override, has_nonstandard_values,
-                           audio_track_rows, err)) {
+                           audio_pair_rows, err)) {
     return {false, frames_written, err};
   }
 
@@ -758,7 +661,7 @@ CVBSSinkWriteResult CVBSSinkStageDeps::write_cvbs(
       "CVBSSinkDeps: Wrote {} frames ({} requested) to {} "
       "(dropouts {}, audio channel pairs {}, EFM {}, AC3 {})",
       frames_written, total_frames, primary_path,
-      dropout_rows.empty() ? "no" : "yes", audio_track_rows.size(),
+      dropout_rows.empty() ? "no" : "yes", audio_pair_rows.size(),
       write_efm ? "yes" : "no", write_ac3 ? "yes" : "no");
 
   return {true, frames_written,

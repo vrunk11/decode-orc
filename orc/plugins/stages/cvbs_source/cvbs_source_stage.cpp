@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -29,8 +30,6 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
-
-#include "audio-resample/audio_resampler.h"
 
 namespace orc {
 
@@ -69,36 +68,23 @@ std::string derive_sidecar_path(const std::string& input_path,
   return (p.parent_path() / p.stem()).string() + suffix;
 }
 
-// Zero-padded two-digit audio track suffix: 0 → "00", 15 → "15".
-std::string audio_track_suffix(int32_t track_number) {
-  std::string s = std::to_string(track_number);
-  return (s.size() < 2 ? "0" + s : s);
-}
-
-// Highest container track number probed during enumeration.  The legacy
-// v1.2.0 container allowed 16 track files (_audio_00 … _audio_15); the
-// pipeline carries at most kMaxAudioChannelPairs pairs, so enumeration stops
-// once that many files have been found.  Phase 2 (CVBS spec v1.3.0) replaces
-// this with single-digit _audio_0 … _audio_7 enumeration.
-constexpr int32_t kAudioFileProbeLimit = 16;
-
 // ---------------------------------------------------------------------------
 // Audio channel-pair state
 // ---------------------------------------------------------------------------
 
-// One pipeline audio channel pair backed by a <basename>_audio_NN.wav
-// sidecar (16-bit LE stereo PCM).
+// One pipeline audio channel pair backed by a <basename>_audio_<p>.wav
+// sidecar (24-bit signed LE stereo PCM at 48000 Hz, CVBS file format spec
+// v1.3.0).  An empty wav_path marks a placeholder for a container pair
+// number with no file (numbers need not be contiguous); placeholders serve
+// cadence-sized silence so pipeline pair indices match container numbers.
 struct CVBSAudioChannelPairState {
-  int32_t container_number = 0;  // NN in the _audio_NN.wav filename
+  int32_t container_number = 0;  // <p> in the _audio_<p>.wav filename
   std::string wav_path;
   AudioChannelPairDescriptor descriptor;  // describes this stage's OUTPUT
-  // nSamplesPerSec from the WAV header — the resampler input rate.  Legacy
-  // 44100 Hz payloads are converted; 48000 Hz payloads pass through.
-  uint32_t source_rate_hz = kAudioSampleRateHz;
-  // Total stereo pairs in the WAV payload (whole-stream read size for the
-  // synchronous conversion).
-  uint64_t stream_total_pairs = 0;
 };
+
+// Bytes per interleaved 24-bit stereo pair (2 channels × 3 bytes).
+constexpr uint64_t kAudioBytesPerPair = 6;
 
 // ---------------------------------------------------------------------------
 // Sample encoding normalisation
@@ -241,19 +227,13 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
         blanking_level_(video_params_.blanking_level),
         dropout_runs_(std::move(dropout_runs)),
         audio_pairs_(std::move(audio_pairs)),
-        synchronous_conversion_once_(audio_pairs_.size()),
-        synchronous_conversion_frames_(audio_pairs_.size()),
         has_efm_(has_efm),
         efm_data_path_(std::move(efm_data_path)),
         efm_table_(std::move(efm_table)),
         has_ac3_(has_ac3),
         ac3_data_path_(std::move(ac3_data_path)),
         ac3_table_(std::move(ac3_table)),
-        c_path_(std::move(c_path)) {
-    for (auto& flag : synchronous_conversion_once_) {
-      flag = std::make_unique<std::once_flag>();
-    }
-  }
+        c_path_(std::move(c_path)) {}
 
   // --------------------------------------------------------------------------
   // Artifact
@@ -335,11 +315,11 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   // --------------------------------------------------------------------------
   // Audio channel pairs
   // --------------------------------------------------------------------------
-  // Every <basename>_audio_NN.wav sidecar is one pipeline channel pair, in
-  // ascending container-number order.  On first audio access per pair the
-  // whole 16-bit WAV payload is read, widened to the 24-bit-in-int32 carrier,
-  // and converted (using the WAV header rate as the input rate) into 48 kHz
-  // synchronous cadence-sized per-frame blocks, once per pair.
+  // Every <basename>_audio_<p>.wav sidecar is the pipeline channel pair with
+  // the same index (CVBS file format spec v1.3.0).  The payload is already
+  // in the pipeline audio form (24-bit signed LE stereo at 48000 Hz
+  // synchronous), so per-frame reads seek directly to the SMPTE 272M
+  // cadence offset; short or absent data is silence-padded to cadence size.
   size_t audio_channel_pair_count() const override {
     return audio_pairs_.size();
   }
@@ -353,14 +333,16 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   std::vector<int32_t> get_audio_samples(size_t pair,
                                          FrameID id) const override {
     if (pair >= audio_pairs_.size() || !has_frame(id)) return {};
-    ensure_synchronous_conversion(pair);
-    const auto& frames = synchronous_conversion_frames_[pair];
-    const size_t idx = static_cast<size_t>(id);
-    if (idx < frames.size()) return frames[idx];
-    // Defensive fallback: cadence-sized silence for any frame the conversion
-    // did not cover.
-    return std::vector<int32_t>(
-        static_cast<size_t>(audio_pairs_in_frame(id, system_)) * 2, 0);
+    const size_t frame_values =
+        static_cast<size_t>(audio_pairs_in_frame(id, system_)) * 2;
+    const CVBSAudioChannelPairState& state = audio_pairs_[pair];
+    // Placeholder pair (container number with no file): cadence silence.
+    if (state.wav_path.empty()) return std::vector<int32_t>(frame_values, 0);
+    std::vector<int32_t> samples = deps_->read_audio_pairs_at(
+        state.wav_path, audio_pair_offset(id, system_),
+        audio_pairs_in_frame(id, system_));
+    samples.resize(frame_values, 0);  // silence-pad short reads
+    return samples;
   }
 
   // --------------------------------------------------------------------------
@@ -513,32 +495,9 @@ class CVBSDecodedFrameRepresentation final : public VideoFrameRepresentation,
   static constexpr size_t kFrameCacheSize = 150;
   mutable LRUCache<FrameID, DecodedFrame> frame_cache_{kFrameCacheSize};
 
-  // Synchronous conversion: lazily read a pair's whole 16-bit WAV payload,
-  // widen it to the 24-bit-in-int32 carrier, and resample/segment it into
-  // 48 kHz cadence-sized per-frame blocks, once per pair.  Whole-stream
-  // because the SoXR pull-down is not seekable; the result is held in RAM.
-  // A 48000 Hz payload passes through the resampler unchanged apart from
-  // segmentation, so legacy 44100 Hz files convert and current files do not.
-  // Thread-safe: audio accessors are const and may be called concurrently.
-  void ensure_synchronous_conversion(size_t pair) const {
-    std::call_once(*synchronous_conversion_once_[pair], [this, pair] {
-      const CVBSAudioChannelPairState& state = audio_pairs_[pair];
-      const std::vector<int16_t> raw = deps_->read_audio_samples_at(
-          state.wav_path, 0, static_cast<size_t>(state.stream_total_pairs));
-      synchronous_conversion_frames_[pair] =
-          AudioResampler::resample_to_synchronous(
-              AudioResampler::widen_16_to_24(raw),
-              static_cast<double>(state.source_rate_hz), system_, frame_count_);
-    });
-  }
-
   std::vector<DropoutRun> dropout_runs_;
 
   std::vector<CVBSAudioChannelPairState> audio_pairs_;
-  mutable std::vector<std::unique_ptr<std::once_flag>>
-      synchronous_conversion_once_;
-  mutable std::vector<std::vector<std::vector<int32_t>>>
-      synchronous_conversion_frames_;
 
   bool has_efm_ = false;
   std::string efm_data_path_;
@@ -735,38 +694,50 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     return runs;
   }
 
-  std::optional<uint64_t> get_audio_pair_count(
+  std::optional<CVBSAudioWavInfo> read_audio_wav_info(
       const std::string& wav_path) const override {
     namespace fs = std::filesystem;
     std::error_code ec;
-    const uintmax_t size = fs::file_size(wav_path, ec);
-    if (ec) return std::nullopt;
-    // 44-byte RIFF header, then interleaved int16_t pairs (4 bytes each).
-    constexpr uintmax_t kWavHeaderBytes = 44;
-    if (size < kWavHeaderBytes) return 0;
-    return static_cast<uint64_t>((size - kWavHeaderBytes) / 4);
-  }
+    if (!fs::exists(wav_path, ec)) return std::nullopt;
 
-  std::optional<uint32_t> get_audio_sample_rate(
-      const std::string& wav_path) const override {
-    // Canonical 44-byte RIFF/WAVE header: nSamplesPerSec is the 32-bit LE
-    // word at byte offset 24 (RIFF 12 + "fmt " chunk header 8 + wFormatTag 2
-    // + nChannels 2).
-    constexpr std::streamoff kSampleRateOffset = 24;
+    // Canonical 44-byte RIFF/WAVE header (the only form the CVBS file
+    // format spec v1.3.0 permits: no extended fmt chunks or non-standard
+    // RIFF variants).  A malformed header yields zeroed fields, which the
+    // stage rejects during validation.
     std::ifstream ifs(wav_path, std::ios::binary);
-    if (!ifs.is_open()) return std::nullopt;
-    ifs.seekg(kSampleRateOffset, std::ios::beg);
-    uint8_t bytes[4] = {0, 0, 0, 0};
-    ifs.read(reinterpret_cast<char*>(bytes), sizeof(bytes));
-    if (!ifs.good()) return std::nullopt;
-    return static_cast<uint32_t>(bytes[0]) |
-           (static_cast<uint32_t>(bytes[1]) << 8) |
-           (static_cast<uint32_t>(bytes[2]) << 16) |
-           (static_cast<uint32_t>(bytes[3]) << 24);
+    if (!ifs.is_open()) return CVBSAudioWavInfo{};
+    uint8_t h[44] = {};
+    ifs.read(reinterpret_cast<char*>(h), sizeof(h));
+    if (static_cast<size_t>(ifs.gcount()) < sizeof(h)) {
+      return CVBSAudioWavInfo{};
+    }
+    const auto le16 = [&h](size_t off) {
+      return static_cast<uint16_t>(h[off]) |
+             (static_cast<uint16_t>(h[off + 1]) << 8);
+    };
+    const auto le32 = [&h](size_t off) {
+      return static_cast<uint32_t>(h[off]) |
+             (static_cast<uint32_t>(h[off + 1]) << 8) |
+             (static_cast<uint32_t>(h[off + 2]) << 16) |
+             (static_cast<uint32_t>(h[off + 3]) << 24);
+    };
+    if (std::memcmp(h, "RIFF", 4) != 0 || std::memcmp(h + 8, "WAVE", 4) != 0 ||
+        std::memcmp(h + 12, "fmt ", 4) != 0 ||
+        std::memcmp(h + 36, "data", 4) != 0) {
+      return CVBSAudioWavInfo{};
+    }
+    CVBSAudioWavInfo info;
+    info.format_tag = le16(20);
+    info.channels = le16(22);
+    info.sample_rate_hz = le32(24);
+    info.bits_per_sample = le16(34);
+    info.data_bytes = le32(40);
+    return info;
   }
 
-  std::optional<std::vector<CVBSAudioTrackRecord>> load_audio_track_table(
-      const std::string& meta_path, std::string& error_message) const override {
+  std::optional<std::vector<CVBSAudioChannelPairRecord>>
+  load_audio_channel_pair_table(const std::string& meta_path,
+                                std::string& error_message) const override {
     namespace fs = std::filesystem;
     std::error_code ec;
     if (!fs::exists(meta_path, ec)) return std::nullopt;
@@ -779,30 +750,27 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
       return std::nullopt;
     }
 
-    // CVBS file format spec v1.2.0: one audio_track row per track file.
+    // CVBS file format spec v1.3.0: one audio_channel_pair row per channel
+    // pair file.
     constexpr const char* kSql =
-        "SELECT track_number, description, audio_locked FROM audio_track "
-        "ORDER BY track_number";
+        "SELECT channel_pair, description FROM audio_channel_pair "
+        "ORDER BY channel_pair";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, kSql, -1, &stmt, nullptr) != SQLITE_OK) {
-      // Table absent — legacy metadata, not an error.
+      // Table absent — pre-v1.3.0 metadata, reported by the stage when
+      // audio files are present.
       sqlite3_close(db);
       return std::nullopt;
     }
 
-    std::vector<CVBSAudioTrackRecord> records;
+    std::vector<CVBSAudioChannelPairRecord> records;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-      CVBSAudioTrackRecord rec;
-      rec.track_number = sqlite3_column_int(stmt, 0);
+      CVBSAudioChannelPairRecord rec;
+      rec.channel_pair = sqlite3_column_int(stmt, 0);
       if (sqlite3_column_type(stmt, 1) != SQLITE_NULL) {
         const unsigned char* v = sqlite3_column_text(stmt, 1);
         if (v) rec.description = reinterpret_cast<const char*>(v);
-      }
-      if (sqlite3_column_type(stmt, 2) != SQLITE_NULL) {
-        const std::string al =
-            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-        rec.locked = (al == "TRUE" || al == "1");
       }
       records.push_back(std::move(rec));
     }
@@ -812,24 +780,34 @@ class CVBSSourceStageDeps final : public ICVBSSourceStageDeps {
     return records;
   }
 
-  std::vector<int16_t> read_audio_samples_at(
-      const std::string& wav_path, size_t stereo_pair_offset,
+  std::vector<int32_t> read_audio_pairs_at(
+      const std::string& wav_path, uint64_t stereo_pair_offset,
       size_t stereo_pair_count) const override {
-    // WAV PCM: skip 44-byte RIFF header, then read interleaved int16_t pairs.
-    constexpr size_t kWavHeaderBytes = 44;
+    // WAV PCM: skip the canonical 44-byte RIFF header, then read
+    // interleaved 24-bit signed LE stereo pairs (6 bytes each) and
+    // sign-extend into the pipeline's 24-bit-in-int32 carrier.
+    constexpr uint64_t kWavHeaderBytes = 44;
     std::ifstream ifs(wav_path, std::ios::binary);
     if (!ifs.is_open()) return {};
-    ifs.seekg(static_cast<std::streamoff>(kWavHeaderBytes) +
-                  static_cast<std::streamoff>(stereo_pair_offset) * 4,
+    ifs.seekg(static_cast<std::streamoff>(
+                  kWavHeaderBytes + stereo_pair_offset * kAudioBytesPerPair),
               std::ios::beg);
     if (!ifs.good()) return {};
-    const size_t total_samples = stereo_pair_count * 2;
-    std::vector<int16_t> buf(total_samples);
-    ifs.read(reinterpret_cast<char*>(buf.data()),
-             static_cast<std::streamsize>(total_samples * 2));
-    const size_t words_read = static_cast<size_t>(ifs.gcount()) / 2;
-    if (words_read < total_samples) buf.resize(words_read);
-    return buf;
+    std::vector<uint8_t> raw(stereo_pair_count * kAudioBytesPerPair);
+    ifs.read(reinterpret_cast<char*>(raw.data()),
+             static_cast<std::streamsize>(raw.size()));
+    const size_t bytes_read = static_cast<size_t>(ifs.gcount());
+    const size_t values_read = bytes_read / 3;
+    std::vector<int32_t> samples;
+    samples.reserve(values_read);
+    for (size_t i = 0; i < values_read; ++i) {
+      int32_t v = static_cast<int32_t>(raw[i * 3]) |
+                  (static_cast<int32_t>(raw[i * 3 + 1]) << 8) |
+                  (static_cast<int32_t>(raw[i * 3 + 2]) << 16);
+      if (v & 0x800000) v |= ~0xFFFFFF;  // sign-extend from bit 23
+      samples.push_back(v);
+    }
+    return samples;
   }
 
   std::optional<std::vector<CVBSExtensionFrameRef>> load_efm_frame_table(
@@ -991,7 +969,6 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
     const std::map<std::string, ParameterValue>& parameters,
     ObservationContext& observation_context) {
   std::lock_guard<std::mutex> lock(execute_mutex_);
-  (void)observation_context;
 
   if (!inputs.empty()) {
     throw std::runtime_error(std::string(stage_name_) +
@@ -1169,53 +1146,119 @@ std::vector<ArtifactPtr> FixedFormatCVBSSourceStage::execute(
       derive_sidecar_path(input_path, ".dropouts.meta");
   auto dropout_runs = deps_->load_dropout_sidecar(dropout_path, do_err);
 
-  // Audio: probe <basename>_audio_00.wav … _audio_15.wav; every existing
-  // file becomes a pipeline channel pair, in ascending container-number
-  // order, capped at kMaxAudioChannelPairs.  Per-pair descriptions come from
-  // the .meta audio_track table (CVBS file format spec v1.2.0; the legacy
-  // audio_locked column is ignored — the pipeline has no free-running audio
-  // regime); pairs without a table row — including manual-encoding mode,
-  // where no metadata is read — derive names of the form "Track NN".  The
-  // CVBS metadata carries no origin information, so every pair reports
+  // Audio: probe <basename>_audio_0.wav … _audio_7.wav (single-digit
+  // suffix, CVBS file format spec v1.3.0).  Each existing file becomes the
+  // pipeline channel pair with the same index; container numbers need not
+  // be contiguous, so absent intermediate numbers become placeholder pairs
+  // serving cadence-sized silence.  Every file's RIFF header is validated
+  // against the spec (PCM, 2 channels, 48000 Hz, 24-bit) — mismatches are
+  // errors.  Per-pair descriptions come from the .meta audio_channel_pair
+  // table; existing files without a table row (a spec violation) produce a
+  // warning observation and derive a "Channel pair N" name, as does
+  // manual-encoding mode, where no metadata is read.  The CVBS metadata
+  // carries no origin information, so every pair reports
   // AudioOrigin::UNKNOWN.
-  std::optional<std::vector<CVBSAudioTrackRecord>> audio_track_table;
+  std::optional<std::vector<CVBSAudioChannelPairRecord>> audio_pair_table;
   if (use_metadata) {
     std::string at_err;
-    audio_track_table = deps_->load_audio_track_table(
+    audio_pair_table = deps_->load_audio_channel_pair_table(
         derive_sidecar_path(input_path, ".meta"), at_err);
   }
 
+  // CVBS file format spec v1.3.0: every channel pair file carries exactly
+  // audio_pair_offset(frame_count) stereo pairs (equal-length files).
+  const uint64_t expected_stream_pairs =
+      audio_pair_offset(static_cast<uint64_t>(frame_count), system_);
+
   std::vector<CVBSAudioChannelPairState> audio_pairs;
-  for (int32_t nn = 0; nn < kAudioFileProbeLimit; ++nn) {
-    if (audio_pairs.size() >= kMaxAudioChannelPairs) break;
+  for (int32_t nn = 0; nn < static_cast<int32_t>(kMaxAudioChannelPairs); ++nn) {
     const std::string pair_wav_path = derive_sidecar_path(
-        input_path, "_audio_" + audio_track_suffix(nn) + ".wav");
-    const auto pair_count = deps_->get_audio_pair_count(pair_wav_path);
-    if (!pair_count) continue;  // file absent
+        input_path, "_audio_" + std::to_string(nn) + ".wav");
+    const auto wav_info = deps_->read_audio_wav_info(pair_wav_path);
+    if (!wav_info) continue;  // file absent
+
+    // CVBS file format spec v1.3.0 WAV File Format: PCM, 2 channels,
+    // 48000 Hz, 24-bit signed LE — the only permitted audio format.
+    if (wav_info->format_tag != 1 || wav_info->channels != 2 ||
+        wav_info->sample_rate_hz != kAudioSampleRateHz ||
+        wav_info->bits_per_sample != kAudioBitDepth) {
+      throw UserDataError(
+          "CVBS audio sidecar '" + pair_wav_path +
+          "' is not a valid CVBS channel pair file (requires PCM, 2 "
+          "channels, 48000 Hz, 24-bit; found format tag " +
+          std::to_string(wav_info->format_tag) + ", " +
+          std::to_string(wav_info->channels) + " channel(s), " +
+          std::to_string(wav_info->sample_rate_hz) + " Hz, " +
+          std::to_string(wav_info->bits_per_sample) + "-bit)");
+    }
+
+    // Equal-length check: a payload that does not carry exactly one 6-byte
+    // stereo pair per cadence position is a spec violation; short frames
+    // are silence-padded at read time.
+    const uint64_t actual_stream_pairs =
+        wav_info->data_bytes / kAudioBytesPerPair;
+    if (actual_stream_pairs != expected_stream_pairs ||
+        (wav_info->data_bytes % kAudioBytesPerPair) != 0) {
+      const std::string message =
+          "audio channel pair file '" + pair_wav_path + "' carries " +
+          std::to_string(actual_stream_pairs) + " stereo pairs but " +
+          std::to_string(expected_stream_pairs) + " are required for " +
+          std::to_string(frame_count) +
+          " frames (CVBS spec: all pair files are equal-length); short "
+          "frames are served as silence";
+      observation_context.set(FieldID(0), "cvbs_source",
+                              "audio_length_mismatch_" + std::to_string(nn),
+                              message);
+      ORC_LOG_WARN("{}: {}", stage_name_, message);
+    }
+
+    // Fill any container-numbering gap with placeholder (silent) pairs so
+    // pipeline pair indices match container pair numbers.
+    while (static_cast<int32_t>(audio_pairs.size()) < nn) {
+      CVBSAudioChannelPairState placeholder;
+      placeholder.container_number = static_cast<int32_t>(audio_pairs.size());
+      placeholder.descriptor.name =
+          "Channel pair " + std::to_string(placeholder.container_number);
+      placeholder.descriptor.origin = AudioOrigin::UNKNOWN;
+      audio_pairs.push_back(std::move(placeholder));
+    }
 
     CVBSAudioChannelPairState state;
     state.container_number = nn;
     state.wav_path = pair_wav_path;
-    state.stream_total_pairs = *pair_count;
-    // Unreadable headers fall back to the pipeline rate, so the payload
-    // passes through the synchronous conversion unresampled.
-    state.source_rate_hz = deps_->get_audio_sample_rate(pair_wav_path)
-                               .value_or(kAudioSampleRateHz);
 
-    // Container-declared descriptor.  Default (no audio_track row): name
-    // from the container track number.
-    state.descriptor.name = "Track " + audio_track_suffix(nn);
+    // Container-declared descriptor.  Default (no audio_channel_pair row):
+    // name derived from the channel pair number, per the spec's guidance
+    // for NULL descriptions.
+    state.descriptor.name = "Channel pair " + std::to_string(nn);
     state.descriptor.origin = AudioOrigin::UNKNOWN;
-    if (audio_track_table) {
-      const auto rec = std::find_if(
-          audio_track_table->begin(), audio_track_table->end(),
-          [nn](const CVBSAudioTrackRecord& r) { return r.track_number == nn; });
-      if (rec != audio_track_table->end()) {
+    bool has_row = false;
+    if (audio_pair_table) {
+      const auto rec =
+          std::find_if(audio_pair_table->begin(), audio_pair_table->end(),
+                       [nn](const CVBSAudioChannelPairRecord& r) {
+                         return r.channel_pair == nn;
+                       });
+      if (rec != audio_pair_table->end()) {
+        has_row = true;
         const std::string description = rec->description.value_or("");
         if (!description.empty()) {
           state.descriptor.name = description;
         }
       }
+    }
+    if (use_metadata && !has_row) {
+      // CVBS file format spec v1.3.0: every channel pair file must have an
+      // audio_channel_pair row.
+      const std::string message =
+          "audio channel pair file '" + pair_wav_path +
+          "' has no audio_channel_pair metadata row (spec violation); "
+          "using derived name '" +
+          state.descriptor.name + "'";
+      observation_context.set(
+          FieldID(0), "cvbs_source",
+          "audio_missing_metadata_row_" + std::to_string(nn), message);
+      ORC_LOG_WARN("{}: {}", stage_name_, message);
     }
 
     audio_pairs.push_back(std::move(state));

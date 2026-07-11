@@ -17,10 +17,7 @@ orc_add_stage_plugin(
     SOURCES ${STAGE_PLUGIN_SOURCES}
     # SQLite is used by cvbs_source_stage.cpp; declared here because the
     # SDK no longer propagates host third-party dependencies to plugins.
-    # orc-audio-resample is the shared SoXR-based ingest converter
-    # (orc/plugins/stages/common/audio-resample), used to convert WAV
-    # payloads into 48 kHz synchronous channel-pair audio.
-    LINK_LIBRARIES orc-audio-resample SQLite::SQLite3
+    LINK_LIBRARIES SQLite::SQLite3
 )
 
 # Install plugin

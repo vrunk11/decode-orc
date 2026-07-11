@@ -2,8 +2,8 @@
  * File:        multi_track_audio_roundtrip_test.cpp
  * Module:      orc-core-functional-tests
  * Purpose:     Channel-pair audio round-trip through cvbs_sink and
- *              cvbs_source (real files: WAV sidecars and the .meta
- *              audio_track table)
+ *              cvbs_source (real files: 24-bit WAV sidecars and the .meta
+ *              audio_channel_pair table, CVBS file format spec v1.3.0)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
@@ -32,34 +32,37 @@ namespace orc_functional_test {
 
 namespace {
 
-constexpr size_t kFrameCount = 2;
-// SMPTE 272M-1994: PAL carries 1920 stereo pairs per frame at 48 kHz.
-constexpr uint32_t kPalPairsPerFrame = 1920;
+// Bytes per interleaved 24-bit stereo pair (2 channels × 3 bytes).
+constexpr uint64_t kAudioBytesPerPair = 6;
 
-// Deterministic 24-bit-in-int32 sample generators.  Values are multiples of
-// 256 (zero low byte) so the container's 16-bit narrow (>> 8) and the
-// source's widen (<< 8) round-trip exactly.
+// Deterministic 24-bit sample generators covering the full signed 24-bit
+// domain — a 24-bit container round-trips them bit-exactly.
 int32_t pair0_sample(orc::FrameID frame_id, size_t index) {
-  const int64_t modulo = static_cast<int64_t>(
-      (static_cast<uint64_t>(frame_id) * 1000 + index) % 30000);
-  return static_cast<int32_t>(modulo - 15000) << 8;
+  const uint64_t mixed = static_cast<uint64_t>(frame_id) * 77777u + index * 13u;
+  return static_cast<int32_t>(mixed % 16777216u) - 8388608;
 }
 
 int32_t pair1_sample(orc::FrameID frame_id, size_t index) {
-  const int64_t modulo = static_cast<int64_t>(
-      (static_cast<uint64_t>(frame_id) * 700 + index * 7) % 20000);
-  return static_cast<int32_t>(modulo - 10000) << 8;
+  const uint64_t mixed = static_cast<uint64_t>(frame_id) * 33333u + index * 7u;
+  return static_cast<int32_t>(mixed % 16777216u) - 8388608;
 }
 
-// Two PAL frames of synthetic video with two audio channel pairs:
-// pair 0 "Analogue" (ANALOGUE), pair 1 "EFM digital audio" (EFM).
+// Synthetic video with two audio channel pairs: pair 0 "Analogue"
+// (ANALOGUE), pair 1 "EFM digital audio" (EFM). Cadence-aware for both PAL
+// and NTSC.
 class ChannelPairVFR : public orc::VideoFrameRepresentation,
                        public orc::Artifact {
  public:
-  ChannelPairVFR()
-      : orc::Artifact(orc::ArtifactID("channel_pair_vfr"), orc::Provenance{}) {
-    for (size_t f = 0; f < kFrameCount; ++f) {
-      std::vector<sample_type> frame(orc::kPalFrameSamples);
+  ChannelPairVFR(orc::VideoSystem system, size_t frame_count,
+                 size_t frame_samples, size_t height, size_t spl_nominal)
+      : orc::Artifact(orc::ArtifactID("channel_pair_vfr"), orc::Provenance{}),
+        system_(system),
+        frame_count_(frame_count),
+        frame_samples_(frame_samples),
+        height_(height),
+        spl_nominal_(spl_nominal) {
+    for (size_t f = 0; f < frame_count_; ++f) {
+      std::vector<sample_type> frame(frame_samples_);
       for (size_t i = 0; i < frame.size(); ++i) {
         frame[i] = static_cast<sample_type>((f * 17 + i) % 1024);
       }
@@ -70,28 +73,28 @@ class ChannelPairVFR : public orc::VideoFrameRepresentation,
   std::string type_name() const override { return "ChannelPairVFR"; }
 
   orc::FrameIDRange frame_range() const override {
-    return {0, kFrameCount - 1};
+    return {0, static_cast<orc::FrameID>(frame_count_ - 1)};
   }
-  size_t frame_count() const override { return kFrameCount; }
-  bool has_frame(orc::FrameID id) const override { return id < kFrameCount; }
+  size_t frame_count() const override { return frame_count_; }
+  bool has_frame(orc::FrameID id) const override { return id < frame_count_; }
 
   std::optional<orc::FrameDescriptor> get_frame_descriptor(
       orc::FrameID id) const override {
-    if (id >= kFrameCount) return std::nullopt;
+    if (id >= frame_count_) return std::nullopt;
     orc::FrameDescriptor desc;
     desc.frame_id = id;
-    desc.system = orc::VideoSystem::PAL;
-    desc.height = 625;
-    desc.samples_total = orc::kPalFrameSamples;
-    desc.samples_per_line_nominal = 1135;
+    desc.system = system_;
+    desc.height = height_;
+    desc.samples_total = frame_samples_;
+    desc.samples_per_line_nominal = spl_nominal_;
     return desc;
   }
 
   const sample_type* get_frame(orc::FrameID id) const override {
-    return (id < kFrameCount) ? frames_[id].data() : nullptr;
+    return (id < frame_count_) ? frames_[id].data() : nullptr;
   }
   std::vector<sample_type> get_frame_copy(orc::FrameID id) const override {
-    return (id < kFrameCount) ? frames_[id] : std::vector<sample_type>{};
+    return (id < frame_count_) ? frames_[id] : std::vector<sample_type>{};
   }
 
   // Audio channel pairs
@@ -112,10 +115,9 @@ class ChannelPairVFR : public orc::VideoFrameRepresentation,
 
   std::vector<int32_t> get_audio_samples(size_t pair,
                                          orc::FrameID id) const override {
-    if (pair > 1 || id >= kFrameCount) return {};
-    std::vector<int32_t> samples(static_cast<size_t>(orc::audio_pairs_in_frame(
-                                     id, orc::VideoSystem::PAL)) *
-                                 2);
+    if (pair > 1 || id >= frame_count_) return {};
+    std::vector<int32_t> samples(
+        static_cast<size_t>(orc::audio_pairs_in_frame(id, system_)) * 2);
     for (size_t i = 0; i < samples.size(); ++i) {
       samples[i] = (pair == 0) ? pair0_sample(id, i) : pair1_sample(id, i);
     }
@@ -123,33 +125,77 @@ class ChannelPairVFR : public orc::VideoFrameRepresentation,
   }
 
  private:
+  orc::VideoSystem system_;
+  size_t frame_count_;
+  size_t frame_samples_;
+  size_t height_;
+  size_t spl_nominal_;
   std::vector<std::vector<sample_type>> frames_;
 };
 
-// nSamplesPerSec from a WAV file's RIFF fmt header (LE word at byte 24).
-uint32_t read_wav_header_rate(const std::string& path) {
+// Little-endian word helpers over a WAV file's header bytes.
+std::vector<uint8_t> read_file_bytes(const std::string& path, size_t count) {
   std::ifstream ifs(path, std::ios::binary);
-  if (!ifs.is_open()) return 0;
-  ifs.seekg(24, std::ios::beg);
-  uint8_t bytes[4] = {0, 0, 0, 0};
-  ifs.read(reinterpret_cast<char*>(bytes), sizeof(bytes));
-  if (!ifs.good()) return 0;
-  return static_cast<uint32_t>(bytes[0]) |
-         (static_cast<uint32_t>(bytes[1]) << 8) |
-         (static_cast<uint32_t>(bytes[2]) << 16) |
-         (static_cast<uint32_t>(bytes[3]) << 24);
+  std::vector<uint8_t> bytes(count, 0);
+  if (ifs.is_open()) {
+    ifs.read(reinterpret_cast<char*>(bytes.data()),
+             static_cast<std::streamsize>(count));
+  }
+  return bytes;
 }
 
-}  // namespace
+uint16_t le16_at(const std::vector<uint8_t>& bytes, size_t offset) {
+  return static_cast<uint16_t>(bytes[offset]) |
+         (static_cast<uint16_t>(bytes[offset + 1]) << 8);
+}
 
-TEST(MultiTrackAudioRoundTrip, CVBSSinkToCVBSSource_PreservesChannelPairs) {
+uint32_t le32_at(const std::vector<uint8_t>& bytes, size_t offset) {
+  return static_cast<uint32_t>(bytes[offset]) |
+         (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
+         (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
+         (static_cast<uint32_t>(bytes[offset + 3]) << 24);
+}
+
+// user_version from a SQLite database file: the 4-byte big-endian word at
+// byte offset 60 of the database header (SQLite file format spec §1.3).
+uint32_t read_sqlite_user_version(const std::string& path) {
+  const auto bytes = read_file_bytes(path, 64);
+  return (static_cast<uint32_t>(bytes[60]) << 24) |
+         (static_cast<uint32_t>(bytes[61]) << 16) |
+         (static_cast<uint32_t>(bytes[62]) << 8) |
+         static_cast<uint32_t>(bytes[63]);
+}
+
+// Assert the CVBS spec v1.3.0 WAV properties of a channel pair file.
+void expect_conformant_wav_header(const std::string& path,
+                                  uint64_t expected_total_pairs) {
+  const auto header = read_file_bytes(path, 44);
+  EXPECT_EQ(le16_at(header, 20), 1u) << path;                       // PCM
+  EXPECT_EQ(le16_at(header, 22), 2u) << path;                       // stereo
+  EXPECT_EQ(le32_at(header, 24), orc::kAudioSampleRateHz) << path;  // 48 kHz
+  EXPECT_EQ(le16_at(header, 34), orc::kAudioBitDepth) << path;      // 24-bit
+  EXPECT_EQ(le32_at(header, 40), expected_total_pairs * kAudioBytesPerPair)
+      << path;
+  EXPECT_EQ(std::filesystem::file_size(path),
+            44u + expected_total_pairs * kAudioBytesPerPair)
+      << path;
+}
+
+// Round-trip one system through the real cvbs_sink deps and cvbs_source
+// stage, verifying container conformance, descriptors, and bit-exact
+// samples for every frame of the audio frame sequence.
+void run_roundtrip(orc::VideoSystem system, size_t frame_count,
+                   size_t frame_samples, size_t height, size_t spl_nominal,
+                   orc::FixedFormatCVBSSourceStage& source,
+                   const std::string& tag) {
   const std::filesystem::path dir =
-      std::filesystem::path(::testing::TempDir()) / "orc_multi_track_roundtrip";
+      std::filesystem::path(::testing::TempDir()) /
+      ("orc_channel_pair_roundtrip_" + tag);
   std::filesystem::create_directories(dir);
   const std::string base = (dir / "roundtrip").string();
 
   // --- Write with the real cvbs_sink deps ---
-  ChannelPairVFR vfr;
+  ChannelPairVFR vfr(system, frame_count, frame_samples, height, spl_nominal);
   std::atomic<bool> cancel{false};
   orc::CVBSSinkStageDeps sink_deps;
   sink_deps.init({}, &cancel);
@@ -158,27 +204,28 @@ TEST(MultiTrackAudioRoundTrip, CVBSSinkToCVBSSource_PreservesChannelPairs) {
   config.output_base_path = base;
   const auto write_result = sink_deps.write_cvbs(&vfr, config);
   ASSERT_TRUE(write_result.success) << write_result.status_message;
-  EXPECT_EQ(write_result.frames_written, kFrameCount);
+  EXPECT_EQ(write_result.frames_written, frame_count);
 
   EXPECT_TRUE(std::filesystem::exists(base + ".composite"));
-  EXPECT_TRUE(std::filesystem::exists(base + ".meta"));
-  ASSERT_TRUE(std::filesystem::exists(base + "_audio_00.wav"));
-  ASSERT_TRUE(std::filesystem::exists(base + "_audio_01.wav"));
+  ASSERT_TRUE(std::filesystem::exists(base + ".meta"));
+  // Single-digit channel pair naming (CVBS spec v1.3.0); the legacy
+  // two-digit names must not appear.
+  ASSERT_TRUE(std::filesystem::exists(base + "_audio_0.wav"));
+  ASSERT_TRUE(std::filesystem::exists(base + "_audio_1.wav"));
+  EXPECT_FALSE(std::filesystem::exists(base + "_audio_00.wav"));
+  EXPECT_FALSE(std::filesystem::exists(base + "_audio_2.wav"));
 
-  // Each pair file: 44-byte header + 2 frames × 1920 pairs × 4 bytes
-  // (16-bit stereo container payload) — equal-length by construction.
-  const uintmax_t expected_size = 44u + kFrameCount * kPalPairsPerFrame * 4u;
-  EXPECT_EQ(std::filesystem::file_size(base + "_audio_00.wav"), expected_size);
-  EXPECT_EQ(std::filesystem::file_size(base + "_audio_01.wav"), expected_size);
+  // CVBS spec v1.3.0 metadata: PRAGMA user_version = 10.
+  EXPECT_EQ(read_sqlite_user_version(base + ".meta"), 10u);
 
-  // The pipeline is 48 kHz synchronous for every system (SMPTE 272M-1994).
-  EXPECT_EQ(read_wav_header_rate(base + "_audio_00.wav"),
-            orc::kAudioSampleRateHz);
-  EXPECT_EQ(read_wav_header_rate(base + "_audio_01.wav"),
-            orc::kAudioSampleRateHz);
+  // Equal-length 24-bit 48 kHz pair files: exactly
+  // audio_pair_offset(frame_count) stereo pairs each.
+  const uint64_t total_pairs =
+      orc::audio_pair_offset(static_cast<uint64_t>(frame_count), system);
+  expect_conformant_wav_header(base + "_audio_0.wav", total_pairs);
+  expect_conformant_wav_header(base + "_audio_1.wav", total_pairs);
 
   // --- Read back with the real cvbs_source stage ---
-  orc::PALCVBSSourceStage source;
   const std::map<std::string, orc::ParameterValue> parameters{
       {"input_path", base + ".composite"}};
   ASSERT_TRUE(source.set_parameters(parameters));
@@ -190,9 +237,16 @@ TEST(MultiTrackAudioRoundTrip, CVBSSinkToCVBSSource_PreservesChannelPairs) {
   const auto read_vfr =
       std::dynamic_pointer_cast<orc::VideoFrameRepresentation>(outputs[0]);
   ASSERT_NE(read_vfr, nullptr);
-  EXPECT_EQ(read_vfr->frame_count(), kFrameCount);
+  EXPECT_EQ(read_vfr->frame_count(), frame_count);
 
-  // --- Descriptors round-trip via the .meta audio_track table ---
+  // The container conforms to the spec, so the read must raise no
+  // audio-related warnings.
+  EXPECT_FALSE(observation_context.has(orc::FieldID(0), "cvbs_source",
+                                       "audio_missing_metadata_row_0"));
+  EXPECT_FALSE(observation_context.has(orc::FieldID(0), "cvbs_source",
+                                       "audio_length_mismatch_0"));
+
+  // --- Descriptors round-trip via the .meta audio_channel_pair table ---
   ASSERT_EQ(read_vfr->audio_channel_pair_count(), 2u);
 
   const auto pair0 = read_vfr->get_audio_channel_pair_descriptor(0);
@@ -206,15 +260,14 @@ TEST(MultiTrackAudioRoundTrip, CVBSSinkToCVBSSource_PreservesChannelPairs) {
   EXPECT_EQ(pair1->name, "EFM digital audio");
   EXPECT_EQ(pair1->origin, orc::AudioOrigin::UNKNOWN);
 
-  // --- Samples round-trip per frame, sample-exact ---
-  // The generators emit 24-bit values with a zero low byte, so the 16-bit
-  // container narrow (>> 8) and read-back widen (<< 8) are lossless; a
-  // 48000 Hz payload passes through the ingest conversion unresampled.
-  for (orc::FrameID fid = 0; fid < kFrameCount; ++fid) {
+  // --- Samples round-trip per frame, bit-exact, cadence-sized ---
+  for (orc::FrameID fid = 0; fid < frame_count; ++fid) {
+    const size_t frame_values =
+        static_cast<size_t>(orc::audio_pairs_in_frame(fid, system)) * 2;
     for (size_t pair = 0; pair < 2; ++pair) {
       const auto samples = read_vfr->get_audio_samples(pair, fid);
-      ASSERT_EQ(samples.size(), static_cast<size_t>(kPalPairsPerFrame) * 2)
-          << "pair " << pair << " frame " << fid;
+      ASSERT_EQ(samples.size(), frame_values)
+          << tag << " pair " << pair << " frame " << fid;
       bool all_equal = true;
       for (size_t i = 0; i < samples.size(); ++i) {
         const int32_t expected =
@@ -225,12 +278,29 @@ TEST(MultiTrackAudioRoundTrip, CVBSSinkToCVBSSource_PreservesChannelPairs) {
         }
       }
       EXPECT_TRUE(all_equal)
-          << "samples differ in pair " << pair << " frame " << fid;
+          << tag << ": samples differ in pair " << pair << " frame " << fid;
     }
   }
 
   std::error_code ec;
   std::filesystem::remove_all(dir, ec);
+}
+
+}  // namespace
+
+TEST(ChannelPairAudioRoundTrip, PAL_ConstantCadence_PreservesChannelPairs) {
+  // PAL: 1920 stereo pairs per frame, constant (SMPTE 272M-1994).
+  orc::PALCVBSSourceStage source;
+  run_roundtrip(orc::VideoSystem::PAL, 2, orc::kPalFrameSamples, 625, 1135,
+                source, "pal");
+}
+
+TEST(ChannelPairAudioRoundTrip, NTSC_FiveFrameCadence_PreservesChannelPairs) {
+  // NTSC: 5-frame audio frame sequence of 1602/1601/1602/1601/1602 stereo
+  // pairs (SMPTE 272M-1994 §14.3); 6 frames also cover the sequence wrap.
+  orc::NTSCCVBSSourceStage source;
+  run_roundtrip(orc::VideoSystem::NTSC, 6, orc::kNtscFrameSamples, 525, 910,
+                source, "ntsc");
 }
 
 }  // namespace orc_functional_test

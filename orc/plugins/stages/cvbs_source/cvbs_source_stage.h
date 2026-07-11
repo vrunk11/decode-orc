@@ -43,13 +43,22 @@ struct CVBSMetadataRecord {
   std::optional<int32_t> ntsc_j_black_level;
 };
 
-// One row of the .meta audio_track table (CVBS file format spec v1.2.0).
-// The pipeline has no free-running audio regime, so audio_locked is read but
-// ignored; the v1.3.0 audio_channel_pair table replaces this in Phase 2.
-struct CVBSAudioTrackRecord {
-  int32_t track_number = 0;  // 0–15, matches the _audio_NN.wav suffix
+// One row of the .meta audio_channel_pair table (CVBS file format spec
+// v1.3.0).
+struct CVBSAudioChannelPairRecord {
+  int32_t channel_pair = 0;  // 0–7, matches the _audio_<p>.wav suffix
   std::optional<std::string> description;  // human-readable; nullopt = NULL
-  bool locked = false;                     // legacy lock mode (ignored)
+};
+
+// RIFF/WAVE fmt-chunk properties and data-chunk size of an audio channel
+// pair sidecar, read for validation against the CVBS file format spec
+// v1.3.0 requirements (PCM, 2 channels, 48000 Hz, 24-bit signed LE).
+struct CVBSAudioWavInfo {
+  uint16_t format_tag = 0;       // wFormatTag; 1 = PCM
+  uint16_t channels = 0;         // nChannels
+  uint32_t sample_rate_hz = 0;   // nSamplesPerSec
+  uint16_t bits_per_sample = 0;  // wBitsPerSample
+  uint64_t data_bytes = 0;       // data chunk payload size
 };
 
 // Dependency injection interface for the CVBS source stage.
@@ -83,30 +92,28 @@ class ICVBSSourceStageDeps {
       const std::string& dropout_meta_path,
       std::string& error_message) const = 0;
 
-  // Total number of stereo pairs in the WAV's data payload
-  // ((file size − 44-byte header) / 4).  Returns nullopt when the file is
-  // absent (no error) — this doubles as the per-file existence probe for
-  // the <basename>_audio_00.wav … _audio_15.wav enumeration.
-  virtual std::optional<uint64_t> get_audio_pair_count(
+  // Read the WAV's RIFF fmt-chunk properties and data-chunk size for
+  // validation.  Returns nullopt when the file is absent (no error) — this
+  // doubles as the per-file existence probe for the
+  // <basename>_audio_0.wav … _audio_7.wav enumeration.  A present but
+  // malformed header returns zeroed fields, which then fail validation.
+  virtual std::optional<CVBSAudioWavInfo> read_audio_wav_info(
       const std::string& wav_path) const = 0;
 
-  // nSamplesPerSec from the WAV's RIFF fmt header.  Returns nullopt when the
-  // file is absent or the header cannot be read; callers fall back to the
-  // pipeline rate (48000 Hz) so such files pass through unresampled.
-  virtual std::optional<uint32_t> get_audio_sample_rate(
-      const std::string& wav_path) const = 0;
+  // Load all rows of the audio_channel_pair table from <basename>.meta
+  // (CVBS file format spec v1.3.0).  Returns nullopt when the metadata file
+  // or the table is absent (no error; missing rows for existing audio files
+  // are reported by the stage as a spec-violation warning).
+  virtual std::optional<std::vector<CVBSAudioChannelPairRecord>>
+  load_audio_channel_pair_table(const std::string& meta_path,
+                                std::string& error_message) const = 0;
 
-  // Load all rows of the audio_track table from <basename>.meta
-  // (CVBS file format spec v1.2.0).  Returns nullopt when the metadata file
-  // or the table is absent (legacy pre-v1.2.0 file, no error).
-  virtual std::optional<std::vector<CVBSAudioTrackRecord>>
-  load_audio_track_table(const std::string& meta_path,
-                         std::string& error_message) const = 0;
-
-  // Read stereo_pair_count interleaved int16_t pairs starting at
-  // stereo_pair_offset from the WAV data (header already stripped).
-  virtual std::vector<int16_t> read_audio_samples_at(
-      const std::string& wav_path, size_t stereo_pair_offset,
+  // Read stereo_pair_count interleaved 24-bit signed LE stereo pairs
+  // starting at stereo_pair_offset from the WAV data (header already
+  // skipped), sign-extended into the pipeline's 24-bit-in-int32 carrier.
+  // Short files return fewer values; callers pad with silence.
+  virtual std::vector<int32_t> read_audio_pairs_at(
+      const std::string& wav_path, uint64_t stereo_pair_offset,
       size_t stereo_pair_count) const = 0;
 
   // Load the efm_frame index table from <basename>.efm.meta.
@@ -151,13 +158,16 @@ class ICVBSSourceStageDeps {
 //   c_path           – path to the chroma channel file (.c) for YC mode
 //   sample_encoding  – "From metadata" (default) or an explicit encoding
 //
-// Audio: every <basename>_audio_00.wav … _audio_15.wav sidecar becomes a
-// pipeline audio channel pair, in ascending container-number order (capped
-// at kMaxAudioChannelPairs).  Per-pair descriptions come from the .meta
-// audio_track table; pairs without a table row derive a "Track NN" name.
-// Each pair's 16-bit WAV payload is lazily widened to the 24-bit-in-int32
-// carrier and resampled to 48 kHz synchronous cadence blocks on first audio
-// access (SoXR HQ; a 48000 Hz payload passes through unresampled).
+// Audio: every <basename>_audio_0.wav … _audio_7.wav sidecar (single-digit
+// suffix, CVBS file format spec v1.3.0) becomes the pipeline audio channel
+// pair with the same index; container numbers need not be contiguous, and
+// numbering is preserved by serving silence for absent intermediate pairs.
+// Each file's RIFF header is validated against the spec (PCM, 2 channels,
+// 48000 Hz, 24-bit); mismatches are errors.  Per-pair descriptions come
+// from the .meta audio_channel_pair table; existing files without a table
+// row (a spec violation) produce a warning observation and derive a
+// "Channel pair N" name.  Payloads are already in the pipeline audio form,
+// so per-frame reads seek directly by the SMPTE 272M cadence offset.
 //
 // YC mode is active when both y_path and c_path are non-empty; composite mode
 // uses input_path.  The two modes are mutually exclusive; the parameter
@@ -184,7 +194,7 @@ class FixedFormatCVBSSourceStage : public DAGStage,
   }
 
   // DAGStage interface
-  std::string version() const override { return "2.1.0"; }
+  std::string version() const override { return "2.2.0"; }
   ORC_STAGE_INSTRUCTIONS_MD
 
   NodeTypeInfo get_node_type_info() const override {

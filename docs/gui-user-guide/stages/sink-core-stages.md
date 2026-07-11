@@ -141,7 +141,7 @@ This stage writes processed frame data using the selected sample encoding, and a
 Associated sidecars are written automatically when the upstream source provides them:
 
 - `.dropouts.meta` — when dropout hints are present
-- `_audio_00.wav` — when audio is present
+- `_audio_0.wav` … `_audio_7.wav` — when audio is present (one 24-bit 48 kHz stereo WAV per channel pair)
 - `.efm` + `.efm.meta` — when EFM data is present
 - `.ac3` + `.ac3.meta` — when AC3 RF data is present
 
