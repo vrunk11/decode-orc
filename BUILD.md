@@ -106,6 +106,27 @@ brew install cmake ninja qt@6 spdlog fmt sqlite yaml-cpp libpng fftw ffmpeg
 **Windows (vcpkg):**
 See `vcpkg.json` for the manifest-based dependency list and CI workflow details.
 
+**Windows (MinGW-w64/gcc):**
+Building with MinGW-w64/gcc instead of MSVC needs vcpkg cloned into the repo
+root and bootstrapped, and QtNodes cloned manually (see step 2 below — despite
+the error message calling it a submodule, it is not one):
+
+```powershell
+git clone https://github.com/microsoft/vcpkg.git
+.\vcpkg\bootstrap-vcpkg.bat
+git clone https://github.com/paceholder/nodeeditor.git external/qtnodes
+```
+
+vcpkg must be a real `git clone`, not a downloaded ZIP archive, since it
+reads its own commit history to resolve dependency baselines.
+
+`orc/core/include/plugin_safe_call.h` uses `__try`/`__except` (Structured
+Exception Handling) on its Windows branch, an MSVC-only language extension
+that GCC does not implement. Building with MinGW needs that branch split so
+MSVC keeps SEH and GCC instead uses `AddVectoredExceptionHandler` (a plain
+Win32 API) with `setjmp`/`longjmp`, mirroring the existing POSIX
+implementation.
+
 #### 2. Provide EZPWD Headers
 
 
@@ -139,6 +160,9 @@ cmake --preset macos-gui-debug
 
 # Windows:
 cmake --preset windows-gui-debug
+
+# Windows (MinGW-w64/gcc):
+cmake --preset windows-mingw-gui-debug
 ```
 
 **Common CMake options:**
@@ -151,13 +175,23 @@ cmake --preset windows-gui-debug
 
 #### 5. Build
 
+If you configured manually into `build/` (as in the `-B build` example
+above):
 ```bash
 # Build using the configured generator
 cmake --build build -j
+```
 
 # Or use make/ninja directly (depending on your generator)
 make -C build -j
 ninja -C build
+
+If you configured with a preset (as in step 3 above), each preset has its own
+build directory (`build/<preset-name>/`), so build with the matching build
+preset instead:
+```bash
+cmake --build --preset build-linux-gui-debug     # match whichever configure preset you used
+cmake --build --preset build-windows-mingw-gui-debug
 ```
 
 #### 6. Run Tests
@@ -280,6 +314,34 @@ Set the `EZPWD_INCLUDE_DIR` environment variable or pass it to CMake:
 ```bash
 export EZPWD_INCLUDE_DIR="$PWD/external/ezpwd-reed-solomon/c++"
 ```
+
+### `orc-gui.exe` starts but complains about missing DLLs (Qt6Core, libcurl, ffmpeg, ...)
+This happens when running straight from the raw `build/` tree: third-party
+runtime DLLs (Qt, ffmpeg, curl, fmt, spdlog, sqlite3, soxr, ...) are never
+copied next to the executables or plugins during a plain `cmake --build`, on
+any Windows toolchain including MSVC. The official Windows release only works
+because its packaging step (see `.github/workflows/package-windows.yml`) runs
+`cmake --install`, then `windeployqt` for Qt, then copies every DLL from
+vcpkg's manifest install `bin/` next to `orc-gui.exe`. Reproduce those two
+steps rather than running the executable directly from the build directory.
+`windeployqt` handles Qt; the copy below handles everything else vcpkg
+installed (adjust the build directory to whichever preset you configured):
+
+```powershell
+cmake --install build/windows-mingw-gui-release --prefix package-root
+Copy-Item build/windows-mingw-gui-release/vcpkg_installed/x64-mingw-dynamic/bin/*.dll package-root/bin/ -Force
+```
+
+### Unit tests fail with exit code `0xc0000135` during a MinGW build
+This is the same missing-runtime-DLL issue as above, but hit earlier: with
+`BUILD_UNIT_TESTS=ON`, CMake tries to run each test executable right after
+linking it (`gtest_discover_tests(... DISCOVERY_MODE POST_BUILD)`) to enumerate
+its test cases, and that run fails for the same reason a bare `orc-gui.exe`
+would — no `--install` step has happened yet to collect its runtime DLLs. The
+`windows-mingw-gui-debug`/`-release` presets set `BUILD_UNIT_TESTS=OFF` for
+this reason. If you need unit tests on MinGW, either run them against a
+separate `cmake --install`'d + DLL-collected copy, or accept a slow
+`cmake --install` step before every test-affecting rebuild.
 
 ### Tests failing to compile
 Ensure Google Test (gtest) is available. In Nix, use `nix develop`. For manual setups, install:
