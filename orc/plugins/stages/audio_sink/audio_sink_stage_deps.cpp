@@ -12,8 +12,8 @@
 #include <orc/stage/audio_channel_pair.h>
 #include <orc/stage/logging.h>
 
+#include <algorithm>
 #include <cstddef>
-#include <cstring>
 #include <limits>
 #include <utility>
 
@@ -26,16 +26,21 @@ uint32_t clamp_to_uint32(uint64_t value) {
              : static_cast<uint32_t>(value);
 }
 
-// Narrow the 24-bit-in-int32 pipeline carrier to the writer's 16-bit sample
-// width by dropping the low 8 bits (exact inverse of the << 8 ingest
-// widening for 16-bit source material).
-std::vector<int16_t> narrow_to_int16(const std::vector<int32_t>& samples) {
-  std::vector<int16_t> narrowed;
-  narrowed.reserve(samples.size());
-  for (const int32_t sample : samples) {
-    narrowed.push_back(static_cast<int16_t>(sample >> 8));
+// Pack the 24-bit-in-int32 pipeline carrier into 24-bit signed LE PCM:
+// exactly |expected_values| samples (2 × stereo pairs), zero-padded when the
+// input is short, truncated when long, saturated to the 24-bit range
+// defensively (producers already guarantee cadence-sized, in-range frames).
+std::vector<uint8_t> pack_s24le(const std::vector<int32_t>& samples,
+                                size_t expected_values) {
+  std::vector<uint8_t> bytes(expected_values * 3, 0);
+  const size_t copy_values = std::min(samples.size(), expected_values);
+  for (size_t i = 0; i < copy_values; ++i) {
+    const int32_t v = std::clamp(samples[i], -8388608, 8388607);
+    bytes[i * 3] = static_cast<uint8_t>(v & 0xFF);
+    bytes[i * 3 + 1] = static_cast<uint8_t>((v >> 8) & 0xFF);
+    bytes[i * 3 + 2] = static_cast<uint8_t>((v >> 16) & 0xFF);
   }
-  return narrowed;
+  return bytes;
 }
 
 }  // namespace
@@ -49,38 +54,40 @@ void AudioSinkStageDeps::init(TriggerProgressCallback progress_callback,
 }
 
 std::vector<uint8_t> AudioSinkStageDeps::build_wav_header(
-    uint32_t num_samples, uint32_t sample_rate, uint16_t num_channels,
-    uint16_t bits_per_sample) const {
-  uint32_t byte_rate = sample_rate * num_channels * (bits_per_sample / 8);
-  uint16_t block_align = num_channels * (bits_per_sample / 8);
-  uint32_t data_size = num_samples * num_channels * (bits_per_sample / 8);
-  uint32_t file_size = 36 + data_size;
+    uint32_t num_pairs) const {
+  constexpr uint16_t kNumChannels = 2;
+  constexpr uint16_t kBitsPerSample = kAudioBitDepth;                  // 24
+  constexpr uint16_t kBlockAlign = kNumChannels * kBitsPerSample / 8;  // 6
+  const uint32_t byte_rate = kAudioSampleRateHz * kBlockAlign;
+  const uint32_t data_size = num_pairs * kBlockAlign;
+  const uint32_t file_size = 36 + data_size;
 
   std::vector<uint8_t> header;
   header.reserve(44);
-  auto append = [&header](const void* data, size_t size) {
-    const auto* bytes = static_cast<const uint8_t*>(data);
-    header.insert(header.end(), bytes, bytes + size);
+  auto append_le16 = [&header](uint16_t v) {
+    header.push_back(static_cast<uint8_t>(v & 0xFF));
+    header.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+  };
+  auto append_le32 = [&header](uint32_t v) {
+    header.push_back(static_cast<uint8_t>(v & 0xFF));
+    header.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+    header.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
+    header.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
   };
 
-  append("RIFF", 4);
-  append(&file_size, 4);
-  append("WAVE", 4);
-
-  append("fmt ", 4);
-  uint32_t fmt_size = 16;
-  append(&fmt_size, 4);
-
-  uint16_t audio_format = 1;
-  append(&audio_format, 2);
-  append(&num_channels, 2);
-  append(&sample_rate, 4);
-  append(&byte_rate, 4);
-  append(&block_align, 2);
-  append(&bits_per_sample, 2);
-
-  append("data", 4);
-  append(&data_size, 4);
+  header.insert(header.end(), {'R', 'I', 'F', 'F'});
+  append_le32(file_size);
+  header.insert(header.end(), {'W', 'A', 'V', 'E'});
+  header.insert(header.end(), {'f', 'm', 't', ' '});
+  append_le32(16);  // fmt chunk size
+  append_le16(1);   // PCM
+  append_le16(kNumChannels);
+  append_le32(kAudioSampleRateHz);
+  append_le32(byte_rate);
+  append_le16(kBlockAlign);
+  append_le16(kBitsPerSample);
+  header.insert(header.end(), {'d', 'a', 't', 'a'});
+  append_le32(data_size);
 
   return header;
 }
@@ -112,9 +119,9 @@ AudioSinkWriteResult AudioSinkStageDeps::write_audio_wav(
     return {false, 0, "No audio samples found in frame range"};
   }
 
-  std::shared_ptr<IFileWriterInt16> writer;
+  std::shared_ptr<IFileWriterUint8> writer;
   if (stage_services_) {
-    writer = stage_services_->create_buffered_file_writer_int16(
+    writer = stage_services_->create_buffered_file_writer_uint8(
         static_cast<size_t>(4 * 1024 * 1024));
   }
   if (!writer) {
@@ -124,20 +131,7 @@ AudioSinkWriteResult AudioSinkStageDeps::write_audio_wav(
     return {false, 0, "Failed to open output file: " + output_path};
   }
 
-  {
-    const uint16_t num_channels = 2;
-    const uint16_t bits_per_sample = 16;
-
-    // The RIFF header is 44 bytes (an even count), so it can be streamed
-    // through the int16 sample writer without padding; WAV headers and
-    // 16-bit PCM payloads are both little-endian byte sequences.
-    const std::vector<uint8_t> header =
-        build_wav_header(clamp_to_uint32(total_pairs), kAudioSampleRateHz,
-                         num_channels, bits_per_sample);
-    std::vector<int16_t> header_words(header.size() / 2);
-    std::memcpy(header_words.data(), header.data(), header.size());
-    writer->write(header_words);
-  }
+  writer->write(build_wav_header(clamp_to_uint32(total_pairs)));
 
   const uint64_t total_frames = frame_rng.count();
   uint64_t pairs_written = 0;
@@ -151,19 +145,13 @@ AudioSinkWriteResult AudioSinkStageDeps::write_audio_wav(
       return {false, 0, "Cancelled by user"};
     }
 
+    // Cadence-sized payload per frame: frames that yield no audio become
+    // silence of the same size, keeping the payload aligned with the header
+    // and preserving A/V sync.
+    const uint32_t frame_pairs = audio_pairs_in_frame(fid, system);
     const auto samples = representation->get_audio_samples(pair, fid);
-    if (samples.empty()) {
-      // No audio for this frame: cadence-sized silence keeps the payload
-      // aligned with the header and preserves A/V sync.
-      const uint32_t silence_pairs = audio_pairs_in_frame(fid, system);
-      writer->write(
-          std::vector<int16_t>(static_cast<size_t>(silence_pairs) * 2, 0));
-      pairs_written += silence_pairs;
-    } else {
-      const std::vector<int16_t> narrowed = narrow_to_int16(samples);
-      writer->write(narrowed);
-      pairs_written += narrowed.size() / 2;
-    }
+    writer->write(pack_s24le(samples, static_cast<size_t>(frame_pairs) * 2));
+    pairs_written += frame_pairs;
 
     ++current_frame;
     if (progress_callback_ && current_frame % 10 == 0) {

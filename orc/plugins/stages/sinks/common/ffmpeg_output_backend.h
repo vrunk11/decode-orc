@@ -76,23 +76,24 @@ class FFmpegOutputBackend : public OutputBackend {
   // Audio structures — one encoder per embedded audio channel pair. Every
   // stream is declared at kAudioSampleRateHz (48000 Hz), the only pipeline
   // audio rate (SMPTE 272M-1994 §1.2, exact for all video systems).
-  struct AudioTrackEncoder {
-    size_t track_index = 0;                 // Pipeline channel pair index
+  struct AudioPairEncoder {
+    size_t pair_index = 0;                  // Pipeline channel pair index
     AudioChannelPairDescriptor descriptor;  // Name and origin
     AVCodecContext* codec_ctx = nullptr;
     AVStream* stream = nullptr;
     AVFrame* frame = nullptr;
     int64_t pts = 0;
-    std::vector<int16_t> buffer;  // Pending interleaved S16 samples
+    // Pending interleaved 24-bit-in-int32 carrier samples
+    std::vector<int32_t> buffer;
   };
-  std::vector<AudioTrackEncoder> audio_encoders_;
+  std::vector<AudioPairEncoder> audio_encoders_;
   AVPacket* audio_packet_ = nullptr;  // Shared scratch packet
   const VideoFrameRepresentation* vfr_ = nullptr;
   uint64_t start_field_index_ = 0;
   uint64_t num_fields_ = 0;
   uint64_t current_field_for_audio_ = 0;
   bool embed_audio_ = false;
-  std::string audio_tracks_option_;  // "all" or comma-separated indices
+  std::string audio_channel_pairs_option_;  // "all" or comma-separated indices
   double audio_gain_ = 1.0;  // Linear gain applied to embedded audio samples
 
   // Subtitle structures (for closed captions)
@@ -157,19 +158,20 @@ class FFmpegOutputBackend : public OutputBackend {
   // Send one frame to the encoder and write the resulting packets.
   // frame may be nullptr to flush the encoder.
   bool encodeVideoFrame(AVFrame* frame);
-  // Set up one encoder per selected audio channel pair (audio_tracks_option_).
+  // Set up one encoder per selected audio channel pair
+  // (audio_channel_pairs_option_).
   bool setupAudioEncoders();
-  bool setupAudioEncoderForTrack(AudioTrackEncoder& track);
-  // Gather one video frame's worth of samples for the given channel pair,
-  // narrowed from the 24-bit-in-int32 pipeline carrier to S16 (>> 8);
-  // frames without audio yield cadence-sized silence
-  // (audio_pairs_in_frame()).
-  std::vector<int16_t> gatherAudioForFrame(AudioTrackEncoder& track,
+  bool setupAudioEncoderForPair(AudioPairEncoder& pair);
+  // Gather one video frame's worth of 24-bit-in-int32 carrier samples for
+  // the given channel pair; frames without audio yield cadence-sized silence
+  // (audio_pairs_in_frame()). Conversion to the encoder's sample format
+  // happens at encode time (audio_sample_feed.h).
+  std::vector<int32_t> gatherAudioForFrame(AudioPairEncoder& pair,
                                            FrameID frame_id);
-  // Encode full encoder-frame-size chunks from the track's pending buffer.
-  bool encodeBufferedAudio(AudioTrackEncoder& track);
+  // Encode full encoder-frame-size chunks from the pair's pending buffer.
+  bool encodeBufferedAudio(AudioPairEncoder& pair);
   // Send one audio frame (nullptr flushes) and write the resulting packets.
-  bool sendAudioFrame(AudioTrackEncoder& track, AVFrame* frame);
+  bool sendAudioFrame(AudioPairEncoder& pair, AVFrame* frame);
   bool setupSubtitleEncoder();
   void extractClosedCaptionsFromObservations(
       const class IObservationContext& observation_context,

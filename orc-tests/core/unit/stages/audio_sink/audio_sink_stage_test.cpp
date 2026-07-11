@@ -169,7 +169,7 @@ TEST(AudioSinkStageTest, Trigger_UsesDepsSeamAndReportsSuccess) {
   auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
 
   EXPECT_CALL(*vfr, audio_channel_pair_count()).WillOnce(Return(1));
-  // Without a track parameter the stage defaults to channel pair 0.
+  // Without a channel_pair parameter the stage defaults to channel pair 0.
   EXPECT_CALL(*deps, write_audio_wav(vfr.get(), "out.wav", 0))
       .WillOnce(Return(orc::AudioSinkWriteResult{true, 123, ""}));
 
@@ -200,13 +200,15 @@ TEST(AudioSinkStageTest, Trigger_UsesDepsSeamAndPropagatesFailure) {
   EXPECT_FALSE(stage.is_trigger_in_progress());
 }
 
-TEST(AudioSinkStageTest, Descriptor_TrackDefaultsToZeroWithContainerRange) {
+TEST(AudioSinkStageTest,
+     Descriptor_ChannelPairDefaultsToZeroWithContainerRange) {
   orc::AudioSinkStage stage;
   const auto descriptors = stage.get_parameter_descriptors();
 
-  auto it = std::find_if(
-      descriptors.begin(), descriptors.end(),
-      [](const orc::ParameterDescriptor& d) { return d.name == "track"; });
+  auto it = std::find_if(descriptors.begin(), descriptors.end(),
+                         [](const orc::ParameterDescriptor& d) {
+                           return d.name == "channel_pair";
+                         });
 
   ASSERT_NE(it, descriptors.end());
   EXPECT_EQ(it->type, orc::ParameterType::INT32);
@@ -233,7 +235,7 @@ TEST(AudioSinkStageTest, Trigger_PassesSelectedChannelPairToDeps) {
 
   const bool result = stage.trigger({vfr},
                                     {{"output_path", std::string("out.wav")},
-                                     {"track", static_cast<int32_t>(2)}},
+                                     {"channel_pair", static_cast<int32_t>(2)}},
                                     observation_context);
 
   EXPECT_TRUE(result);
@@ -248,11 +250,11 @@ TEST(AudioSinkStageTest, Trigger_FailsWhenChannelPairIsOutOfRange) {
 
   const bool result = stage.trigger({vfr},
                                     {{"output_path", std::string("out.wav")},
-                                     {"track", static_cast<int32_t>(8)}},
+                                     {"channel_pair", static_cast<int32_t>(8)}},
                                     observation_context);
 
   EXPECT_FALSE(result);
   EXPECT_EQ(stage.get_trigger_status(),
-            "Error: track parameter must be between 0 and 7");
+            "Error: channel_pair parameter must be between 0 and 7");
 }
 }  // namespace orc_unit_test

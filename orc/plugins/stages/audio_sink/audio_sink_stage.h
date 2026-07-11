@@ -35,12 +35,12 @@ class IAudioSinkStageDeps;
  * Pipeline audio is always stereo channel pairs at 48000 Hz, frame-locked
  * (synchronous) to video, carried as 24-bit values in int32_t
  * (SMPTE 272M-1994 — see audio_channel_pair.h). The sink gathers the
- * selected pair frame by frame, narrows the samples to 16-bit
- * little-endian PCM, and writes a standard RIFF WAV declaring 48000 Hz.
+ * selected pair frame by frame and writes 24-bit signed little-endian PCM
+ * in a standard RIFF WAV declaring 48000 Hz — no conversion is performed.
  *
  * Parameters:
  * - output_path: Output WAV file path
- * - track: 0-based channel pair index to write (default 0)
+ * - channel_pair: 0-based channel pair index to write (default 0)
  */
 class AudioSinkStage : public DAGStage,
                        public ParameterizedStage,

@@ -96,10 +96,10 @@ Filters may change the output dimensions and frame rate; the encoder follows the
 ### embed_audio (bool)
 FFmpeg mode only. Embed pipeline audio into the output file, one output audio stream per selected channel pair. Requires audio data to be present in the pipeline. Default: `false`.
 
-### audio_tracks (string)
+### audio_channel_pairs (string)
 FFmpeg mode only; available only when `embed_audio` is enabled. Selects which audio channel pairs to embed: `all` (default) embeds every channel pair carried by the input; otherwise a comma-separated list of 0-based channel pair indices, e.g. `0,2`. Channel pair indices match the CVBS container's `_audio_<p>.wav` numbering. Each output stream carries the channel pair's name as its title metadata. The export fails if a listed channel pair does not exist.
 
-Every stream is declared at 48,000 Hz — the pipeline's only audio rate, frame-locked (synchronous) to video per SMPTE 272M-1994 and exact for all video systems — and samples are never resampled. Frames without audio are filled with silence of the correct length, so the audio streams track the video duration.
+Every stream is declared at 48,000 Hz — the pipeline's only audio rate, frame-locked (synchronous) to video per SMPTE 272M-1994 and exact for all video systems — and samples are never resampled. The pipeline's 24-bit samples are preserved by the lossless audio codecs (24-bit FLAC with MKV/FFV1, 24-bit PCM with ProRes/V210/V410/D10) and fed to AAC (MP4/H.264 and similar) as full-scale float. Frames without audio are filled with silence of the correct length, so the audio streams match the video duration.
 
 ### audio_gain_db (double)
 FFmpeg mode only; available only when `embed_audio` is enabled. Gain applied uniformly to all embedded audio channel pairs in decibels. `0` leaves the audio unchanged; positive values boost (6 dB roughly doubles the amplitude), negative values attenuate. Samples are clipped at full scale, so large boosts can distort. Range: -24 to 24. Default: `0`.

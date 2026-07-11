@@ -70,12 +70,12 @@ std::vector<ParameterDescriptor> AudioSinkStage::get_parameter_descriptors(
     descriptors.push_back(desc);
   }
 
-  // track parameter — which audio channel pair to write. Channel pair
+  // channel_pair parameter — which audio channel pair to write. Channel pair
   // indices are 0-based, matching the CVBS container's _audio_<p>.wav
   // numbering.
   {
     ParameterDescriptor desc;
-    desc.name = "track";
+    desc.name = "channel_pair";
     desc.display_name = "Audio Channel Pair";
     desc.description =
         "Audio channel pair to write (0-based, matching the CVBS container "
@@ -155,16 +155,17 @@ bool AudioSinkStage::trigger(
 
     // Optional channel pair selection; defaults to channel pair 0.
     size_t pair = 0;
-    const auto pair_it = parameters.find("track");
+    const auto pair_it = parameters.find("channel_pair");
     if (pair_it != parameters.end()) {
       if (!std::holds_alternative<int32_t>(pair_it->second)) {
-        throw std::runtime_error("track parameter must be an integer");
+        throw std::runtime_error("channel_pair parameter must be an integer");
       }
       const int32_t pair_value = std::get<int32_t>(pair_it->second);
       if (pair_value < 0 ||
           pair_value >= static_cast<int32_t>(kMaxAudioChannelPairs)) {
-        throw std::runtime_error("track parameter must be between 0 and " +
-                                 std::to_string(kMaxAudioChannelPairs - 1));
+        throw std::runtime_error(
+            "channel_pair parameter must be between 0 and " +
+            std::to_string(kMaxAudioChannelPairs - 1));
       }
       pair = static_cast<size_t>(pair_value);
     }

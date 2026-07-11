@@ -62,7 +62,7 @@ This stage reads AC3 RF samples from the incoming stream, decodes the RF-modulat
 
 This stage extracts one audio channel pair from the incoming stream and writes it to a standard WAV file. Audio remains synchronised to the processed video timeline, so any frame trimming or reordering performed upstream is reflected in the output.
 
-The pipeline carries stereo audio channel pairs at exactly 48,000 Hz, frame-locked (synchronous) to the video for every system, following SMPTE 272M-1994. The WAV output declares 48,000 Hz; no resampling is performed.
+The pipeline carries stereo audio channel pairs at exactly 48,000 Hz, frame-locked (synchronous) to the video for every system, following SMPTE 272M-1994. The WAV output is 24-bit signed little-endian PCM declaring 48,000 Hz; no resampling or bit-depth conversion is performed.
 
 **Parameters**
 
@@ -70,7 +70,7 @@ The pipeline carries stereo audio channel pairs at exactly 48,000 Hz, frame-lock
     - Path to the output WAV file.
     - Required.
 
-* `track` (integer)
+* `channel_pair` (integer)
     - Audio channel pair to write, 0-based (0–7), matching the CVBS container's `_audio_<p>.wav` numbering.
     - Default 0. Triggering fails if the selected channel pair does not exist.
 
@@ -403,7 +403,10 @@ Applies the selected chroma decoder to convert the incoming TBC video stream to 
     - FFmpeg mode only. Custom FFmpeg video filter chain applied before encoding, using the same syntax as ffmpeg's `-vf` option (e.g. `fieldmatch,decimate` for inverse telecine, `crop=692:554`). Filters may change output dimensions and frame rate; the encoder follows the filter output automatically. An invalid filter string fails the export with the FFmpeg error message. Default: empty (no filtering).
 
 * `embed_audio` (bool)
-    - FFmpeg mode only. Embed analogue audio into the output file. Requires audio in the pipeline. Default: `false`.
+    - FFmpeg mode only. Embed pipeline audio into the output file, one output audio stream per selected channel pair. Requires audio in the pipeline. Default: `false`.
+
+* `audio_channel_pairs` (string)
+    - FFmpeg mode only; available only when `embed_audio` is enabled. Which audio channel pairs to embed: `all` (default) or a comma-separated list of 0-based channel pair indices, e.g. `0,2`. Indices match the CVBS container's `_audio_<p>.wav` numbering. The export fails if a listed channel pair does not exist.
 
 * `audio_gain_db` (double)
     - FFmpeg mode only; available only when `embed_audio` is enabled. Gain applied to the embedded audio in decibels. `0` = unchanged; positive boosts (6 dB roughly doubles the amplitude), negative attenuates. Samples are clipped at full scale. Range: -24 to 24. Default: `0`.

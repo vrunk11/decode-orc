@@ -36,10 +36,9 @@ class AudioSinkStageDeps : public IAudioSinkStageDeps {
       const std::string& output_path, size_t pair) override;
 
  private:
-  std::vector<uint8_t> build_wav_header(uint32_t num_samples,
-                                        uint32_t sample_rate,
-                                        uint16_t num_channels,
-                                        uint16_t bits_per_sample) const;
+  // 44-byte canonical RIFF/WAVE header for |num_pairs| stereo pairs of
+  // 24-bit signed LE PCM at kAudioSampleRateHz.
+  std::vector<uint8_t> build_wav_header(uint32_t num_pairs) const;
 
   IStageServices* stage_services_{nullptr};
   TriggerProgressCallback progress_callback_;

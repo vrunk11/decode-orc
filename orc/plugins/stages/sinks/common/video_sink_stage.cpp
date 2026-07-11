@@ -120,7 +120,7 @@ VideoSinkStage::VideoSinkStage()
       adapt_threshold_(1.0),
       output_padding_(8),
       embed_audio_(false),
-      audio_tracks_("all"),
+      audio_channel_pairs_("all"),
       audio_gain_db_(0.0),
       embed_closed_captions_(false),
       embed_chapter_metadata_(false),
@@ -483,7 +483,7 @@ std::vector<ParameterDescriptor> VideoSinkStage::get_parameter_descriptors(
            false,
            ParameterDependency{"ffmpeg_format", {"mp4-h264", "mkv-ffv1"}}}},
       ParameterDescriptor{
-          "audio_tracks",
+          "audio_channel_pairs",
           "Audio Channel Pairs",
           "Which audio channel pairs to embed, one output audio stream per "
           "channel pair:\n"
@@ -681,7 +681,7 @@ std::map<std::string, ParameterValue> VideoSinkStage::get_parameters() const {
   params["encoder_crf"] = encoder_crf_;
   params["encoder_bitrate"] = encoder_bitrate_;
   params["embed_audio"] = embed_audio_;
-  params["audio_tracks"] = audio_tracks_;
+  params["audio_channel_pairs"] = audio_channel_pairs_;
   params["audio_gain_db"] = audio_gain_db_;
   params["embed_closed_captions"] = embed_closed_captions_;
   params["embed_chapter_metadata"] = embed_chapter_metadata_;
@@ -953,11 +953,11 @@ bool VideoSinkStage::set_parameters(
         embed_audio_ =
             (str_val == "true" || str_val == "1" || str_val == "yes");
       }
-    } else if (key == "audio_tracks") {
+    } else if (key == "audio_channel_pairs") {
       if (std::holds_alternative<std::string>(value)) {
-        audio_tracks_ = std::get<std::string>(value);
-        if (audio_tracks_.empty()) {
-          audio_tracks_ = "all";
+        audio_channel_pairs_ = std::get<std::string>(value);
+        if (audio_channel_pairs_.empty()) {
+          audio_channel_pairs_ = "all";
         }
       }
     } else if (key == "audio_gain_db") {
@@ -1553,7 +1553,7 @@ bool VideoSinkStage::run_export_trigger(
   backendConfig.options["display_aspect_ratio"] = display_aspect_ratio_;
   backendConfig.options["video_filter"] = video_filter_;
   backendConfig.options["audio_gain_db"] = std::to_string(audio_gain_db_);
-  backendConfig.options["audio_tracks"] = audio_tracks_;
+  backendConfig.options["audio_channel_pairs"] = audio_channel_pairs_;
   backendConfig.observation_context = &observation_context;
 
   // Set field-equivalent range for audio, closed caption, and/or chapter
@@ -2255,7 +2255,7 @@ bool VideoSinkStage::writeOutputFile(
 
   // Pass audio information if embedding is enabled
   config.embed_audio = embed_audio_;
-  config.options["audio_tracks"] = audio_tracks_;
+  config.options["audio_channel_pairs"] = audio_channel_pairs_;
   config.embed_closed_captions = embed_closed_captions_;
   if (embed_audio_ && vfr && vfr->has_audio()) {
     config.vfr = vfr;

@@ -76,7 +76,7 @@ Associated audio (analogue `.pcm`), EFM disc data, and AC3 RF are attached autom
 
 This stage reads CVBS payloads from `.composite` files (or `.y`/`.c` pairs) and normalises them to the CVBS_U10_4FSC 10-bit domain. By default the video system, sample encoding, and signal state are read from the `.meta` SQLite sidecar; because the CVBS file format declares metadata optional, the sample encoding can also be selected manually so that sources without a sidecar can be used.
 
-Only the `STANDARD_TBC_LOCKED` signal-state preset is accepted. Files with any other signal state are rejected with a clear error before any frame data is returned. When a sample encoding is selected manually the sidecar is ignored: the signal is assumed to be TBC-locked, the frame count is measured from the file size, and any audio sidecar is treated as free-running.
+Only the `STANDARD_TBC_LOCKED` signal-state preset is accepted. Files with any other signal state are rejected with a clear error before any frame data is returned. When a sample encoding is selected manually the sidecar is ignored: the signal is assumed to be TBC-locked and the frame count is measured from the file size.
 
 The following sample encodings are normalised automatically:
 

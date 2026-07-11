@@ -1,15 +1,15 @@
 /*
- * File:        audio_track_selection.h
+ * File:        audio_pair_selection.h
  * Module:      orc-core
- * Purpose:     Parses the video sink's audio_tracks parameter selecting the
- *              audio channel pairs to embed
+ * Purpose:     Parses the video sink's audio_channel_pairs parameter selecting
+ *              the audio channel pairs to embed
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#ifndef ORC_CORE_AUDIO_TRACK_SELECTION_H
-#define ORC_CORE_AUDIO_TRACK_SELECTION_H
+#ifndef ORC_CORE_AUDIO_PAIR_SELECTION_H
+#define ORC_CORE_AUDIO_PAIR_SELECTION_H
 
 #include <cstddef>
 #include <optional>
@@ -18,13 +18,13 @@
 
 namespace orc {
 
-// Parse an audio_tracks parameter value: "all" (every pipeline audio channel
-// pair) or a comma-separated list of 0-based channel pair indices, e.g.
-// "0,2". Whitespace around entries is ignored and duplicates are collapsed
-// (first occurrence wins). Returns nullopt and sets error on malformed
-// input, an index outside [0, track_count), or an empty selection.
-inline std::optional<std::vector<size_t>> parse_audio_track_selection(
-    const std::string& value, size_t track_count, std::string& error) {
+// Parse an audio_channel_pairs parameter value: "all" (every pipeline audio
+// channel pair) or a comma-separated list of 0-based channel pair indices,
+// e.g. "0,2". Whitespace around entries is ignored and duplicates are
+// collapsed (first occurrence wins). Returns nullopt and sets error on
+// malformed input, an index outside [0, pair_count), or an empty selection.
+inline std::optional<std::vector<size_t>> parse_audio_pair_selection(
+    const std::string& value, size_t pair_count, std::string& error) {
   const auto trim = [](const std::string& s) {
     const auto first = s.find_first_not_of(" \t");
     if (first == std::string::npos) return std::string();
@@ -34,10 +34,10 @@ inline std::optional<std::vector<size_t>> parse_audio_track_selection(
 
   const std::string trimmed = trim(value);
   if (trimmed.empty() || trimmed == "all") {
-    std::vector<size_t> all(track_count);
-    for (size_t i = 0; i < track_count; ++i) all[i] = i;
+    std::vector<size_t> all(pair_count);
+    for (size_t i = 0; i < pair_count; ++i) all[i] = i;
     if (all.empty()) {
-      error = "The input carries no audio tracks";
+      error = "The input carries no audio channel pairs";
       return std::nullopt;
     }
     return all;
@@ -53,16 +53,16 @@ inline std::optional<std::vector<size_t>> parse_audio_track_selection(
 
     if (token.empty() ||
         token.find_first_not_of("0123456789") != std::string::npos) {
-      error = "Invalid audio_tracks value '" + value +
-              "': expected 'all' or comma-separated track indices, e.g. "
-              "'0,2'";
+      error = "Invalid audio_channel_pairs value '" + value +
+              "': expected 'all' or comma-separated channel pair indices, "
+              "e.g. '0,2'";
       return std::nullopt;
     }
     const unsigned long index = std::stoul(token);
-    if (index >= track_count) {
-      error = "audio_tracks index " + token +
+    if (index >= pair_count) {
+      error = "audio_channel_pairs index " + token +
               " is out of range: the input carries " +
-              std::to_string(track_count) + " track(s)";
+              std::to_string(pair_count) + " channel pair(s)";
       return std::nullopt;
     }
     const size_t idx = static_cast<size_t>(index);
@@ -77,7 +77,7 @@ inline std::optional<std::vector<size_t>> parse_audio_track_selection(
   }
 
   if (selection.empty()) {
-    error = "audio_tracks selects no tracks";
+    error = "audio_channel_pairs selects no channel pairs";
     return std::nullopt;
   }
   return selection;
@@ -85,4 +85,4 @@ inline std::optional<std::vector<size_t>> parse_audio_track_selection(
 
 }  // namespace orc
 
-#endif  // ORC_CORE_AUDIO_TRACK_SELECTION_H
+#endif  // ORC_CORE_AUDIO_PAIR_SELECTION_H

@@ -8,16 +8,16 @@ Add this sink in parallel with the LD Sink stage when your LaserDisc or tape sou
 
 ## What it does
 
-The pipeline can carry up to 8 stereo audio channel pairs (analogue capture audio, decoded EFM digital audio, imported WAV files, or channel pairs derived by transforms). The `track` parameter selects which channel pair this sink writes.
+The pipeline can carry up to 8 stereo audio channel pairs (analogue capture audio, decoded EFM digital audio, imported WAV files, or channel pairs derived by transforms). The `channel_pair` parameter selects which channel pair this sink writes.
 
-All pipeline audio is stereo, sampled at exactly 48,000 Hz and frame-locked (synchronous) to the video, following SMPTE 272M-1994. The sink gathers the selected channel pair frame by frame — so any frame trimming or reordering performed upstream is reflected in the output — and writes 16-bit signed little-endian stereo PCM in a standard RIFF WAV container declaring 48,000 Hz. Frames without audio are written as silence of the correct length, preserving audio/video sync.
+All pipeline audio is stereo, sampled at exactly 48,000 Hz and frame-locked (synchronous) to the video, following SMPTE 272M-1994. The sink gathers the selected channel pair frame by frame — so any frame trimming or reordering performed upstream is reflected in the output — and writes 24-bit signed little-endian stereo PCM in a standard RIFF WAV container declaring 48,000 Hz, with no sample-rate or bit-depth conversion. Frames without audio are written as silence of the correct length, preserving audio/video sync.
 
 ## Parameters
 
 ### output_path (string)
 Path to the output WAV file. Required. The file will be created or overwritten at trigger time.
 
-### track (integer)
+### channel_pair (integer)
 Audio channel pair to write. Channel pair indices are 0-based, matching the CVBS container's `_audio_<p>.wav` numbering (0–7). Default 0. Triggering fails if the selected channel pair does not exist in the input.
 
 ## Notes

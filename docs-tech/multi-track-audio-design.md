@@ -4,6 +4,15 @@ Design for carrying up to 16 stereo audio tracks through the decode-orc
 stage/DAG pipeline, including EFM-decoded digital audio, bilingual channel
 routing, per-track sync adjustment, and multi-track embedding at the sinks.
 
+> **Superseded.** The audio data model described in §1–2 (16 tracks,
+> 44.1 kHz-family rates, frame-locked *or* free-running timing, 16-bit
+> samples) was implemented against CVBS spec v1.2.0 and has been replaced by
+> the SMPTE 272M-1994 channel-pair model of
+> [audio-channel-pair-design.md](audio-channel-pair-design.md): 8 stereo
+> channel pairs, 48 kHz synchronous only, 24-bit-in-int32 carrier. The
+> stage/DAG topology, transform set, and quick-project wiring from this
+> design are retained.
+
 ---
 
 ## 1. Motivation and Current State
