@@ -162,7 +162,7 @@ cmake --preset macos-gui-debug
 cmake --preset windows-gui-debug
 
 # Windows (MinGW-w64/gcc):
-cmake --preset windows-mingw-gui-debug
+cmake --preset windows-mingw-gui-release
 ```
 
 **Common CMake options:**
@@ -191,7 +191,7 @@ build directory (`build/<preset-name>/`), so build with the matching build
 preset instead:
 ```bash
 cmake --build --preset build-linux-gui-debug     # match whichever configure preset you used
-cmake --build --preset build-windows-mingw-gui-debug
+cmake --build --preset build-windows-mingw-gui-release
 ```
 
 #### 6. Run Tests
