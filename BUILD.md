@@ -45,10 +45,12 @@ ctest --test-dir build --output-on-failure
 ### Prerequisites
 
 #### Nix-Based Setup
+
 - [Nix](https://nixos.org/) (recommended for reproducible builds)
 - `flake.nix` defines all dependencies and development environment
 
 #### CMake-Based Setup
+
 - **CMake**: 3.20 or later
 - **C++ Compiler**: C++17 support
   - Linux: GCC 9+ or Clang 9+
@@ -89,6 +91,7 @@ If you prefer to use system package managers or vcpkg manually:
 #### 1. Install Dependencies
 
 **Linux (Ubuntu/Debian):**
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y cmake ninja-build pkg-config \
@@ -99,6 +102,7 @@ sudo apt-get install -y cmake ninja-build pkg-config \
 ```
 
 **macOS (Homebrew):**
+
 ```bash
 brew install cmake ninja qt@6 spdlog fmt sqlite yaml-cpp libpng fftw ffmpeg
 ```
@@ -129,7 +133,6 @@ implementation.
 
 #### 2. Provide EZPWD Headers
 
-
 The project requires the `ezpwd-reed-solomon` headers (header-only library):
 
 ```bash
@@ -141,6 +144,7 @@ export EZPWD_INCLUDE_DIR="$PWD/external/ezpwd-reed-solomon/c++"
 ```
 
 Alternatively, pass it directly to CMake:
+
 ```bash
 cmake -S . -B build -DEZPWD_INCLUDE_DIR="/path/to/ezpwd-reed-solomon/c++" ...
 ```
@@ -166,6 +170,7 @@ cmake --preset windows-mingw-gui-release
 ```
 
 **Common CMake options:**
+
 - `CMAKE_BUILD_TYPE`: `Debug` or `Release`
 - `BUILD_GUI`: `ON` (default) or `OFF` (CLI only)
 - `BUILD_UNIT_TESTS`: `ON` (development) or `OFF` (release)
@@ -177,18 +182,21 @@ cmake --preset windows-mingw-gui-release
 
 If you configured manually into `build/` (as in the `-B build` example
 above):
+
 ```bash
 # Build using the configured generator
 cmake --build build -j
 ```
 
 # Or use make/ninja directly (depending on your generator)
+
 make -C build -j
 ninja -C build
 
 If you configured with a preset (as in step 3 above), each preset has its own
 build directory (`build/<preset-name>/`), so build with the matching build
 preset instead:
+
 ```bash
 cmake --build --preset build-linux-gui-debug     # match whichever configure preset you used
 cmake --build --preset build-windows-mingw-gui-release
@@ -279,6 +287,7 @@ Phase 3 of the stage plugin migration introduces a shared `orc-core` runtime lib
   - `bin/orc-stage-plugins/`
 
 At runtime, Decode-Orc now looks for stage plugins in the persistent YAML registry, `ORC_STAGE_PLUGIN_PATHS`, and the default build/install plugin directory layout.
+
 - **`orc/gui/`** — Qt6 GUI application (optional)
 - **`orc-tests/`** — Unified test tree with source-aligned subdirectories such as `core/unit/` and `gui/unit/`
 
@@ -298,24 +307,31 @@ See [`.github/workflows/`](.github/workflows/) for details on platform-specific 
 ## Troubleshooting
 
 ### CMake not found
+
 Ensure CMake 3.20+ is installed and in your PATH:
+
 ```bash
 cmake --version
 ```
 
 ### Qt6 not found
+
 Install Qt6 via your package manager or set `CMAKE_PREFIX_PATH`:
+
 ```bash
 cmake -S . -B build -DCMAKE_PREFIX_PATH=/usr/lib/cmake/Qt6
 ```
 
 ### EZPWD headers not found
+
 Set the `EZPWD_INCLUDE_DIR` environment variable or pass it to CMake:
+
 ```bash
 export EZPWD_INCLUDE_DIR="$PWD/external/ezpwd-reed-solomon/c++"
 ```
 
 ### `orc-gui.exe` starts but complains about missing DLLs (Qt6Core, libcurl, ffmpeg, ...)
+
 This happens when running straight from the raw `build/` tree: third-party
 runtime DLLs (Qt, ffmpeg, curl, fmt, spdlog, sqlite3, soxr, ...) are never
 copied next to the executables or plugins during a plain `cmake --build`, on
@@ -333,6 +349,7 @@ Copy-Item build/windows-mingw-gui-release/vcpkg_installed/x64-mingw-dynamic/bin/
 ```
 
 ### Unit tests fail with exit code `0xc0000135` during a MinGW build
+
 This is the same missing-runtime-DLL issue as above, but hit earlier: with
 `BUILD_UNIT_TESTS=ON`, CMake tries to run each test executable right after
 linking it (`gtest_discover_tests(... DISCOVERY_MODE POST_BUILD)`) to enumerate
@@ -344,7 +361,9 @@ separate `cmake --install`'d + DLL-collected copy, or accept a slow
 `cmake --install` step before every test-affecting rebuild.
 
 ### Tests failing to compile
+
 Ensure Google Test (gtest) is available. In Nix, use `nix develop`. For manual setups, install:
+
 ```bash
 # Linux
 sudo apt-get install google-gtest-dev
@@ -354,7 +373,9 @@ brew install google-benchmark
 ```
 
 ### Build is slow
+
 Use ccache to speed up incremental builds:
+
 ```bash
 export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_UNIT_TESTS=ON
@@ -362,6 +383,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_UNIT_TESTS=ON
 
 The default ccache cache size (5 GiB) is too small for this project's Debug
 objects and causes constant eviction; raise it once with:
+
 ```bash
 ccache --max-size=30G
 ```
