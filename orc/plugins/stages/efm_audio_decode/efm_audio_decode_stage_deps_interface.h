@@ -28,6 +28,10 @@ struct EFMAudioDecodeOptions {
   // this stage has no user-facing audio output file to append ".txt" to, so
   // the report location is specified explicitly.
   std::string report_path;
+  // Human-readable name for the appended EFM audio channel pair. Surfaces as
+  // the pair descriptor name (the CVBS container description column and the
+  // video sink's per-stream title). Empty falls back to "EFM digital audio".
+  std::string pair_name{"EFM digital audio"};
 };
 
 struct EFMAudioDecodeResult {

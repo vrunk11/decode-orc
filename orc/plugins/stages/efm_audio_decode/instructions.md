@@ -12,7 +12,7 @@ This transform is audio-only. EFM data discs (ECMA-130 sectors) cannot become an
 
 ## What it does
 
-The stage wraps the incoming frame representation and appends one audio channel pair (`EFM digital audio`, origin EFM). Video, dropout hints, undecoded EFM/AC3 signal data, and all existing audio channel pairs pass through untouched.
+The stage wraps the incoming frame representation and appends one audio channel pair (named from the `Channel Pair Name` parameter, default `EFM digital audio`; origin EFM). The name surfaces in the CVBS container and as the embedded stream title in the Video Sink. Video, dropout hints, undecoded EFM/AC3 signal data, and all existing audio channel pairs pass through untouched.
 
 EFM decoding is whole-stream sequential (the CIRC interleaving spans sectors), so it cannot run frame-by-frame. The decode therefore runs lazily, at most once, on the first access to the appended pair's audio: the stage gathers the t-values across the input's full frame range, runs the shared EFM decode pipeline, widens the decoded 44.1 kHz 16-bit CD audio to 24-bit, resamples it to 48 kHz (SoXR HQ), and caches the converted frame-locked PCM in a scratch file on disk. Video-only preview and project validation never trigger the decode.
 

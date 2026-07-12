@@ -235,8 +235,10 @@ void StageParameterDialog::build_ui(
         std::string file_ext_hint = desc.file_extension_hint;
 
         // Determine if this is an output path (save dialog) or input path (open
-        // dialog)
-        bool is_output = (stage_name_copy.find("sink") != std::string::npos) ||
+        // dialog). An explicit descriptor flag takes precedence; otherwise fall
+        // back to a name heuristic (sink stages, "output" in the name).
+        bool is_output = desc.output_path ||
+                         (stage_name_copy.find("sink") != std::string::npos) ||
                          (param_name.find("output") != std::string::npos) ||
                          (display_name.find("Output") != std::string::npos);
 

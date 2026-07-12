@@ -29,8 +29,9 @@ namespace orc {
 // EFMAudioChannelPairRepresentation
 // ============================================================================
 // Wraps a VideoFrameRepresentation and appends one audio channel pair
-// carrying the decoded EFM digital audio ({name: "EFM digital audio",
-// origin: EFM}) in the pipeline form: 48 kHz synchronous (frame-locked)
+// carrying the decoded EFM digital audio ({name: options.pair_name, default
+// "EFM digital audio"; origin: EFM}) in the pipeline form: 48 kHz synchronous
+// (frame-locked)
 // 24-bit-in-int32 stereo. Video, dropout hints, EFM/AC3 signal data and all
 // existing audio channel pairs pass through untouched.
 //
@@ -156,6 +157,9 @@ class EFMAudioDecodeStage : public DAGStage,
  private:
   bool no_timecodes_ = false;
   bool no_audio_concealment_ = false;
+  // Name for the appended EFM audio channel pair; empty falls back to the
+  // "EFM digital audio" default at the descriptor.
+  std::string pair_name_ = "EFM digital audio";
   bool report_ = false;      // checkbox: write a decode statistics report
   std::string report_path_;  // report destination when report_ is enabled
 

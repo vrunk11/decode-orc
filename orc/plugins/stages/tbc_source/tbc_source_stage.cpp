@@ -153,7 +153,8 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
       std::string c_path,    // chroma .tbc for YC mode; empty for composite
       std::string pcm_path, std::string efm_bin_path, std::string ac3_bin_path,
       std::string ac3_meta_path, bool has_audio, double pcm_sample_rate_hz,
-      bool has_efm, bool has_ac3, ArtifactID artifact_id, Provenance provenance)
+      bool has_efm, bool has_ac3, std::string audio_pair_name,
+      ArtifactID artifact_id, Provenance provenance)
       : Artifact(std::move(artifact_id), std::move(provenance)),
         video_params_(std::move(video_params)),
         source_params_(std::move(source_params)),
@@ -169,7 +170,8 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
         pcm_sample_rate_hz_(pcm_sample_rate_hz),
         has_efm_(has_efm),
         has_ac3_(has_ac3),
-        is_yc_(!c_path_.empty()) {
+        is_yc_(!c_path_.empty()),
+        audio_pair_name_(std::move(audio_pair_name)) {
     // Pre-compute the raw audio length fallback and per-frame EFM offsets from
     // field metadata (cheap, metadata-only, no disk I/O).  The audio ingest
     // conversion is deferred to first audio access (see
@@ -349,7 +351,9 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   std::optional<AudioChannelPairDescriptor> get_audio_channel_pair_descriptor(
       size_t pair) const override {
     if (!has_audio_ || pair != 0) return std::nullopt;
-    return AudioChannelPairDescriptor{"Analogue", AudioOrigin::ANALOGUE};
+    const std::string name =
+        audio_pair_name_.empty() ? "Analogue" : audio_pair_name_;
+    return AudioChannelPairDescriptor{name, AudioOrigin::ANALOGUE};
   }
 
   std::vector<int32_t> get_audio_samples(size_t pair,
@@ -820,6 +824,9 @@ class TBCDecodedFrameRepresentation final : public VideoFrameRepresentation,
   bool has_efm_ = false;
   bool has_ac3_ = false;
   bool is_yc_ = false;
+  // Name for the analogue audio channel pair; empty falls back to "Analogue"
+  // at the descriptor.
+  std::string audio_pair_name_;
 
   // Fallback raw sidecar length (stereo pairs) from the metadata per-field
   // counts, used when the file size is unavailable.
@@ -1294,8 +1301,9 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
     return {};
   }
 
-  // Cache key: primary TBC path.
-  const std::string cache_key = tbc_path;
+  // Cache key: primary TBC path plus the audio pair name (so editing the name
+  // re-emits a representation carrying the new descriptor).
+  const std::string cache_key = tbc_path + "\x1f" + get_str("pcm_name");
   {
     std::lock_guard<std::mutex> lock(execute_mutex_);
     if (cached_representation_ && cached_input_key_ == cache_key) {
@@ -1444,8 +1452,8 @@ std::vector<ArtifactPtr> TBCSourceStage::execute(
       is_yc ? c_path : std::string{}, has_audio ? sc.pcm_path : std::string{},
       has_efm ? sc.efm_path : std::string{},
       has_ac3 ? sc.ac3_path : std::string{}, has_ac3 ? ac3_meta : std::string{},
-      has_audio, pcm_sample_rate_hz, has_efm, has_ac3, ArtifactID{},
-      Provenance{});
+      has_audio, pcm_sample_rate_hz, has_efm, has_ac3, get_str("pcm_name"),
+      ArtifactID{}, Provenance{});
 
   // Update display name.
   const std::string new_display = make_display_name(tvp.system, is_yc);
@@ -1500,6 +1508,20 @@ std::vector<ParameterDescriptor> TBCSourceStage::get_parameter_descriptors(
       "as written by ld-decode; always converted to 48 kHz 24-bit "
       "frame-locked audio on ingest)",
       ".pcm"));
+
+  {
+    ParameterDescriptor d;
+    d.name = "pcm_name";
+    d.display_name = "Audio Channel Pair Name";
+    d.description =
+        "Human-readable name for the analogue audio channel pair. Surfaces in "
+        "the CVBS container and as the embedded stream title in the video "
+        "sink. Empty uses \"Analogue\".";
+    d.type = ParameterType::STRING;
+    d.constraints.required = false;
+    d.constraints.default_value = std::string("Analogue");
+    descs.push_back(d);
+  }
 
   descs.push_back(make_path("efm_path", "EFM Data File Path",
                             "Path to the EFM t-value .efm sidecar", ".efm"));

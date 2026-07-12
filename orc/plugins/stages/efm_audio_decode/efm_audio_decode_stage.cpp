@@ -38,7 +38,9 @@ std::optional<AudioChannelPairDescriptor>
 EFMAudioChannelPairRepresentation::get_audio_channel_pair_descriptor(
     size_t pair) const {
   if (pair == efm_pair_index()) {
-    return AudioChannelPairDescriptor{"EFM digital audio", AudioOrigin::EFM};
+    const std::string name =
+        options_.pair_name.empty() ? "EFM digital audio" : options_.pair_name;
+    return AudioChannelPairDescriptor{name, AudioOrigin::EFM};
   }
   // Out-of-range indices fall through to the source, which answers nullopt.
   return source_ ? source_->get_audio_channel_pair_descriptor(pair)
@@ -197,6 +199,7 @@ std::shared_ptr<const VideoFrameRepresentation> EFMAudioDecodeStage::process(
   // A report is written only when the checkbox is enabled; an empty path
   // leaves the report disabled even if the box is checked.
   options.report_path = report_ ? report_path_ : std::string{};
+  options.pair_name = pair_name_;
   return std::make_shared<EFMAudioChannelPairRepresentation>(
       std::move(source), std::move(deps), options);
 }
@@ -231,6 +234,19 @@ std::vector<ParameterDescriptor> EFMAudioDecodeStage::get_parameter_descriptors(
 
   {
     ParameterDescriptor desc;
+    desc.name = "pair_name";
+    desc.display_name = "Channel Pair Name";
+    desc.description =
+        "Human-readable name for the decoded EFM audio channel pair. Surfaces "
+        "in the CVBS container and as the embedded stream title in the video "
+        "sink. Empty uses \"EFM digital audio\".";
+    desc.type = ParameterType::STRING;
+    desc.constraints.default_value = std::string("EFM digital audio");
+    descriptors.push_back(desc);
+  }
+
+  {
+    ParameterDescriptor desc;
     desc.name = "report";
     desc.display_name = "Write Decode Report";
     desc.description = "Write a detailed decode statistics report file";
@@ -248,6 +264,7 @@ std::vector<ParameterDescriptor> EFMAudioDecodeStage::get_parameter_descriptors(
     desc.constraints.default_value = std::string("");
     desc.constraints.depends_on = ParameterDependency{"report", {"true"}};
     desc.file_extension_hint = ".txt";
+    desc.output_path = true;  // Report is written; use a save dialog, not open
     descriptors.push_back(desc);
   }
 
@@ -258,6 +275,7 @@ std::map<std::string, ParameterValue> EFMAudioDecodeStage::get_parameters()
     const {
   return {{"no_timecodes", no_timecodes_},
           {"no_audio_concealment", no_audio_concealment_},
+          {"pair_name", pair_name_},
           {"report", report_},
           {"report_path", report_path_}};
 }
@@ -274,6 +292,13 @@ bool EFMAudioDecodeStage::set_parameters(
   no_audio_concealment_ =
       get_bool("no_audio_concealment", no_audio_concealment_);
   report_ = get_bool("report", report_);
+
+  const auto name_it = params.find("pair_name");
+  if (name_it != params.end()) {
+    if (const std::string* s = std::get_if<std::string>(&name_it->second)) {
+      pair_name_ = *s;
+    }
+  }
 
   const auto it = params.find("report_path");
   if (it != params.end()) {

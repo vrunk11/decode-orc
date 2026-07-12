@@ -472,9 +472,10 @@ std::vector<ParameterDescriptor> VideoSinkStage::get_parameter_descriptors(
            ParameterDependency{"output_mode", {"ffmpeg"}}}},
       ParameterDescriptor{
           "embed_audio",
-          "Embed Analogue Audio",
-          "Embed analogue audio in output file (requires audio in source, "
-          "MP4/MKV only)",
+          "Embed Audio",
+          "Embed the input's audio channel pairs in the output file, one "
+          "output stream per pair, each titled with its channel pair name "
+          "(requires audio in source, MP4/MKV only)",
           ParameterType::BOOL,
           {{},
            {},
@@ -490,8 +491,9 @@ std::vector<ParameterDescriptor> VideoSinkStage::get_parameter_descriptors(
           "  all - embed every channel pair carried by the input (default)\n"
           "  0,2 - comma-separated 0-based channel pair indices\n"
           "Channel pair indices match the CVBS container's _audio_<p>.wav "
-          "numbering. The export fails if a listed channel pair does not "
-          "exist.",
+          "numbering. Each embedded stream is titled with the channel pair's "
+          "name (set at the audio source, import or EFM decode stage). The "
+          "export fails if a listed channel pair does not exist.",
           ParameterType::STRING,
           {{},
            {},
