@@ -55,9 +55,11 @@ class Project;
 class ObservationContext;
 }  // namespace orc
 
+#include <QAction>
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QColor>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDebug>
@@ -69,6 +71,7 @@ class ObservationContext;
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QInputDialog>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -79,7 +82,13 @@ class ObservationContext;
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMoveEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPalette>
+#include <QPixmap>
+#include <QPoint>
 #include <QPushButton>
+#include <QRect>
 #include <QRegularExpression>
 #include <QResizeEvent>
 #include <QSettings>
@@ -103,6 +112,112 @@ namespace {
 constexpr const char* kLineScopeViewId = "preview.linescope";
 constexpr const char* kFrameTimingViewId = "preview.frame_timing";
 constexpr const char* kWaveformMonitorViewId = "preview.frame_timing";
+
+// --- Simple hand-drawn toolbar icons ------------------------------------
+// The GUI ships no icon assets, so the toolbar glyphs are painted with
+// QPainter. They are rendered in a caller-supplied colour (taken from the
+// active palette) so they read correctly in both light and dark themes; the
+// toolbar regenerates them whenever the theme changes (see syncThemeUi()).
+
+constexpr int kIconPx = 48;
+constexpr double kPi = 3.14159265358979323846;
+
+// 2x2 grid of rounded squares — "arrange DAG to grid".
+QIcon makeGridIcon(const QColor& color) {
+  QPixmap pm(kIconPx, kIconPx);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  p.setPen(Qt::NoPen);
+  p.setBrush(color);
+  const qreal cell = 16.0;
+  const qreal gap = 6.0;
+  const qreal start = (kIconPx - (2 * cell + gap)) / 2.0;
+  for (int row = 0; row < 2; ++row) {
+    for (int col = 0; col < 2; ++col) {
+      const qreal x = start + col * (cell + gap);
+      const qreal y = start + row * (cell + gap);
+      p.drawRoundedRect(QRectF(x, y, cell, cell), 3, 3);
+    }
+  }
+  return QIcon(pm);
+}
+
+// Almond eye with a pupil — "show preview".
+QIcon makePreviewIcon(const QColor& color) {
+  QPixmap pm(kIconPx, kIconPx);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  QPen pen(color, 3.5);
+  pen.setJoinStyle(Qt::RoundJoin);
+  p.setPen(pen);
+  p.setBrush(Qt::NoBrush);
+  const qreal cx = kIconPx / 2.0;
+  const qreal cy = kIconPx / 2.0;
+  const qreal hw = 18.0;  // half width
+  const qreal h = 11.0;   // vertical bulge
+  QPainterPath path;
+  path.moveTo(cx - hw, cy);
+  path.quadTo(cx, cy - h, cx + hw, cy);
+  path.quadTo(cx, cy + h, cx - hw, cy);
+  p.drawPath(path);
+  p.setPen(Qt::NoPen);
+  p.setBrush(color);
+  p.drawEllipse(QPointF(cx, cy), 5.0, 5.0);
+  return QIcon(pm);
+}
+
+// Sun / moon / half-disc depending on mode — the cycling theme button.
+QIcon makeThemeIcon(const QColor& color, ThemeManager::Mode mode) {
+  QPixmap pm(kIconPx, kIconPx);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  const qreal cx = kIconPx / 2.0;
+  const qreal cy = kIconPx / 2.0;
+  const qreal r = 11.0;
+
+  if (mode == ThemeManager::Mode::Dark) {
+    // Crescent moon: a disc with an offset disc subtracted from it.
+    QPainterPath full;
+    full.addEllipse(QPointF(cx - 2, cy), r, r);
+    QPainterPath cut;
+    cut.addEllipse(QPointF(cx + 5, cy - 3), r, r);
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    p.drawPath(full.subtracted(cut));
+  } else if (mode == ThemeManager::Mode::Light) {
+    // Sun: disc + eight rays.
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    p.drawEllipse(QPointF(cx, cy), r * 0.6, r * 0.6);
+    QPen pen(color, 3.0);
+    pen.setCapStyle(Qt::RoundCap);
+    p.setPen(pen);
+    for (int i = 0; i < 8; ++i) {
+      const qreal a = i * kPi / 4.0;
+      p.drawLine(
+          QPointF(cx + std::cos(a) * (r * 0.9), cy + std::sin(a) * (r * 0.9)),
+          QPointF(cx + std::cos(a) * (r * 1.35),
+                  cy + std::sin(a) * (r * 1.35)));
+    }
+  } else {
+    // Auto: a ring with its right half filled (adaptive light/dark).
+    QPen pen(color, 3.0);
+    p.setPen(pen);
+    p.setBrush(Qt::NoBrush);
+    p.drawEllipse(QPointF(cx, cy), r, r);
+    QPainterPath half;
+    half.moveTo(cx, cy - r);
+    half.arcTo(QRectF(cx - r, cy - r, 2 * r, 2 * r), 90, -180);
+    half.closeSubpath();
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    p.drawPath(half);
+  }
+  return QIcon(pm);
+}
 
 orc::presenters::VideoFormat toPresenterVideoFormat(orc::VideoSystem system) {
   switch (system) {
@@ -737,13 +852,18 @@ void MainWindow::setupMenus() {
 
   // View menu for DAG operations
   auto* view_menu = menuBar()->addMenu("&View");
+  view_menu_ = view_menu;  // shared with setupToolbar() for the toolbar toggle
 
   show_preview_action_ = view_menu->addAction("Show &Preview");
   show_preview_action_->setShortcut(
       QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
   show_preview_action_->setEnabled(false);
-  connect(show_preview_action_, &QAction::triggered, this,
-          [this]() { preview_dialog_->show(); });
+  connect(show_preview_action_, &QAction::triggered, this, [this]() {
+    // Show, or raise to the front if already visible.
+    preview_dialog_->show();
+    preview_dialog_->raise();
+    preview_dialog_->activateWindow();
+  });
 
   view_menu->addSeparator();
 
@@ -765,9 +885,9 @@ void MainWindow::setupMenus() {
 
   view_menu->addSeparator();
 
-  auto* arrange_action = view_menu->addAction("&Arrange DAG to Grid");
-  arrange_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
-  connect(arrange_action, &QAction::triggered, this,
+  arrange_dag_action_ = view_menu->addAction("&Arrange DAG to Grid");
+  arrange_dag_action_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+  connect(arrange_dag_action_, &QAction::triggered, this,
           &MainWindow::onArrangeDAGToGrid);
 
   // Tools menu
@@ -804,6 +924,20 @@ void MainWindow::setupMenus() {
     theme_action->setChecked(item.mode == current_mode);
     theme_group->addAction(theme_action);
 
+    // Keep references so the toolbar's cycling theme button (and OS-driven
+    // Auto changes) can keep these checkmarks in sync via syncThemeUi().
+    switch (item.mode) {
+      case ThemeManager::Mode::Auto:
+        theme_auto_action_ = theme_action;
+        break;
+      case ThemeManager::Mode::Dark:
+        theme_dark_action_ = theme_action;
+        break;
+      case ThemeManager::Mode::Light:
+        theme_light_action_ = theme_action;
+        break;
+    }
+
     const ThemeManager::Mode mode = item.mode;
     connect(theme_action, &QAction::triggered, this, [mode]() {
       if (auto* controller = ThemeController::instance()) {
@@ -832,7 +966,100 @@ void MainWindow::setupMenus() {
 }
 
 void MainWindow::setupToolbar() {
-  // Toolbar removed - was creating blank bar between menu and DAG editor
+  main_toolbar_ = addToolBar("Main Toolbar");
+  main_toolbar_->setObjectName("MainToolBar");
+  main_toolbar_->setMovable(false);
+  main_toolbar_->setFloatable(false);
+  main_toolbar_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+
+  // Reuse the existing menu actions so their enabled/checked state stays in
+  // sync; the menu items themselves are retained. Icons are assigned in
+  // syncThemeUi() so they track the active theme.
+  main_toolbar_->addAction(arrange_dag_action_);
+  main_toolbar_->addAction(show_preview_action_);
+  main_toolbar_->addSeparator();
+
+  // Single button that cycles Auto -> Light -> Dark. The Tools > Themes
+  // submenu remains as the explicit-choice alternative.
+  theme_cycle_action_ = new QAction(this);
+  main_toolbar_->addAction(theme_cycle_action_);
+  connect(theme_cycle_action_, &QAction::triggered, this, []() {
+    auto* controller = ThemeController::instance();
+    if (!controller) {
+      return;
+    }
+    ThemeManager::Mode next = ThemeManager::Mode::Auto;
+    switch (controller->mode()) {
+      case ThemeManager::Mode::Auto:
+        next = ThemeManager::Mode::Light;
+        break;
+      case ThemeManager::Mode::Light:
+        next = ThemeManager::Mode::Dark;
+        break;
+      case ThemeManager::Mode::Dark:
+        next = ThemeManager::Mode::Auto;
+        break;
+    }
+    controller->setMode(next);
+  });
+
+  // View > Show Toolbar — QToolBar supplies a checkable show/hide action.
+  QAction* toggle_toolbar = main_toolbar_->toggleViewAction();
+  toggle_toolbar->setText("Show &Toolbar");
+  if (view_menu_) {
+    view_menu_->addSeparator();
+    view_menu_->addAction(toggle_toolbar);
+  }
+
+  // Refresh icons + theme checkmarks now and whenever the theme changes
+  // (from the toolbar button, the Themes submenu, or an OS colour-scheme
+  // change while in Auto mode).
+  if (auto* controller = ThemeController::instance()) {
+    connect(controller, &ThemeController::modeChanged, this,
+            &MainWindow::syncThemeUi);
+  }
+  syncThemeUi();
+}
+
+void MainWindow::syncThemeUi() {
+  const ThemeManager::Mode mode = ThemeController::instance()
+                                      ? ThemeController::instance()->mode()
+                                      : ThemeManager::Mode::Auto;
+
+  // Keep the Tools > Themes checkmarks correct even when the mode was changed
+  // via the toolbar or the OS.
+  if (theme_auto_action_) {
+    theme_auto_action_->setChecked(mode == ThemeManager::Mode::Auto);
+  }
+  if (theme_dark_action_) {
+    theme_dark_action_->setChecked(mode == ThemeManager::Mode::Dark);
+  }
+  if (theme_light_action_) {
+    theme_light_action_->setChecked(mode == ThemeManager::Mode::Light);
+  }
+
+  if (!main_toolbar_) {
+    return;
+  }
+
+  // Draw the glyphs in the current text colour so they read in either theme.
+  const QColor fg = palette().color(QPalette::WindowText);
+  if (arrange_dag_action_) {
+    arrange_dag_action_->setIcon(makeGridIcon(fg));
+    arrange_dag_action_->setToolTip("Arrange DAG to grid");
+  }
+  if (show_preview_action_) {
+    show_preview_action_->setIcon(makePreviewIcon(fg));
+    show_preview_action_->setToolTip("Show preview");
+  }
+  if (theme_cycle_action_) {
+    theme_cycle_action_->setIcon(makeThemeIcon(fg, mode));
+    const char* name = mode == ThemeManager::Mode::Dark    ? "Dark"
+                       : mode == ThemeManager::Mode::Light ? "Light"
+                                                           : "Auto";
+    theme_cycle_action_->setToolTip(
+        QString("Theme: %1 (click to cycle)").arg(name));
+  }
 }
 
 void MainWindow::connectDAGSignals() {
