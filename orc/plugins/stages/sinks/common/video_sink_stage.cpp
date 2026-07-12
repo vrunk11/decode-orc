@@ -2369,11 +2369,13 @@ StagePreviewCapability VideoSinkStage::get_preview_capability() const {
 
   capability.geometry.display_aspect_ratio = 4.0 / 3.0;
 
-  // Match DAR correction math used by make_signal_preview_capability().
-  double active_ratio = static_cast<double>(capability.geometry.active_width) /
-                        static_cast<double>(capability.geometry.active_height);
-  double target_ratio = 4.0 / 3.0;
-  capability.geometry.dar_correction_factor = target_ratio / active_ratio;
+  // Fixed per-system pixel aspect (see standard_dar_correction), matching
+  // make_signal_preview_capability().  Deriving this from the active-area size
+  // would force every output to display at 4:3 and so vertically squash/stretch
+  // the picture whenever the active line range changed; a fixed factor lets the
+  // active window re-frame (crop/extend) while pixels keep their shape.
+  capability.geometry.dar_correction_factor =
+      orc::standard_dar_correction(video_params.system);
 
   return capability;
 }

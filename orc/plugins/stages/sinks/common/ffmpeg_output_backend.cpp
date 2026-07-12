@@ -555,7 +555,11 @@ bool FFmpegOutputBackend::setupEncoder(const std::string& codec_id,
   // Store video system, IRE levels, and full parameters for color space
   // configuration.  CVBS_U10_4FSC normative levels from source parameters.
   video_system_ = params.system;
-  black_ire_ = static_cast<double>(params.blanking_level);
+  // Use picture black (black_level), not blanking (0 IRE), as the Y' zero
+  // point.  This matches OutputWriter (the raw path) so both outputs agree,
+  // and lets the video_params stage's black_level override affect encoded
+  // output.
+  black_ire_ = static_cast<double>(params.black_level);
   white_ire_ = static_cast<double>(params.white_level);
   video_params_ =
       params;  // Store full params for offset handling in convertAndEncode
