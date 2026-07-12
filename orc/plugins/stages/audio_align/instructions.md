@@ -19,10 +19,10 @@ The stage fails validation when the target channel pair does not exist on the in
 ## Parameters
 
 ### channel_pair
-Integer, 0–7, default `0`. The audio channel pair to shift. Channel-pair numbers are 0-based, matching the CVBS container `_audio_<n>.wav` numbering.
+The audio channel pair to shift, default `0`. Channel-pair numbers are 0-based, matching the CVBS container `_audio_<n>.wav` numbering. In the GUI this is a drop-down restricted to the channel pairs the input actually carries (shown as `<n> - <description>` where a description is present).
 
 ### offset_ms
-Floating point milliseconds, default `0.0`. Positive delays the audio relative to the video; negative advances it. The offset is rounded to the nearest whole stereo pair at 48 kHz (about 0.021 ms resolution).
+Floating point milliseconds, default `0.0`, range ±3,600,000. Positive delays the audio relative to the video; negative advances it. The offset is rounded to the nearest whole stereo pair at 48 kHz (about 0.021 ms resolution).
 
 ## Tools
 

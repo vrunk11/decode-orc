@@ -1,4 +1,4 @@
-# Analogue Audio Sink
+# Audio Sink
 
 Extracts one audio channel pair from the processed video pipeline and writes it to a standard WAV file, synchronised to the processed video timeline. Use this stage when you want the audio independently from the full TBC output.
 
@@ -17,8 +17,8 @@ All pipeline audio is stereo, sampled at exactly 48,000 Hz and frame-locked (syn
 ### output_path (string)
 Path to the output WAV file. Required. The file will be created or overwritten at trigger time.
 
-### channel_pair (integer)
-Audio channel pair to write. Channel pair indices are 0-based, matching the CVBS container's `_audio_<p>.wav` numbering (0–7). Default 0. Triggering fails if the selected channel pair does not exist in the input.
+### channel_pair
+Audio channel pair to write. Channel pair indices are 0-based, matching the CVBS container's `_audio_<p>.wav` numbering (0–7). Default 0. In the GUI this is a drop-down restricted to the channel pairs the input actually carries (shown as `<n> - <description>` where a description is present). Triggering fails if the selected channel pair does not exist in the input.
 
 ## Notes
 

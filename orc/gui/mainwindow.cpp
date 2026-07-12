@@ -2397,10 +2397,12 @@ void MainWindow::onEditParameters(const orc::NodeID& node_id) {
   // Get current parameter values from the node
   auto current_values = project_.presenter()->getNodeParameters(node_id);
 
-  // audio_channel_map: restrict the channel-pair dropdown to the pairs the
-  // node's input actually carries. The stage descriptor lists all container
-  // slots; here we narrow it using the upstream node's audio pair count.
-  if (stage_name == "audio_channel_map") {
+  // audio_channel_map / audio_align / AudioSink: restrict the channel-pair
+  // dropdown to the pairs the node's input actually carries. The stage
+  // descriptor lists all container slots; here we narrow it using the upstream
+  // node's audio pair count.
+  if (stage_name == "audio_channel_map" || stage_name == "audio_align" ||
+      stage_name == "AudioSink") {
     auto* core_project = project_.presenter()->getCoreProjectHandle();
     if (core_project) {
       orc::presenters::RenderPresenter render_presenter(core_project);

@@ -195,15 +195,20 @@ void StageParameterDialog::build_ui(
       case orc::ParameterType::DOUBLE: {
         auto* spin = new QDoubleSpinBox();
         spin->setDecimals(4);
+        // An unbounded default range makes QDoubleSpinBox size itself to the
+        // width of numeric_limits::max() rendered in full (~300 digits), which
+        // blows the dialog past the screen. Fall back to a large but finite
+        // range when a descriptor leaves the bounds unset.
+        constexpr double kDefaultDoubleBound = 1e12;
         if (desc.constraints.min_value.has_value()) {
           spin->setMinimum(std::get<double>(*desc.constraints.min_value));
         } else {
-          spin->setMinimum(-std::numeric_limits<double>::max());
+          spin->setMinimum(-kDefaultDoubleBound);
         }
         if (desc.constraints.max_value.has_value()) {
           spin->setMaximum(std::get<double>(*desc.constraints.max_value));
         } else {
-          spin->setMaximum(std::numeric_limits<double>::max());
+          spin->setMaximum(kDefaultDoubleBound);
         }
         spin->setValue(std::get<double>(value));
         widget = spin;

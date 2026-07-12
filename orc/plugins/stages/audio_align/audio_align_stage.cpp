@@ -16,11 +16,31 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
+#include <string>
 #include <variant>
 
 namespace orc {
 
 namespace {
+
+// Parses a channel-pair index string in the range [0, kMaxAudioChannelPairs).
+// Returns nullopt on any non-numeric or out-of-range value. Mirrors the
+// audio_channel_map stage so both share the same string channel-pair contract.
+std::optional<int32_t> parse_pair_index(const std::string& text) {
+  int parsed = 0;
+  try {
+    size_t consumed = 0;
+    parsed = std::stoi(text, &consumed);
+    if (consumed != text.size()) return std::nullopt;
+  } catch (const std::exception&) {
+    return std::nullopt;
+  }
+  if (parsed < 0 || parsed >= static_cast<int>(kMaxAudioChannelPairs)) {
+    return std::nullopt;
+  }
+  return static_cast<int32_t>(parsed);
+}
 
 // Frame index n whose audio window contains absolute stereo-pair position
 // |pos|: audio_pair_offset(n) <= pos < audio_pair_offset(n + 1). The cadence
@@ -194,12 +214,13 @@ std::vector<ParameterDescriptor> AudioAlignStage::get_parameter_descriptors(
     desc.display_name = "Channel pair";
     desc.description =
         "Audio channel pair to shift (0-based, matching the CVBS container "
-        "channel-pair numbering)";
-    desc.type = ParameterType::INT32;
-    desc.constraints.min_value = int32_t{0};
-    desc.constraints.max_value =
-        static_cast<int32_t>(kMaxAudioChannelPairs) - 1;
-    desc.constraints.default_value = int32_t{0};
+        "channel-pair numbering). The GUI restricts the choices to the channel "
+        "pairs the input actually carries.";
+    desc.type = ParameterType::STRING;
+    for (size_t p = 0; p < kMaxAudioChannelPairs; ++p) {
+      desc.constraints.allowed_strings.push_back(std::to_string(p));
+    }
+    desc.constraints.default_value = std::string("0");
     descriptors.push_back(desc);
   }
 
@@ -212,6 +233,10 @@ std::vector<ParameterDescriptor> AudioAlignStage::get_parameter_descriptors(
         "relative to the video (insert lead-in); negative values advance it "
         "(trim from the start).";
     desc.type = ParameterType::DOUBLE;
+    // A finite range keeps the GUI spin box a sensible width; ±1 hour is far
+    // beyond any real audio/video sync correction.
+    desc.constraints.min_value = -3'600'000.0;
+    desc.constraints.max_value = 3'600'000.0;
     desc.constraints.default_value = 0.0;
     descriptors.push_back(desc);
   }
@@ -220,19 +245,25 @@ std::vector<ParameterDescriptor> AudioAlignStage::get_parameter_descriptors(
 }
 
 std::map<std::string, ParameterValue> AudioAlignStage::get_parameters() const {
-  return {{"channel_pair", channel_pair_}, {"offset_ms", offset_ms_}};
+  return {{"channel_pair", std::to_string(channel_pair_)},
+          {"offset_ms", offset_ms_}};
 }
 
 bool AudioAlignStage::set_parameters(
     const std::map<std::string, ParameterValue>& params) {
   for (const auto& [key, value] : params) {
     if (key == "channel_pair") {
-      const auto* v = std::get_if<int32_t>(&value);
-      if (!v || *v < 0 || *v >= static_cast<int32_t>(kMaxAudioChannelPairs)) {
-        ORC_LOG_ERROR("AudioAlignStage: invalid channel_pair parameter");
+      const auto* v = std::get_if<std::string>(&value);
+      if (!v) {
+        ORC_LOG_ERROR("AudioAlignStage: channel_pair must be a string");
         return false;
       }
-      channel_pair_ = *v;
+      const auto parsed = parse_pair_index(*v);
+      if (!parsed) {
+        ORC_LOG_ERROR("AudioAlignStage: invalid channel_pair '{}'", *v);
+        return false;
+      }
+      channel_pair_ = *parsed;
     } else if (key == "offset_ms") {
       const auto* v = std::get_if<double>(&value);
       if (!v) {

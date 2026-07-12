@@ -1,7 +1,7 @@
 /*
  * File:        audio_sink_stage.h
  * Module:      orc-core
- * Purpose:     Analogue Audio Sink Stage - writes PCM audio to WAV file
+ * Purpose:     Audio Sink Stage - writes PCM audio to WAV file
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
@@ -26,7 +26,7 @@ namespace orc {
 class IAudioSinkStageDeps;
 
 /**
- * @brief Analogue Audio Sink Stage
+ * @brief Audio Sink Stage
  *
  * Extracts one audio channel pair from the VideoFrameRepresentation and
  * writes it to a WAV file. This is a SINK stage - it has inputs but no

@@ -211,18 +211,37 @@ TEST(AudioSinkStageTest,
                          });
 
   ASSERT_NE(it, descriptors.end());
-  EXPECT_EQ(it->type, orc::ParameterType::INT32);
+  EXPECT_EQ(it->type, orc::ParameterType::STRING);
   ASSERT_TRUE(it->constraints.default_value.has_value());
-  EXPECT_EQ(std::get<int32_t>(*it->constraints.default_value), 0);
-  ASSERT_TRUE(it->constraints.min_value.has_value());
-  EXPECT_EQ(std::get<int32_t>(*it->constraints.min_value), 0);
-  ASSERT_TRUE(it->constraints.max_value.has_value());
-  // 0-based channel pair index capped by the container limit of 8 pairs.
-  EXPECT_EQ(std::get<int32_t>(*it->constraints.max_value),
-            static_cast<int32_t>(orc::kMaxAudioChannelPairs) - 1);
+  EXPECT_EQ(std::get<std::string>(*it->constraints.default_value), "0");
+  // One allowed string per container channel-pair slot (0-based); the GUI
+  // narrows this to the pairs the input actually carries.
+  EXPECT_EQ(it->constraints.allowed_strings.size(), orc::kMaxAudioChannelPairs);
 }
 
 TEST(AudioSinkStageTest, Trigger_PassesSelectedChannelPairToDeps) {
+  orc::AudioSinkStage stage;
+  auto deps = std::make_shared<StrictMock<MockAudioSinkStageDeps>>();
+  stage.set_deps_override(deps);
+  MockObservationContext observation_context;
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+
+  EXPECT_CALL(*vfr, audio_channel_pair_count()).WillOnce(Return(3));
+  EXPECT_CALL(*deps, write_audio_wav(vfr.get(), "out.wav", 2))
+      .WillOnce(Return(orc::AudioSinkWriteResult{true, 99, ""}));
+
+  const bool result = stage.trigger({vfr},
+                                    {{"output_path", std::string("out.wav")},
+                                     {"channel_pair", std::string("2")}},
+                                    observation_context);
+
+  EXPECT_TRUE(result);
+  EXPECT_EQ(stage.get_trigger_status(), "Success: 99 samples written");
+}
+
+TEST(AudioSinkStageTest, Trigger_AcceptsLegacyIntegerChannelPair) {
+  // Projects saved before the drop-down conversion stored channel_pair as an
+  // integer; the stage still accepts that form.
   orc::AudioSinkStage stage;
   auto deps = std::make_shared<StrictMock<MockAudioSinkStageDeps>>();
   stage.set_deps_override(deps);
@@ -250,7 +269,7 @@ TEST(AudioSinkStageTest, Trigger_FailsWhenChannelPairIsOutOfRange) {
 
   const bool result = stage.trigger({vfr},
                                     {{"output_path", std::string("out.wav")},
-                                     {"channel_pair", static_cast<int32_t>(8)}},
+                                     {"channel_pair", std::string("8")}},
                                     observation_context);
 
   EXPECT_FALSE(result);

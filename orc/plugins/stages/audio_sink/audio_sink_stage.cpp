@@ -1,7 +1,7 @@
 /*
  * File:        audio_sink_stage.cpp
  * Module:      orc-core
- * Purpose:     Analogue Audio Sink Stage - writes PCM audio to WAV file
+ * Purpose:     Audio Sink Stage - writes PCM audio to WAV file
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
@@ -14,12 +14,33 @@
 #include <orc/stage/common_types.h>
 #include <orc/stage/logging.h>
 
+#include <optional>
 #include <stdexcept>
+#include <string>
+#include <variant>
 
 #include "audio_sink_stage_deps.h"
 #include "audio_sink_stage_deps_interface.h"
 
 namespace orc {
+
+namespace {
+
+// Parses a fully-numeric channel-pair index string to an integer. Returns
+// nullopt when the text is not a plain integer; the caller applies the range
+// check so it can report a specific out-of-range message.
+std::optional<int32_t> parse_channel_pair_string(const std::string& text) {
+  try {
+    size_t consumed = 0;
+    const int parsed = std::stoi(text, &consumed);
+    if (consumed != text.size()) return std::nullopt;
+    return static_cast<int32_t>(parsed);
+  } catch (const std::exception&) {
+    return std::nullopt;
+  }
+}
+
+}  // namespace
 
 AudioSinkStage::AudioSinkStage() {
   set_configuration_status(orc::ConfigurationStatus::Red);
@@ -28,8 +49,8 @@ AudioSinkStage::AudioSinkStage() {
 NodeTypeInfo AudioSinkStage::get_node_type_info() const {
   return NodeTypeInfo{NodeType::SINK,
                       "AudioSink",
-                      "Analogue Audio Sink",
-                      "Extracts analogue audio PCM data and writes to WAV file",
+                      "Audio Sink",
+                      "Extracts audio data and writes it to a WAV file",
                       1,
                       1,  // One input
                       0,
@@ -82,13 +103,14 @@ std::vector<ParameterDescriptor> AudioSinkStage::get_parameter_descriptors(
         "channel pair numbering). The input may carry up to " +
         std::to_string(kMaxAudioChannelPairs) +
         " stereo channel pairs; triggering fails if the selected channel "
-        "pair does not exist.";
-    desc.type = ParameterType::INT32;
+        "pair does not exist. The GUI restricts the choices to the channel "
+        "pairs the input actually carries.";
+    desc.type = ParameterType::STRING;
     desc.constraints.required = false;
-    desc.constraints.min_value = static_cast<int32_t>(0);
-    desc.constraints.max_value =
-        static_cast<int32_t>(kMaxAudioChannelPairs - 1);
-    desc.constraints.default_value = static_cast<int32_t>(0);
+    for (size_t p = 0; p < kMaxAudioChannelPairs; ++p) {
+      desc.constraints.allowed_strings.push_back(std::to_string(p));
+    }
+    desc.constraints.default_value = std::string("0");
     descriptors.push_back(desc);
   }
 
@@ -153,21 +175,29 @@ bool AudioSinkStage::trigger(
       throw std::runtime_error("output_path parameter is empty");
     }
 
-    // Optional channel pair selection; defaults to channel pair 0.
+    // Optional channel pair selection; defaults to channel pair 0. The
+    // parameter is a channel-pair index string (the GUI drop-down); a legacy
+    // integer value is also accepted for backwards compatibility.
     size_t pair = 0;
     const auto pair_it = parameters.find("channel_pair");
     if (pair_it != parameters.end()) {
-      if (!std::holds_alternative<int32_t>(pair_it->second)) {
-        throw std::runtime_error("channel_pair parameter must be an integer");
+      std::optional<int32_t> pair_value;
+      if (const auto* s = std::get_if<std::string>(&pair_it->second)) {
+        pair_value = parse_channel_pair_string(*s);
+      } else if (const auto* i = std::get_if<int32_t>(&pair_it->second)) {
+        pair_value = *i;
       }
-      const int32_t pair_value = std::get<int32_t>(pair_it->second);
-      if (pair_value < 0 ||
-          pair_value >= static_cast<int32_t>(kMaxAudioChannelPairs)) {
+      if (!pair_value) {
+        throw std::runtime_error(
+            "channel_pair parameter must be a channel-pair index");
+      }
+      if (*pair_value < 0 ||
+          *pair_value >= static_cast<int32_t>(kMaxAudioChannelPairs)) {
         throw std::runtime_error(
             "channel_pair parameter must be between 0 and " +
             std::to_string(kMaxAudioChannelPairs - 1));
       }
-      pair = static_cast<size_t>(pair_value);
+      pair = static_cast<size_t>(*pair_value);
     }
 
     ORC_LOG_INFO("AudioSink: Writing audio to {}", output_path);

@@ -116,17 +116,20 @@ TEST(AudioAlignStageTest, Descriptors_DefaultsRoundTripThroughSetGet) {
   const auto* offset = find_descriptor(descriptors, "offset_ms");
   ASSERT_NE(channel_pair, nullptr);
   ASSERT_NE(offset, nullptr);
-  EXPECT_EQ(channel_pair->type, orc::ParameterType::INT32);
+  EXPECT_EQ(channel_pair->type, orc::ParameterType::STRING);
   EXPECT_EQ(offset->type, orc::ParameterType::DOUBLE);
-  EXPECT_EQ(std::get<int32_t>(*channel_pair->constraints.default_value), 0);
-  EXPECT_EQ(std::get<int32_t>(*channel_pair->constraints.max_value),
-            static_cast<int32_t>(orc::kMaxAudioChannelPairs) - 1);
+  EXPECT_EQ(std::get<std::string>(*channel_pair->constraints.default_value),
+            "0");
+  // One allowed string per container channel-pair slot; the GUI narrows this
+  // to the pairs the input actually carries.
+  EXPECT_EQ(channel_pair->constraints.allowed_strings.size(),
+            orc::kMaxAudioChannelPairs);
   EXPECT_EQ(std::get<double>(*offset->constraints.default_value), 0.0);
 
   EXPECT_TRUE(stage.set_parameters(
-      {{"channel_pair", int32_t{2}}, {"offset_ms", -12.5}}));
+      {{"channel_pair", std::string("2")}, {"offset_ms", -12.5}}));
   const auto params = stage.get_parameters();
-  EXPECT_EQ(std::get<int32_t>(params.at("channel_pair")), 2);
+  EXPECT_EQ(std::get<std::string>(params.at("channel_pair")), "2");
   EXPECT_EQ(std::get<double>(params.at("offset_ms")), -12.5);
 }
 
@@ -136,7 +139,7 @@ TEST(AudioAlignStageTest, Execute_ThrowsWhenChannelPairOutOfRange) {
   ON_CALL(*vfr, audio_channel_pair_count()).WillByDefault(Return(1u));
 
   orc::ObservationContext ctx;
-  EXPECT_THROW(stage.execute({vfr}, {{"channel_pair", int32_t{1}}}, ctx),
+  EXPECT_THROW(stage.execute({vfr}, {{"channel_pair", std::string("1")}}, ctx),
                orc::DAGExecutionError);
 }
 

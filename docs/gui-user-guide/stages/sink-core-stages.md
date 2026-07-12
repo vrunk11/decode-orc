@@ -43,12 +43,12 @@ This stage reads AC3 RF samples from the incoming stream, decodes the RF-modulat
 
 ---
 
-## Analogue Audio Sink
+## Audio Sink
 
 | | |
 |-|-|
 | **Stage id** | `AudioSink` |
-| **Stage name** | Analogue Audio Sink |
+| **Stage name** | Audio Sink |
 | **Connections** | 1 input → no outputs |
 | **Purpose** | Export analogue audio to a WAV file |
 
@@ -277,7 +277,7 @@ The output can be used directly with existing ld-decode tools.
 * This is the most common "final output" sink stage.
 * All upstream corrections, stacking, and parameter overrides should be complete before this stage.
 * The target directory must exist and be writable at trigger time.
-* This stage writes video and metadata only — export analogue audio, EFM, or AC3 RF data with the Analogue Audio Sink, Raw EFM Data Sink / EFM Decoder Sink, or AC3 RF Sink stages connected in parallel.
+* This stage writes video and metadata only — export analogue audio, EFM, or AC3 RF data with the Audio Sink, Raw EFM Data Sink / EFM Decoder Sink, or AC3 RF Sink stages connected in parallel.
 
 ---
 
