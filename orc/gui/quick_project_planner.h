@@ -10,7 +10,6 @@
 
 #pragma once
 
-#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -25,12 +24,6 @@ struct QuickProjectDownstreamPlan {
   //   source -> video_transforms[0] -> ... -> video sink
   // Empty means the source feeds the video sink directly.
   std::vector<std::string> video_transforms;
-
-  // When true, attach a parallel EFM audio sink (standalone WAV output) to the
-  // video chain node at |efm_sink_attach_index| (0 = source, i = the i-th
-  // transform), independent of the video sink.
-  bool add_efm_audio_sink = false;
-  std::size_t efm_sink_attach_index = 0;
 };
 
 // Decide the downstream plan from the two source properties the caller derives
@@ -40,9 +33,9 @@ struct QuickProjectDownstreamPlan {
 //   has_efm_sidecar — an EFM t-value sidecar is present alongside the source
 //
 // For an ld-decode source with EFM, the EFM audio decode transform is spliced
-// after dropout correction (so it decodes the best stream), and the EFM audio
-// sink hangs off the dropout corrector output — the best EFM t-value stream —
-// as a parallel branch.
+// after dropout correction (so it decodes the best stream) and the video sink
+// embeds the disc's digital audio. No standalone EFM sink is added — the
+// inclusion of the decode transform is enough.
 QuickProjectDownstreamPlan plan_quick_project_downstream(bool is_ld_decode,
                                                          bool has_efm_sidecar);
 

@@ -23,6 +23,11 @@ namespace orc {
 struct EFMAudioDecodeOptions {
   bool no_timecodes{false};
   bool no_audio_concealment{false};
+  // When non-empty, a detailed decode statistics report is written to this
+  // path. Empty (the default) means no report is written. Unlike efm_sink,
+  // this stage has no user-facing audio output file to append ".txt" to, so
+  // the report location is specified explicitly.
+  std::string report_path;
 };
 
 struct EFMAudioDecodeResult {

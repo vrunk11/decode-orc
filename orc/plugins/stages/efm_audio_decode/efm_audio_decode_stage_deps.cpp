@@ -87,6 +87,13 @@ EFMAudioDecodeResult EFMAudioDecodeDeps::decode_to_cache(
   processor.setNoTimecodes(options.no_timecodes);
   processor.setNoAudioConcealment(options.no_audio_concealment);
 
+  // The decode targets a scratch cache, so point the report at the
+  // user-chosen path rather than letting it default to "<cache>.txt".
+  if (!options.report_path.empty()) {
+    processor.setReportOutput(true);
+    processor.setReportFilename(options.report_path);
+  }
+
   if (!processor.processFromBuffer(efm_buffer, cache_path.string())) {
     std::error_code ec;
     std::filesystem::remove(cache_path, ec);

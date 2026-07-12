@@ -111,12 +111,39 @@ TEST(EFMAudioDecodeStageTest, Descriptors_DefaultsRoundTripThroughSetGet) {
   EXPECT_FALSE(std::get<bool>(params.at("no_timecodes")));
   EXPECT_FALSE(std::get<bool>(params.at("no_audio_concealment")));
 
+  // report is a BOOL checkbox defaulting to off; report_path is a FILE_PATH
+  // that depends on the checkbox being enabled and defaults to empty.
+  const auto* report = find_descriptor(descriptors, "report");
+  const auto* report_path = find_descriptor(descriptors, "report_path");
+  ASSERT_NE(report, nullptr);
+  ASSERT_NE(report_path, nullptr);
+  EXPECT_EQ(report->type, orc::ParameterType::BOOL);
+  ASSERT_TRUE(report->constraints.default_value.has_value());
+  EXPECT_FALSE(std::get<bool>(*report->constraints.default_value));
+  EXPECT_EQ(report_path->type, orc::ParameterType::FILE_PATH);
+  ASSERT_TRUE(report_path->constraints.default_value.has_value());
+  EXPECT_TRUE(
+      std::get<std::string>(*report_path->constraints.default_value).empty());
+  // report_path is gated on report == true.
+  ASSERT_TRUE(report_path->constraints.depends_on.has_value());
+  EXPECT_EQ(report_path->constraints.depends_on->parameter_name, "report");
+  EXPECT_THAT(report_path->constraints.depends_on->required_values,
+              ::testing::ElementsAre("true"));
+
+  EXPECT_FALSE(std::get<bool>(params.at("report")));
+  EXPECT_TRUE(std::get<std::string>(params.at("report_path")).empty());
+
   // Round-trip non-default values.
-  EXPECT_TRUE(stage.set_parameters(
-      {{"no_timecodes", true}, {"no_audio_concealment", true}}));
+  EXPECT_TRUE(
+      stage.set_parameters({{"no_timecodes", true},
+                            {"no_audio_concealment", true},
+                            {"report", true},
+                            {"report_path", std::string("/tmp/decode.txt")}}));
   params = stage.get_parameters();
   EXPECT_TRUE(std::get<bool>(params.at("no_timecodes")));
   EXPECT_TRUE(std::get<bool>(params.at("no_audio_concealment")));
+  EXPECT_TRUE(std::get<bool>(params.at("report")));
+  EXPECT_EQ(std::get<std::string>(params.at("report_path")), "/tmp/decode.txt");
 }
 
 TEST(EFMAudioDecodeStageTest, Execute_ThrowsOnMissingOrNonVfrInput) {
@@ -344,8 +371,13 @@ TEST(EFMAudioDecodeStageTest, Parameters_ArePassedToDecode) {
   configure_video(*vfr, orc::VideoSystem::PAL, 1);
 
   orc::ObservationContext ctx;
-  auto outputs = stage.execute(
-      {vfr}, {{"no_timecodes", true}, {"no_audio_concealment", true}}, ctx);
+  auto outputs =
+      stage.execute({vfr},
+                    {{"no_timecodes", true},
+                     {"no_audio_concealment", true},
+                     {"report", true},
+                     {"report_path", std::string("/tmp/decode.txt")}},
+                    ctx);
   auto output = std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
       outputs[0]);
   ASSERT_NE(output, nullptr);
@@ -355,7 +387,36 @@ TEST(EFMAudioDecodeStageTest, Parameters_ArePassedToDecode) {
                    const orc::EFMAudioDecodeOptions& options) {
         EXPECT_TRUE(options.no_timecodes);
         EXPECT_TRUE(options.no_audio_concealment);
+        EXPECT_EQ(options.report_path, "/tmp/decode.txt");
         // Failing the decode keeps the test focused on option forwarding.
+        return orc::EFMAudioDecodeResult{false, "stop here", 0};
+      });
+  EXPECT_EQ(output->get_audio_samples(0, orc::FrameID(0)).size(), 1920u * 2);
+}
+
+TEST(EFMAudioDecodeStageTest, ReportPath_IsSuppressedWhenCheckboxOff) {
+  orc::EFMAudioDecodeStage stage;
+  auto deps = std::make_shared<StrictMock<MockEFMAudioDecodeDeps>>();
+  stage.set_deps_override(deps);
+
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  ON_CALL(*vfr, audio_channel_pair_count()).WillByDefault(Return(0u));
+  configure_video(*vfr, orc::VideoSystem::PAL, 1);
+
+  // A path is set but the report checkbox is left off: no report is written.
+  orc::ObservationContext ctx;
+  auto outputs = stage.execute(
+      {vfr},
+      {{"report", false}, {"report_path", std::string("/tmp/decode.txt")}},
+      ctx);
+  auto output = std::dynamic_pointer_cast<const orc::VideoFrameRepresentation>(
+      outputs[0]);
+  ASSERT_NE(output, nullptr);
+
+  EXPECT_CALL(*deps, decode_to_cache(_, _))
+      .WillOnce([](const orc::VideoFrameRepresentation&,
+                   const orc::EFMAudioDecodeOptions& options) {
+        EXPECT_TRUE(options.report_path.empty());
         return orc::EFMAudioDecodeResult{false, "stop here", 0};
       });
   EXPECT_EQ(output->get_audio_samples(0, orc::FrameID(0)).size(), 1920u * 2);

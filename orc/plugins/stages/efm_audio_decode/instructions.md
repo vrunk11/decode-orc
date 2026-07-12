@@ -28,6 +28,12 @@ Boolean, default `false`. Disable timecode verification during decode. Needed fo
 ### no_audio_concealment
 Boolean, default `false`. Disable interpolation-based audio error concealment; uncorrectable samples are left as decoded instead of being concealed.
 
+### report
+Boolean, default `false`. Enable to write a detailed decode statistics report (the same per-stage CIRC/error/timing statistics the EFM Decoder Sink writes) once the lazy decode runs. When enabled, set the report destination in **report_path**.
+
+### report_path
+File path, default empty. Destination for the decode report; only used when **report** is enabled. Because this stage decodes into a scratch cache rather than a user-named output file, the report location is given explicitly here rather than being derived from an output filename. If **report** is enabled but this path is empty, no report is written.
+
 ## Tools
 
 This stage has no interactive tools.

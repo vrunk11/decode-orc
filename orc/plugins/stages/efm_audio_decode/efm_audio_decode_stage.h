@@ -156,6 +156,8 @@ class EFMAudioDecodeStage : public DAGStage,
  private:
   bool no_timecodes_ = false;
   bool no_audio_concealment_ = false;
+  bool report_ = false;      // checkbox: write a decode statistics report
+  std::string report_path_;  // report destination when report_ is enabled
 
   mutable std::shared_ptr<const VideoFrameRepresentation> cached_output_;
   std::shared_ptr<IEFMAudioDecodeDeps> deps_override_;

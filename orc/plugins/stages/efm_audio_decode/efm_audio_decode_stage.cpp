@@ -194,6 +194,9 @@ std::shared_ptr<const VideoFrameRepresentation> EFMAudioDecodeStage::process(
   EFMAudioDecodeOptions options;
   options.no_timecodes = no_timecodes_;
   options.no_audio_concealment = no_audio_concealment_;
+  // A report is written only when the checkbox is enabled; an empty path
+  // leaves the report disabled even if the box is checked.
+  options.report_path = report_ ? report_path_ : std::string{};
   return std::make_shared<EFMAudioChannelPairRepresentation>(
       std::move(source), std::move(deps), options);
 }
@@ -226,13 +229,37 @@ std::vector<ParameterDescriptor> EFMAudioDecodeStage::get_parameter_descriptors(
     descriptors.push_back(desc);
   }
 
+  {
+    ParameterDescriptor desc;
+    desc.name = "report";
+    desc.display_name = "Write Decode Report";
+    desc.description = "Write a detailed decode statistics report file";
+    desc.type = ParameterType::BOOL;
+    desc.constraints.default_value = false;
+    descriptors.push_back(desc);
+  }
+
+  {
+    ParameterDescriptor desc;
+    desc.name = "report_path";
+    desc.display_name = "Decode Report File";
+    desc.description = "Path for the decode statistics report file";
+    desc.type = ParameterType::FILE_PATH;
+    desc.constraints.default_value = std::string("");
+    desc.constraints.depends_on = ParameterDependency{"report", {"true"}};
+    desc.file_extension_hint = ".txt";
+    descriptors.push_back(desc);
+  }
+
   return descriptors;
 }
 
 std::map<std::string, ParameterValue> EFMAudioDecodeStage::get_parameters()
     const {
   return {{"no_timecodes", no_timecodes_},
-          {"no_audio_concealment", no_audio_concealment_}};
+          {"no_audio_concealment", no_audio_concealment_},
+          {"report", report_},
+          {"report_path", report_path_}};
 }
 
 bool EFMAudioDecodeStage::set_parameters(
@@ -246,6 +273,14 @@ bool EFMAudioDecodeStage::set_parameters(
   no_timecodes_ = get_bool("no_timecodes", no_timecodes_);
   no_audio_concealment_ =
       get_bool("no_audio_concealment", no_audio_concealment_);
+  report_ = get_bool("report", report_);
+
+  const auto it = params.find("report_path");
+  if (it != params.end()) {
+    if (const std::string* s = std::get_if<std::string>(&it->second)) {
+      report_path_ = *s;
+    }
+  }
   return true;
 }
 
