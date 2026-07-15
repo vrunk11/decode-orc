@@ -289,11 +289,38 @@ void F2SectionCorrection::waitingForSection(F2Section& f2Section) {
       (f2Section.metadata.qMode() == SectionMetadata::QMode2 ||
        f2Section.metadata.qMode() == SectionMetadata::QMode3)) {
     // Use the expected time to correct the MM:SS of absolute time (leave the
-    // frames as-is)
+    // frames as-is, taken from the block's own AFRAME).
+    //
+    // Q-7: MM:SS comes from the surrounding mode-1 timeline (the expected time)
+    // while the frame comes from AFRAME. If a section was lost just before a
+    // mode-2/3 block that crosses a second boundary, naively pairing expected
+    // MM:SS with AFRAME lands a whole second (75 frames) away from the truth,
+    // so the section is dropped as out-of-order or fabricates up to 74 phantom
+    // missing sections. Evaluate the reconstruction at expected MM:SS - 1 s,
+    // MM:SS and MM:SS + 1 s and keep whichever minimises the frame distance to
+    // the expected absolute time.
+    const int32_t aFrameNumber =
+        f2Section.metadata.absoluteSectionTime().frameNumber();
+    constexpr int32_t kFramesPerSecond = 75;  // ECMA-130: 75 sections / second
+
     SectionTime correctedAbsoluteTime = expectedAbsoluteTime;
-    correctedAbsoluteTime.setTime(
-        expectedAbsoluteTime.minutes(), expectedAbsoluteTime.seconds(),
-        f2Section.metadata.absoluteSectionTime().frameNumber());
+    int32_t bestDelta = -1;
+    for (int32_t secondOffset = -1; secondOffset <= 1; ++secondOffset) {
+      const int32_t baseFrames =
+          expectedAbsoluteTime.frames() + secondOffset * kFramesPerSecond;
+      if (baseFrames < 0) continue;  // no valid time before 00:00:00
+      const SectionTime base(baseFrames);
+      const SectionTime candidate(static_cast<uint8_t>(base.minutes()),
+                                  static_cast<uint8_t>(base.seconds()),
+                                  static_cast<uint8_t>(aFrameNumber));
+      const int32_t rawDelta =
+          candidate.frames() - expectedAbsoluteTime.frames();
+      const int32_t delta = rawDelta < 0 ? -rawDelta : rawDelta;
+      if (bestDelta < 0 || delta < bestDelta) {
+        bestDelta = delta;
+        correctedAbsoluteTime = candidate;
+      }
+    }
 
     f2Section.metadata.setAbsoluteSectionTime(correctedAbsoluteTime);
 

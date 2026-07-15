@@ -16,7 +16,11 @@ Data24ToAudio::Data24ToAudio()
       m_invalidSamplesCount(0),
       m_validSamplesCount(0),
       m_invalidByteCount(0),
-      m_startTime(SectionTime(59, 59, 74)),
+      // C-1: this is a min-finder seed, so it must be the maximum representable
+      // time (IEC 60908 §17.5.1 ceiling 99:59:74). A 59:59:74 seed never
+      // updates for a disc whose earliest section lies past 60 min, corrupting
+      // the reported start/total time.
+      m_startTime(SectionTime(99, 59, 74)),
       m_endTime(SectionTime(0, 0, 0)) {}
 
 void Data24ToAudio::pushSection(const Data24Section& data24Section) {

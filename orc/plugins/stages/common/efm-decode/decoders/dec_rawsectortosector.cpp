@@ -68,7 +68,11 @@ RawSectorToSector::RawSectorToSector()
       m_mode0Sectors(0),
       m_mode1Sectors(0),
       m_mode2Sectors(0),
-      m_invalidModeSectors(0) {}
+      m_invalidModeSectors(0),
+      m_rspcQCleanCodewords(0),
+      m_rspcQCorrectedCodewords(0),
+      m_rspcPCleanCodewords(0),
+      m_rspcPCorrectedCodewords(0) {}
 
 void RawSectorToSector::pushSector(const RawSector& rawSector) {
   // Add the data to the input buffer
@@ -229,6 +233,13 @@ void RawSectorToSector::processQueue() {
           }
         }
 
+        // E-8(e): fold this sector's codeword-level RSPC activity into the
+        // cumulative statistics before the rspc instance goes out of scope.
+        m_rspcQCleanCodewords += rspc.qCleanCodewords();
+        m_rspcQCorrectedCodewords += rspc.qCorrectedCodewords();
+        m_rspcPCleanCodewords += rspc.pCleanCodewords();
+        m_rspcPCorrectedCodewords += rspc.pCorrectedCodewords();
+
         // Copy the (best-effort) corrected data back to the raw sector
         rawSector.pushData(correctedData);
         rawSector.pushErrorData(correctedErrorData);
@@ -289,16 +300,20 @@ void RawSectorToSector::processQueue() {
         } else if (mode == 2) {
           m_mode2Sectors++;
         } else {
+          // R-2: a 32-bit EDC admits a rare false-valid, so an out-of-range
+          // mode byte here is a disc condition (corrupt sector that happened to
+          // pass EDC), not an invariant violation. Discard this sector - the
+          // same treatment as the failed-EDC invalid-mode path above - rather
+          // than aborting the entire decode.
           ORC_LOG_DEBUG(
-              "RawSectorToSector::processQueue(): EDC: {} Calculated: {} Mode "
-              "byte: {}",
+              "RawSectorToSector::processQueue(): EDC passed (EDC: {} "
+              "Calculated: {}) but mode byte {} is out of range - discarding "
+              "sector.",
               originalEdcWord, edcWord,
               static_cast<uint8_t>(rawSector.data()[15]));
-          ORC_LOG_CRITICAL(
-              "RawSectorToSector::processQueue(): Invalid sector mode of {} - "
-              "even though sector data was valid - bug?",
-              mode);
-          throw efm::EfmDecodeError(__func__);
+          m_validSectors--;  // undo the increment above - not a valid sector
+          m_invalidModeSectors++;
+          rawSectorValid = false;
         }
       }
     } else {
@@ -321,12 +336,8 @@ void RawSectorToSector::processQueue() {
       } else if (mode == 2) {
         m_mode2Sectors++;
         // C-5: ECMA-130 §14.2 - a mode-2 sector's user data is 2336 bytes
-        // (16-2351). The fixed 2048-byte output below truncates the last 288
-        // bytes. Full mode-2 (CD-ROM XA) support needs a variable-size sector
-        // path through the sink; until then the truncation is made explicit.
-        ORC_LOG_WARN(
-            "RawSectorToSector::processQueue(): Mode 2 sector user data "
-            "(2336 bytes) is truncated to 2048 bytes on output.");
+        // (16-2351). These are now emitted in full below (sized by mode); the
+        // sink writes sector.size() bytes so the larger payload round-trips.
       }
       rawSectorValid = true;
     }
@@ -385,13 +396,27 @@ void RawSectorToSector::processQueue() {
     sector.setAddress(sectorAddress);
     sector.setMode(mode);
 
-    // Push the user data (bytes 16..2063 = 2048 bytes). data()/errorData() now
-    // return const references, so we index them directly (P-2: no defensive
-    // whole-sector copies).
-    sector.pushData(std::vector<uint8_t>(sectorData.begin() + 16,
-                                         sectorData.begin() + 16 + 2048));
+    // C-5: size the emitted user-data payload by sector mode (ECMA-130 §14).
+    // Mode 1 carries 2048 user bytes (16..2063); mode 2 (CD-ROM XA) carries
+    // 2336 (16..2351). Mode 0 / unknown fall back to the 2048 layout so the
+    // mode-1 output length is unchanged. The downstream sink writes
+    // sector.size() bytes, so a variable-length payload round-trips intact.
+    // data()/errorData() now return const references, so we index them
+    // directly (P-2: no defensive whole-sector copies).
+    constexpr std::vector<uint8_t>::difference_type kUserDataOffset = 16;
+    constexpr std::vector<uint8_t>::difference_type kUserDataSizeMode1 =
+        2048;  // ECMA-130 §14 (Mode 1 user data)
+    constexpr std::vector<uint8_t>::difference_type kUserDataSizeMode2 =
+        2336;  // ECMA-130 §14 (Mode 2 user data)
+    const std::vector<uint8_t>::difference_type userDataSize =
+        (mode == 2) ? kUserDataSizeMode2 : kUserDataSizeMode1;
+
+    sector.pushData(std::vector<uint8_t>(
+        sectorData.begin() + kUserDataOffset,
+        sectorData.begin() + kUserDataOffset + userDataSize));
     sector.pushErrorData(std::vector<uint8_t>(
-        sectorErrorData.begin() + 16, sectorErrorData.begin() + 16 + 2048));
+        sectorErrorData.begin() + kUserDataOffset,
+        sectorErrorData.begin() + kUserDataOffset + userDataSize));
 
     // Add the sector to the output buffer
     m_outputBuffer.push_back(sector);
@@ -428,4 +453,12 @@ void RawSectorToSector::showStatistics() const {
   ORC_LOG_INFO("    Mode 1 sectors: {}", m_mode1Sectors);
   ORC_LOG_INFO("    Mode 2 sectors: {}", m_mode2Sectors);
   ORC_LOG_INFO("    Invalid mode sectors: {}", m_invalidModeSectors);
+
+  // E-8(e): report genuine RSPC repair activity separately from codewords that
+  // decoded clean, so "already valid" is not conflated with "repaired".
+  ORC_LOG_INFO("  RSPC codewords (on corrected sectors):");
+  ORC_LOG_INFO("    Q-parity: {} corrected, {} clean",
+               m_rspcQCorrectedCodewords, m_rspcQCleanCodewords);
+  ORC_LOG_INFO("    P-parity: {} corrected, {} clean",
+               m_rspcPCorrectedCodewords, m_rspcPCleanCodewords);
 }

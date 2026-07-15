@@ -103,6 +103,13 @@ void Rspc::qParityEcc(std::vector<uint8_t>& inputData,
         // parity back and clear the corrected positions' erasure flags so the
         // P pass and subsequent iterations see them as reliable (E-4(a)).
         successfulCorrections++;
+        // E-8(e): distinguish an already-valid codeword (fixed == 0) from one
+        // that actually had symbols repaired.
+        if (fixed == 0) {
+          m_qCleanCodewords++;
+        } else {
+          m_qCorrectedCodewords++;
+        }
         for (int32_t Mq = 0; Mq < 43; Mq++) {
           int32_t Vq = 2 * ((44 * Mq + 43 * Nq) % 1118) + evenOdd;
           uF1Data[Vq] = qField[static_cast<size_t>(Mq)];
@@ -189,6 +196,13 @@ void Rspc::pParityEcc(std::vector<uint8_t>& inputData,
         // P-parity, so discarding them would lose Q-recoverable corrections -
         // E-4(d)), and clear the corrected positions' erasure flags (E-4(a)).
         successfulCorrections++;
+        // E-8(e): distinguish an already-valid codeword (fixed == 0) from one
+        // that actually had symbols repaired.
+        if (fixed == 0) {
+          m_pCleanCodewords++;
+        } else {
+          m_pCorrectedCodewords++;
+        }
         for (int32_t Mp = 0; Mp < 26; Mp++) {
           int32_t Vp = 2 * (43 * Mp + Np) + evenOdd;
           uF1Data[Vp] = pField[static_cast<size_t>(Mp)];

@@ -226,6 +226,24 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
           ? static_cast<int>(std::distance(m_internalBuffer.begin(), it))
           : -1;
 
+  // R-5(d): if there is no second sync header there cannot be a third one
+  // bracketing a frame either. Guard against indexing the buffer with -1
+  // (begin() + secondSyncIndex would be begin() - 1, an out-of-bounds iterator
+  // that traps under the hardened libc++, and m_discardedTValues += -1 would
+  // corrupt the statistic). Treat it as a lost sync: drop all but the last
+  // T-value and re-hunt for an initial sync.
+  if (secondSyncIndex == -1) {
+    ORC_LOG_DEBUG(
+        "TvaluesToChannel::handleUndershoot() - No second sync header found - "
+        "Sync lost.  Dropping {} T-values",
+        m_internalBuffer.size() - 1);
+
+    m_discardedTValues += static_cast<int32_t>(m_internalBuffer.size()) - 1;
+    m_internalBuffer = std::vector<uint8_t>(m_internalBuffer.end() - 1,
+                                            m_internalBuffer.end());
+    return ExpectingInitialSync;
+  }
+
   // Find the third sync header
   auto it3 =
       std::search(m_internalBuffer.begin() + secondSyncIndex + 2,
@@ -331,22 +349,20 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
           m_internalBuffer.begin() + thirdSyncIndex, m_internalBuffer.end());
     }
   } else {
-    if (m_internalBuffer.size() <= 382) {
-      ORC_LOG_DEBUG(
-          "TvaluesToChannel::handleUndershoot() - No third sync header found.  "
-          "Staying in undershoot state waiting for more data.");
-      nextState = HandleUndershoot;
-    } else {
-      ORC_LOG_DEBUG(
-          "TvaluesToChannel::handleUndershoot() - No third sync header found - "
-          "Sync lost.  Dropping {} T-values",
-          m_internalBuffer.size() - 1);
+    // R-5(d): processStateMachine() only dispatches here when the buffer
+    // already exceeds 382 T-values, so the former "size <= 382, wait for more
+    // data" branch was unreachable and has been removed. With a second but no
+    // third sync header the frame cannot be bracketed - drop all but the last
+    // T-value and re-hunt for an initial sync.
+    ORC_LOG_DEBUG(
+        "TvaluesToChannel::handleUndershoot() - No third sync header found - "
+        "Sync lost.  Dropping {} T-values",
+        m_internalBuffer.size() - 1);
 
-      m_discardedTValues += m_internalBuffer.size() - 1;
-      m_internalBuffer = std::vector<uint8_t>(m_internalBuffer.end() - 1,
-                                              m_internalBuffer.end());
-      nextState = ExpectingInitialSync;
-    }
+    m_discardedTValues += static_cast<int32_t>(m_internalBuffer.size()) - 1;
+    m_internalBuffer = std::vector<uint8_t>(m_internalBuffer.end() - 1,
+                                            m_internalBuffer.end());
+    nextState = ExpectingInitialSync;
   }
 
   return nextState;
