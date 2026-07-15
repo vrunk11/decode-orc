@@ -64,18 +64,19 @@ void ReedSolomon::c1Decode(std::vector<uint8_t>& inputData,
   // Trim the parity bytes from the padded data (32 → 28)
   paddedData.resize(paddedData.size() - 4);
 
-  // Copy input for the ezpwd decoder (which modifies in place)
-  std::vector<uint8_t> tmpData = inputData;
-  std::vector<int> erasures;
-  std::vector<int> position;
+  // Copy input into reusable scratch for the ezpwd decoder (which modifies in
+  // place). assign() retains the scratch buffer's capacity (P-6).
+  m_scratchData.assign(inputData.begin(), inputData.end());
+  m_erasures.clear();
+  m_position.clear();
 
   // Convert the errorData into a list of erasure positions
   for (int index = 0; index < static_cast<int>(errorData.size()); ++index) {
-    if (errorData[index]) erasures.push_back(index);
+    if (errorData[index]) m_erasures.push_back(index);
   }
 
   // Snapshot the supplied erasures before decode prunes them (see c2Decode).
-  const std::vector<int> suppliedErasures = erasures;
+  const std::vector<int> suppliedErasures = m_erasures;
 
   // E-2: the (32,28) C1 code has minimum distance 5, so it can attempt an
   // in-capacity erasure decode for up to 4 supplied erasures. C1 erasure flags
@@ -90,14 +91,14 @@ void ReedSolomon::c1Decode(std::vector<uint8_t>& inputData,
   }
 
   // Decode the data
-  int result = c1rs.decode(tmpData, erasures, &position);
+  int result = c1rs.decode(m_scratchData, m_erasures, &m_position);
 
   // Accept combinations satisfying 2e + s <= 4 (see c2Decode for the
   // rationale).
   bool accept = false;
   if (result >= 0) {
     int locatedErrors = 0;
-    for (int p : position) {
+    for (int p : m_position) {
       if (std::find(suppliedErasures.begin(), suppliedErasures.end(), p) ==
           suppliedErasures.end()) {
         ++locatedErrors;
@@ -110,7 +111,7 @@ void ReedSolomon::c1Decode(std::vector<uint8_t>& inputData,
 
   if (accept) {
     // Strip the parity bytes (32 → 28) from the corrected data
-    inputData.assign(tmpData.begin(), tmpData.end() - 4);
+    inputData.assign(m_scratchData.begin(), m_scratchData.end() - 4);
     errorData.assign(inputData.size(), 0);
 
     if (result == 0) {
@@ -147,20 +148,21 @@ void ReedSolomon::c2Decode(std::vector<uint8_t>& inputData,
   // Remove parity positions 12-15 from paddedData (28 → 24)
   paddedData.erase(paddedData.begin() + 12, paddedData.begin() + 16);
 
-  // Copy input for the ezpwd decoder (which modifies in place)
-  std::vector<uint8_t> tmpData = inputData;
-  std::vector<int> position;
-  std::vector<int> erasures;
+  // Copy input into reusable scratch for the ezpwd decoder (which modifies in
+  // place). assign() retains the scratch buffer's capacity (P-6).
+  m_scratchData.assign(inputData.begin(), inputData.end());
+  m_erasures.clear();
+  m_position.clear();
 
   // Convert the errorData into a list of erasure positions
   for (int index = 0; index < static_cast<int>(errorData.size()); ++index) {
-    if (errorData[index] != 0) erasures.push_back(index);
+    if (errorData[index] != 0) m_erasures.push_back(index);
   }
 
   // Snapshot the supplied erasures: ezpwd's decode() prunes erasures it finds
   // were actually correct, so we need the original list to classify the
   // corrections it reports in 'position'.
-  const std::vector<int> suppliedErasures = erasures;
+  const std::vector<int> suppliedErasures = m_erasures;
 
   // The (28,24) C2 code has minimum distance 5, so more than 4 supplied
   // erasures already exceeds capacity and cannot be corrected.
@@ -173,7 +175,7 @@ void ReedSolomon::c2Decode(std::vector<uint8_t>& inputData,
   }
 
   // Decode the data
-  int result = c2rs.decode(tmpData, erasures, &position);
+  int result = c2rs.decode(m_scratchData, m_erasures, &m_position);
 
   // E-1: accept erasure-dominated corrections up to the code's full capacity.
   // IEC 60908 §16.3 / ECMA-130 Annex C: the (28,24) C2 code corrects any
@@ -187,7 +189,7 @@ void ReedSolomon::c2Decode(std::vector<uint8_t>& inputData,
   bool accept = false;
   if (result >= 0) {
     int locatedErrors = 0;
-    for (int p : position) {
+    for (int p : m_position) {
       if (std::find(suppliedErasures.begin(), suppliedErasures.end(), p) ==
           suppliedErasures.end()) {
         ++locatedErrors;
@@ -199,9 +201,14 @@ void ReedSolomon::c2Decode(std::vector<uint8_t>& inputData,
   }
 
   if (accept) {
-    // Remove parity byte positions 12-15 from the decoded (corrected) data
-    tmpData.erase(tmpData.begin() + 12, tmpData.begin() + 16);
-    inputData = std::move(tmpData);
+    // Keep the 24 payload bytes of the decoded (corrected) data, dropping
+    // parity byte positions 12-15. Written straight into inputData (reusing its
+    // capacity) so the scratch buffer is left intact for the next call.
+    inputData.resize(24);
+    std::copy(m_scratchData.begin(), m_scratchData.begin() + 12,
+              inputData.begin());
+    std::copy(m_scratchData.begin() + 16, m_scratchData.begin() + 28,
+              inputData.begin() + 12);
     errorData.assign(inputData.size(), 0);
 
     if (result == 0) {

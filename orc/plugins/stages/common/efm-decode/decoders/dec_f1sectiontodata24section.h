@@ -16,6 +16,7 @@ class F1SectionToData24Section : public Decoder {
  public:
   F1SectionToData24Section();
   void pushSection(const F1Section& f1Section);
+  void pushSection(F1Section&& f1Section);
   Data24Section popSection();
   bool isReady() const;
 

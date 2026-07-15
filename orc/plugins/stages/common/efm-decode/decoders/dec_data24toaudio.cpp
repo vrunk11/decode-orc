@@ -31,9 +31,17 @@ void Data24ToAudio::pushSection(const Data24Section& data24Section) {
   processQueue();
 }
 
+void Data24ToAudio::pushSection(Data24Section&& data24Section) {
+  // Move the data into the input buffer to avoid a deep copy.
+  m_inputBuffer.push_back(std::move(data24Section));
+
+  // Process the queue
+  processQueue();
+}
+
 AudioSection Data24ToAudio::popSection() {
-  // Return the first item in the output buffer
-  AudioSection result = m_outputBuffer.front();
+  // Move the first item out of the output buffer to avoid a deep copy.
+  AudioSection result = std::move(m_outputBuffer.front());
   m_outputBuffer.pop_front();
   return result;
 }

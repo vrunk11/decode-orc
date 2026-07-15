@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <ctime>
 #include <string>
+#include <utility>
 
 EfmProcessor::EfmProcessor()
     : m_audioMode(true),
@@ -255,7 +256,8 @@ void EfmProcessor::drainPipeline(bool& zeroPadApplied) {
   t0 = std::chrono::high_resolution_clock::now();
   while (m_channelToF3.isReady()) {
     F3Frame f3Frame = m_channelToF3.popFrame();
-    m_f3FrameToF2Section.pushFrame(f3Frame);
+    // P-1: move the frame into the next stage to avoid a deep copy.
+    m_f3FrameToF2Section.pushFrame(std::move(f3Frame));
   }
   m_pipelineStats.f3ToF2Time +=
       std::chrono::duration_cast<std::chrono::microseconds>(
@@ -281,7 +283,8 @@ void EfmProcessor::drainPipeline(bool& zeroPadApplied) {
   t0 = std::chrono::high_resolution_clock::now();
   while (m_f2SectionCorrection.isReady()) {
     F2Section f2Section = m_f2SectionCorrection.popSection();
-    m_f2SectionToF1Section.pushSection(f2Section);
+    // P-1: move the section into the next stage to avoid a deep copy.
+    m_f2SectionToF1Section.pushSection(std::move(f2Section));
   }
   m_pipelineStats.f2ToF1Time +=
       std::chrono::duration_cast<std::chrono::microseconds>(
@@ -292,7 +295,8 @@ void EfmProcessor::drainPipeline(bool& zeroPadApplied) {
   while (m_f2SectionToF1Section.isReady()) {
     F1Section f1Section = m_f2SectionToF1Section.popSection();
     f1Section.showData();
-    m_f1SectionToData24Section.pushSection(f1Section);
+    // P-1: move the section into the next stage to avoid a deep copy.
+    m_f1SectionToData24Section.pushSection(std::move(f1Section));
   }
   m_pipelineStats.f1ToData24Time +=
       std::chrono::duration_cast<std::chrono::microseconds>(
@@ -350,7 +354,8 @@ void EfmProcessor::drainPipeline(bool& zeroPadApplied) {
       }
 
       auto audio_t0 = std::chrono::high_resolution_clock::now();
-      m_data24ToAudio.pushSection(data24Section);
+      // P-1: last use of data24Section on this branch - move it in.
+      m_data24ToAudio.pushSection(std::move(data24Section));
       m_pipelineStats.data24ToAudioTime +=
           std::chrono::duration_cast<std::chrono::microseconds>(
               std::chrono::high_resolution_clock::now() - audio_t0)
@@ -359,7 +364,8 @@ void EfmProcessor::drainPipeline(bool& zeroPadApplied) {
 
     } else {
       auto data_t0 = std::chrono::high_resolution_clock::now();
-      m_data24ToRawSector.pushSection(data24Section);
+      // P-1: last use of data24Section on this branch - move it in.
+      m_data24ToRawSector.pushSection(std::move(data24Section));
       m_pipelineStats.data24ToRawSectorTime +=
           std::chrono::duration_cast<std::chrono::microseconds>(
               std::chrono::high_resolution_clock::now() - data_t0)
@@ -390,7 +396,8 @@ void EfmProcessor::drainAudioPipeline() {
     auto t0 = std::chrono::high_resolution_clock::now();
     while (m_data24ToAudio.isReady()) {
       AudioSection audioSection = m_data24ToAudio.popSection();
-      m_audioCorrection.pushSection(audioSection);
+      // P-1: move the section into correction to avoid a deep copy.
+      m_audioCorrection.pushSection(std::move(audioSection));
     }
     m_pipelineStats.audioCorrectionTime +=
         std::chrono::duration_cast<std::chrono::microseconds>(

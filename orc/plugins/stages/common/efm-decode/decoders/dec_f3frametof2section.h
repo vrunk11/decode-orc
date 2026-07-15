@@ -21,6 +21,7 @@ class F3FrameToF2Section : public Decoder {
  public:
   F3FrameToF2Section();
   void pushFrame(const F3Frame& data);
+  void pushFrame(F3Frame&& data);
   F2Section popSection();
   bool isReady() const;
 

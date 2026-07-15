@@ -37,9 +37,17 @@ void ChannelToF3Frame::pushFrame(const std::vector<uint8_t>& data) {
   processQueue();
 }
 
+void ChannelToF3Frame::pushFrame(std::vector<uint8_t>&& data) {
+  // Move the data into the input buffer to avoid a deep copy.
+  m_inputBuffer.push(std::move(data));
+
+  // Process queue
+  processQueue();
+}
+
 F3Frame ChannelToF3Frame::popFrame() {
-  // Return the first item in the output buffer
-  F3Frame frame = m_outputBuffer.front();
+  // Move the first item out of the output buffer to avoid a deep copy.
+  F3Frame frame = std::move(m_outputBuffer.front());
   m_outputBuffer.pop();
   return frame;
 }

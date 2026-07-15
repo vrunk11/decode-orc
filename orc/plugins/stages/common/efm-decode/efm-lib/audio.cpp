@@ -28,46 +28,16 @@ void Audio::setData(const std::vector<int16_t>& data) {
   m_audioData = data;
 }
 
-// Get the data for the audio, returning a zero-filled vector if empty
-std::vector<int16_t> Audio::data() const {
+// Get the interleaved L,R data for the audio, returning a shared zero-filled
+// vector if empty.
+const std::vector<int16_t>& Audio::data() const {
+  static const std::vector<int16_t> emptyData(12, 0);
   if (m_audioData.empty()) {
     ORC_LOG_DEBUG(
         "Audio::data(): Frame is empty, returning zero-filled vector");
-    return std::vector<int16_t>(frameSize(), 0);
+    return emptyData;
   }
   return m_audioData;
-}
-
-// Get the left channel data for the audio, returning a zero-filled vector if
-// empty
-std::vector<int16_t> Audio::dataLeft() const {
-  if (m_audioData.empty()) {
-    ORC_LOG_DEBUG(
-        "Audio::dataLeft(): Frame is empty, returning zero-filled vector");
-    return std::vector<int16_t>(frameSize(), 0);
-  }
-
-  std::vector<int16_t> dataLeft;
-  for (int i = 0; i < frameSize(); i += 2) {
-    dataLeft.push_back(m_audioData[i]);
-  }
-  return dataLeft;
-}
-
-// Get the right channel data for the audio, returning a zero-filled vector if
-// empty
-std::vector<int16_t> Audio::dataRight() const {
-  if (m_audioData.empty()) {
-    ORC_LOG_DEBUG(
-        "Audio::dataRight(): Frame is empty, returning zero-filled vector");
-    return std::vector<int16_t>(frameSize(), 0);
-  }
-
-  std::vector<int16_t> dataRight;
-  for (int i = 1; i < frameSize(); i += 2) {
-    dataRight.push_back(m_audioData[i]);
-  }
-  return dataRight;
 }
 
 // Set the error data for the audio, ensuring it matches the frame size
@@ -82,49 +52,17 @@ void Audio::setErrorData(const std::vector<uint8_t>& errorData) {
   m_audioErrorData = errorData;
 }
 
-// Get the error_data for the audio, returning a zero-filled vector if empty
-std::vector<uint8_t> Audio::errorData() const {
+// Get the interleaved L,R error data for the audio, returning a shared
+// zero-filled vector if empty.
+const std::vector<uint8_t>& Audio::errorData() const {
+  static const std::vector<uint8_t> emptyError(12, 0);
   if (m_audioErrorData.empty()) {
     ORC_LOG_DEBUG(
         "Audio::errorData(): Error frame is empty, returning zero-filled "
         "vector");
-    return std::vector<uint8_t>(frameSize(), 0);
+    return emptyError;
   }
   return m_audioErrorData;
-}
-
-// Get the left channel error data for the audio, returning a zero-filled vector
-// if empty
-std::vector<uint8_t> Audio::errorDataLeft() const {
-  if (m_audioErrorData.empty()) {
-    ORC_LOG_DEBUG(
-        "Audio::errorDataLeft(): Error frame is empty, returning zero-filled "
-        "vector");
-    return std::vector<uint8_t>(frameSize(), 0);
-  }
-
-  std::vector<uint8_t> errorDataLeft;
-  for (int i = 0; i < frameSize(); i += 2) {
-    errorDataLeft.push_back(m_audioErrorData[i]);
-  }
-  return errorDataLeft;
-}
-
-// Get the right channel error data for the audio, returning a zero-filled
-// vector if empty
-std::vector<uint8_t> Audio::errorDataRight() const {
-  if (m_audioErrorData.empty()) {
-    ORC_LOG_DEBUG(
-        "Audio::errorDataRight(): Error frame is empty, returning zero-filled "
-        "vector");
-    return std::vector<uint8_t>(frameSize(), 0);
-  }
-
-  std::vector<uint8_t> errorDataRight;
-  for (int i = 1; i < frameSize(); i += 2) {
-    errorDataRight.push_back(m_audioErrorData[i]);
-  }
-  return errorDataRight;
 }
 
 // Count the number of errors in the audio. R-5: a default-constructed Audio has
@@ -205,12 +143,13 @@ void Audio::setConcealedData(const std::vector<uint8_t>& concealedData) {
   m_audioConcealedData = concealedData;
 }
 
-std::vector<uint8_t> Audio::concealedData() const {
+const std::vector<uint8_t>& Audio::concealedData() const {
+  static const std::vector<uint8_t> emptyConcealed(12, 0);
   if (m_audioConcealedData.empty()) {
     ORC_LOG_DEBUG(
         "Audio::concealedData(): Concealed data is empty, returning "
         "zero-filled vector");
-    return std::vector<uint8_t>(frameSize(), 0);
+    return emptyConcealed;
   }
   return m_audioConcealedData;
 }

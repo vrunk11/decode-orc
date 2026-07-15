@@ -35,8 +35,16 @@ void F3FrameToF2Section::pushFrame(const F3Frame& data) {
   processStateMachine();
 }
 
+void F3FrameToF2Section::pushFrame(F3Frame&& data) {
+  // Move the frame into the internal buffer to avoid a deep copy.
+  m_internalBuffer.push_back(std::move(data));
+  m_inputF3Frames++;
+  processStateMachine();
+}
+
 F2Section F3FrameToF2Section::popSection() {
-  F2Section section = m_outputBuffer.front();
+  // Move the first item out of the output buffer to avoid a deep copy.
+  F2Section section = std::move(m_outputBuffer.front());
   m_outputBuffer.pop();
   return section;
 }

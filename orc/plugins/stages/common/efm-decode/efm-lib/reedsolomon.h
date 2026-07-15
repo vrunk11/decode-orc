@@ -54,6 +54,14 @@ class ReedSolomon {
   int32_t errorC2s() const;
 
  private:
+  // P-6: reusable scratch buffers so the CIRC hot path (decode() is called
+  // ~26M times per stereo disc) does not allocate per call. Each pipeline owns
+  // its own ReedSolomon and calls c1/c2Decode sequentially, so plain members
+  // are safe (the shared ezpwd codecs are const; this object is not shared).
+  std::vector<uint8_t> m_scratchData;
+  std::vector<int> m_erasures;
+  std::vector<int> m_position;
+
   int32_t m_validC1s;
   int32_t m_fixedC1s;
   int32_t m_errorC1s;

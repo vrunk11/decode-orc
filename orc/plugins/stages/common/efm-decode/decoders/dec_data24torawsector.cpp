@@ -231,6 +231,14 @@ void Data24ToRawSector::pushSection(const Data24Section& data24Section) {
   processStateMachine();
 }
 
+void Data24ToRawSector::pushSection(Data24Section&& data24Section) {
+  // Move the data into the input buffer to avoid a deep copy.
+  m_inputBuffer.push_back(std::move(data24Section));
+
+  // Process the state machine
+  processStateMachine();
+}
+
 RawSector Data24ToRawSector::popSector() {
   // Return the first item in the output buffer
   RawSector sector = m_outputBuffer.front();

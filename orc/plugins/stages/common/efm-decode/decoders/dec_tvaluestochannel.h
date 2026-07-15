@@ -59,7 +59,6 @@ class TvaluesToChannel : public Decoder {
   std::vector<uint8_t> m_internalBuffer;
   std::vector<uint8_t> m_frameData;
 
-  std::queue<std::vector<uint8_t>> m_inputBuffer;
   std::queue<std::vector<uint8_t>> m_outputBuffer;
 
   Tvalues m_tvalues;

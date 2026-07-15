@@ -16,6 +16,7 @@ class AudioCorrection : public Decoder {
  public:
   AudioCorrection();
   void pushSection(const AudioSection& audioSection);
+  void pushSection(AudioSection&& audioSection);
   AudioSection popSection();
   bool isReady() const;
   void flush();

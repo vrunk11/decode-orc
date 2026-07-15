@@ -21,6 +21,7 @@ class F2SectionToF1Section : public Decoder {
  public:
   F2SectionToF1Section();
   void pushSection(const F2Section& f2Section);
+  void pushSection(F2Section&& f2Section);
   F1Section popSection();
   bool isReady() const;
 

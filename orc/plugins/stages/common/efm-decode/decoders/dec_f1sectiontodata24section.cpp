@@ -29,9 +29,17 @@ void F1SectionToData24Section::pushSection(const F1Section& f1Section) {
   processQueue();
 }
 
+void F1SectionToData24Section::pushSection(F1Section&& f1Section) {
+  // Move the data into the input buffer to avoid a deep copy.
+  m_inputBuffer.push_back(std::move(f1Section));
+
+  // Process the queue
+  processQueue();
+}
+
 Data24Section F1SectionToData24Section::popSection() {
-  // Return the first item in the output buffer
-  Data24Section section = m_outputBuffer.front();
+  // Move the first item out of the output buffer to avoid a deep copy.
+  Data24Section section = std::move(m_outputBuffer.front());
   m_outputBuffer.pop_front();
   return section;
 }

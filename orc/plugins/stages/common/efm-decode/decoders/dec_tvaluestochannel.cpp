@@ -38,16 +38,17 @@ TvaluesToChannel::TvaluesToChannel() {
 }
 
 void TvaluesToChannel::pushFrame(const std::vector<uint8_t>& data) {
-  // Add the data to the input buffer
-  m_inputBuffer.push(data);
+  // P-7: append straight into the internal T-value buffer rather than staging
+  // through a one-element queue.
+  m_internalBuffer.insert(m_internalBuffer.end(), data.begin(), data.end());
 
   // Process the state machine
   processStateMachine();
 }
 
 std::vector<uint8_t> TvaluesToChannel::popFrame() {
-  // Return the first item in the output buffer
-  std::vector<uint8_t> frame = m_outputBuffer.front();
+  // Move the first item out of the output buffer to avoid a deep copy.
+  std::vector<uint8_t> frame = std::move(m_outputBuffer.front());
   m_outputBuffer.pop();
   return frame;
 }
@@ -58,14 +59,6 @@ bool TvaluesToChannel::isReady() const {
 }
 
 void TvaluesToChannel::processStateMachine() {
-  // Add the input data to the internal t-value buffer
-  if (!m_inputBuffer.empty()) {
-    std::vector<uint8_t> frameData = m_inputBuffer.front();
-    m_inputBuffer.pop();
-    m_internalBuffer.insert(m_internalBuffer.end(), frameData.begin(),
-                            frameData.end());
-  }
-
   // We need 588 bits to make a frame.  Every frame starts with T11+T11.
   // So the minimum number of t-values we need is 54 and
   // the maximum number of t-values we can have is 191.  This upper limit
@@ -126,8 +119,8 @@ TvaluesToChannel::State TvaluesToChannel::expectingInitialSync() {
     // Drop all but the last T-value in the buffer
     m_tvalueDiscardCount += static_cast<int32_t>(m_internalBuffer.size()) - 1;
     m_discardedTValues += static_cast<int32_t>(m_internalBuffer.size()) - 1;
-    m_internalBuffer = std::vector<uint8_t>(m_internalBuffer.end() - 1,
-                                            m_internalBuffer.end());
+    m_internalBuffer.erase(m_internalBuffer.begin(),
+                           m_internalBuffer.end() - 1);
   }
 
   return nextState;
@@ -182,8 +175,8 @@ TvaluesToChannel::State TvaluesToChannel::expectingSync() {
       if (bitCount < 588) m_shortFrames++;
 
       // Remove the frame data from the internal buffer
-      m_internalBuffer = std::vector<uint8_t>(
-          m_internalBuffer.begin() + syncIndex, m_internalBuffer.end());
+      m_internalBuffer.erase(m_internalBuffer.begin(),
+                             m_internalBuffer.begin() + syncIndex);
       nextState = ExpectingSync;
     } else {
       // This is most likely a missing sync header issue rather than
@@ -239,8 +232,8 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
         m_internalBuffer.size() - 1);
 
     m_discardedTValues += static_cast<int32_t>(m_internalBuffer.size()) - 1;
-    m_internalBuffer = std::vector<uint8_t>(m_internalBuffer.end() - 1,
-                                            m_internalBuffer.end());
+    m_internalBuffer.erase(m_internalBuffer.begin(),
+                           m_internalBuffer.end() - 1);
     return ExpectingInitialSync;
   }
 
@@ -299,8 +292,8 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
       if (fttBitCount < 588) m_shortFrames++;
 
       // Remove the frame data from the internal buffer
-      m_internalBuffer = std::vector<uint8_t>(
-          m_internalBuffer.begin() + thirdSyncIndex, m_internalBuffer.end());
+      m_internalBuffer.erase(m_internalBuffer.begin(),
+                             m_internalBuffer.begin() + thirdSyncIndex);
       nextState = ExpectingSync;
     } else if (sttBitCount > 550 && sttBitCount < 600) {
       ORC_LOG_DEBUG(
@@ -333,8 +326,8 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
 
       // Remove the frame data from the internal buffer
       m_discardedTValues += secondSyncIndex;
-      m_internalBuffer = std::vector<uint8_t>(
-          m_internalBuffer.begin() + thirdSyncIndex, m_internalBuffer.end());
+      m_internalBuffer.erase(m_internalBuffer.begin(),
+                             m_internalBuffer.begin() + thirdSyncIndex);
       nextState = ExpectingSync;
     } else {
       ORC_LOG_DEBUG(
@@ -345,8 +338,8 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
 
       // Remove the frame data from the internal buffer
       m_discardedTValues += secondSyncIndex;
-      m_internalBuffer = std::vector<uint8_t>(
-          m_internalBuffer.begin() + thirdSyncIndex, m_internalBuffer.end());
+      m_internalBuffer.erase(m_internalBuffer.begin(),
+                             m_internalBuffer.begin() + thirdSyncIndex);
     }
   } else {
     // R-5(d): processStateMachine() only dispatches here when the buffer
@@ -360,8 +353,8 @@ TvaluesToChannel::State TvaluesToChannel::handleUndershoot() {
         m_internalBuffer.size() - 1);
 
     m_discardedTValues += static_cast<int32_t>(m_internalBuffer.size()) - 1;
-    m_internalBuffer = std::vector<uint8_t>(m_internalBuffer.end() - 1,
-                                            m_internalBuffer.end());
+    m_internalBuffer.erase(m_internalBuffer.begin(),
+                           m_internalBuffer.end() - 1);
     nextState = ExpectingInitialSync;
   }
 
@@ -395,8 +388,8 @@ TvaluesToChannel::State TvaluesToChannel::handleOvershoot() {
                                    m_internalBuffer.begin() + syncIndex);
 
     // Remove the frame data from the internal buffer
-    m_internalBuffer = std::vector<uint8_t>(
-        m_internalBuffer.begin() + syncIndex, m_internalBuffer.end());
+    m_internalBuffer.erase(m_internalBuffer.begin(),
+                           m_internalBuffer.begin() + syncIndex);
 
     // How many bits of data do we have?  Count the T-values
     int bitCount = static_cast<int>(countBits(frameData));
@@ -465,8 +458,8 @@ TvaluesToChannel::State TvaluesToChannel::handleOvershoot() {
           "sync header found, dropping {} T-values",
           bitCount, m_internalBuffer.size() - 1);
       m_discardedTValues += static_cast<int32_t>(m_internalBuffer.size()) - 1;
-      m_internalBuffer = std::vector<uint8_t>(m_internalBuffer.end() - 1,
-                                              m_internalBuffer.end());
+      m_internalBuffer.erase(m_internalBuffer.begin(),
+                             m_internalBuffer.end() - 1);
       nextState = ExpectingInitialSync;
     } else {
       nextState = ExpectingSync;

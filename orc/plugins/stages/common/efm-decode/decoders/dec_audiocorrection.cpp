@@ -48,6 +48,14 @@ void AudioCorrection::pushSection(const AudioSection& audioSection) {
   processQueue();
 }
 
+void AudioCorrection::pushSection(AudioSection&& audioSection) {
+  // Move the data into the input buffer to avoid a deep copy.
+  m_inputBuffer.push_back(std::move(audioSection));
+
+  // Process the queue
+  processQueue();
+}
+
 AudioSection AudioCorrection::popSection() {
   // Move the first item out of the output buffer to avoid a deep copy.
   AudioSection result = std::move(m_outputBuffer.front());
@@ -99,10 +107,11 @@ void AudioCorrection::appendChannelSamples(const AudioSection& section,
                                            std::vector<uint8_t>& errRight) {
   for (int frameIndex = 0; frameIndex < kFramesPerSection; ++frameIndex) {
     const Audio& frame = section.frame(frameIndex);
-    // Read each vector once per frame (P-3: no per-sample allocations).  data()
-    // and errorData() return zero-filled 12-element vectors for empty frames.
-    const std::vector<int16_t> data = frame.data();
-    const std::vector<uint8_t> errorData = frame.errorData();
+    // Reference each vector once per frame (P-3: no per-frame copy or
+    // per-sample allocation).  data() and errorData() return a shared
+    // zero-filled 12-element vector for empty frames.
+    const std::vector<int16_t>& data = frame.data();
+    const std::vector<uint8_t>& errorData = frame.errorData();
     for (int sample = 0; sample < kSamplesPerChannelPerFrame; ++sample) {
       const int left = sample * 2;
       const int right = left + 1;
