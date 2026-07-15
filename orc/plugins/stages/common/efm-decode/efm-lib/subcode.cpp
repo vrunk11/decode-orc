@@ -377,14 +377,13 @@ SectionMetadata Subcode::fromData(const std::vector<uint8_t>& data) {
       // count it) rather than discarding it - discarding forced its audio down
       // the all-error interpolation path and left the mode-3 correction branch
       // and statistic permanently dead.
-      //
-      // TODO(sdi): decode the ISRC characters themselves (I1-I5 as 6-bit chars,
-      // I6-I12 as BCD per IEC 60908 §17.5.3) into m_isrcCode. The 6-bit
-      // character table is not implemented yet, so only AFRAME is recovered
-      // here; the raw ISRC is left empty rather than risk emitting a wrong
-      // code.
       sectionMetadata.setSectionType(SectionType(SectionType::UserData), 1);
       sectionMetadata.setSectionTime(SectionTime(0, 0, 0));
+
+      // Decode the ISRC characters (IEC 60908 §17.5.3): I1-I5 as 6-bit
+      // graphic characters, I6-I12 as BCD digits.
+      std::string isrc = decodeIsrc(qChannelData);
+      if (!isrc.empty()) sectionMetadata.setIsrcCode(isrc);
 
       int32_t absFrames = validateAndClampTimeValue(
           bcd2ToInt(qChannelData[9]), 74, "absolute frames (QMode3)",
@@ -392,9 +391,9 @@ SectionMetadata Subcode::fromData(const std::vector<uint8_t>& data) {
       sectionMetadata.setAbsoluteSectionTime(SectionTime(0, 0, absFrames));
 
       ORC_LOG_DEBUG(
-          "Subcode::fromData(): Q-Mode 3 (ISRC) section, absolute frame {} "
-          "(ISRC character decode not yet implemented)",
-          absFrames);
+          "Subcode::fromData(): Q-Mode 3 (ISRC) section, ISRC '{}', absolute "
+          "frame {}",
+          isrc, absFrames);
     } else {
       ORC_LOG_ERROR("Subcode::fromData(): Invalid Q-mode {}",
                     static_cast<int>(sectionMetadata.qMode()));
@@ -593,6 +592,63 @@ int32_t Subcode::validateAndClampTimeValue(int32_t value, int32_t maxValue,
     return maxValue;
   }
   return value;
+}
+
+// Q-4: decode the 12-character ISRC from a Q-mode 3 subcode block.
+//
+// IEC 60908 §17.5.3 layout of the 72 data bits that follow the CONTROL/ADR
+// byte (qChannelData[0]); bit positions below are absolute from the MSB of
+// byte 0:
+//   I1..I5  : 6-bit graphic characters   (bits  8..37)  -> country + owner
+//   (2 zero bits)                        (bits 38..39)
+//   I6..I12 : 4-bit BCD digits           (bits 40..67)  -> year + designation
+//   (4 zero bits)                        (bits 68..71)
+//   AFRAME  : BCD                        (bits 72..79, qChannelData[9])
+//
+// The 6-bit characters are encoded as (ASCII - 0x30): digits '0'-'9' map to
+// 0x00-0x09 and letters 'A'-'Z' map to 0x11-0x2A. A real ISRC begins with
+// alphanumeric characters, so a blank or corrupt field (any invalid character
+// or out-of-range BCD digit) yields an empty string rather than a bogus code.
+//
+// Validated against real mode-3 subcode (T-Square disc, owner "SONY").
+std::string Subcode::decodeIsrc(const std::vector<uint8_t>& qChannelData) {
+  auto readBits = [&](int pos, int count) -> uint32_t {
+    uint32_t value = 0;
+    for (int i = 0; i < count; ++i) {
+      const int bit = pos + i;
+      const int byteIndex = bit / 8;
+      const int bitIndex = 7 - (bit % 8);
+      value = (value << 1) |
+              ((static_cast<uint8_t>(qChannelData[byteIndex]) >> bitIndex) & 1);
+    }
+    return value;
+  };
+
+  auto decode6bit = [](uint32_t v) -> char {
+    // CD subchannel ISRC characters are encoded as (ASCII - 0x30): digits
+    // '0'-'9' -> 0x00-0x09, letters 'A'-'Z' -> 0x11-0x2A.
+    char c = static_cast<char>(v + 0x30);
+    if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z')) return c;
+    return '\0';  // invalid / blank
+  };
+
+  std::string isrc;
+
+  // I1..I5: five 6-bit alphanumeric characters starting at absolute bit 8.
+  for (int i = 0; i < 5; ++i) {
+    char c = decode6bit(readBits(8 + i * 6, 6));
+    if (c == '\0') return "";  // blank/corrupt field
+    isrc.push_back(c);
+  }
+
+  // I6..I12: seven BCD digits starting at absolute bit 40.
+  for (int i = 0; i < 7; ++i) {
+    uint32_t digit = readBits(40 + i * 4, 4);
+    if (digit > 9) return "";  // not a valid BCD digit
+    isrc.push_back(static_cast<char>('0' + digit));
+  }
+
+  return isrc;
 }
 
 // Convert BCD (Binary Coded Decimal) to integer

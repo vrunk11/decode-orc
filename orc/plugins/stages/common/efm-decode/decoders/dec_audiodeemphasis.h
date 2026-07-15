@@ -40,6 +40,10 @@ class AudioDeemphasis : public Decoder {
 
   void showStatistics() const override;
 
+  // Accessors for the curated decode report.
+  uint64_t deemphasisedSections() const { return m_deemphasisedSectionCount; }
+  uint64_t passThroughSections() const { return m_passThroughSectionCount; }
+
  private:
   // Direct-form-I first-order IIR state (one previous input/output per
   // channel).

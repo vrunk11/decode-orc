@@ -22,6 +22,11 @@ class AudioCorrection : public Decoder {
 
   void showStatistics() const;
 
+  // Accessors for the curated decode report.
+  uint64_t concealedSamples() const { return m_concealedSamplesCount; }
+  uint64_t silencedSamples() const { return m_silencedSamplesCount; }
+  uint64_t validSamples() const { return m_validSamplesCount; }
+
  private:
   void processQueue();
 

@@ -32,6 +32,14 @@ class F2SectionToF1Section : public Decoder {
 
   void showStatistics() const;
 
+  // Accessors for the curated decode report (CIRC C1/C2 health).
+  int32_t validC1s() const { return m_circ.validC1s(); }
+  int32_t fixedC1s() const { return m_circ.fixedC1s(); }
+  int32_t errorC1s() const { return m_circ.errorC1s(); }
+  int32_t validC2s() const { return m_circ.validC2s(); }
+  int32_t fixedC2s() const { return m_circ.fixedC2s(); }
+  int32_t errorC2s() const { return m_circ.errorC2s(); }
+
  private:
   void processQueue();
 

@@ -25,6 +25,11 @@ class RawSectorToSector : public Decoder {
 
   void showStatistics() const;
 
+  // Accessors for the curated decode report (RSPC sector recovery).
+  uint32_t validSectors() const { return m_validSectors; }
+  uint32_t correctedSectors() const { return m_correctedSectors; }
+  uint32_t invalidSectors() const { return m_invalidSectors; }
+
  private:
   void processQueue();
   uint8_t bcdToInt(uint8_t bcd);

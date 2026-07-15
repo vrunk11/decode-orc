@@ -193,6 +193,12 @@ class EfmProcessor {
   void showD24PipelineStatistics() const;
   void showAudioPipelineStatistics() const;
   void showDataPipelineStatistics() const;
+
+  // Curated decode-report sections (see showAllStatistics).
+  void showReportHeader() const;  // banner + file/mode/result
+  void showSummary() const;       // Part A - at-a-glance decode quality
+  void showDiscContents() const;  // Part B - Q-channel / track table
+  void showQuality() const;       // Part C - signal & error-correction quality
 };
 
 #endif  // EFM_PROCESSOR_H

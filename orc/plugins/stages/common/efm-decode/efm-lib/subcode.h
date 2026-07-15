@@ -30,6 +30,11 @@ class Subcode {
 
   uint8_t countBits(uint8_t byteValue);
   uint8_t bcd2ToInt(uint8_t bcd);
+
+  // Q-4: decode the 12-character ISRC (ISO 3901) from a Q-mode 3 subcode block
+  // (IEC 60908 §17.5.3). Returns the raw 12-character code (no separators), or
+  // an empty string if the field is blank/undecodable.
+  std::string decodeIsrc(const std::vector<uint8_t>& qChannelData);
   int32_t validateAndClampTimeValue(int32_t value, int32_t maxValue,
                                     const std::string& valueName,
                                     SectionMetadata& sectionMetadata);

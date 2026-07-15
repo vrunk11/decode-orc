@@ -47,9 +47,18 @@ F2SectionCorrection::F2SectionCorrection()
       m_qmode4Sections(0),
       m_absoluteStartTime(99, 59, 74),  // Max-time sentinel (IEC 60908 §17.5.1)
       m_absoluteEndTime(0, 0, 0),
+      m_currentTrack(0),
       m_noTimecodes(false),
       m_receivedSections(0),
       m_validMetadataSections(0) {}
+
+// Return the index of trackNumber in m_trackNumbers, or -1 if not present.
+int F2SectionCorrection::trackIndex(uint8_t trackNumber) const {
+  auto it =
+      std::find(m_trackNumbers.begin(), m_trackNumbers.end(), trackNumber);
+  if (it == m_trackNumbers.end()) return -1;
+  return static_cast<int>(std::distance(m_trackNumbers.begin(), it));
+}
 
 void F2SectionCorrection::pushSection(const F2Section& data) {
   // Track how much genuinely reached this stage so a failed lead-in can be
@@ -803,46 +812,83 @@ void F2SectionCorrection::emitSection() {
   if (absoluteTime <= m_absoluteStartTime) m_absoluteStartTime = absoluteTime;
   if (absoluteTime > m_absoluteEndTime) m_absoluteEndTime = absoluteTime;
 
-  // Do we have a new track?
-  if (m_trackNumbers.end() ==
-      std::find(m_trackNumbers.begin(), m_trackNumbers.end(), trackNumber)) {
-    // Append the new track to the statistics
-    if (trackNumber != 0 && trackNumber != 0xAA) {
+  const SectionMetadata& meta = section.metadata;
+  const bool isUserTrack = (trackNumber != 0 && trackNumber != 0xAA);
+  const bool isMode1or4 = (meta.qMode() == SectionMetadata::QMode1 ||
+                           meta.qMode() == SectionMetadata::QMode4);
+
+  // Media catalogue number (Q-mode 2) is disc-global; keep the first non-empty
+  // value seen.
+  if (meta.qMode() == SectionMetadata::QMode2 && m_catalogueNumber.empty() &&
+      !meta.upcEanCode().empty()) {
+    m_catalogueNumber = meta.upcEanCode();
+  }
+
+  // Remember the current real user track so a mode-3 ISRC block - whose own
+  // track number is a placeholder (Q-2) - is attributed to the track it plays
+  // within.
+  if (isMode1or4 && isUserTrack) m_currentTrack = trackNumber;
+
+  // ISRC (Q-mode 3) belongs to the current track.
+  if (meta.qMode() == SectionMetadata::QMode3 && !meta.isrcCode().empty()) {
+    int idx = trackIndex(m_currentTrack);
+    if (idx >= 0 && m_trackIsrc[idx].empty()) {
+      m_trackIsrc[idx] = meta.isrcCode();
+    }
+  }
+
+  // Per-track time and control statistics come from real mode-1/4 user tracks;
+  // mode-0/2/3 blocks carry placeholder track/time values (Q-1/Q-2).
+  if (isMode1or4 && isUserTrack) {
+    int idx = trackIndex(trackNumber);
+    if (idx < 0) {
+      // New track - append to every index-aligned per-track vector.
       m_trackNumbers.push_back(trackNumber);
       m_trackStartTimes.push_back(sectionTime);
       m_trackEndTimes.push_back(sectionTime);
-    }
+      m_trackAbsStartTimes.push_back(absoluteTime);
+      m_trackAbsEndTimes.push_back(absoluteTime);
+      m_trackPreemphasis.push_back(meta.hasPreemphasis());
+      m_trackPreemphasisVaried.push_back(false);
+      m_trackCopyProhibited.push_back(meta.isCopyProhibited());
+      m_trackIsAudio.push_back(meta.isAudio());
+      m_track2Channel.push_back(meta.is2Channel());
+      m_trackIsrc.push_back(std::string());
 
-    ORC_LOG_DEBUG(
-        "F2SectionCorrection::outputSections(): New track {} detected with "
-        "start time {}",
-        trackNumber, sectionTime.toString());
-
-    if (trackNumber == 0 || trackNumber == 0xAA) {
-      const auto section_type = section.metadata.sectionType().type();
-      const char* type_name =
-          (section_type == SectionType::LeadIn)     ? "LeadIn"
-          : (section_type == SectionType::LeadOut)  ? "LeadOut"
-          : (section_type == SectionType::UserData) ? "UserData"
-                                                    : "UNKNOWN";
       ORC_LOG_DEBUG(
-          "F2SectionCorrection::outputSections(): {} track detected with "
-          "start time {}",
-          type_name, sectionTime.toString());
-    }
-  } else {
-    // Update the end time for the existing track
-    auto it =
-        std::find(m_trackNumbers.begin(), m_trackNumbers.end(), trackNumber);
-    if (it != m_trackNumbers.end()) {
-      size_t index = std::distance(m_trackNumbers.begin(), it);
-      if (sectionTime < m_trackStartTimes[index]) {
-        m_trackStartTimes[index] = sectionTime;
+          "F2SectionCorrection::emitSection(): New track {} detected with "
+          "start time {} (absolute {})",
+          trackNumber, sectionTime.toString(), absoluteTime.toString());
+    } else {
+      if (sectionTime < m_trackStartTimes[idx]) {
+        m_trackStartTimes[idx] = sectionTime;
       }
-      if (sectionTime >= m_trackEndTimes[index]) {
-        m_trackEndTimes[index] = sectionTime;
+      if (sectionTime >= m_trackEndTimes[idx]) {
+        m_trackEndTimes[idx] = sectionTime;
+      }
+      if (absoluteTime < m_trackAbsStartTimes[idx]) {
+        m_trackAbsStartTimes[idx] = absoluteTime;
+      }
+      if (absoluteTime >= m_trackAbsEndTimes[idx]) {
+        m_trackAbsEndTimes[idx] = absoluteTime;
+      }
+      // Track a per-track pre-emphasis change (rare, but the flag can toggle at
+      // a track boundary and, in principle, mid-track).
+      if (m_trackPreemphasis[idx] != meta.hasPreemphasis()) {
+        m_trackPreemphasisVaried[idx] = true;
+        m_trackPreemphasis[idx] = meta.hasPreemphasis();  // last seen
       }
     }
+  } else if (!isUserTrack) {
+    const auto section_type = section.metadata.sectionType().type();
+    const char* type_name = (section_type == SectionType::LeadIn)    ? "LeadIn"
+                            : (section_type == SectionType::LeadOut) ? "LeadOut"
+                            : (section_type == SectionType::UserData)
+                                ? "UserData"
+                                : "UNKNOWN";
+    ORC_LOG_DEBUG(
+        "F2SectionCorrection::emitSection(): {} section with start time {}",
+        type_name, sectionTime.toString());
   }
 
   // Push the section (moved so no deep copy) after the statistics above have
