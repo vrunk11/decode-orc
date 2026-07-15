@@ -16,6 +16,7 @@ EfmProcessor::EfmProcessor()
       m_noTimecodes(false),
       m_audacityLabels(false),
       m_noAudioConcealment(false),
+      m_ignorePreemphasis(false),
       m_zeroPad(false),
       m_noWavHeader(false),
       m_outputMetadata(false),
@@ -37,6 +38,10 @@ void EfmProcessor::setAudacityLabels(bool audacityLabels) {
 
 void EfmProcessor::setNoAudioConcealment(bool noAudioConcealment) {
   m_noAudioConcealment = noAudioConcealment;
+}
+
+void EfmProcessor::setIgnorePreemphasis(bool ignorePreemphasis) {
+  m_ignorePreemphasis = ignorePreemphasis;
 }
 
 void EfmProcessor::setZeroPad(bool zeroPad) { m_zeroPad = zeroPad; }
@@ -89,7 +94,8 @@ bool EfmProcessor::beginStream(const std::string& outputFilename,
       } else {
         labelsFilename += ".txt";
       }
-      m_writerWavMetadata.open(labelsFilename, m_noAudioConcealment);
+      m_writerWavMetadata.open(labelsFilename, m_noAudioConcealment,
+                               !m_ignorePreemphasis);
     }
   } else {
     m_writerSector.open(outputFilename);
@@ -385,6 +391,8 @@ void EfmProcessor::drainAudioPipeline() {
     // Bypass correction — write decoded audio directly
     while (m_data24ToAudio.isReady()) {
       AudioSection audioSection = m_data24ToAudio.popSection();
+      // Q-8: undo 50/15 us pre-emphasis before writing (unless disabled).
+      if (!m_ignorePreemphasis) m_audioDeemphasis.applySection(audioSection);
       if (m_noWavHeader) {
         m_writerRaw.write(audioSection);
       } else {
@@ -408,6 +416,8 @@ void EfmProcessor::drainAudioPipeline() {
 
     while (m_audioCorrection.isReady()) {
       AudioSection audioSection = m_audioCorrection.popSection();
+      // Q-8: undo 50/15 us pre-emphasis before writing (unless disabled).
+      if (!m_ignorePreemphasis) m_audioDeemphasis.applySection(audioSection);
       if (m_noWavHeader) {
         m_writerRaw.write(audioSection);
       } else {
@@ -531,6 +541,10 @@ void EfmProcessor::showAllStatistics() const {
     ORC_LOG_INFO("");
     if (!m_noAudioConcealment) {
       m_audioCorrection.showStatistics();
+      ORC_LOG_INFO("");
+    }
+    if (!m_ignorePreemphasis) {
+      m_audioDeemphasis.showStatistics();
       ORC_LOG_INFO("");
     }
     showAudioPipelineStatistics();

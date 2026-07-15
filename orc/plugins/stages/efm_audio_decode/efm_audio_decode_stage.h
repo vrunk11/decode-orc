@@ -157,6 +157,8 @@ class EFMAudioDecodeStage : public DAGStage,
  private:
   bool no_timecodes_ = false;
   bool no_audio_concealment_ = false;
+  // Q-8: ignore the 50/15 us pre-emphasis flag and skip de-emphasis when true.
+  bool ignore_preemphasis_ = false;
   // Name for the appended EFM audio channel pair; empty falls back to the
   // "EFM digital audio" default at the descriptor.
   std::string pair_name_ = "EFM digital audio";

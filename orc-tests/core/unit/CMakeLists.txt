@@ -210,6 +210,20 @@ orc_add_core_unit_tests(
         contracts/stage_plugin_keepalive_test.cpp
 )
 
+# Q-8: 50/15 us audio de-emphasis filter unit test. Links the shared EFM decode
+# library directly, as the DSP class is internal to orc-efm-decode and not
+# reachable through orc-core (orc-efm-decode's PUBLIC include dirs bring in the
+# decoder/efm-lib headers).
+add_executable(orc-core-unit-tests-efm-deemphasis
+        stages/efm_common/audio_deemphasis_test.cpp)
+target_link_libraries(orc-core-unit-tests-efm-deemphasis
+        orc-efm-decode
+        GTest::gmock_main)
+gtest_discover_tests(orc-core-unit-tests-efm-deemphasis
+        DISCOVERY_MODE POST_BUILD
+        DISCOVERY_TIMEOUT 30
+        PROPERTIES LABELS "unit\;sinks")
+
 orc_add_core_unit_tests(
         orc-core-unit-tests-metadata
         "unit"

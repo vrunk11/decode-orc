@@ -84,6 +84,7 @@ EFMSinkDecodeResult EFMSinkStageDeps::decode_efm(
     processor.setNoTimecodes(options.no_timecodes);
     processor.setAudacityLabels(options.audacity_labels);
     processor.setNoAudioConcealment(options.no_audio_concealment);
+    processor.setIgnorePreemphasis(options.ignore_preemphasis);
     processor.setZeroPad(options.zero_pad);
     processor.setNoWavHeader(options.no_wav_header);
     processor.setOutputMetadata(options.output_metadata);

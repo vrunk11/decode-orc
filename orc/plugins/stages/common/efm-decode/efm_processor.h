@@ -28,6 +28,7 @@
 
 // Audio pipeline decoders
 #include "dec_audiocorrection.h"
+#include "dec_audiodeemphasis.h"
 #include "dec_data24toaudio.h"
 
 // Data pipeline decoders
@@ -72,6 +73,10 @@ class EfmProcessor {
   // Audio options
   void setAudacityLabels(bool audacityLabels);
   void setNoAudioConcealment(bool noAudioConcealment);
+  // Q-8: when true, the 50/15 us pre-emphasis CONTROL flag is ignored and no
+  // de-emphasis is applied (audio is emitted exactly as decoded). Default
+  // false: pre-emphasised sections are de-emphasised during decode.
+  void setIgnorePreemphasis(bool ignorePreemphasis);
   void setZeroPad(bool zeroPad);
   void setNoWavHeader(bool noWavHeader);
 
@@ -97,6 +102,7 @@ class EfmProcessor {
   bool m_noTimecodes;
   bool m_audacityLabels;
   bool m_noAudioConcealment;
+  bool m_ignorePreemphasis;
   bool m_zeroPad;
   bool m_noWavHeader;
   bool m_outputMetadata;
@@ -120,6 +126,7 @@ class EfmProcessor {
   // Audio pipeline (Data24 section → audio)
   Data24ToAudio m_data24ToAudio;
   AudioCorrection m_audioCorrection;
+  AudioDeemphasis m_audioDeemphasis;
 
   // Data pipeline (Data24 section → ECMA-130 sectors)
   Data24ToRawSector m_data24ToRawSector;

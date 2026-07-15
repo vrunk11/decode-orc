@@ -285,7 +285,13 @@ de-emphasis and without surfacing the flag (no report line, no WAV metadata entr
 change per track.
 
 **Fix:** At minimum report the flag per track; ideally apply (or offer) a 50/15 µs de-emphasis
-biquad in the audio path when set.
+biquad in the audio path when set. **Done:** the flag is reported per track in the WAV metadata
+(`writer_wav_metadata.cpp`), and a 50/15 µs de-emphasis IIR is now applied in the audio path when the
+flag is set (`decoders/dec_audiodeemphasis.cpp`, a bilinear-transformed inverse of the 50/15 µs
+network run at 44.1 kHz before any resampling; filter state carries across consecutive pre-emphasised
+sections and resets across a non-flagged gap). Both `efm_sink` and `efm_audio_decode` expose an
+"Ignore Pre-emphasis Flag" parameter (default off) to skip de-emphasis; the Audacity label records
+`Preemphasis:50/15us(removed)` when de-emphasis was applied.
 
 ### Q-9 — `Subcode::toData()` is dead code with multiple latent bugs — **Info**
 

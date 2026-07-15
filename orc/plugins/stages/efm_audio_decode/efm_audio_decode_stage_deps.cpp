@@ -87,6 +87,7 @@ EFMAudioDecodeResult EFMAudioDecodeDeps::decode_to_cache(
   processor.setNoWavHeader(true);
   processor.setNoTimecodes(options.no_timecodes);
   processor.setNoAudioConcealment(options.no_audio_concealment);
+  processor.setIgnorePreemphasis(options.ignore_preemphasis);
 
   // The decode targets a scratch cache, so point the report at the
   // user-chosen path rather than letting it default to "<cache>.txt".

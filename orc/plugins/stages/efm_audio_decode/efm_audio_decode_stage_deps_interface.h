@@ -23,6 +23,8 @@ namespace orc {
 struct EFMAudioDecodeOptions {
   bool no_timecodes{false};
   bool no_audio_concealment{false};
+  // Q-8: when true, ignore the 50/15 us pre-emphasis flag and skip de-emphasis.
+  bool ignore_preemphasis{false};
   // When non-empty, a detailed decode statistics report is written to this
   // path. Empty (the default) means no report is written. Unlike efm_sink,
   // this stage has no user-facing audio output file to append ".txt" to, so

@@ -20,6 +20,7 @@
 
 WriterWavMetadata::WriterWavMetadata()
     : m_noAudioConcealment(false),
+      m_deemphasisApplied(false),
       m_inErrorRange(false),
       m_inConcealedRange(false),
       m_absoluteSectionTime(0, 0, 0),
@@ -35,7 +36,7 @@ WriterWavMetadata::~WriterWavMetadata() {
 }
 
 bool WriterWavMetadata::open(const std::string& filename,
-                             bool noAudioConcealment) {
+                             bool noAudioConcealment, bool deemphasisApplied) {
   m_file.open(filename);
   if (!m_file.is_open()) {
     ORC_LOG_CRITICAL(
@@ -49,6 +50,9 @@ bool WriterWavMetadata::open(const std::string& filename,
   // If we're not concealing audio, we use "error" metadata instead of
   // "silenced"
   m_noAudioConcealment = noAudioConcealment;
+
+  // Q-8: whether the decoder already removed the 50/15 us pre-emphasis.
+  m_deemphasisApplied = deemphasisApplied;
 
   return true;
 }
@@ -242,14 +246,18 @@ void WriterWavMetadata::flush() {
       std::string trackTime = "[" + m_trackStartTimes[i].toString() + "-" +
                               m_trackEndTimes[i].toString() + "]";
 
-      // Q-8: surface the pre-emphasis flag so the metadata records that the
-      // track needs 50/15 us de-emphasis on playback.
+      // Q-8: surface the pre-emphasis flag. When the decoder applied
+      // de-emphasis the note records that it is already removed; otherwise it
+      // records that the track still needs 50/15 us de-emphasis on playback.
       const bool preemphasis =
           i < m_trackPreemphasis.size() && m_trackPreemphasis[i];
+      const std::string preemphasisNote =
+          preemphasis ? (m_deemphasisApplied ? " Preemphasis:50/15us(removed)"
+                                             : " Preemphasis:50/15us")
+                      : "";
       std::string outputString = trackAbsStartTime + "\t" + trackAbsEndTime +
                                  "\tTrack: " + trackNumber + " " + trackTime +
-                                 (preemphasis ? " Preemphasis:50/15us" : "") +
-                                 "\n";
+                                 preemphasisNote + "\n";
       m_file.write(outputString.c_str(),
                    static_cast<std::streamsize>(outputString.size()));
 

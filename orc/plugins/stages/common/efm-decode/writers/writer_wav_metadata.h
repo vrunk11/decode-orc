@@ -20,7 +20,8 @@ class WriterWavMetadata {
   WriterWavMetadata();
   ~WriterWavMetadata();
 
-  bool open(const std::string& filename, bool noAudioConcealment);
+  bool open(const std::string& filename, bool noAudioConcealment,
+            bool deemphasisApplied);
   void write(const AudioSection& audioSection);
   void close();
   int64_t size();
@@ -29,6 +30,9 @@ class WriterWavMetadata {
  private:
   std::ofstream m_file;
   bool m_noAudioConcealment;
+  // Q-8: true when the decoder applied 50/15 us de-emphasis, so the label can
+  // tell the user whether playback still needs it.
+  bool m_deemphasisApplied;
 
   bool m_inErrorRange;
   std::string m_errorRangeStart;

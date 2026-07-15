@@ -196,6 +196,7 @@ std::shared_ptr<const VideoFrameRepresentation> EFMAudioDecodeStage::process(
   EFMAudioDecodeOptions options;
   options.no_timecodes = no_timecodes_;
   options.no_audio_concealment = no_audio_concealment_;
+  options.ignore_preemphasis = ignore_preemphasis_;
   // A report is written only when the checkbox is enabled; an empty path
   // leaves the report disabled even if the box is checked.
   options.report_path = report_ ? report_path_ : std::string{};
@@ -227,6 +228,19 @@ std::vector<ParameterDescriptor> EFMAudioDecodeStage::get_parameter_descriptors(
     desc.name = "no_audio_concealment";
     desc.display_name = "Disable Audio Concealment";
     desc.description = "Disable interpolation-based audio error concealment";
+    desc.type = ParameterType::BOOL;
+    desc.constraints.default_value = false;
+    descriptors.push_back(desc);
+  }
+
+  {
+    ParameterDescriptor desc;
+    desc.name = "ignore_preemphasis";
+    desc.display_name = "Ignore Pre-emphasis Flag";
+    desc.description =
+        "Ignore the 50/15 us pre-emphasis CONTROL flag and decode audio "
+        "exactly as stored. When unchecked (default), pre-emphasised sections "
+        "are de-emphasised during decode.";
     desc.type = ParameterType::BOOL;
     desc.constraints.default_value = false;
     descriptors.push_back(desc);
@@ -275,6 +289,7 @@ std::map<std::string, ParameterValue> EFMAudioDecodeStage::get_parameters()
     const {
   return {{"no_timecodes", no_timecodes_},
           {"no_audio_concealment", no_audio_concealment_},
+          {"ignore_preemphasis", ignore_preemphasis_},
           {"pair_name", pair_name_},
           {"report", report_},
           {"report_path", report_path_}};
@@ -291,6 +306,7 @@ bool EFMAudioDecodeStage::set_parameters(
   no_timecodes_ = get_bool("no_timecodes", no_timecodes_);
   no_audio_concealment_ =
       get_bool("no_audio_concealment", no_audio_concealment_);
+  ignore_preemphasis_ = get_bool("ignore_preemphasis", ignore_preemphasis_);
   report_ = get_bool("report", report_);
 
   const auto name_it = params.find("pair_name");
