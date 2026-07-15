@@ -642,6 +642,17 @@ All 11 decoder stages run sequentially on the caller's thread (`efm_sink_stage.c
 whole decode inside `trigger()`). The push/pop boundaries make a two-stage split (bit-level front end
 vs section-level back end) with a bounded SPSC queue straightforward, roughly halving wall time on
 large captures. Do the free wins (P-1..P-3) first; P-12 must be resolved before any parallelism.
+**Done:** the pipeline is now split at the F2-section boundary. The bit-level front end (t-values →
+Channel → F3 → F2 → F2SectionCorrection) runs on the caller's thread inside `pushChunk`; each
+completed F2 section is handed through a bounded blocking queue (`efm-lib/bounded_queue.h`,
+capacity 256) to a section-level back end (F2 → F1 → Data24 → audio/data → writers) running on a
+worker thread spawned in `beginStream` and joined in `finishStream` (`efm_processor.cpp`). Output is
+byte-identical: the queue is a strict FIFO hand-off, the consumer processes sections in order, and the
+original flush ordering is preserved (the front end flushes F2SectionCorrection and closes the queue;
+the consumer then drains, flushes the CIRC delay-line tail, and flushes AudioCorrection). Exceptions
+raised on the back-end thread are captured and re-raised on the caller's thread in `finishStream`,
+preserving the `efm::EfmDecodeError` stage-boundary contract (R-1); the destructor aborts the queue
+and joins if the caller cancels mid-stream. Relies on the P-12 const-safe shared RS codecs.
 
 ### P-10 — Statistics counter widths inconsistent; overflow on long captures — **Minor**
 

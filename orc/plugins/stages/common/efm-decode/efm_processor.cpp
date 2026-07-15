@@ -28,6 +28,15 @@ EfmProcessor::EfmProcessor()
       m_outputMetadata(false),
       m_reportOutput(false) {}
 
+EfmProcessor::~EfmProcessor() {
+  // If beginStream() started the back-end thread but finishStream() was never
+  // reached (e.g. the caller cancelled mid-stream and destroyed the processor,
+  // or the front end threw), tear the thread down cleanly instead of letting a
+  // still-joinable std::thread call std::terminate.
+  if (m_sectionQueue) m_sectionQueue->abort();
+  if (m_backEndThread.joinable()) m_backEndThread.join();
+}
+
 // ---------------------------------------------------------------------------
 // Configuration setters
 // ---------------------------------------------------------------------------
@@ -114,6 +123,13 @@ bool EfmProcessor::beginStream(const std::string& outputFilename,
   // Record overall wall-clock start time
   m_startTime = std::chrono::high_resolution_clock::now();
 
+  // P-9: start the section-level back-end thread. The front end runs on the
+  // caller's thread (pushChunk) and feeds F2 sections through m_sectionQueue.
+  m_backEndError = nullptr;
+  m_sectionQueue =
+      std::make_unique<BoundedQueue<F2Section>>(kSectionQueueCapacity);
+  m_backEndThread = std::thread([this] { backEndLoop(); });
+
   return true;
 }
 
@@ -135,39 +151,34 @@ void EfmProcessor::pushChunk(const std::vector<uint8_t>& chunk) {
   }
 
   m_tValuesToChannel.pushFrame(chunk);
-  drainPipeline(m_zeroPadApplied);
+  drainFrontEnd();
 }
 
 bool EfmProcessor::finishStream() {
-  // Final drain with no new input (mirrors the empty-chunk end-of-data pass
-  // that the old buffer loop performed before breaking).
-  drainPipeline(m_zeroPadApplied);
+  // Final front-end drain with no new input (mirrors the empty-chunk
+  // end-of-data pass that the old buffer loop performed before breaking).
+  drainFrontEnd();
 
-  // Flush decoders that require an explicit flush, then do a final drain.
-  // F2SectionCorrection must be flushed first; its output (through the
-  // full pipeline) must all reach AudioCorrection before we flush
-  // AudioCorrection, otherwise the final corrected frames are lost.
+  // Flush the front-end tail. F2SectionCorrection must be flushed here; its
+  // output is enqueued for the back end, which will not flush its own tail
+  // (F2SectionToF1Section / AudioCorrection) until every real section has been
+  // consumed - preserving the original flush ordering across the thread split.
   ORC_LOG_INFO("Flushing decoding pipelines");
   m_f2SectionCorrection.flush();
+  drainFrontEnd();
 
-  // Drain everything that the F2SectionCorrection flush produces,
-  // pushing the final Data24 sections into the audio/data pipeline.
+  // No more sections will be produced: close the hand-off queue and wait for
+  // the back-end thread to drain it, flush its tail (E-7), and finish writing.
   ORC_LOG_INFO("Processing final pipeline data");
-  drainPipeline(m_zeroPadApplied);
+  m_sectionQueue->close();
+  if (m_backEndThread.joinable()) m_backEndThread.join();
 
-  // E-7: recover the CIRC delay-line tail. Once every real F2 section has
-  // reached F2SectionToF1Section, the newest ~111 genuine F2 frames are still
-  // held inside its delay lines. Flush pushes padding through the chain to
-  // carry that trapped tail out as F1 sections; drain them through the rest of
-  // the pipeline (F1 -> Data24 -> audio/data).
-  m_f2SectionToF1Section.flush();
-  drainPipeline(m_zeroPadApplied);
-
-  // Now all Data24 sections have been pushed into AudioCorrection;
-  // flush it to release its internal lookahead buffer, then drain once more.
-  if (m_audioMode && !m_noAudioConcealment) {
-    m_audioCorrection.flush();
-    drainAudioPipeline();
+  // Re-raise any exception the back-end thread caught, on this thread, so the
+  // efm::EfmDecodeError stage-boundary handler still catches it (R-1).
+  if (m_backEndError) {
+    std::exception_ptr e = m_backEndError;
+    m_backEndError = nullptr;
+    std::rethrow_exception(e);
   }
 
   // Validate and show statistics
@@ -239,9 +250,9 @@ bool EfmProcessor::finishStream() {
 // Internal pipeline helpers
 // ---------------------------------------------------------------------------
 
-void EfmProcessor::drainPipeline(bool& zeroPadApplied) {
+bool EfmProcessor::drainFrontEnd() {
   // -----------------------------------------------------------------------
-  // General pipeline: T-values → Channel → F3 → F2Section → F2SectionCorrection
+  // Front end: T-values → Channel → F3 → F2Section → F2SectionCorrection
   // -----------------------------------------------------------------------
 
   auto t0 = std::chrono::high_resolution_clock::now();
@@ -275,23 +286,62 @@ void EfmProcessor::drainPipeline(bool& zeroPadApplied) {
           std::chrono::high_resolution_clock::now() - t0)
           .count();
 
-  // -----------------------------------------------------------------------
-  // D24 pipeline: F2SectionCorrection → F2SectionToF1Section →
-  // F1SectionToData24Section
-  // -----------------------------------------------------------------------
-
-  t0 = std::chrono::high_resolution_clock::now();
+  // Hand every completed F2 section to the back-end thread. push() blocks while
+  // the queue is full (back-pressure) and returns false only if the back end
+  // has aborted (error / cancel), in which case we stop feeding - the stored
+  // error is re-raised from finishStream().
   while (m_f2SectionCorrection.isReady()) {
-    F2Section f2Section = m_f2SectionCorrection.popSection();
-    // P-1: move the section into the next stage to avoid a deep copy.
-    m_f2SectionToF1Section.pushSection(std::move(f2Section));
+    if (!m_sectionQueue->push(m_f2SectionCorrection.popSection())) {
+      return false;
+    }
   }
-  m_pipelineStats.f2ToF1Time +=
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::high_resolution_clock::now() - t0)
-          .count();
+  return true;
+}
 
-  t0 = std::chrono::high_resolution_clock::now();
+void EfmProcessor::backEndLoop() {
+  // Runs on m_backEndThread. Any decoder exception is captured and re-raised on
+  // the caller's thread in finishStream() (R-1); it must never escape here.
+  try {
+    // -------------------------------------------------------------------
+    // Back end: F2Section → F2SectionToF1Section → F1SectionToData24Section
+    // → audio / data pipeline → writers.
+    // -------------------------------------------------------------------
+    F2Section f2Section;
+    while (m_sectionQueue->pop(f2Section)) {
+      auto t0 = std::chrono::high_resolution_clock::now();
+      // P-1: move the section into the next stage to avoid a deep copy.
+      m_f2SectionToF1Section.pushSection(std::move(f2Section));
+      m_pipelineStats.f2ToF1Time +=
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              std::chrono::high_resolution_clock::now() - t0)
+              .count();
+      drainBackEnd(m_zeroPadApplied);
+    }
+
+    // Queue closed and drained: every real F2 section has now been pushed into
+    // F2SectionToF1Section. E-7: recover the CIRC delay-line tail - the newest
+    // ~111 genuine F2 frames are still held inside its delay lines; flush
+    // pushes padding through the chain to carry that trapped tail out as F1
+    // sections.
+    m_f2SectionToF1Section.flush();
+    drainBackEnd(m_zeroPadApplied);
+
+    // Now all Data24 sections have been pushed into AudioCorrection; flush it
+    // to release its internal lookahead buffer, then drain once more.
+    if (m_audioMode && !m_noAudioConcealment) {
+      m_audioCorrection.flush();
+      drainAudioPipeline();
+    }
+  } catch (...) {
+    m_backEndError = std::current_exception();
+    // Wake any front-end producer blocked on a full queue so finishStream()
+    // (or the destructor) can join without deadlocking.
+    m_sectionQueue->abort();
+  }
+}
+
+void EfmProcessor::drainBackEnd(bool& zeroPadApplied) {
+  auto t0 = std::chrono::high_resolution_clock::now();
   while (m_f2SectionToF1Section.isReady()) {
     F1Section f1Section = m_f2SectionToF1Section.popSection();
     f1Section.showData();

@@ -67,4 +67,7 @@ set_target_properties(orc-efm-decode PROPERTIES
 
 # The plugin SDK provides the <orc/stage/...> contract headers and the
 # spdlog/fmt usage requirements needed by <orc/stage/logging.h>.
-target_link_libraries(orc-efm-decode PUBLIC orc-plugin-sdk)
+# P-9: the decoder runs its section-level back end on a std::thread, so the
+# platform threading library is required.
+find_package(Threads REQUIRED)
+target_link_libraries(orc-efm-decode PUBLIC orc-plugin-sdk Threads::Threads)

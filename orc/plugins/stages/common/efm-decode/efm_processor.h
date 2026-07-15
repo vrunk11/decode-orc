@@ -11,10 +11,15 @@
 
 #include <chrono>
 #include <cstdint>
+#include <exception>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
+#include "bounded_queue.h"
 #include "decoders.h"
+#include "section.h"
 
 // General pipeline decoders
 #include "dec_channeltof3frame.h"
@@ -48,6 +53,10 @@
 class EfmProcessor {
  public:
   EfmProcessor();
+  ~EfmProcessor();
+
+  EfmProcessor(const EfmProcessor&) = delete;
+  EfmProcessor& operator=(const EfmProcessor&) = delete;
 
   // Streaming API: feed t-values field-by-field without a temporary buffer.
   // Call beginStream() once, then pushChunk() for each field's samples,
@@ -177,11 +186,42 @@ class EfmProcessor {
   std::string m_lastError;
 
   // -----------------------------------------------------------------------
-  // Internal helpers
+  // P-9: two-stage split.
+  //
+  // The pipeline is divided at the F2-section boundary. The bit-level FRONT END
+  // (t-values -> Channel -> F3 -> F2 -> F2SectionCorrection) runs on the
+  // caller's thread inside pushChunk(); each completed F2 section is handed to
+  // the section-level BACK END (F2 -> F1 -> Data24 -> audio/data -> writers),
+  // which runs on m_backEndThread and consumes sections from m_sectionQueue.
+  //
+  // Thread-safety: the two halves share no decoder or writer objects, so the
+  // only cross-thread state is m_sectionQueue (a synchronised hand-off) and the
+  // m_backEndError marshalling below. The pipeline-timing fields updated by the
+  // front end are disjoint from those updated by the back end, and all
+  // statistics are read only in finishStream() after the back-end thread has
+  // joined. The shared Reed-Solomon codecs used by the back end are const-safe
+  // for concurrent decode() (see reedsolomon.cpp / rspc.cpp, P-12).
   // -----------------------------------------------------------------------
 
+  // Bounded hand-off buffer between the front and back end. ~256 F2 sections
+  // (~3.4 s of audio, ~2.5 MB) is enough to keep both halves busy while
+  // bounding memory if one side stalls.
+  static constexpr std::size_t kSectionQueueCapacity = 256;
+  std::unique_ptr<BoundedQueue<F2Section>> m_sectionQueue;
+  std::thread m_backEndThread;
+  // Set by the back-end thread if it throws; re-raised on the caller's thread
+  // in finishStream() so the efm::EfmDecodeError stage-boundary contract (R-1)
+  // is preserved rather than the exception escaping the worker thread.
+  std::exception_ptr m_backEndError;
+
+  // Front-end producer: advance the bit-level stages and enqueue every ready F2
+  // section. Returns false if the back end has aborted (stop feeding).
+  bool drainFrontEnd();
+  // Back-end thread entry point: consume F2 sections, then flush the tail.
+  void backEndLoop();
+
   // Per-iteration pipeline drain helpers
-  void drainPipeline(bool& zeroPadApplied);
+  void drainBackEnd(bool& zeroPadApplied);
   void drainAudioPipeline();
   void drainDataPipeline();
 
