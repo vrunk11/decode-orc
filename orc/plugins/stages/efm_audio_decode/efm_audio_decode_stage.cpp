@@ -112,11 +112,16 @@ void EFMAudioChannelPairRepresentation::ensure_decoded() const {
     // totalling exactly audio_pair_offset(frame_count) pairs.
     const uint32_t raw_pairs = static_cast<uint32_t>(std::min<uint64_t>(
         decode_result.stream_pair_count, std::numeric_limits<uint32_t>::max()));
-    const std::vector<int32_t> widened =
-        AudioResampler::widen_16_to_24(deps_->read_cache_pairs(0, raw_pairs));
-    std::vector<std::vector<int32_t>> frames =
-        AudioResampler::resample_to_synchronous(widened, kCdSampleRateHz,
-                                                system, frame_count);
+    // Scope the widened 44.1 kHz carrier so it is freed the moment resampling
+    // returns; otherwise it would sit alongside the per-frame blocks and the
+    // flattened output below, tripling the converted-stream footprint at peak.
+    std::vector<std::vector<int32_t>> frames;
+    {
+      const std::vector<int32_t> widened =
+          AudioResampler::widen_16_to_24(deps_->read_cache_pairs(0, raw_pairs));
+      frames = AudioResampler::resample_to_synchronous(widened, kCdSampleRateHz,
+                                                       system, frame_count);
+    }
 
     // Flatten the cadence-aligned blocks into the synchronous scratch cache;
     // per-frame serving seeks by audio_pair_offset(id, system).

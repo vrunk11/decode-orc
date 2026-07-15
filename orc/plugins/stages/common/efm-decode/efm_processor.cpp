@@ -235,28 +235,6 @@ bool EfmProcessor::finishStream() {
 }
 
 // ---------------------------------------------------------------------------
-// Convenience wrapper: buffers all t-values then uses the streaming API
-// ---------------------------------------------------------------------------
-
-bool EfmProcessor::processFromBuffer(const std::vector<uint8_t>& tValues,
-                                     const std::string& outputFilename) {
-  beginStream(outputFilename, static_cast<int64_t>(tValues.size()));
-
-  // Feed through the pipeline in 1024-byte strides (same stride as before)
-  size_t offset = 0;
-  while (offset < tValues.size()) {
-    size_t count = std::min<size_t>(1024, tValues.size() - offset);
-    std::vector<uint8_t> chunk(
-        tValues.begin() + static_cast<std::ptrdiff_t>(offset),
-        tValues.begin() + static_cast<std::ptrdiff_t>(offset + count));
-    offset += count;
-    pushChunk(chunk);
-  }
-
-  return finishStream();
-}
-
-// ---------------------------------------------------------------------------
 // Internal pipeline helpers
 // ---------------------------------------------------------------------------
 

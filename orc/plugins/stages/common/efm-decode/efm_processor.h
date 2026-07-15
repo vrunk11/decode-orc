@@ -60,10 +60,6 @@ class EfmProcessor {
   // of why decoding did not succeed (empty on success).
   const std::string& lastError() const { return m_lastError; }
 
-  // Convenience wrapper: buffers all t-values then calls the streaming API.
-  bool processFromBuffer(const std::vector<uint8_t>& tValues,
-                         const std::string& outputFilename);
-
   // Mode selection
   void setAudioMode(bool audioMode);  // true = audio (default), false = data
 

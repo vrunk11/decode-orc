@@ -11,6 +11,7 @@
 
 #include <orc/stage/logging.h>
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <system_error>
@@ -69,14 +70,6 @@ EFMAudioDecodeResult EFMAudioDecodeDeps::decode_to_cache(
     return {false, "no EFM t-values found in frame range", 0};
   }
 
-  std::vector<uint8_t> efm_buffer;
-  efm_buffer.reserve(total_tvalues);
-  for (FrameID fid = start_fid; fid <= end_fid; ++fid) {
-    auto samples = representation.get_efm_samples(fid);
-    efm_buffer.insert(efm_buffer.end(), samples.begin(), samples.end());
-  }
-  ORC_LOG_DEBUG("EFMAudioDecodeDeps: buffered {} t-values", efm_buffer.size());
-
   const std::filesystem::path cache_path = make_cache_path(this, ".pcm");
 
   // Audio-mode decode to headerless PCM: the cache holds exactly the decoded
@@ -99,7 +92,38 @@ EFMAudioDecodeResult EFMAudioDecodeDeps::decode_to_cache(
   // The EFM decoder throws efm::EfmDecodeError on unrecoverable conditions;
   // catch it so a bad decode fails this stage rather than killing the process.
   try {
-    if (!processor.processFromBuffer(efm_buffer, cache_path.string())) {
+    processor.beginStream(cache_path.string(),
+                          static_cast<int64_t>(total_tvalues));
+
+    // Stream each frame's t-values straight into the decoder, accumulating into
+    // a bounded staging buffer only to preserve the 1024-byte chunk sizing of
+    // the old buffered path (so decoded output stays byte-identical). Peak RSS
+    // is now ~one chunk, independent of capture length.
+    constexpr size_t kChunkSize = 1024;
+    std::vector<uint8_t> staging;
+    staging.reserve(kChunkSize);
+    for (FrameID fid = start_fid; fid <= end_fid; ++fid) {
+      const auto samples = representation.get_efm_samples(fid);
+      size_t pos = 0;
+      while (pos < samples.size()) {
+        const size_t take =
+            std::min(kChunkSize - staging.size(), samples.size() - pos);
+        staging.insert(
+            staging.end(), samples.begin() + static_cast<std::ptrdiff_t>(pos),
+            samples.begin() + static_cast<std::ptrdiff_t>(pos + take));
+        pos += take;
+        if (staging.size() == kChunkSize) {
+          processor.pushChunk(staging);
+          staging.clear();
+        }
+      }
+    }
+    // Flush the final partial chunk (fewer than kChunkSize t-values).
+    if (!staging.empty()) {
+      processor.pushChunk(staging);
+    }
+
+    if (!processor.finishStream()) {
       std::error_code ec;
       std::filesystem::remove(cache_path, ec);
       std::string reason = processor.lastError();
