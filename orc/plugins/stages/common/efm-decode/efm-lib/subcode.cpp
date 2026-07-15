@@ -282,7 +282,9 @@ SectionMetadata Subcode::fromData(const std::vector<uint8_t>& data) {
       // If the track number is 0, then this is a lead-in frame
       // If the track number is 0xAA, then this is a lead-out frame
       // If the track number is 1-99, then this is a user data frame
+      bool isLeadin = false;
       if (trackNumber == 0) {
+        isLeadin = true;
         sectionMetadata.setSectionType(SectionType(SectionType::LeadIn), 0);
         ORC_LOG_DEBUG(
             "Subcode::fromData(): Q-Mode 1/4 has track number 0 - this is a "
@@ -297,39 +299,70 @@ SectionMetadata Subcode::fromData(const std::vector<uint8_t>& data) {
                                        trackNumber);
       }
 
-      // Q-6: byte 2 is INDEX in the program area (00 = pause) and POINT in the
-      // lead-in (TOC pointer). Record the raw value; downstream can distinguish
-      // pauses from audio. Full lead-in TOC (POINT/PMIN/PSEC/PFRAME) decoding
-      // is not yet built, so lead-in POINT is stored but not interpreted as
-      // TOC.
-      sectionMetadata.setIndex(bcd2ToInt(qChannelData[2]));
+      // Q-6: in the lead-in the Q-channel layout differs from the program area.
+      // Byte 2 is POINT (a TOC pointer) and bytes 7-9 are PMIN/PSEC/PFRAME (the
+      // TOC entry POINT refers to) rather than the running absolute time; only
+      // bytes 3-5 (MIN/SEC/FRAME) are the running lead-in time and they DO
+      // increment monotonically. Storing PMIN/PSEC/PFRAME as absolute time made
+      // the time repeat/jump between TOC items so the timeline could never
+      // settle inside a lead-in. Interpret the lead-in fields as TOC data and
+      // use the running MIN/SEC/FRAME as both section and absolute time so the
+      // lead-in has a monotonic timeline; the TOC itself is assembled
+      // downstream (F2SectionCorrection) from POINT/PMIN/PSEC/PFRAME.
+      if (isLeadin) {
+        int32_t leadinMinutes = validateAndClampTimeValue(
+            bcd2ToInt(qChannelData[3]), 99, "lead-in minutes", sectionMetadata);
+        int32_t leadinSeconds = validateAndClampTimeValue(
+            bcd2ToInt(qChannelData[4]), 59, "lead-in seconds", sectionMetadata);
+        int32_t leadinFrames = validateAndClampTimeValue(
+            bcd2ToInt(qChannelData[5]), 74, "lead-in frames", sectionMetadata);
+        SectionTime leadinTime(static_cast<uint8_t>(leadinMinutes),
+                               static_cast<uint8_t>(leadinSeconds),
+                               static_cast<uint8_t>(leadinFrames));
+        sectionMetadata.setSectionTime(leadinTime);
+        sectionMetadata.setAbsoluteSectionTime(leadinTime);
 
-      // Set the frame time q_data_channel[3-5]
-      // Validate BCD values to handle edge case where CRC passes but data is
-      // corrupt. C-1: minutes are BCD 00-99 (IEC 60908 §17.5.1), not capped at
-      // 59 - real discs exceed 60 minutes.
-      int32_t sectionMinutes = validateAndClampTimeValue(
-          bcd2ToInt(qChannelData[3]), 99, "section minutes", sectionMetadata);
-      int32_t sectionSeconds = validateAndClampTimeValue(
-          bcd2ToInt(qChannelData[4]), 59, "section seconds", sectionMetadata);
-      int32_t sectionFrames = validateAndClampTimeValue(
-          bcd2ToInt(qChannelData[5]), 74, "section frames", sectionMetadata);
-      sectionMetadata.setSectionTime(
-          SectionTime(sectionMinutes, sectionSeconds, sectionFrames));
+        // POINT is kept raw (A0/A1/A2 are not BCD); PMIN/PSEC/PFRAME are
+        // decoded BCD integers. A0/A1 reuse the "seconds"/"frames" slots for
+        // the first/last track number and disc type, so they are not clamped as
+        // a time here.
+        sectionMetadata.setLeadinToc(
+            static_cast<uint8_t>(qChannelData[2]), bcd2ToInt(qChannelData[7]),
+            bcd2ToInt(qChannelData[8]), bcd2ToInt(qChannelData[9]));
+      } else {
+        // Program area: byte 2 is INDEX (00 = pause). Record the raw value so
+        // downstream can distinguish pauses from audio.
+        sectionMetadata.setIndex(bcd2ToInt(qChannelData[2]));
 
-      // Set the zero byte q_data_channel[6] - Not used at the moment
+        // Set the frame time q_data_channel[3-5]
+        // Validate BCD values to handle edge case where CRC passes but data is
+        // corrupt. C-1: minutes are BCD 00-99 (IEC 60908 §17.5.1), not capped
+        // at 59 - real discs exceed 60 minutes.
+        int32_t sectionMinutes = validateAndClampTimeValue(
+            bcd2ToInt(qChannelData[3]), 99, "section minutes", sectionMetadata);
+        int32_t sectionSeconds = validateAndClampTimeValue(
+            bcd2ToInt(qChannelData[4]), 59, "section seconds", sectionMetadata);
+        int32_t sectionFrames = validateAndClampTimeValue(
+            bcd2ToInt(qChannelData[5]), 74, "section frames", sectionMetadata);
+        sectionMetadata.setSectionTime(
+            SectionTime(sectionMinutes, sectionSeconds, sectionFrames));
 
-      // Set the ap time q_data_channel[7-9]
-      // Validate BCD values to handle edge case where CRC passes but data is
-      // corrupt
-      int32_t absMinutes = validateAndClampTimeValue(
-          bcd2ToInt(qChannelData[7]), 99, "absolute minutes", sectionMetadata);
-      int32_t absSeconds = validateAndClampTimeValue(
-          bcd2ToInt(qChannelData[8]), 59, "absolute seconds", sectionMetadata);
-      int32_t absFrames = validateAndClampTimeValue(
-          bcd2ToInt(qChannelData[9]), 74, "absolute frames", sectionMetadata);
-      sectionMetadata.setAbsoluteSectionTime(
-          SectionTime(absMinutes, absSeconds, absFrames));
+        // Set the zero byte q_data_channel[6] - Not used at the moment
+
+        // Set the ap time q_data_channel[7-9]
+        // Validate BCD values to handle edge case where CRC passes but data is
+        // corrupt
+        int32_t absMinutes =
+            validateAndClampTimeValue(bcd2ToInt(qChannelData[7]), 99,
+                                      "absolute minutes", sectionMetadata);
+        int32_t absSeconds =
+            validateAndClampTimeValue(bcd2ToInt(qChannelData[8]), 59,
+                                      "absolute seconds", sectionMetadata);
+        int32_t absFrames = validateAndClampTimeValue(
+            bcd2ToInt(qChannelData[9]), 74, "absolute frames", sectionMetadata);
+        sectionMetadata.setAbsoluteSectionTime(
+            SectionTime(absMinutes, absSeconds, absFrames));
+      }
     } else if (sectionMetadata.qMode() == SectionMetadata::QMode2) {
       // Extract the 52-bit (13-digit) UPC/EAN media catalogue number.
       // The digits are packed as 13 BCD nibbles across q-channel bytes 1-7

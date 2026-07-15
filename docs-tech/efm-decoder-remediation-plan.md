@@ -139,20 +139,32 @@ so the pipeline's remaining value-semantics cost is cleared in one sweep.
 
 ---
 
-## Phase 4 — Spec completeness: lead-in TOC (Minor spec gap) ⚠️
+## Phase 4 — Spec completeness: lead-in TOC (Minor spec gap) ✅
 
-### 4.1 — Q-6: decode lead-in POINT/PMIN/PSEC/PFRAME as TOC
-- **Files:** `efm-lib/subcode.cpp` (INDEX byte 2 is now read and pause detection works; lead-in TOC is
-  explicitly deferred in the current comment), `decoders/dec_f2sectioncorrection.cpp` (settling logic)
+### 4.1 — Q-6: decode lead-in POINT/PMIN/PSEC/PFRAME as TOC — **Done**
+- **Files:** `efm-lib/subcode.cpp`, `efm-lib/section_metadata.h`,
+  `decoders/dec_f2sectioncorrection.{h,cpp}`, `efm_processor.cpp` (report Part B).
 - **Problem:** in lead-in, byte 2 is POINT and bytes 7–9 are PMIN/PSEC/PFRAME (TOC entries incl.
-  A0/A1/A2); today they are stored as absolute time, which repeats/jumps between TOC items so
-  `waitForInputToSettle` can never settle inside a lead-in. The decoder works today only because
-  captures start in the program area.
-- **Fix:** in lead-in, interpret POINT/PMIN/PSEC/PFRAME as TOC data (build a TOC) rather than ATIME,
-  and base settling on MIN/SEC/FRAME (which does increment in lead-in) — or skip lead-in explicitly.
-- **Accept:** a capture that begins in the lead-in settles and decodes; a TOC is available downstream.
-- **Effort:** largest remaining item; scope/schedule separately if lead-in captures are not a near-term
-  requirement.
+  A0/A1/A2); previously they were stored as absolute time, which repeats/jumps between TOC items so
+  `waitForInputToSettle` could never settle inside a lead-in. The decoder worked only because captures
+  start in the program area.
+- **Fix (implemented):**
+  - `subcode.cpp` now special-cases the lead-in Q-mode 1/4 branch: it decodes POINT (kept raw so
+    A0/A1/A2 are distinguishable) and PMIN/PSEC/PFRAME into new `SectionMetadata` TOC fields
+    (`setLeadinToc` / `point()`/`pMin()`/`pSec()`/`pFrame()`), and uses the running MIN/SEC/FRAME
+    (bytes 3–5) as both section and absolute time so the lead-in has a monotonic timeline.
+  - `F2SectionCorrection` harvests the TOC in `pushSection` (`recordTocEntry`) before the timeline
+    logic runs, then **skips lead-in sections** in `waitForInputToSettle`/`waitingForSection` so the
+    timeline settles on the first contiguous run of program-area/lead-out sections (unchanged behaviour
+    for program-area captures; no lead-in silence is emitted). A0/A1/A2 populate first-track /
+    last-track / disc-type / lead-out-start; POINT 01-99 build the per-track start table (de-duplicated).
+  - TOC exposed via accessors (`hasToc()`, `tocFirstTrack()`, `tocLastTrack()`, `tocDiscType()`,
+    `tocLeadOutStart()`, `tocTrackNumbers()`, `tocTrackStartTimes()`, `leadinSections()`) and rendered
+    in report Part B and `showStatistics`.
+- **Accept:** verified with a standalone harness (real `Subcode` + `F2SectionCorrection`): a capture
+  beginning in the lead-in settles on the program area and decodes, emits program-area sections only,
+  and exposes the correct TOC (first/last track, lead-out start, per-track starts); a program-only
+  capture still settles with `hasToc() == false`.
 
 ---
 

@@ -87,9 +87,26 @@ class F2SectionCorrection : public Decoder {
   const std::vector<bool>& trackIs2Channel() const { return m_track2Channel; }
   const std::vector<std::string>& trackIsrc() const { return m_trackIsrc; }
 
+  // Q-6: lead-in TOC (IEC 60908 §17.5.1), assembled from the POINT/PMIN/PSEC/
+  // PFRAME fields of the lead-in Q-channel. hasToc() is false when the capture
+  // did not include any decodable lead-in (e.g. it starts in the program area).
+  bool hasToc() const { return m_hasToc; }
+  uint8_t tocFirstTrack() const { return m_tocFirstTrack; }
+  uint8_t tocLastTrack() const { return m_tocLastTrack; }
+  uint8_t tocDiscType() const { return m_tocDiscType; }
+  SectionTime tocLeadOutStart() const { return m_tocLeadOutStart; }
+  const std::vector<uint8_t>& tocTrackNumbers() const {
+    return m_tocTrackNumbers;
+  }
+  const std::vector<SectionTime>& tocTrackStartTimes() const {
+    return m_tocTrackStartTimes;
+  }
+  uint32_t leadinSections() const { return m_leadinSections; }
+
  private:
   void processQueue();
   int trackIndex(uint8_t trackNumber) const;
+  void recordTocEntry(const SectionMetadata& metadata);
 
   void waitForInputToSettle(F2Section& f2Section);
   void waitingForSection(F2Section& f2Section);
@@ -140,6 +157,18 @@ class F2SectionCorrection : public Decoder {
   std::vector<bool> m_trackIsAudio;
   std::vector<bool> m_track2Channel;
   std::vector<std::string> m_trackIsrc;  // ISRC (Q-mode 3), if present
+
+  // Q-6: lead-in TOC assembled from POINT/PMIN/PSEC/PFRAME (IEC 60908 §17.5.1).
+  // m_tocTrackNumbers / m_tocTrackStartTimes are index-aligned (POINT 01-99 ->
+  // that track's start time). The A0/A1/A2 pointers populate the scalars.
+  bool m_hasToc;
+  uint8_t m_tocFirstTrack;        // POINT A0 (PMIN)
+  uint8_t m_tocLastTrack;         // POINT A1 (PMIN)
+  uint8_t m_tocDiscType;          // POINT A0 (PSEC)
+  SectionTime m_tocLeadOutStart;  // POINT A2 (PMIN:PSEC:PFRAME)
+  std::vector<uint8_t> m_tocTrackNumbers;
+  std::vector<SectionTime> m_tocTrackStartTimes;
+  uint32_t m_leadinSections;
 
   // Q-mode 2 media catalogue number (UPC/EAN), disc-global
   std::string m_catalogueNumber;

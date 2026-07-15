@@ -137,6 +137,10 @@ class SectionMetadata {
         m_hasPreemphasis(false),
         m_is2Channel(true),
         m_index(1),
+        m_point(0),
+        m_pMin(0),
+        m_pSec(0),
+        m_pFrame(0),
         m_upcEanCode(),
         m_isrcCode() {}
 
@@ -176,6 +180,24 @@ class SectionMetadata {
   uint8_t index() const { return m_index; }
   void setIndex(uint8_t index) { m_index = index; }
   bool isPause() const { return m_index == 0; }
+
+  // Q-6: lead-in TOC fields (IEC 60908 §17.5.1). In the lead-in, Q-channel
+  // byte 2 is POINT (a TOC pointer) and bytes 7-9 are PMIN/PSEC/PFRAME (the TOC
+  // entry that POINT refers to) rather than the running absolute time. POINT is
+  // kept raw so the A0/A1/A2 pointers (first-track / last-track /
+  // lead-out-start entries, which are not BCD) are distinguishable;
+  // PMIN/PSEC/PFRAME are stored as already-decoded integers. Only meaningful
+  // when sectionType() is LeadIn.
+  uint8_t point() const { return m_point; }
+  uint8_t pMin() const { return m_pMin; }
+  uint8_t pSec() const { return m_pSec; }
+  uint8_t pFrame() const { return m_pFrame; }
+  void setLeadinToc(uint8_t point, uint8_t pMin, uint8_t pSec, uint8_t pFrame) {
+    m_point = point;
+    m_pMin = pMin;
+    m_pSec = pSec;
+    m_pFrame = pFrame;
+  }
 
   // IEC 60908 §17.5.2 media catalogue number (13-digit UPC/EAN) and §17.5.3
   // ISRC. Stored as strings to preserve leading zeros and full width (a
@@ -221,6 +243,12 @@ class SectionMetadata {
 
   // Q-Channel INDEX / POINT byte (IEC 60908 §17.5.1)
   uint8_t m_index;
+
+  // Q-Channel lead-in TOC (POINT + PMIN/PSEC/PFRAME, IEC 60908 §17.5.1)
+  uint8_t m_point;
+  uint8_t m_pMin;
+  uint8_t m_pSec;
+  uint8_t m_pFrame;
 
   // Q-Channel mode 2 and 3 metadata
   std::string m_upcEanCode;

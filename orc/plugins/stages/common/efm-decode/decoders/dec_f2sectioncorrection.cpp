@@ -47,6 +47,11 @@ F2SectionCorrection::F2SectionCorrection()
       m_qmode4Sections(0),
       m_absoluteStartTime(99, 59, 74),  // Max-time sentinel (IEC 60908 §17.5.1)
       m_absoluteEndTime(0, 0, 0),
+      m_hasToc(false),
+      m_tocFirstTrack(0),
+      m_tocLastTrack(0),
+      m_tocDiscType(0),
+      m_leadinSections(0),
       m_currentTrack(0),
       m_noTimecodes(false),
       m_receivedSections(0),
@@ -66,6 +71,16 @@ void F2SectionCorrection::pushSection(const F2Section& data) {
   ++m_receivedSections;
   if (data.metadata.isValid()) ++m_validMetadataSections;
 
+  // Q-6: harvest the lead-in TOC before the timeline logic gets a chance to
+  // discard the section. Lead-in sections carry POINT/PMIN/PSEC/PFRAME rather
+  // than a program-area timeline, so they are collected here and then skipped
+  // by the settle/correction stages (see recordTocEntry /
+  // waitForInputToSettle).
+  if (data.metadata.isValid() &&
+      data.metadata.sectionType().type() == SectionType::LeadIn) {
+    recordTocEntry(data.metadata);
+  }
+
   // Add the data to the input buffer
   m_inputBuffer.push(data);
 
@@ -77,10 +92,58 @@ void F2SectionCorrection::pushSection(F2Section&& data) {
   ++m_receivedSections;
   if (data.metadata.isValid()) ++m_validMetadataSections;
 
+  if (data.metadata.isValid() &&
+      data.metadata.sectionType().type() == SectionType::LeadIn) {
+    recordTocEntry(data.metadata);
+  }
+
   // Move the data into the input buffer to avoid a whole-section deep copy.
   m_inputBuffer.push(std::move(data));
 
   processQueue();
+}
+
+// Q-6: assemble the lead-in TOC (IEC 60908 §17.5.1) from one lead-in section's
+// POINT/PMIN/PSEC/PFRAME. POINT selects what PMIN/PSEC/PFRAME mean:
+//   A0 -> first user track number (PMIN) and disc type (PSEC)
+//   A1 -> last user track number (PMIN)
+//   A2 -> lead-out start time (PMIN:PSEC:PFRAME)
+//   01-99 (BCD) -> that track's start time (PMIN:PSEC:PFRAME)
+// Each POINT is broadcast repeatedly through the lead-in, so entries are
+// de-duplicated (first value seen wins).
+void F2SectionCorrection::recordTocEntry(const SectionMetadata& metadata) {
+  ++m_leadinSections;
+
+  const uint8_t point = metadata.point();
+  const uint8_t pMin = metadata.pMin();
+  const uint8_t pSec = metadata.pSec();
+  const uint8_t pFrame = metadata.pFrame();
+
+  if (point == 0xA0) {
+    if (!m_hasToc || m_tocFirstTrack == 0) {
+      m_tocFirstTrack = pMin;
+      m_tocDiscType = pSec;
+    }
+    m_hasToc = true;
+  } else if (point == 0xA1) {
+    if (m_tocLastTrack == 0) m_tocLastTrack = pMin;
+    m_hasToc = true;
+  } else if (point == 0xA2) {
+    m_tocLeadOutStart = SectionTime(pMin, pSec, pFrame);
+    m_hasToc = true;
+  } else {
+    // POINT is a BCD track number (01-99).
+    const uint8_t track =
+        static_cast<uint8_t>((point >> 4) * 10 + (point & 0x0F));
+    if (track >= 1 && track <= 99) {
+      if (std::find(m_tocTrackNumbers.begin(), m_tocTrackNumbers.end(),
+                    track) == m_tocTrackNumbers.end()) {
+        m_tocTrackNumbers.push_back(track);
+        m_tocTrackStartTimes.push_back(SectionTime(pMin, pSec, pFrame));
+      }
+      m_hasToc = true;
+    }
+  }
 }
 
 F2Section F2SectionCorrection::popSection() {
@@ -135,6 +198,20 @@ void F2SectionCorrection::processQueue() {
 // This function collects sections until there are 5 valid, chronological
 // sections in a row.  Once we have these, we can start processing the sections.
 void F2SectionCorrection::waitForInputToSettle(F2Section& f2Section) {
+  // Q-6: lead-in sections do not belong to the program-area timeline - their
+  // Q-channel carries the TOC (POINT/PMIN/PSEC/PFRAME), already harvested in
+  // pushSection(). Skip them here so their (running lead-in) time never seeds
+  // the settle buffer; the timeline settles on the first contiguous run of
+  // program-area / lead-out sections, exactly as for a program-area capture.
+  if (f2Section.metadata.isValid() &&
+      f2Section.metadata.sectionType().type() == SectionType::LeadIn) {
+    ORC_LOG_DEBUG(
+        "F2SectionCorrection::waitForInputToSettle(): Skipping lead-in section "
+        "(TOC harvested) with running time {}",
+        f2Section.metadata.absoluteSectionTime().toString());
+    return;
+  }
+
   // Does the current section have valid metadata?
   if (f2Section.metadata.isValid()) {
     // Do we have any sections in the leadin buffer?
@@ -231,6 +308,18 @@ void F2SectionCorrection::waitForInputToSettle(F2Section& f2Section) {
 
 void F2SectionCorrection::waitingForSection(F2Section& f2Section) {
   bool outputSection = true;
+
+  // Q-6: a lead-in section reaching the post-settle path (e.g. a stray lead-in
+  // block appearing mid-stream) carries TOC data, not a program-area timeline
+  // entry; its TOC was harvested in pushSection(). Drop it so it does not
+  // corrupt the internal buffer's monotonic absolute time.
+  if (f2Section.metadata.isValid() &&
+      f2Section.metadata.sectionType().type() == SectionType::LeadIn) {
+    ORC_LOG_DEBUG(
+        "F2SectionCorrection::waitingForSection(): Skipping lead-in section "
+        "(TOC harvested).");
+    return;
+  }
 
   // Check that this isn't the first section in the internal buffer (as we can't
   // calculate the expected time for the first section)
@@ -951,6 +1040,21 @@ void F2SectionCorrection::showStatistics() const {
   ORC_LOG_INFO("    QMode 2 (Catalogue No.): {}", m_qmode2Sections);
   ORC_LOG_INFO("    QMode 3 (ISO 3901 ISRC): {}", m_qmode3Sections);
   ORC_LOG_INFO("    QMode 4 (LD Data): {}", m_qmode4Sections);
+
+  // Q-6: lead-in TOC (IEC 60908 §17.5.1)
+  ORC_LOG_INFO("  Lead-in TOC:");
+  ORC_LOG_INFO("    Lead-in sections: {}", m_leadinSections);
+  if (m_hasToc) {
+    ORC_LOG_INFO("    First track: {}", m_tocFirstTrack);
+    ORC_LOG_INFO("    Last track: {}", m_tocLastTrack);
+    ORC_LOG_INFO("    Lead-out start: {}", m_tocLeadOutStart.toString());
+    for (size_t i = 0; i < m_tocTrackNumbers.size(); ++i) {
+      ORC_LOG_INFO("    Track {} start: {}", m_tocTrackNumbers[i],
+                   m_tocTrackStartTimes[i].toString());
+    }
+  } else {
+    ORC_LOG_INFO("    No lead-in TOC decoded (capture starts after lead-in).");
+  }
 
   ORC_LOG_INFO("  Absolute Time:");
   ORC_LOG_INFO("    Start time: {}", m_absoluteStartTime.toString());

@@ -908,6 +908,28 @@ void EfmProcessor::showDiscContents() const {
                f2.catalogueNumber().empty() ? "none" : f2.catalogueNumber());
   ORC_LOG_INFO("");
 
+  // Q-6: lead-in table of contents (POINT/PMIN/PSEC/PFRAME, IEC 60908 §17.5.1).
+  ORC_LOG_INFO("  Lead-in table of contents (Q-channel)");
+  if (!f2.hasToc()) {
+    ORC_LOG_INFO(
+        "    Not available (capture does not include a decodable lead-in).");
+  } else {
+    ORC_LOG_INFO("    First track    : {}", f2.tocFirstTrack());
+    ORC_LOG_INFO("    Last track     : {}", f2.tocLastTrack());
+    ORC_LOG_INFO("    Lead-out start : {}", f2.tocLeadOutStart().toString());
+    const auto& tocTracks = f2.tocTrackNumbers();
+    const auto& tocStarts = f2.tocTrackStartTimes();
+    if (tocTracks.empty()) {
+      ORC_LOG_INFO("    (no per-track TOC entries decoded)");
+    } else {
+      for (size_t i = 0; i < tocTracks.size(); ++i) {
+        ORC_LOG_INFO("    Track {:>2} start : {}", tocTracks[i],
+                     tocStarts[i].toString());
+      }
+    }
+  }
+  ORC_LOG_INFO("");
+
   ORC_LOG_INFO("  Track table");
   const auto& trackNumbers = f2.trackNumbers();
   if (trackNumbers.empty()) {
