@@ -15,7 +15,6 @@
 #include <orc/plugin/orc_stage_runtime.h>
 #include <orc/stage/artifact.h>
 #include <orc/stage/audio_channel_pair.h>
-#include <orc/stage/audio_decode_primer.h>
 #include <orc/stage/stage_parameter.h>
 #include <orc/stage/video_frame_representation.h>
 
@@ -53,8 +52,7 @@ namespace orc {
 // serialised by std::call_once and cache reads are stateless.
 class EFMAudioChannelPairRepresentation
     : public VideoFrameRepresentationWrapper,
-      public Artifact,
-      public IAudioDecodePrimer {
+      public Artifact {
  public:
   EFMAudioChannelPairRepresentation(
       std::shared_ptr<const VideoFrameRepresentation> source,
@@ -81,11 +79,12 @@ class EFMAudioChannelPairRepresentation
   std::vector<int32_t> get_audio_samples(size_t pair,
                                          FrameID id) const override;
 
-  // --- IAudioDecodePrimer -------------------------------------------------
-  // Runs the deferred whole-stream decode now, forwarding its per-frame
-  // progress. Lets a sink meter the decode on its progress dialog instead of
-  // stalling silently inside the first get_audio_samples() call.
-  void prime_audio_decode(const ProgressFn& progress) const override {
+  // Runs the deferred whole-stream decode now (overrides the base VFR hook),
+  // forwarding its per-frame progress. Lets a sink meter the decode on its
+  // progress dialog instead of stalling silently inside the first
+  // get_audio_samples() call.
+  void prime_audio_decode(
+      const AudioDecodeProgressFn& progress) const override {
     ensure_decoded(progress);
   }
 
@@ -101,7 +100,7 @@ class EFMAudioChannelPairRepresentation
   // at most once; safe to call from any accessor thread. Failures are logged
   // and leave the appended pair silent. When |progress| is set (priming path)
   // it receives frame-granular decode progress and phase messages.
-  void ensure_decoded(const ProgressFn& progress = {}) const;
+  void ensure_decoded(const AudioDecodeProgressFn& progress = {}) const;
 
   std::shared_ptr<IEFMAudioDecodeDeps> deps_;
   EFMAudioDecodeOptions options_;

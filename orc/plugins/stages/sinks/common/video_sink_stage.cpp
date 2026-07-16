@@ -9,7 +9,6 @@
 
 #include "video_sink_stage.h"
 
-#include <orc/stage/audio_decode_primer.h>
 #include <orc/stage/colour_preview_conversion.h>
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/frame_line_util.h>
@@ -1174,14 +1173,15 @@ bool VideoSinkStage::trigger(
   // If an upstream representation carries audio produced by a deferred
   // whole-stream decode (e.g. EFM audio), prime it here so its cost is metered
   // on the progress dialog rather than freezing frame 0 of the export loop.
-  // Only worthwhile when audio is actually embedded (FFmpeg output). A
-  // representation that does not implement IAudioDecodePrimer casts to nullptr
-  // and keeps the decode-on-first-access behaviour.
+  // Only worthwhile when audio is actually embedded (FFmpeg output). The hook
+  // is a no-op for representations with no deferred decode, and forwards down
+  // the wrapper chain so a producer nested beneath other stages (e.g. an
+  // audio_channel_map between EFM decode and the sink) is still reached.
   if (embed_audio_ && ffmpeg_output && !inputs.empty()) {
-    if (auto* primer =
-            dynamic_cast<const IAudioDecodePrimer*>(inputs[0].get())) {
+    if (auto vfr =
+            std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0])) {
       ORC_LOG_DEBUG("VideoSink: priming deferred audio decode before export");
-      primer->prime_audio_decode(
+      vfr->prime_audio_decode(
           [this](uint64_t done, uint64_t total, const std::string& message) {
             if (progress_callback_) progress_callback_(done, total, message);
           });

@@ -76,7 +76,7 @@ std::vector<int32_t> EFMAudioChannelPairRepresentation::get_audio_samples(
 }
 
 void EFMAudioChannelPairRepresentation::ensure_decoded(
-    const ProgressFn& progress) const {
+    const AudioDecodeProgressFn& progress) const {
   std::call_once(decode_once_, [this, &progress] {
     if (!source_) {
       ORC_LOG_ERROR(

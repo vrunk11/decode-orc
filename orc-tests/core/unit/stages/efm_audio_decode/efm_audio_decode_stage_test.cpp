@@ -296,13 +296,8 @@ TEST(EFMAudioDecodeStageTest, Prime_RunsDecodeOnceAndForwardsProgress) {
         return orc::EFMAudioDecodeResult{false, "stop here", 0};
       });
 
-  // The output exposes the priming capability.
-  const auto* primer =
-      dynamic_cast<const orc::IAudioDecodePrimer*>(output.get());
-  ASSERT_NE(primer, nullptr);
-
   bool progress_seen = false;
-  primer->prime_audio_decode(
+  output->prime_audio_decode(
       [&](uint64_t done, uint64_t total, const std::string& message) {
         progress_seen = true;
         EXPECT_EQ(done, 1u);
@@ -315,6 +310,54 @@ TEST(EFMAudioDecodeStageTest, Prime_RunsDecodeOnceAndForwardsProgress) {
   // trigger a second one — StrictMock would fail if decode_to_cache ran again.
   const auto samples = output->get_audio_samples(0, orc::FrameID(0));
   EXPECT_EQ(samples.size(), 1920u * 2);  // silence, cadence-sized
+}
+
+// A minimal pass-through wrapper standing in for a stage (e.g.
+// audio_channel_map) sitting between the EFM decode and the sink. Priming must
+// forward through it.
+class PassThroughWrapper : public orc::VideoFrameRepresentationWrapper {
+ public:
+  explicit PassThroughWrapper(
+      std::shared_ptr<const orc::VideoFrameRepresentation> source)
+      : orc::VideoFrameRepresentationWrapper(std::move(source)) {}
+  std::vector<orc::VideoFrameRepresentation::sample_type> get_frame_copy(
+      orc::FrameID) const override {
+    return {};
+  }
+  const orc::VideoFrameRepresentation::sample_type* get_frame(
+      orc::FrameID) const override {
+    return nullptr;
+  }
+};
+
+TEST(EFMAudioDecodeStageTest, Prime_ForwardsThroughInterveningWrapper) {
+  orc::EFMAudioDecodeStage stage;
+  auto deps = std::make_shared<StrictMock<MockEFMAudioDecodeDeps>>();
+  stage.set_deps_override(deps);
+
+  auto vfr = std::make_shared<NiceMock<MockVideoFrameRepresentationArtifact>>();
+  constexpr size_t kFrames = 2;
+  configure_video(*vfr, orc::VideoSystem::PAL, kFrames);
+  auto output = make_output(stage, vfr, 0);
+
+  // Wrap the EFM representation the way a downstream stage would, so the sink's
+  // direct input is the wrapper — not the EFM representation itself.
+  auto wrapped = std::make_shared<PassThroughWrapper>(output);
+
+  EXPECT_CALL(*deps, decode_to_cache(_, _, _))
+      .Times(1)
+      .WillOnce([](const orc::VideoFrameRepresentation&,
+                   const orc::EFMAudioDecodeOptions&,
+                   const orc::IEFMAudioDecodeDeps::ProgressFn& progress) {
+        if (progress) progress(1, kFrames, "Decoding EFM audio...");
+        return orc::EFMAudioDecodeResult{false, "stop here", 0};
+      });
+
+  // Priming the wrapper must reach the nested EFM decode through the chain.
+  bool progress_seen = false;
+  wrapped->prime_audio_decode(
+      [&](uint64_t, uint64_t, const std::string&) { progress_seen = true; });
+  EXPECT_TRUE(progress_seen);
 }
 
 TEST(EFMAudioDecodeStageTest, SampleAccess_ServesNtscCadenceSizedBlocks) {
