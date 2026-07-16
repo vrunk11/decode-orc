@@ -62,12 +62,24 @@ endif()
 message(STATUS "Decode Orc Version: ${ORC_VERSION}")
 
 # ---------------------------------------------------------------------------
-# Plugin ABI version — kept in sync with kStagePluginHostAbiVersion in
-# orc/sdk/include/orc/plugin/orc_plugin_abi.h.  CI/CD and packaging scripts
-# can compare against this CMake variable without parsing C++ headers.
+# Plugin ABI version — parsed directly from kStagePluginHostAbiVersion in
+# orc/sdk/include/orc/plugin/orc_plugin_abi.h so there is a single source of
+# truth.  CI/CD and packaging scripts can consume this CMake variable without
+# parsing C++ headers.  Do NOT hardcode the number here; bump it in the header.
 # ---------------------------------------------------------------------------
-set(ORC_STAGE_PLUGIN_HOST_ABI_VERSION 5 CACHE INTERNAL
-    "Host ABI version exposed to plugins (must match kStagePluginHostAbiVersion in orc_plugin_abi.h)")
+set(ORC_PLUGIN_ABI_HEADER
+    "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include/orc/plugin/orc_plugin_abi.h")
+file(STRINGS "${ORC_PLUGIN_ABI_HEADER}" _orc_abi_line
+    REGEX "kStagePluginHostAbiVersion[ \t]*=[ \t]*[0-9]+")
+string(REGEX MATCH "kStagePluginHostAbiVersion[ \t]*=[ \t]*([0-9]+)"
+    _orc_abi_match "${_orc_abi_line}")
+set(ORC_STAGE_PLUGIN_HOST_ABI_VERSION "${CMAKE_MATCH_1}")
+if(NOT ORC_STAGE_PLUGIN_HOST_ABI_VERSION MATCHES "^[0-9]+$")
+    message(FATAL_ERROR
+        "Could not parse kStagePluginHostAbiVersion from ${ORC_PLUGIN_ABI_HEADER}")
+endif()
+set(ORC_STAGE_PLUGIN_HOST_ABI_VERSION "${ORC_STAGE_PLUGIN_HOST_ABI_VERSION}"
+    CACHE INTERNAL "Host ABI version exposed to plugins (parsed from orc_plugin_abi.h)")
 message(STATUS "Stage Plugin Host ABI version: ${ORC_STAGE_PLUGIN_HOST_ABI_VERSION}")
 
 # Configure version header
