@@ -52,6 +52,12 @@ void print_usage(const char* program_name) {
                "persistent registry\n";
   std::cerr << "  plugins enable <id>            Enable a registered plugin\n";
   std::cerr << "  plugins disable <id>           Disable a registered plugin\n";
+  std::cerr << "  plugins search <term>          Search the curated plugin "
+               "index\n";
+  std::cerr << "  plugins info <id>              Show details for an indexed "
+               "plugin\n";
+  std::cerr << "  plugins install <id>           Install a plugin from the "
+               "curated index\n";
   std::cerr << "\n";
   std::cerr << "Options:\n";
   std::cerr << "  --log-level LEVEL              Set logging verbosity\n";

@@ -155,3 +155,11 @@ add_test(
     COMMAND ${BASH_EXECUTABLE} ${CMAKE_SOURCE_DIR}/cmake/check_abi_history_docs.sh ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(AbiVersionDocsSync PROPERTIES LABELS "sdk")
+
+# Curated plugin index: the live index must validate, and each fixture must
+# pass/fail as expected so the validation rules stay honest (offline checks).
+add_test(
+    NAME PluginIndexValidation
+    COMMAND ${BASH_EXECUTABLE} ${CMAKE_SOURCE_DIR}/cmake/check_plugin_index.sh ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(PluginIndexValidation PROPERTIES LABELS "sdk")

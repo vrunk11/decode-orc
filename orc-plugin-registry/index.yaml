@@ -1,0 +1,12 @@
+# Decode-Orc curated plugin index.
+#
+# The host reads this file from the default-branch head over plain HTTPS, so a
+# merged change publishes immediately with no release. Add your plugin by
+# opening a pull request that appends an entry under `plugins:`; the PR
+# validation workflow checks schema, artifact naming, digests and license
+# before it can be merged. See README.md for the full schema and rules.
+#
+# Schema documented in docs/technical/plugin-architecture.md
+# ("Curated plugin index").
+registry_schema: 1
+plugins: []

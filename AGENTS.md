@@ -378,6 +378,7 @@ Plugin architecture and SDK documentation are published in `docs/technical/plugi
 | New or removed public SDK header (`orc/sdk/include/orc/plugin/` or `orc/sdk/include/orc/stage/`) | `plugin-sdk.md` — SDK Headers section, and the allowlist in `cmake/check_plugin_private_includes.sh` |
 | `StagePluginDescriptor`, entrypoint signatures, or callback contract changed | `plugin-architecture.md` — Compatibility Gating section |
 | Registry YAML schema fields added or removed | `plugin-architecture.md` — Plugin Registry table |
+| Curated plugin index (`registry_schema`) fields added or removed | `plugin-architecture.md` — Curated plugin index table; `orc-plugin-registry/README.md` |
 | Artifact naming convention changed | Both files |
 | `IStageServices` interface methods added or removed | `plugin-sdk.md` — Host services section |
 | `StageToolDescriptor` / `AnalysisToolDescriptor` contract changed | `plugin-sdk.md` — Optional: Stage tools section |

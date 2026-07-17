@@ -23,6 +23,9 @@
 #include <algorithm>
 #include <unordered_set>
 
+#include "pluginbrowsedialog.h"
+#include "pluginmanagermodel.h"
+#include "plugintrustdialog.h"
 #include "presenters/include/project_presenter.h"
 #include "presenters/include/project_presenter_types.h"
 
@@ -34,22 +37,28 @@ static constexpr int COL_PATH = 1;
 static constexpr int COL_VERSION = 2;
 static constexpr int COL_SOURCE = 3;
 static constexpr int COL_ENABLED = 4;
-static constexpr int NUM_COLS = 5;
+static constexpr int COL_TRUSTED = 5;
+static constexpr int NUM_COLS = 6;
 static constexpr int ROW_REGISTRY_ENTRY_ROLE = Qt::UserRole + 1;
 static constexpr int ROW_IS_CORE_ROLE = Qt::UserRole + 2;
 static constexpr int ROW_PATH_ROLE = Qt::UserRole + 3;
 static constexpr int ROW_RELEASE_ASSET_URL_ROLE = Qt::UserRole + 4;
 
-static const QStringList COLUMN_HEADERS = {"ID", "Path", "Version", "Source",
-                                           "Enabled"};
+static const QStringList COLUMN_HEADERS = {"ID",     "Path",    "Version",
+                                           "Source", "Enabled", "Trusted"};
 
-PluginManagerDialog::PluginManagerDialog(QWidget* parent) : QDialog(parent) {
+PluginManagerDialog::PluginManagerDialog(QWidget* parent)
+    : QDialog(parent),
+      presenter_(std::make_unique<orc::presenters::ProjectPresenter>()),
+      model_(std::make_unique<PluginManagerModel>(*presenter_)) {
   setWindowTitle("Plugin Manager");
-  resize(900, 500);
+  resize(980, 500);
   buildUI();
   refresh();
   captureInitialRegistrySnapshot();
 }
+
+PluginManagerDialog::~PluginManagerDialog() = default;
 
 void PluginManagerDialog::accept() {
   if (!plugin_changes_made_) {
@@ -208,6 +217,7 @@ void PluginManagerDialog::buildUI() {
   header->setSectionResizeMode(COL_VERSION, QHeaderView::ResizeToContents);
   header->setSectionResizeMode(COL_SOURCE, QHeaderView::Stretch);
   header->setSectionResizeMode(COL_ENABLED, QHeaderView::ResizeToContents);
+  header->setSectionResizeMode(COL_TRUSTED, QHeaderView::ResizeToContents);
   QFont header_font = header->font();
   header_font.setBold(false);
   header->setFont(header_font);
@@ -224,8 +234,10 @@ void PluginManagerDialog::buildUI() {
   // Action buttons
   auto* button_row = new QHBoxLayout();
   add_button_ = new QPushButton("Add Plugin...");
+  browse_button_ = new QPushButton("Browse Plugins...");
   remove_button_ = new QPushButton("Remove");
   button_row->addWidget(add_button_);
+  button_row->addWidget(browse_button_);
   button_row->addWidget(remove_button_);
   button_row->addStretch();
   root_layout->addLayout(button_row);
@@ -244,6 +256,8 @@ void PluginManagerDialog::buildUI() {
   // Connect signals
   connect(add_button_, &QPushButton::clicked, this,
           &PluginManagerDialog::onAddPlugin);
+  connect(browse_button_, &QPushButton::clicked, this,
+          &PluginManagerDialog::onBrowsePlugins);
   connect(remove_button_, &QPushButton::clicked, this,
           &PluginManagerDialog::onRemovePlugin);
   connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged,
@@ -257,9 +271,8 @@ void PluginManagerDialog::buildUI() {
 }
 
 void PluginManagerDialog::refresh() {
-  const auto registry = orc::presenters::ProjectPresenter::readPluginRegistry();
-  const auto loaded_plugins =
-      orc::presenters::ProjectPresenter::getLoadedPlugins();
+  const auto registry = model_->registry();
+  const auto loaded_plugins = model_->loadedPlugins();
 
   registry_path_label_->setText(
       registry.registry_path.empty()
@@ -314,6 +327,10 @@ void PluginManagerDialog::refresh() {
     }
     table_->setItem(row, COL_VERSION, version_item);
 
+    // The Enabled checkbox reflects only the enabled flag. Trust is a
+    // separate decision shown in its own column; the host loads an entry
+    // only when it is both enabled and trusted (core plugins are always
+    // trusted).
     auto* enabled_item = new QTableWidgetItem();
     enabled_item->setData(ROW_REGISTRY_ENTRY_ROLE, true);
     enabled_item->setData(ROW_IS_CORE_ROLE, e.is_core_plugin);
@@ -321,16 +338,8 @@ void PluginManagerDialog::refresh() {
         e.is_core_plugin ? (Qt::ItemIsSelectable | Qt::ItemIsUserCheckable)
                          : (Qt::ItemIsSelectable | Qt::ItemIsUserCheckable |
                             Qt::ItemIsEnabled));
-    // The checkbox reflects whether the plugin will actually load at
-    // startup: the host only loads entries that are both enabled and
-    // trusted. Entries added through this dialog are trusted at add time,
-    // so the two states only diverge for entries that arrived from outside
-    // the application (e.g. a hand-edited registry file); checking the box
-    // grants trust as well as enabling.
     enabled_item->setCheckState(
-        (e.is_core_plugin || (e.enabled && e.trust_state == "trusted"))
-            ? Qt::Checked
-            : Qt::Unchecked);
+        (e.is_core_plugin || e.enabled) ? Qt::Checked : Qt::Unchecked);
     const std::string source =
         e.is_core_plugin
             ? std::string("Core")
@@ -340,6 +349,19 @@ void PluginManagerDialog::refresh() {
     table_->setItem(row, COL_SOURCE,
                     new QTableWidgetItem(QString::fromStdString(source)));
     table_->setItem(row, COL_ENABLED, enabled_item);
+
+    // Trusted checkbox: core plugins are implicitly trusted and immutable;
+    // toggling this for other entries prompts an explicit confirmation.
+    const bool is_trusted = e.is_core_plugin || e.trust_state == "trusted";
+    auto* trusted_item = new QTableWidgetItem();
+    trusted_item->setData(ROW_REGISTRY_ENTRY_ROLE, true);
+    trusted_item->setData(ROW_IS_CORE_ROLE, e.is_core_plugin);
+    trusted_item->setFlags(
+        e.is_core_plugin ? (Qt::ItemIsSelectable | Qt::ItemIsUserCheckable)
+                         : (Qt::ItemIsSelectable | Qt::ItemIsUserCheckable |
+                            Qt::ItemIsEnabled));
+    trusted_item->setCheckState(is_trusted ? Qt::Checked : Qt::Unchecked);
+    table_->setItem(row, COL_TRUSTED, trusted_item);
 
     if (!display_id.empty()) {
       seen_ids.insert(display_id);
@@ -391,6 +413,15 @@ void PluginManagerDialog::refresh() {
     table_->setItem(row, COL_SOURCE,
                     new QTableWidgetItem(QString::fromStdString(source)));
     table_->setItem(row, COL_ENABLED, enabled_item);
+
+    // A runtime-loaded plugin is already running this session, so it is shown
+    // trusted but non-interactive until it is materialised into the registry.
+    auto* trusted_item = new QTableWidgetItem();
+    trusted_item->setData(ROW_REGISTRY_ENTRY_ROLE, false);
+    trusted_item->setData(ROW_IS_CORE_ROLE, plugin.is_core_plugin);
+    trusted_item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
+    trusted_item->setCheckState(Qt::Checked);
+    table_->setItem(row, COL_TRUSTED, trusted_item);
   }
 
   refreshing_table_ = false;
@@ -427,7 +458,8 @@ void PluginManagerDialog::onSelectionChanged() {
 }
 
 void PluginManagerDialog::onTableItemChanged(QTableWidgetItem* item) {
-  if (!item || refreshing_table_ || item->column() != COL_ENABLED) {
+  if (!item || refreshing_table_ ||
+      (item->column() != COL_ENABLED && item->column() != COL_TRUSTED)) {
     return;
   }
 
@@ -448,12 +480,28 @@ void PluginManagerDialog::onTableItemChanged(QTableWidgetItem* item) {
   const QString plugin_version = table_->item(row, COL_VERSION)
                                      ? table_->item(row, COL_VERSION)->text()
                                      : QString();
-  const bool enabled = (item->checkState() == Qt::Checked);
+  const bool checked = (item->checkState() == Qt::Checked);
 
   if (is_core_plugin) {
     refresh();
     return;
   }
+
+  // Trust column: prompt for explicit confirmation before granting trust.
+  if (item->column() == COL_TRUSTED) {
+    if (plugin_id.isEmpty()) {
+      QMessageBox::warning(
+          this, "Update Trust Failed",
+          "This plugin has no ID, so its trust state cannot be changed.");
+      refresh();
+      return;
+    }
+    handleTrustToggle(plugin_id.toStdString(), checked);
+    return;
+  }
+
+  // Enabled column: change only the enabled flag. Enabling never grants trust.
+  const bool enabled = checked;
 
   if (!is_registry_entry) {
     if (plugin_path.isEmpty()) {
@@ -466,14 +514,14 @@ void PluginManagerDialog::onTableItemChanged(QTableWidgetItem* item) {
     entry_info.plugin_id = plugin_id.toStdString();
     entry_info.plugin_version = plugin_version.toStdString();
     entry_info.artifact_source = "local_path";
-    // This plugin was already loaded from a search path this session, so it
-    // is implicitly trusted; materialize the registry entry as trusted so it
-    // keeps loading after restart.
+    // This plugin was already loaded from a search path this session, so it is
+    // already running and trusted; materialise it as trusted so it keeps
+    // loading after restart. This is not the enable path granting trust — the
+    // plugin is live now.
     entry_info.trust_state = "trusted";
     entry_info.enabled = true;
 
-    const auto add_result =
-        orc::presenters::ProjectPresenter::addPluginRegistryEntry(entry_info);
+    const auto add_result = model_->addEntry(entry_info);
 
     if (!add_result.success &&
         add_result.error_message.find("already exists in the registry") ==
@@ -495,9 +543,7 @@ void PluginManagerDialog::onTableItemChanged(QTableWidgetItem* item) {
     return;
   }
 
-  const auto result =
-      orc::presenters::ProjectPresenter::setPluginRegistryEntryEnabled(
-          plugin_id.toStdString(), enabled);
+  const auto result = model_->setEnabled(plugin_id.toStdString(), enabled);
 
   if (!result.success) {
     QMessageBox::warning(
@@ -505,22 +551,6 @@ void PluginManagerDialog::onTableItemChanged(QTableWidgetItem* item) {
         QString::fromStdString(result.error_message));
     refresh();
     return;
-  }
-
-  // Enabling is the user's consent for the plugin to run, so it also grants
-  // trust. This is the GUI path for activating entries that arrived from
-  // outside the application (e.g. a hand-edited registry file), which
-  // default to untrusted. Disabling leaves the trust state unchanged.
-  if (enabled && !is_core_plugin) {
-    const auto trust_result =
-        orc::presenters::ProjectPresenter::setPluginRegistryEntryTrusted(
-            plugin_id.toStdString(), true);
-    if (!trust_result.success) {
-      QMessageBox::warning(this, "Enable Plugin Failed",
-                           QString::fromStdString(trust_result.error_message));
-      refresh();
-      return;
-    }
   }
 
   plugin_changes_made_ = true;
@@ -556,15 +586,26 @@ void PluginManagerDialog::onAddPlugin() {
       return;
     }
 
+    // Adding and trusting are separate decisions: confirm trust explicitly.
+    PluginTrustDialog::Details details;
+    details.source = path;
+    details.license = QString();
+    details.digest_status = "local file";
+    PluginTrustDialog trust_dialog(this, details, /*allow_untrusted=*/true);
+    if (trust_dialog.exec() != QDialog::Accepted) {
+      return;
+    }
+
     orc::presenters::PluginRegistryEntryInfo entry_info;
     entry_info.artifact_source = "local_path";
     entry_info.path = path.toStdString();
     entry_info.enabled = true;
-    // Selecting the binary is the user's explicit consent to run it.
-    entry_info.trust_state = "trusted";
+    entry_info.trust_state =
+        (trust_dialog.choice() == PluginTrustDialog::Choice::Trust)
+            ? "trusted"
+            : "untrusted";
 
-    const auto result =
-        orc::presenters::ProjectPresenter::addPluginRegistryEntry(entry_info);
+    const auto result = model_->addEntry(entry_info);
 
     if (!result.success) {
       QMessageBox::warning(this, "Add Plugin Failed",
@@ -599,9 +640,20 @@ void PluginManagerDialog::onAddPlugin() {
     return;
   }
 
+  // Confirm trust explicitly; the entry is added untrusted unless trusted here.
+  PluginTrustDialog::Details details;
+  details.source = releases_url.trimmed();
+  details.license = QString();
+  details.digest_status = "verified after download when a digest is recorded";
+  PluginTrustDialog trust_dialog(this, details, /*allow_untrusted=*/true);
+  if (trust_dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+
+  const bool trusted =
+      trust_dialog.choice() == PluginTrustDialog::Choice::Trust;
   const auto result =
-      orc::presenters::ProjectPresenter::addPluginFromReleasesUrl(
-          releases_url.trimmed().toStdString());
+      model_->addFromUrl(releases_url.trimmed().toStdString(), trusted);
 
   if (!result.success) {
     QMessageBox::warning(this, "Add Plugin Failed",
@@ -611,6 +663,66 @@ void PluginManagerDialog::onAddPlugin() {
 
   plugin_changes_made_ = true;
 
+  refresh();
+}
+
+void PluginManagerDialog::onBrowsePlugins() {
+  PluginBrowseDialog dialog(*presenter_, this);
+  dialog.exec();
+  if (dialog.changesMade()) {
+    plugin_changes_made_ = true;
+    refresh();
+  }
+}
+
+void PluginManagerDialog::handleTrustToggle(const std::string& plugin_id,
+                                            bool trusted) {
+  if (!trusted) {
+    // Removing trust needs no confirmation.
+    const auto result = model_->setTrusted(plugin_id, false);
+    if (!result.success) {
+      QMessageBox::warning(this, "Update Trust Failed",
+                           QString::fromStdString(result.error_message));
+    } else {
+      plugin_changes_made_ = true;
+    }
+    refresh();
+    return;
+  }
+
+  // Granting trust: surface the entry's source, license and digest status so
+  // the decision is deliberate.
+  PluginTrustDialog::Details details;
+  const auto registry = model_->registry();
+  for (const auto& entry : registry.entries) {
+    if (entry.plugin_id == plugin_id) {
+      details.source = QString::fromStdString(
+          !entry.release_asset_url.empty()
+              ? entry.release_asset_url
+              : (entry.source_repo_url.empty() ? entry.path
+                                               : entry.source_repo_url));
+      details.license = QString::fromStdString(entry.license_spdx);
+      details.digest_status = entry.sha256.empty()
+                                  ? QStringLiteral("no digest recorded")
+                                  : QStringLiteral("sha256 recorded");
+      break;
+    }
+  }
+
+  PluginTrustDialog dialog(this, details, /*allow_untrusted=*/false);
+  if (dialog.exec() != QDialog::Accepted ||
+      dialog.choice() != PluginTrustDialog::Choice::Trust) {
+    refresh();  // Revert the checkbox.
+    return;
+  }
+
+  const auto result = model_->setTrusted(plugin_id, true);
+  if (!result.success) {
+    QMessageBox::warning(this, "Update Trust Failed",
+                         QString::fromStdString(result.error_message));
+  } else {
+    plugin_changes_made_ = true;
+  }
   refresh();
 }
 

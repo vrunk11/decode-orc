@@ -85,12 +85,21 @@ class IProjectPresenter {
       const std::string& path, const std::string& plugin_id,
       const std::string& plugin_version, const std::string& license_spdx,
       bool is_core_plugin, bool trusted) const = 0;
+  virtual PluginRegistryMutationResult addPluginEntry(
+      const PluginRegistryEntryInfo& entry_info) const = 0;
+  virtual PluginRegistryMutationResult addPluginFromUrl(
+      const std::string& releases_url, bool trusted) const = 0;
   virtual PluginRegistryMutationResult removePlugin(
       const std::string& plugin_id) const = 0;
   virtual PluginRegistryMutationResult setPluginEnabled(
       const std::string& plugin_id, bool enabled) const = 0;
   virtual PluginRegistryMutationResult setPluginTrusted(
       const std::string& plugin_id, bool trusted) const = 0;
+
+  // === Curated plugin index discovery ===
+  virtual PluginIndexInfo fetchPluginIndex() const = 0;
+  virtual PluginRegistryMutationResult installPluginFromIndex(
+      const std::string& plugin_id) const = 0;
 
   // === Batch Operations ===
   virtual bool canTriggerNode(NodeID node_id, std::string* reason) const = 0;

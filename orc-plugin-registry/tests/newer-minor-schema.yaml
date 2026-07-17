@@ -1,0 +1,16 @@
+# A newer minor revision within schema major 1: it carries fields this host
+# does not know (top-level, per-plugin and per-artifact). They must be ignored,
+# not rejected.
+registry_schema: 1
+index_generated_at: 2026-07-17T00:00:00Z
+plugins:
+  - id: com.example.future
+    display_name: Future Plugin
+    license_spdx: MIT
+    experimental_flag: true
+    artifacts:
+      - platform: linux
+        host_abi: 8
+        url: https://github.com/example/orc-plugin_future/releases/download/v2/orc-plugin_future_linux_abi8.so
+        sha256: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+        signing_key_id: 0xDEADBEEF

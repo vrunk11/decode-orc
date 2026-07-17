@@ -353,6 +353,14 @@ class ProjectPresenter : public IProjectPresenter {
     return ProjectPresenter::addPluginToRegistry(
         path, plugin_id, plugin_version, license_spdx, is_core_plugin, trusted);
   }
+  PluginRegistryMutationResult addPluginEntry(
+      const PluginRegistryEntryInfo& entry_info) const override {
+    return ProjectPresenter::addPluginRegistryEntry(entry_info);
+  }
+  PluginRegistryMutationResult addPluginFromUrl(const std::string& releases_url,
+                                                bool trusted) const override {
+    return ProjectPresenter::addPluginFromReleasesUrl(releases_url, trusted);
+  }
   PluginRegistryMutationResult removePlugin(
       const std::string& plugin_id) const override {
     return ProjectPresenter::removePluginFromRegistry(plugin_id);
@@ -364,6 +372,13 @@ class ProjectPresenter : public IProjectPresenter {
   PluginRegistryMutationResult setPluginTrusted(const std::string& plugin_id,
                                                 bool trusted) const override {
     return ProjectPresenter::setPluginRegistryEntryTrusted(plugin_id, trusted);
+  }
+  PluginIndexInfo fetchPluginIndex() const override {
+    return ProjectPresenter::readPluginIndex();
+  }
+  PluginRegistryMutationResult installPluginFromIndex(
+      const std::string& plugin_id) const override {
+    return ProjectPresenter::installIndexedPlugin(plugin_id);
   }
 
   // === Stage Registry ===
@@ -424,9 +439,13 @@ class ProjectPresenter : public IProjectPresenter {
 
   /**
    * @brief Add a remote plugin by resolving a GitHub releases URL
+   *
+   * The entry is recorded untrusted unless @p trusted is set: trust is granted
+   * only through an explicit confirmation step, so that adding a URL and
+   * trusting its binary are distinct decisions.
    */
   static PluginRegistryMutationResult addPluginFromReleasesUrl(
-      const std::string& releases_url);
+      const std::string& releases_url, bool trusted = false);
 
   /**
    * @brief Remove a plugin entry from the persistent registry by plugin_id
@@ -465,6 +484,25 @@ class ProjectPresenter : public IProjectPresenter {
    * only core plugins discovered from build/install default plugin paths.
    */
   static PluginRegistryMutationResult clearPluginRegistryForSafeMode();
+
+  /**
+   * @brief Fetch the curated plugin index, resolving host compatibility
+   *
+   * Refreshes from the configured index URL, falling back to the last-good
+   * cached copy when offline. Each entry is annotated with whether a build
+   * compatible with this host's platform and ABI exists.
+   */
+  static PluginIndexInfo readPluginIndex();
+
+  /**
+   * @brief Install a plugin from the curated index by id
+   *
+   * Resolves the artifact matching this host's platform and ABI, then records
+   * a remote registry entry (carrying the index-declared sha256) as
+   * untrusted-until-confirmed. Fails when no compatible build exists.
+   */
+  static PluginRegistryMutationResult installIndexedPlugin(
+      const std::string& plugin_id);
 
   /**
    * @brief Get stage instance for parameter editing

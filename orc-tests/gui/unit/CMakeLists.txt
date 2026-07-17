@@ -104,6 +104,7 @@ orc_add_gui_unit_tests(
         gui_project_test.cpp
         orc_graph_model_test.cpp
         render_coordinator_test.cpp
+        plugin_discovery_model_test.cpp
 )
 
 # Phase 6: Offscreen widget test harness baseline
@@ -125,4 +126,5 @@ orc_add_gui_unit_tests(
         field_preview_crosshair_test.cpp
         preview_dialog_playback_test.cpp
         theme_controller_test.cpp
+        plugin_browse_dialog_test.cpp
 )

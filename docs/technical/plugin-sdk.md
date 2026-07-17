@@ -696,11 +696,13 @@ Users register your plugin by adding an entry to their plugin registry YAML:
 The host downloads and caches the binary automatically the first time it
 starts with this entry present — but only once the entry is trusted;
 entries with `trust_state: untrusted` are neither downloaded nor loaded.
-Plugins added through the GUI Plugin Manager (or with
-`orc-cli plugins add --trusted`) are trusted at add time; entries supplied
-any other way — such as the hand-written snippet above — default to
-untrusted and must be activated by enabling them in the Plugin Manager or
-with `orc-cli plugins trust <id>`. Publish the artifact's SHA-256 digest
+Trust is a decision separate from adding or enabling: adding a plugin through
+the GUI Plugin Manager (local file, URL, or from the curated index) prompts an
+explicit trust-confirmation dialog, and toggling **Enabled** never grants
+trust. Entries supplied any other way — such as the hand-written snippet above
+— default to untrusted and must be trusted via the Plugin Manager's **Trusted**
+column or `orc-cli plugins trust <id>` (the CLI `plugins add --trusted` flag
+trusts at add time). Publish the artifact's SHA-256 digest
 so users can record it in the optional `sha256` field: the host then
 verifies the download (and every
 cache hit) against it and quarantines mismatching files. Without a `sha256`
@@ -709,6 +711,27 @@ Plugin binaries are not code-signed; see the "Distribution integrity"
 section of
 [plugin-architecture.md](plugin-architecture.md#distribution-integrity) for
 exactly what is and is not verified.
+
+### Curated index and discovery
+
+To reach users without hand-written YAML, list your plugin in the curated
+index ([`orc-plugin-registry/`](../../orc-plugin-registry/README.md)). Open a
+pull request adding an entry with per-(platform, host ABI) artifacts, each
+carrying a mandatory `sha256`; a maintainer's merge publishes it immediately.
+Users then discover and install it without knowing your URL:
+
+```console
+$ orc-cli plugins search deinterlace     # find listed plugins
+$ orc-cli plugins info com.example.my-stage
+$ orc-cli plugins install com.example.my-stage   # recorded untrusted
+$ orc-cli plugins trust com.example.my-stage     # confirm trust
+```
+
+The GUI exposes the same flow through **Plugin Manager → Browse Plugins…**.
+Installing from the index records the entry with the index-declared `sha256`
+and leaves it untrusted until the user confirms trust. Hosts resolve the
+artifact matching their platform and ABI, so a user on an unsupported host is
+told "no build for this host" instead of downloading an incompatible binary.
 
 ## Versioning and Compatibility Policy
 

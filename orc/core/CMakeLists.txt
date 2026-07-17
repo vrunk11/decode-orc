@@ -82,6 +82,11 @@ add_library(orc-core SHARED
     plugin_remote_loader.cpp
     plugin_artifact_name.cpp
     sha256_hash.cpp
+
+    # Curated plugin index discovery
+    curl_http_fetcher.cpp
+    plugin_index.cpp
+    plugin_index_client.cpp
     
     # DAG serialization
     dag_serialization.cpp
