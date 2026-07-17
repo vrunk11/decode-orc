@@ -10,7 +10,7 @@
 #pragma once
 
 #include <orc/stage/field_id.h>
-#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/observation/observation_context_interface.h>
 #include <tbc_metadata_types.h>
 
 #include <memory>

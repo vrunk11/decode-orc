@@ -10,7 +10,7 @@
 #include "burst_level_analysis_sink_deps.h"
 
 #include <orc/stage/field_id.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <cmath>
 #include <fstream>

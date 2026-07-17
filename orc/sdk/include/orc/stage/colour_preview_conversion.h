@@ -1,26 +1,23 @@
 /*
  * File:        colour_preview_conversion.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     Render-boundary conversion from colour carriers to PreviewImage.
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ *
+ * DEPRECATED: <orc/stage/colour_preview_conversion.h> moved to
+ * <orc/stage/preview/colour_preview_conversion.h>. This shim is retained for
+ * one release so third-party plugin source keeps compiling; include the new
+ * path directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option
+ * (default ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS
+ * for plugin targets and this shim becomes a hard compile error.
  */
-
 #pragma once
 
-#include <orc/stage/orc_preview_carriers.h>
-#include <orc/stage/orc_rendering.h>
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/colour_preview_conversion.h>; include <orc/stage/preview/colour_preview_conversion.h> instead."
+#endif
 
-namespace orc {
-
-/**
- * @brief Convert a colour-domain carrier to display-target RGB888 preview.
- *
- * Conversion target is BT.709 primaries with sRGB transfer characteristics.
- * The source colorimetry is taken from carrier.colorimetry.
- */
-PreviewImage render_preview_from_colour_carrier(
-    const ColourFrameCarrier& carrier);
-
-}  // namespace orc
+#include <orc/stage/preview/colour_preview_conversion.h>

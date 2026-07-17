@@ -10,10 +10,10 @@
 #pragma once
 
 #include <orc/stage/frame_id.h>
-#include <orc/stage/lru_cache.h>
 #include <orc/stage/node_id.h>
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/lru_cache.h>
 
 #include <functional>
 #include <map>

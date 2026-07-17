@@ -30,41 +30,164 @@ git clone https://github.com/simoninns/orc-plugin_skeleton my-orc-plugin
 
 ## SDK Headers
 
-All plugin code must include only the public SDK umbrella header:
+Most plugin code needs only the public SDK umbrella header:
 
 ```cpp
-#include <orc/plugin/orc_plugin_sdk.h>
+#include <orc/abi/orc_plugin_sdk.h>
 ```
 
-This pulls in all stable contracts:
+(The pre-tier spelling `<orc/plugin/orc_plugin_sdk.h>` still works via a
+deprecated forwarding shim — see *Deprecated pre-tier include paths* below.)
+
+### Tier model
+
+The SDK surface is split into three tiers with distinct stability promises:
+
+- **`orc/abi/`** — the frozen binary contract: descriptor, entrypoints,
+  registration, and service tables. Any change here bumps the host ABI
+  version. (The `orc/plugin/` plugin-API headers are treated as part of this
+  ABI surface until they are relocated under a tier.)
+- **`orc/stage/`** — the stage contract: interfaces and data types that cross
+  the plugin boundary, grouped by **domain** (`preview/`, `observation/`,
+  `dropout/`, `audio/`, `params/`) with the foundation types at the tier root.
+  A layout change here bumps the host ABI.
+- **`orc/support/`** — compiled-into-plugin utilities. Explicitly **not** ABI:
+  changes never require a bump, only a plugin recompile at the author's
+  leisure.
+
+The complete tiered header surface is generated from the single-source
+manifest `orc/sdk/sdk_headers.yaml`:
+
+<!-- BEGIN GENERATED SDK HEADER TABLES (source: orc/sdk/sdk_headers.yaml; regenerate with tools/gen_sdk_header_docs.sh) -->
+
+#### `orc/abi/` — frozen binary contract
+
+Stability: **any change bumps the host ABI version.** Descriptor,
+entrypoints, registration, and service tables.
 
 | Header | Provides |
 |--------|----------|
-| `<orc/plugin/orc_plugin_abi.h>` | `StagePluginDescriptor`, `OrcStageFactoryFn`, `ORC_STAGE_PLUGIN_EXPORT`, `kStagePluginHostAbiVersion`, `kStagePluginApiVersion`, `ORC_SDK_TOOLCHAIN_TAG`, entrypoint symbol names |
-| `<orc/plugin/orc_stage_api.h>` | `ParameterizedStage`, `TriggerableStage`, `NodeTypeInfo`, `ParameterValue`, `ParameterDescriptor`, `VideoSystem`, `SourceType` |
-| `<orc/plugin/orc_stage_runtime.h>` | Stage runtime include surface for stage implementations (observation context, triggerable stage) |
-| `<orc/plugin/orc_stage_preview.h>` | Preview capability and carrier contracts for preview-capable stages |
-| `<orc/plugin/orc_stage_services.h>` | `IStageServices`, `IFileWriterUint8`, `IFileWriterUint16`, `IFileWriterInt16` — host-provided buffered file-output factories for sink stages |
-| `<orc/plugin/orc_stage_tooling.h>` | `StageToolDescriptor`, `StageToolProvider`, `AnalysisToolDescriptor`, `AnalysisToolProvider`, `ORC_STAGE_INSTRUCTIONS_MD` — optional tool contracts and stage self-documentation |
-| `<orc/plugin/orc_plugin_services.h>` | `OrcPluginServices` host service table, `OrcPluginLogLevel`, `orc::plugin::set_services()`, `orc::plugin::get_stage_services()` |
-| `<orc/plugin/orc_plugin_services_helpers.h>` | `ORC_PLUGIN_LOG_*` logging macros |
-| `<orc/plugin/orc_plugin_registration.h>` | `ORC_STAGE_PLUGIN_DESCRIPTOR`, `ORC_DEFINE_STAGE_PLUGIN` — descriptor and entrypoint boilerplate helpers |
+| `<orc/abi/orc_plugin_abi.h>` | Host ABI contract for decode-orc stage plugins |
+| `<orc/abi/orc_plugin_registration.h>` | Descriptor and entrypoint boilerplate helpers for stage plugins |
+| `<orc/abi/orc_plugin_sdk.h>` | Umbrella include for the decode-orc stage plugin SDK |
+| `<orc/abi/orc_plugin_services.h>` | Host service table injected into plugins at registration time. |
 
-In addition to the `<orc/plugin/...>` family, the SDK ships the stage
-contract tree `<orc/stage/...>`. Stage implementation code may include these
-headers directly; the umbrella headers above pull in the core subset
-automatically. The complete allowlisted `<orc/stage/...>` set is:
+#### `orc/plugin/` — plugin API surface (transitional)
 
-| Group | Headers |
-|-------|---------|
-| Stage model | `stage.h`, `triggerable_stage.h`, `stage_parameter.h`, `parameter_types.h`, `node_type.h`, `node_id.h`, `artifact.h`, `analysis_sink_results.h` |
-| Frame / signal model | `audio_channel_pair.h`, `video_frame_representation.h`, `video_metadata_types.h`, `frame_descriptor.h`, `frame_id.h`, `field_id.h`, `frame_line_util.h`, `common_types.h`, `cvbs_signal_constants.h`, `orc_source_parameters.h`, `dropout_run.h`, `dropout_util.h`, `dropout_decision.h` |
-| Observation model | `observation_context.h`, `observation_context_interface.h`, `observation_schema.h`, `observers/observer.h`, `observers/biphase_observer.h`, `observers/black_psnr_observer.h`, `observers/burst_level_observer.h`, `observers/closed_caption_observer.h`, `observers/white_snr_observer.h` |
-| Preview contract | `stage_preview_capability.h`, `stage_custom_preview_renderer.h`, `colour_preview_provider.h`, `colour_preview_conversion.h`, `preview_helpers.h`, `preview_stage_types.h`, `orc_preview_types.h`, `orc_preview_carriers.h`, `orc_rendering.h`, `orc_vectorscope.h` |
-| Utilities | `logging.h`, `lru_cache.h`, `file_io_interface.h`, `eia608_decoder.h`, `error_types.h` |
+Plugin-facing stage API and host-services headers not yet relocated under
+a tier subdirectory. Treated as ABI: layout changes bump the host ABI.
 
-This list, together with the `<orc/plugin/...>` family above, is the
-**enforced include allowlist**: the gate script
+| Header | Provides |
+|--------|----------|
+| `<orc/plugin/orc_plugin_services_helpers.h>` | Helper macros for using OrcPluginServices. |
+| `<orc/plugin/orc_stage_api.h>` | Stage API — stable types and interfaces for stage plugin |
+| `<orc/plugin/orc_stage_preview.h>` | Public preview capability include surface for plugin stage |
+| `<orc/plugin/orc_stage_runtime.h>` | Public stage runtime include surface for plugin stage |
+| `<orc/plugin/orc_stage_services.h>` | Stable stage service interfaces exposed via OrcPluginServices |
+| `<orc/plugin/orc_stage_tooling.h>` | Canonical stage helper/tooling contracts for plugin stages |
+
+#### `orc/stage/` — stage contract
+
+Stage interfaces and data-contract types that cross the plugin boundary,
+grouped by domain. A layout change here bumps the host ABI version.
+
+**foundation**
+
+| Header | Provides |
+|--------|----------|
+| `<orc/stage/analysis_sink_results.h>` | Interfaces for accessing analysis sink stage results across |
+| `<orc/stage/artifact.h>` | Artifact implementation |
+| `<orc/stage/common_types.h>` | Common type definitions shared across all layers |
+| `<orc/stage/cvbs_signal_constants.h>` | Normative CVBS_U10_4FSC signal constants for PAL, NTSC, and |
+| `<orc/stage/eia608_decoder.h>` | EIA-608 Closed Caption Decoder for timed text conversion |
+| `<orc/stage/error_types.h>` | Shared exception types for error classification |
+| `<orc/stage/field_id.h>` | Field identifier implementation |
+| `<orc/stage/file_io_interface.h>` | Interface(s) for file I/O to make unit testing easier |
+| `<orc/stage/frame_descriptor.h>` | Per-frame metadata descriptor for CVBS_U10_4FSC frames |
+| `<orc/stage/frame_id.h>` | Frame identifier types for CVBS_U10_4FSC frame-based pipeline |
+| `<orc/stage/node_id.h>` | NodeID type definition for DAG nodes |
+| `<orc/stage/node_type.h>` | Node type registry |
+| `<orc/stage/orc_source_parameters.h>` | Source metadata types |
+| `<orc/stage/stage.h>` | Base interface for all stage types |
+| `<orc/stage/triggerable_stage.h>` | Triggerable interface for stages that can be manually executed |
+| `<orc/stage/video_frame_representation.h>` | VideoFrameRepresentation interface for CVBS_U10_4FSC frames |
+| `<orc/stage/video_metadata_types.h>` | Video metadata types exposed through VFR interface |
+
+**audio**
+
+| Header | Provides |
+|--------|----------|
+| `<orc/stage/audio/audio_channel_pair.h>` | Audio channel-pair model shared by all |
+
+**dropout**
+
+| Header | Provides |
+|--------|----------|
+| `<orc/stage/dropout/dropout_decision.h>` | Dropout decision management |
+| `<orc/stage/dropout/dropout_run.h>` | Frame-flat dropout descriptor for CVBS_U10_4FSC frames |
+| `<orc/stage/dropout/dropout_util.h>` | Frame-flat ↔ field/line/sample coordinate conversion utilities |
+
+**observation**
+
+| Header | Provides |
+|--------|----------|
+| `<orc/stage/observation/biphase_observer.h>` | Biphase VBI data extraction observer |
+| `<orc/stage/observation/black_psnr_observer.h>` | Black PSNR (Peak Signal-to-Noise Ratio) observer |
+| `<orc/stage/observation/burst_level_observer.h>` | Color burst median IRE level observer |
+| `<orc/stage/observation/closed_caption_observer.h>` | Closed caption observer (EIA-608 line 21/22) |
+| `<orc/stage/observation/observation_context.h>` | Pipeline-scoped observation storage |
+| `<orc/stage/observation/observation_context_interface.h>` | Pipeline-scoped observation storage |
+| `<orc/stage/observation/observation_schema.h>` | Observation schema definitions |
+| `<orc/stage/observation/observer.h>` | Observer base class |
+| `<orc/stage/observation/white_snr_observer.h>` | White SNR (Signal-to-Noise Ratio) observer |
+
+**params**
+
+| Header | Provides |
+|--------|----------|
+| `<orc/stage/params/parameter_types.h>` | Stage parameter type definitions shared across all layers |
+| `<orc/stage/params/stage_parameter.h>` | Stage Parameter |
+
+**preview**
+
+| Header | Provides |
+|--------|----------|
+| `<orc/stage/preview/colour_preview_conversion.h>` | Render-boundary conversion from colour carriers to PreviewImage. |
+| `<orc/stage/preview/colour_preview_provider.h>` | Interface for stages exposing colour-domain preview carriers. |
+| `<orc/stage/preview/orc_preview_carriers.h>` | Typed preview carriers used by the Phase 2 preview pipeline. |
+| `<orc/stage/preview/orc_preview_types.h>` | Shared preview taxonomy: video data types, colorimetric |
+| `<orc/stage/preview/orc_rendering.h>` | Public API for rendering and preview types |
+| `<orc/stage/preview/orc_vectorscope.h>` | Public API for vectorscope visualization data |
+| `<orc/stage/preview/preview_helpers.h>` | Helper functions for stage preview rendering |
+| `<orc/stage/preview/preview_stage_types.h>` | Shared lightweight types for stage preview interfaces |
+| `<orc/stage/preview/stage_custom_preview_renderer.h>` | Interface for stages with non-standard preview rendering. |
+| `<orc/stage/preview/stage_preview_capability.h>` | Capability contracts for stages that expose structured preview |
+
+#### `orc/support/` — compiled-into-plugin utilities
+
+NOT part of the binary ABI. Changes never force an ABI bump; recompile the
+plugin at the author's convenience.
+
+| Header | Provides |
+|--------|----------|
+| `<orc/support/frame_line_util.h>` | Per-line sample count and offset helpers for 4FSC CVBS flat |
+| `<orc/support/logging.h>` | Logging system implementation |
+| `<orc/support/lru_cache.h>` | Thread-safe least-recently-used cache |
+| `<orc/support/stage_instructions.h>` | Runtime loader for a stage's instructions.md (platform file I/O) |
+
+#### Deprecated pre-tier include paths
+
+The 32 flat `<orc/plugin/...>` / `<orc/stage/...>` paths that
+predate this layout are retained as forwarding shims for one release, gated
+by the `ORC_SDK_DEPRECATED_INCLUDE_SHIMS` CMake option (default ON). New
+code must use the tiered paths above; building with the option OFF turns any
+remaining pre-tier include into a hard compile error.
+
+<!-- END GENERATED SDK HEADER TABLES -->
+
+The manifest is also the source of the enforced include allowlist
+(`cmake/sdk_header_allowlist.txt`, generated by
+`tools/gen_sdk_header_allowlist.sh`): the gate script
 (`cmake/check_plugin_private_includes.sh`) fails the build on any plugin
 include outside it, other than plugin-local headers, standard-library and
 platform headers, and permitted third-party headers (`fmt`/`spdlog`
@@ -76,19 +199,18 @@ target).
 A few allowlist entries carry rationale worth knowing:
 
 - **Logging surface.** In-tree plugins use the `ORC_LOG_*` macro family from
-  `<orc/stage/logging.h>`, backed by the host's spdlog logger and linked from
-  orc-core like every other contract symbol. Out-of-tree plugins should
-  prefer the services-table macros (`ORC_PLUGIN_LOG_*` from
-  `<orc/plugin/orc_plugin_services_helpers.h>`) to avoid a direct spdlog
-  dependency. The application logging header `orc/common/include/logging.h`
-  (`get_app_logger()`) is unrelated and is the GUI/CLI surface only; the
-  contract header lives at `<orc/stage/logging.h>` precisely so the two can
-  never be confused via include-path order.
-- **Observer headers are provisional.** The `observers/*.h` entries exist
-  because the analysis sinks instantiate concrete host observers to
-  (re)compute observations at trigger time. The cleaner long-term design is a
-  host-side observation service exposed through `IStageServices`; if that is
-  added, these headers return to host-only status. Do not grow new
+  the support-tier header `<orc/support/logging.h>`, backed by the host's
+  spdlog logger. Out-of-tree plugins should prefer the services-table macros
+  (`ORC_PLUGIN_LOG_*` from `<orc/plugin/orc_plugin_services_helpers.h>`) to
+  avoid a direct spdlog dependency. The application logging header
+  `orc/common/include/logging.h` (`get_app_logger()`) is unrelated and is the
+  GUI/CLI surface only; the contract header lives at `<orc/support/logging.h>`
+  precisely so the two can never be confused via include-path order.
+- **Observer headers are provisional.** The `<orc/stage/observation/...>`
+  observer entries exist because the analysis sinks instantiate concrete host
+  observers to (re)compute observations at trigger time. The cleaner long-term
+  design is a host-side observation service exposed through `IStageServices`;
+  if that is added, these headers return to host-only status. Do not grow new
   dependencies on them.
 - **`lru_cache.h`** is a self-contained generic container with no host
   coupling, allowlisted because several plugins legitimately use it for frame
@@ -112,7 +234,7 @@ private surfaces plugins must never reach into:
 | Forbidden header path | Reason |
 |-----------------------|--------|
 | `orc/core/include/*.h` | Internal host implementation headers (e.g. `dag_executor.h`, `preview_renderer.h`, `stage_registry.h`, `buffered_file_io.h`) |
-| `orc/core/analysis/*.h`, `orc/core/observers/*.h` | Host analysis/observer internals (the observer headers plugins may use live under `<orc/stage/observers/...>`) |
+| `orc/core/analysis/*.h`, `orc/core/observers/*.h` | Host analysis/observer internals (the observer headers plugins may use live under `<orc/stage/observation/...>`) |
 | `orc/presenters/*.h` | Presenter layer — GUI/CLI internal |
 | `orc/gui/*.h` | GUI internal |
 | `orc/cli/*.h` | CLI internal |
@@ -373,7 +495,7 @@ The accessors fall into two groups:
   for audio that means `get_audio_samples` (per channel pair): the output
   frame at timeline index *p* must serve exactly `audio_pairs_in_frame(p)`
   pairs, truncating or silence-padding by one pair when the mapping breaks
-  the NTSC/PAL-M cadence phase (see `<orc/stage/audio_channel_pair.h>`).
+  the NTSC/PAL-M cadence phase (see `<orc/stage/audio/audio_channel_pair.h>`).
 - **Derived accessors** (`get_line`, `get_line_samples`, `get_frame_copy`,
   `get_line_luma`, `get_line_chroma`): implemented by the wrapper in terms
   of the object's own virtual primitives, never forwarded. Overriding the

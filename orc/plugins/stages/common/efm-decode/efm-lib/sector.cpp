@@ -8,7 +8,7 @@
 
 #include "sector.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <cstdio>
 #include <cstdlib>

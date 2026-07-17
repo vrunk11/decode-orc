@@ -12,7 +12,7 @@
 #include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
 #include <orc/stage/artifact.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 #include <orc/stage/video_frame_representation.h>
 
 #include <memory>

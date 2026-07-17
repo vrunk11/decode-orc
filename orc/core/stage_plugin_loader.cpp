@@ -10,8 +10,8 @@
 #include "include/stage_plugin_loader.h"
 
 #include <fmt/format.h>
-#include <orc/stage/colour_preview_conversion.h>
 #include <orc/stage/file_io_interface.h>
+#include <orc/stage/preview/colour_preview_conversion.h>
 // Application logging (get_app_logger): plugin log messages are routed to
 // the host application logger, not the core pipeline logger.
 #include <logging.h>
@@ -19,7 +19,7 @@
 #include <cstring>
 #include <utility>
 
-#include "../../sdk/include/orc/plugin/orc_plugin_services.h"
+#include "../../sdk/include/orc/abi/orc_plugin_services.h"
 #include "../../sdk/include/orc/plugin/orc_stage_services.h"
 #include "factories.h"
 #include "include/plugin_safe_call.h"

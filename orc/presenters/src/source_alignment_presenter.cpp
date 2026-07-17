@@ -9,8 +9,8 @@
 
 #include "../include/source_alignment_presenter.h"
 
-#include <orc/stage/logging.h>
 #include <orc/stage/stage.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 

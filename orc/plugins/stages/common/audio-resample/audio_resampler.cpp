@@ -10,7 +10,7 @@
 
 #include "audio_resampler.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 #include <soxr.h>
 
 #include <algorithm>

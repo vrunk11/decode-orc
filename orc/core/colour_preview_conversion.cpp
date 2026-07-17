@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#include <orc/stage/colour_preview_conversion.h>
+#include <orc/stage/preview/colour_preview_conversion.h>
 
 #include <algorithm>
 #include <cmath>

@@ -10,8 +10,8 @@
  */
 
 #include <gtest/gtest.h>
-#include <orc/stage/frame_line_util.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/frame_line_util.h>
 
 #include <algorithm>
 #include <memory>

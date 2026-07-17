@@ -1,85 +1,23 @@
 /*
  * File:        dropout_decision.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     Dropout decision management
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2025-2026 Simon Inns
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ *
+ * DEPRECATED: <orc/stage/dropout_decision.h> moved to
+ * <orc/stage/dropout/dropout_decision.h>. This shim is retained for one release
+ * so third-party plugin source keeps compiling; include the new path directly.
+ * Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option (default ON); when
+ * OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS for plugin targets
+ * and this shim becomes a hard compile error.
  */
-
 #pragma once
 
-#include <orc/stage/field_id.h>
-#include <orc/stage/orc_rendering.h>  // For public_api::DropoutRegion
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/dropout_decision.h>; include <orc/stage/dropout/dropout_decision.h> instead."
+#endif
 
-#include <cstdint>
-#include <string>
-#include <vector>
-
-namespace orc {
-
-// Use the public API DropoutRegion type
-using DropoutRegion = orc::DropoutRegion;
-
-/// Represents a user decision to modify dropout detection
-///
-/// Decisions are deltas applied against source dropout hints:
-/// - ADD: Create a new dropout region
-/// - REMOVE: Mark a false positive dropout as not a dropout
-/// - MODIFY: Adjust the boundaries of a detected dropout
-struct DropoutDecision {
-  enum class Action {
-    ADD,     ///< Add a new dropout region
-    REMOVE,  ///< Remove a false positive
-    MODIFY   ///< Modify region boundaries
-  };
-
-  FieldID field_id;
-  uint32_t line;
-  uint32_t start_sample;
-  uint32_t end_sample;
-  Action action;
-  std::string notes;  ///< Optional user notes
-
-  DropoutDecision(FieldID fid, uint32_t ln, uint32_t start, uint32_t end,
-                  Action act, const std::string& n = "")
-      : field_id(fid),
-        line(ln),
-        start_sample(start),
-        end_sample(end),
-        action(act),
-        notes(n) {}
-};
-
-/// Collection of user decisions for dropout modification
-class DropoutDecisions {
- public:
-  void add_decision(const DropoutDecision& decision) {
-    decisions_.push_back(decision);
-  }
-
-  /// Get all decisions for a specific field
-  std::vector<DropoutDecision> get_decisions_for_field(FieldID field_id) const {
-    std::vector<DropoutDecision> result;
-    for (const auto& decision : decisions_) {
-      if (decision.field_id == field_id) {
-        result.push_back(decision);
-      }
-    }
-    return result;
-  }
-
-  /// Apply decisions to source dropout regions
-  /// Returns the modified list of dropout regions
-  std::vector<DropoutRegion> apply_decisions(
-      FieldID field_id, const std::vector<DropoutRegion>& observations) const;
-
-  const std::vector<DropoutDecision>& get_all() const { return decisions_; }
-  size_t size() const { return decisions_.size(); }
-  bool empty() const { return decisions_.empty(); }
-
- private:
-  std::vector<DropoutDecision> decisions_;
-};
-
-}  // namespace orc
+#include <orc/stage/dropout/dropout_decision.h>

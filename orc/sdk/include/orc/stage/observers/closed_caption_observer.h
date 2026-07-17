@@ -1,42 +1,23 @@
 /*
  * File:        closed_caption_observer.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     Closed caption observer (EIA-608 line 21/22)
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2025-2026 Simon Inns
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ *
+ * DEPRECATED: <orc/stage/observers/closed_caption_observer.h> moved to
+ * <orc/stage/observation/closed_caption_observer.h>. This shim is retained for
+ * one release so third-party plugin source keeps compiling; include the new
+ * path directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option
+ * (default ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS
+ * for plugin targets and this shim becomes a hard compile error.
  */
-
 #pragma once
 
-#include <orc/stage/observers/observer.h>
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/observers/closed_caption_observer.h>; include <orc/stage/observation/closed_caption_observer.h> instead."
+#endif
 
-namespace orc {
-
-class ClosedCaptionObserver : public Observer {
- public:
-  ClosedCaptionObserver() = default;
-  ~ClosedCaptionObserver() override = default;
-
-  std::string observer_name() const override { return "ClosedCaptionObserver"; }
-  std::string observer_version() const override { return "1.0.0"; }
-
-  void process_frame(const VideoFrameRepresentation& representation,
-                     FrameID frame_id, IObservationContext& context) override;
-
-  std::vector<ObservationKey> get_provided_observations() const override;
-
- private:
-  struct DecodedCaption {
-    uint8_t data0 = 0;
-    uint8_t data1 = 0;
-    bool parity_valid0 = false;
-    bool parity_valid1 = false;
-  };
-
-  bool decode_line(const int16_t* line_data, size_t sample_count,
-                   int16_t zero_crossing, size_t colorburst_end,
-                   double samples_per_bit, DecodedCaption& decoded) const;
-};
-
-}  // namespace orc
+#include <orc/stage/observation/closed_caption_observer.h>

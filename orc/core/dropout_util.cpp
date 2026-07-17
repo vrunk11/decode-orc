@@ -8,8 +8,8 @@
  */
 
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/dropout_util.h>
-#include <orc/stage/frame_line_util.h>
+#include <orc/stage/dropout/dropout_util.h>
+#include <orc/support/frame_line_util.h>
 
 #include <algorithm>
 #include <stdexcept>

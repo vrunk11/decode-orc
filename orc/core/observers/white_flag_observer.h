@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <orc/stage/observers/observer.h>
+#include <orc/stage/observation/observer.h>
 
 namespace orc {
 

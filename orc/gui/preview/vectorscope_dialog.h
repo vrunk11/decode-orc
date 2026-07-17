@@ -11,7 +11,7 @@
 #define ORC_GUI_ANALYSIS_VECTORSCOPE_DIALOG_H
 
 #include <orc/stage/node_id.h>
-#include <orc/stage/orc_vectorscope.h>  // Public API types
+#include <orc/stage/preview/orc_vectorscope.h>  // Public API types
 
 #include <QButtonGroup>
 #include <QCheckBox>

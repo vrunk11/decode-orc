@@ -10,7 +10,7 @@
 #ifndef ORC_CORE_DROPOUT_ANALYSIS_SINK_DEPS_H
 #define ORC_CORE_DROPOUT_ANALYSIS_SINK_DEPS_H
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <atomic>
 #include <utility>

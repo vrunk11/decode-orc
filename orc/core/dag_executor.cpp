@@ -9,7 +9,7 @@
 
 #include "dag_executor.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <queue>

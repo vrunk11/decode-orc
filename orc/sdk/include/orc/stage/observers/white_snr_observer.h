@@ -1,62 +1,23 @@
 /*
  * File:        white_snr_observer.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     White SNR (Signal-to-Noise Ratio) observer
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2025-2026 Simon Inns
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ *
+ * DEPRECATED: <orc/stage/observers/white_snr_observer.h> moved to
+ * <orc/stage/observation/white_snr_observer.h>. This shim is retained for one
+ * release so third-party plugin source keeps compiling; include the new path
+ * directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option
+ * (default ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS
+ * for plugin targets and this shim becomes a hard compile error.
  */
-
 #pragma once
 
-#include <orc/stage/observers/observer.h>
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/observers/white_snr_observer.h>; include <orc/stage/observation/white_snr_observer.h> instead."
+#endif
 
-#include <vector>
-
-namespace orc {
-
-/**
- * @brief Observer for white flag SNR analysis
- *
- * Extracts SNR (Signal-to-Noise Ratio) from VITS white flag test signals.
- * The white flag is a reference signal used to measure noise in the white
- * level region of the video signal.
- *
- * Stores observations in the "white_snr" namespace:
- * - "snr_db" (double): Signal-to-noise ratio in decibels
- */
-class WhiteSNRObserver : public Observer {
- public:
-  WhiteSNRObserver() = default;
-  ~WhiteSNRObserver() override = default;
-
-  std::string observer_name() const override { return "WhiteSNRObserver"; }
-
-  std::string observer_version() const override { return "1.0.0"; }
-
-  void process_frame(const VideoFrameRepresentation& representation,
-                     FrameID frame_id, IObservationContext& context) override;
-
-  std::vector<ObservationKey> get_provided_observations() const override {
-    return {
-        {"white_snr", "snr_db", ObservationType::DOUBLE,
-         "White flag SNR in dB"},
-    };
-  }
-
- private:
-  // Extract samples from a specific region of a line and convert to IRE
-  std::vector<double> get_line_slice_ire(
-      const VideoFrameRepresentation& representation, FrameID frame_id,
-      size_t line_offset, size_t field_line, double start_us, double length_us,
-      size_t field_height, const SourceParameters& vp) const;
-
-  // Calculate SNR from IRE samples (uses mean of data as signal)
-  double calculate_psnr(const std::vector<double>& data) const;
-
-  // Helper math functions
-  double calc_mean(const std::vector<double>& data) const;
-  double calc_std(const std::vector<double>& data) const;
-};
-
-}  // namespace orc
+#include <orc/stage/observation/white_snr_observer.h>

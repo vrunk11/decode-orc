@@ -9,7 +9,7 @@
 
 #include "preview_view_registry.h"
 
-#include <orc/stage/colour_preview_provider.h>
+#include <orc/stage/preview/colour_preview_provider.h>
 
 #include <algorithm>
 #include <cmath>

@@ -1,62 +1,23 @@
 /*
  * File:        black_psnr_observer.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     Black PSNR (Peak Signal-to-Noise Ratio) observer
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2025-2026 Simon Inns
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ *
+ * DEPRECATED: <orc/stage/observers/black_psnr_observer.h> moved to
+ * <orc/stage/observation/black_psnr_observer.h>. This shim is retained for one
+ * release so third-party plugin source keeps compiling; include the new path
+ * directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option
+ * (default ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS
+ * for plugin targets and this shim becomes a hard compile error.
  */
-
 #pragma once
 
-#include <orc/stage/observers/observer.h>
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/observers/black_psnr_observer.h>; include <orc/stage/observation/black_psnr_observer.h> instead."
+#endif
 
-#include <vector>
-
-namespace orc {
-
-/**
- * @brief Observer for black level PSNR analysis
- *
- * Extracts PSNR (Peak Signal-to-Noise Ratio) from VITS black level test
- * signals. The black level reference is used to measure noise in the black
- * region of the video signal.
- *
- * Stores observations in the "black_psnr" namespace:
- * - "psnr_db" (double): Peak signal-to-noise ratio in decibels
- */
-class BlackPSNRObserver : public Observer {
- public:
-  BlackPSNRObserver() = default;
-  ~BlackPSNRObserver() override = default;
-
-  std::string observer_name() const override { return "BlackPSNRObserver"; }
-
-  std::string observer_version() const override { return "1.0.0"; }
-
-  void process_frame(const VideoFrameRepresentation& representation,
-                     FrameID frame_id, IObservationContext& context) override;
-
-  std::vector<ObservationKey> get_provided_observations() const override {
-    return {
-        {"black_psnr", "psnr_db", ObservationType::DOUBLE,
-         "Black level PSNR in dB"},
-    };
-  }
-
- private:
-  // Extract samples from a specific region of a line and convert to IRE
-  std::vector<double> get_line_slice_ire(
-      const VideoFrameRepresentation& representation, FrameID frame_id,
-      size_t line_offset, size_t field_line, double start_us, double length_us,
-      size_t field_height, const SourceParameters& vp) const;
-
-  // Calculate PSNR from IRE samples
-  double calculate_psnr(const std::vector<double>& data) const;
-
-  // Helper math functions
-  double calc_mean(const std::vector<double>& data) const;
-  double calc_std(const std::vector<double>& data) const;
-};
-
-}  // namespace orc
+#include <orc/stage/observation/black_psnr_observer.h>

@@ -18,9 +18,9 @@
 #include <orc/stage/common_types.h>
 #include <orc/stage/field_id.h>
 #include <orc/stage/node_id.h>
-#include <orc/stage/orc_rendering.h>  // Public API rendering types (includes mapping result types)
-#include <orc/stage/orc_source_parameters.h>  // Public API VideoParameters
-#include <orc/stage/parameter_types.h>        // ParameterValue
+#include <orc/stage/orc_source_parameters.h>   // Public API VideoParameters
+#include <orc/stage/params/parameter_types.h>  // ParameterValue
+#include <orc/stage/preview/orc_rendering.h>  // Public API rendering types (includes mapping result types)
 #include <orc_preview_views.h>
 
 #include <QObject>

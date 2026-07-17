@@ -10,9 +10,9 @@
 #include "dropout_presenter.h"
 
 #include <orc/stage/artifact.h>
-#include <orc/stage/frame_line_util.h>
-#include <orc/stage/logging.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/frame_line_util.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <cctype>

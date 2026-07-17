@@ -9,7 +9,7 @@
 
 #include "include/observation_cache.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 

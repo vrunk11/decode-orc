@@ -1,53 +1,23 @@
 /*
  * File:        burst_level_observer.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     Color burst median IRE level observer
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2025-2026 Simon Inns
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ *
+ * DEPRECATED: <orc/stage/observers/burst_level_observer.h> moved to
+ * <orc/stage/observation/burst_level_observer.h>. This shim is retained for one
+ * release so third-party plugin source keeps compiling; include the new path
+ * directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option
+ * (default ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS
+ * for plugin targets and this shim becomes a hard compile error.
  */
-
 #pragma once
 
-#include <orc/stage/observers/observer.h>
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/observers/burst_level_observer.h>; include <orc/stage/observation/burst_level_observer.h> instead."
+#endif
 
-#include <vector>
-
-namespace orc {
-
-/**
- * @brief Observer for color burst amplitude analysis
- *
- * Analyzes the color burst signal amplitude and reports it in 10-bit sample
- * units (CVBS_U10_4FSC domain). This is an AC amplitude — the peak burst
- * excursion, not an absolute level. The burst level is useful for quality
- * assessment and can indicate signal degradation or processing artifacts.
- *
- * Stores observations in the "burst_level" namespace:
- * - "median_burst_10bit" (double): Median burst peak amplitude in 10-bit
- *   sample units
- */
-class BurstLevelObserver : public Observer {
- public:
-  BurstLevelObserver() = default;
-  ~BurstLevelObserver() override = default;
-
-  std::string observer_name() const override { return "BurstLevelObserver"; }
-
-  std::string observer_version() const override { return "1.0.0"; }
-
-  void process_frame(const VideoFrameRepresentation& representation,
-                     FrameID frame_id, IObservationContext& context) override;
-
-  std::vector<ObservationKey> get_provided_observations() const override {
-    return {
-        {"burst_level", "median_burst_10bit", ObservationType::DOUBLE,
-         "Median color burst peak amplitude in 10-bit sample units"},
-    };
-  }
-
- private:
-  double calculate_median(const double* values, size_t count) const;
-};
-
-}  // namespace orc
+#include <orc/stage/observation/burst_level_observer.h>

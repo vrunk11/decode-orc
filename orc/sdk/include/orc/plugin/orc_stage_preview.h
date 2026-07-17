@@ -12,10 +12,10 @@
 
 #pragma once
 
-#include <orc/stage/colour_preview_provider.h>
-#include <orc/stage/orc_preview_carriers.h>
-#include <orc/stage/orc_preview_types.h>
-#include <orc/stage/orc_rendering.h>
-#include <orc/stage/preview_helpers.h>
-#include <orc/stage/preview_stage_types.h>
-#include <orc/stage/stage_preview_capability.h>
+#include <orc/stage/preview/colour_preview_provider.h>
+#include <orc/stage/preview/orc_preview_carriers.h>
+#include <orc/stage/preview/orc_preview_types.h>
+#include <orc/stage/preview/orc_rendering.h>
+#include <orc/stage/preview/preview_helpers.h>
+#include <orc/stage/preview/preview_stage_types.h>
+#include <orc/stage/preview/stage_preview_capability.h>

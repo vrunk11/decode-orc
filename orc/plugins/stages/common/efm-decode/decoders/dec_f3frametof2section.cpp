@@ -8,7 +8,7 @@
 
 #include "dec_f3frametof2section.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <cmath>
 #include <cstddef>

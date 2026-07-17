@@ -1,153 +1,23 @@
 /*
  * File:        observation_context.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     Pipeline-scoped observation storage
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2025-2026 Simon Inns
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ *
+ * DEPRECATED: <orc/stage/observation_context.h> moved to
+ * <orc/stage/observation/observation_context.h>. This shim is retained for one
+ * release so third-party plugin source keeps compiling; include the new path
+ * directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option
+ * (default ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS
+ * for plugin targets and this shim becomes a hard compile error.
  */
-
 #pragma once
 
-#include <orc/stage/field_id.h>
-#include <orc/stage/observation_context_interface.h>
-#include <orc/stage/observation_schema.h>
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/observation_context.h>; include <orc/stage/observation/observation_context.h> instead."
+#endif
 
-#include <map>
-#include <optional>
-#include <string>
-#include <variant>
-#include <vector>
-
-namespace orc {
-
-/**
- * @brief Pipeline-scoped observation storage
- *
- * ObservationContext stores typed, namespaced observations collected
- * throughout pipeline execution. It flows alongside the VFR through
- * all stages.
- *
- * Namespaces prevent collisions between different observer types.
- * Keys within a namespace identify specific data fields.
- *
- * Observations are stored per-field to support field-level metadata.
- *
- * @example
- * ObservationContext context;
- * context.set(field_id, "biphase", "picture_number", 12345);
- * auto pn = context.get(field_id, "biphase", "picture_number");
- * if (pn && std::holds_alternative<int32_t>(*pn)) {
- *     int32_t picture_number = std::get<int32_t>(*pn);
- * }
- */
-class ObservationContext : public IObservationContext {
- public:
-  ObservationContext() = default;
-
-  /**
-   * @brief Set an observation value for a specific field
-   *
-   * @param field_id Field identifier
-   * @param namespace_ Namespace (typically observer type, e.g., "biphase",
-   * "vitc")
-   * @param key Observation key (e.g., "picture_number", "timecode")
-   * @param value Observation value
-   */
-  void set(FieldID field_id, const std::string& namespace_,
-           const std::string& key, const ObservationValue& value) override;
-
-  /**
-   * @brief Get an observation value for a specific field
-   *
-   * @param field_id Field identifier
-   * @param namespace_ Namespace
-   * @param key Observation key
-   * @return Observation value if present, std::nullopt otherwise
-   */
-  std::optional<ObservationValue> get(FieldID field_id,
-                                      const std::string& namespace_,
-                                      const std::string& key) const override;
-
-  /**
-   * @brief Check if an observation exists for a specific field
-   *
-   * @param field_id Field identifier
-   * @param namespace_ Namespace
-   * @param key Observation key
-   * @return True if observation exists, false otherwise
-   */
-  bool has(FieldID field_id, const std::string& namespace_,
-           const std::string& key) const override;
-
-  /**
-   * @brief Get all observation keys for a field in a namespace
-   *
-   * @param field_id Field identifier
-   * @param namespace_ Namespace
-   * @return Vector of observation keys
-   */
-  std::vector<std::string> get_keys(
-      FieldID field_id, const std::string& namespace_) const override;
-
-  /**
-   * @brief Get all namespaces that have observations for a field
-   *
-   * @param field_id Field identifier
-   * @return Vector of namespace names
-   */
-  std::vector<std::string> get_namespaces(FieldID field_id) const override;
-
-  /**
-   * @brief Get all observations for a specific field
-   *
-   * @param field_id Field identifier
-   * @return Map of namespace -> (key -> value)
-   */
-  std::map<std::string, std::map<std::string, ObservationValue>>
-  get_all_observations(FieldID field_id) const override;
-
-  /**
-   * @brief Clear all observations
-   *
-   * Should be called when starting a new processing run.
-   */
-  void clear() override;
-
-  /**
-   * @brief Clear observations for a specific field
-   *
-   * @param field_id Field identifier
-   */
-  void clear_field(FieldID field_id) override;
-
-  /**
-   * @brief Register observation schema entries to enable type validation
-   *
-   * Stages should declare provided observations; the executor may
-   * aggregate and register them prior to execution. When a schema
-   * is registered, subsequent set() calls will be validated against
-   * the expected types. Unknown keys are allowed (to permit exploratory
-   * data), but if a key exists in the schema and the type mismatches,
-   * set() will throw std::invalid_argument.
-   */
-  void register_schema(const std::vector<ObservationKey>& keys) override;
-
-  /**
-   * @brief Clear all registered schema entries
-   */
-  void clear_schema() override;
-
- private:
-  // Storage: field_id -> namespace -> key -> value
-  std::map<FieldID,
-           std::map<std::string, std::map<std::string, ObservationValue>>>
-      observations_;
-
-  // Schema: (namespace,name) -> expected ObservationType
-  std::map<std::pair<std::string, std::string>, ObservationType> schema_;
-
-  static bool value_matches_type(const ObservationValue& v, ObservationType t);
-};
-
-}  // namespace orc
+#include <orc/stage/observation/observation_context.h>

@@ -11,7 +11,7 @@
 
 #include <orc/stage/node_type.h>
 #include <orc/stage/orc_source_parameters.h>
-#include <orc/stage/parameter_types.h>
+#include <orc/stage/params/parameter_types.h>
 
 #include <map>
 #include <memory>

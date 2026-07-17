@@ -8,7 +8,7 @@
 
 #include "dec_sectorcorrection.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 namespace {
 // A missing-sector gap is filled with one fabricated 2048-byte sector each, so

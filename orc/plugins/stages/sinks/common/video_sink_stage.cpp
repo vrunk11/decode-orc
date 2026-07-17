@@ -9,13 +9,13 @@
 
 #include "video_sink_stage.h"
 
-#include <orc/stage/colour_preview_conversion.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/frame_line_util.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/observers/biphase_observer.h>
-#include <orc/stage/observers/closed_caption_observer.h>
-#include <orc/stage/preview_helpers.h>
+#include <orc/stage/observation/biphase_observer.h>
+#include <orc/stage/observation/closed_caption_observer.h>
+#include <orc/stage/preview/colour_preview_conversion.h>
+#include <orc/stage/preview/preview_helpers.h>
+#include <orc/support/frame_line_util.h>
+#include <orc/support/logging.h>
 
 #include "decoders/comb.h"
 #include "decoders/componentframe.h"

@@ -11,8 +11,8 @@
 #define ORC_CORE_VBI_DECODER_H
 
 #include <orc/stage/field_id.h>
-#include <orc/stage/lru_cache.h>
 #include <orc/stage/node_id.h>
+#include <orc/support/lru_cache.h>
 
 #include <array>
 #include <memory>

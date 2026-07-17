@@ -9,7 +9,7 @@
 #ifndef DECODERS_H
 #define DECODERS_H
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <cstdint>
 #include <deque>

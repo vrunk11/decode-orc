@@ -10,9 +10,9 @@
 #ifndef ORC_CORE_SNR_ANALYSIS_SINK_DEPS_H
 #define ORC_CORE_SNR_ANALYSIS_SINK_DEPS_H
 
-#include <orc/stage/logging.h>
-#include <orc/stage/observers/black_psnr_observer.h>
-#include <orc/stage/observers/white_snr_observer.h>
+#include <orc/stage/observation/black_psnr_observer.h>
+#include <orc/stage/observation/white_snr_observer.h>
+#include <orc/support/logging.h>
 
 #include <atomic>
 #include <utility>

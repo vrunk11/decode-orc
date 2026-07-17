@@ -8,7 +8,7 @@
 
 #include "writer_raw.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <iostream>
 

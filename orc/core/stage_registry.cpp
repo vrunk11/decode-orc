@@ -9,7 +9,7 @@
 
 #include "stage_registry.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <cstdlib>

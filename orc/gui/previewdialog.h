@@ -12,8 +12,8 @@
 
 #include <orc/stage/common_types.h>
 #include <orc/stage/node_id.h>
-#include <orc/stage/orc_preview_types.h>
-#include <orc/stage/orc_vectorscope.h>
+#include <orc/stage/preview/orc_preview_types.h>
+#include <orc/stage/preview/orc_vectorscope.h>
 #include <orc_preview_views.h>
 
 #include <QComboBox>

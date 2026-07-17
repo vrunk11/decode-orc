@@ -11,7 +11,7 @@
 
 #include <orc/stage/node_id.h>
 #include <orc/stage/node_type.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 
 #include <map>
 #include <string>

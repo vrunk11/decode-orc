@@ -9,7 +9,7 @@
  */
 
 #include <gtest/gtest.h>
-#include <orc/plugin/orc_plugin_abi.h>
+#include <orc/abi/orc_plugin_abi.h>
 
 #include <filesystem>
 #include <string>

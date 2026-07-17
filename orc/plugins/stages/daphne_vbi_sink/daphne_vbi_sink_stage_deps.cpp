@@ -11,7 +11,7 @@
 
 #include <orc/plugin/orc_stage_services.h>
 #include <orc/stage/file_io_interface.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <cstddef>
 #include <utility>

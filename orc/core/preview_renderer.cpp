@@ -9,12 +9,12 @@
 
 #include "preview_renderer.h"
 
-#include <orc/stage/colour_preview_conversion.h>
-#include <orc/stage/colour_preview_provider.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/preview_helpers.h>
-#include <orc/stage/stage_custom_preview_renderer.h>
+#include <orc/stage/preview/colour_preview_conversion.h>
+#include <orc/stage/preview/colour_preview_provider.h>
+#include <orc/stage/preview/preview_helpers.h>
+#include <orc/stage/preview/stage_custom_preview_renderer.h>
+#include <orc/support/logging.h>
 #include <png.h>
 
 #include <algorithm>

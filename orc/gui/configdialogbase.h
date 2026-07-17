@@ -10,7 +10,7 @@
 #ifndef CONFIGDIALOGBASE_H
 #define CONFIGDIALOGBASE_H
 
-#include <orc/stage/parameter_types.h>
+#include <orc/stage/params/parameter_types.h>
 
 #include <QCheckBox>
 #include <QComboBox>

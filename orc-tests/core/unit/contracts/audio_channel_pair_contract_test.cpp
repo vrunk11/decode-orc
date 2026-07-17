@@ -10,7 +10,7 @@
  */
 
 #include <gtest/gtest.h>
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 #include <orc/stage/video_frame_representation.h>
 
 #include <memory>

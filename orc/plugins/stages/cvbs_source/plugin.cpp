@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include <orc/plugin/orc_plugin_sdk.h>
+#include <orc/abi/orc_plugin_sdk.h>
 
 #include "cvbs_source_stage.h"
 

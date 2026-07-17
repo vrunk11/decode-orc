@@ -108,3 +108,35 @@ add_test(
     COMMAND ${BASH_EXECUTABLE} ${CMAKE_SOURCE_DIR}/cmake/check_plugin_private_links.sh ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(PluginPrivateLinkScan PROPERTIES LABELS "sdk")
+
+# SDK header manifest is the single source of truth for the contract surface:
+# fail if orc/sdk/sdk_headers.yaml, the generated allowlist, and the on-disk
+# header set diverge (a new/deleted header must be one manifest edit).
+add_test(
+    NAME SdkHeaderManifestSync
+    COMMAND ${BASH_EXECUTABLE} ${CMAKE_SOURCE_DIR}/cmake/check_sdk_header_manifest.sh ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(SdkHeaderManifestSync PROPERTIES LABELS "sdk")
+
+# SDK self-hygiene: SDK headers may include only SDK tiers, stdlib, spdlog/fmt,
+# and (support-tier only) platform headers — never a private host tree.
+add_test(
+    NAME SdkHeaderHygieneScan
+    COMMAND ${BASH_EXECUTABLE} ${CMAKE_SOURCE_DIR}/cmake/check_sdk_header_hygiene.sh ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(SdkHeaderHygieneScan PROPERTIES LABELS "sdk")
+
+# Generated SDK header tables in plugin-sdk.md must match the manifest.
+add_test(
+    NAME SdkHeaderDocsSync
+    COMMAND ${BASH_EXECUTABLE} ${CMAKE_SOURCE_DIR}/cmake/check_sdk_header_docs.sh ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(SdkHeaderDocsSync PROPERTIES LABELS "sdk")
+
+# In-tree code (host, bundled plugins, tests) must use the tiered SDK include
+# paths only — the pre-tier shims are for out-of-tree source compatibility.
+add_test(
+    NAME BundledTieredIncludes
+    COMMAND ${BASH_EXECUTABLE} ${CMAKE_SOURCE_DIR}/cmake/check_no_pretier_includes.sh ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(BundledTieredIncludes PROPERTIES LABELS "sdk")

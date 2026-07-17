@@ -12,9 +12,9 @@
 
 #include <orc/stage/common_types.h>  // For VideoSystem, SourceType
 #include <orc/stage/node_id.h>
-#include <orc/stage/orc_preview_types.h>
-#include <orc/stage/orc_rendering.h>  // Public API rendering types
-#include <orc_analysis.h>             // For AnalysisToolInfo
+#include <orc/stage/preview/orc_preview_types.h>
+#include <orc/stage/preview/orc_rendering.h>  // Public API rendering types
+#include <orc_analysis.h>                     // For AnalysisToolInfo
 
 #include <QMainWindow>
 #include <QPointer>

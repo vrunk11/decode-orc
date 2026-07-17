@@ -10,7 +10,7 @@
 #include "tbc_metadata_reader.h"
 
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 #include <sqlite3.h>
 
 #include <cstring>

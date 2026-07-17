@@ -15,7 +15,7 @@
     "GUI code cannot include core/analysis/analysis_tool.h. Use AnalysisPresenter instead."
 #endif
 
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 
 #include <string>
 #include <vector>

@@ -13,10 +13,10 @@
 // GUI/CLI code must NOT include this directly; use presenters instead.
 
 #include <orc/stage/artifact.h>
-#include <orc/stage/lru_cache.h>
 #include <orc/stage/node_id.h>
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 #include <orc/stage/stage.h>
+#include <orc/support/lru_cache.h>
 
 #include <functional>
 #include <map>

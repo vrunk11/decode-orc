@@ -11,7 +11,7 @@
 
 #include <orc/stage/frame_id.h>
 #include <orc/stage/node_id.h>
-#include <orc/stage/orc_rendering.h>  // For DropoutRegion
+#include <orc/stage/preview/orc_rendering.h>  // For DropoutRegion
 
 #include <map>
 #include <memory>

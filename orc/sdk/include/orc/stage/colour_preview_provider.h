@@ -1,48 +1,23 @@
 /*
  * File:        colour_preview_provider.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     Interface for stages exposing colour-domain preview carriers.
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ *
+ * DEPRECATED: <orc/stage/colour_preview_provider.h> moved to
+ * <orc/stage/preview/colour_preview_provider.h>. This shim is retained for one
+ * release so third-party plugin source keeps compiling; include the new path
+ * directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option
+ * (default ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS
+ * for plugin targets and this shim becomes a hard compile error.
  */
-
 #pragma once
 
-#include <orc/stage/orc_preview_carriers.h>
-#include <orc/stage/preview_stage_types.h>
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/colour_preview_provider.h>; include <orc/stage/preview/colour_preview_provider.h> instead."
+#endif
 
-#include <cstdint>
-#include <optional>
-
-namespace orc {
-
-/**
- * @brief Interface for colour-domain preview providers.
- *
- * Stages implementing this interface expose decoded component planes through a
- * structured carrier. The render layer is responsible for display conversion.
- */
-class IColourPreviewProvider {
- public:
-  virtual ~IColourPreviewProvider() = default;
-
-  /**
-   * @brief Return a colour-domain carrier for the requested frame index.
-   *
-   * @param frame_index Frame index in the stage's navigation domain.
-   * @param hint Navigation hint from preview consumers.
-   * @return Carrier when available; std::nullopt on decode/fetch failure.
-   */
-  virtual std::optional<ColourFrameCarrier> get_colour_preview_carrier(
-      uint64_t frame_index, PreviewNavigationHint hint) const = 0;
-
-  /// Convenience overload — defaults hint to Random
-  std::optional<ColourFrameCarrier> get_colour_preview_carrier(
-      uint64_t frame_index) const {
-    return get_colour_preview_carrier(frame_index,
-                                      PreviewNavigationHint::Random);
-  }
-};
-
-}  // namespace orc
+#include <orc/stage/preview/colour_preview_provider.h>

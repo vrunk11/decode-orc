@@ -10,7 +10,7 @@
 #ifndef FIELDPREVIEWWIDGET_H
 #define FIELDPREVIEWWIDGET_H
 
-#include <orc/stage/orc_rendering.h>  // For public API types
+#include <orc/stage/preview/orc_rendering.h>  // For public API types
 
 #include <QImage>
 #include <QTimer>

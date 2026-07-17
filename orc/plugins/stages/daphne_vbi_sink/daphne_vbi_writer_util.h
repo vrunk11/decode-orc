@@ -13,7 +13,7 @@
 #include <orc/plugin/orc_stage_runtime.h>
 #include <orc/stage/field_id.h>
 #include <orc/stage/file_io_interface.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include "daphne_vbi_writer_util_interface.h"
 

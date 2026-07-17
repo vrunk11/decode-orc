@@ -27,10 +27,28 @@ add_library(orc-plugin-sdk INTERFACE)
 set_target_properties(orc-plugin-sdk PROPERTIES EXPORT_NAME plugin-sdk)
 
 target_include_directories(orc-plugin-sdk INTERFACE
-    # SDK headers: <orc/plugin/...> and <orc/stage/...>.
+    # SDK headers, tiered: <orc/abi/...> (frozen binary contract),
+    # <orc/stage/...> (stage contract, grouped by domain), and
+    # <orc/support/...> (compiled-into-plugin utilities).
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/decode-orc-plugin-sdk>
 )
+
+# Deprecated pre-tier include-path shims (flat <orc/plugin/...> and
+# <orc/stage/...> paths that forward to the tiered layout) are retained for one
+# release so existing third-party plugin source keeps building. Turning this
+# OFF makes any plugin TU that still includes a pre-tier path fail to compile
+# (the shim headers #error on ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS). Bundled
+# plugins must build with it OFF — CI exercises that configuration. The define
+# is a usage requirement of orc-plugin-sdk, so it reaches every plugin/test
+# target that links the SDK but not the host (which does not link the SDK).
+option(ORC_SDK_DEPRECATED_INCLUDE_SHIMS
+    "Keep deprecated pre-tier SDK include-path shims for third-party source compatibility"
+    ON)
+if(NOT ORC_SDK_DEPRECATED_INCLUDE_SHIMS)
+    target_compile_definitions(orc-plugin-sdk INTERFACE
+        ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+endif()
 
 # Plugins link orc-core for symbols only. $<LINK_ONLY:...> strips orc-core's
 # usage requirements (include directories, compile definitions), so private
@@ -87,4 +105,12 @@ install(FILES
     ${CMAKE_SOURCE_DIR}/cmake/check_plugin_private_links.sh
     DESTINATION lib/cmake/decode-orc-plugin-sdk
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+)
+
+# The generated SDK header allowlist consumed by check_plugin_private_includes.sh.
+# Installed next to the script so the standalone (out-of-tree) scan resolves it
+# via its own directory without a decode-orc checkout.
+install(FILES
+    ${CMAKE_SOURCE_DIR}/cmake/sdk_header_allowlist.txt
+    DESTINATION lib/cmake/decode-orc-plugin-sdk
 )

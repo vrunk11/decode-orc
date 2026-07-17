@@ -10,7 +10,7 @@
 #include "mask_line_analysis.h"
 
 #include <frame_numbering.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <sstream>

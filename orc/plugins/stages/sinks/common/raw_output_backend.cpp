@@ -9,7 +9,7 @@
 
 #include "raw_output_backend.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include "componentframe.h"
 

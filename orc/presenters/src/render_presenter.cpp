@@ -11,11 +11,11 @@
 
 #include <orc/stage/analysis_sink_results.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
+#include <orc/stage/preview/stage_preview_capability.h>
 #include <orc/stage/stage.h>
-#include <orc/stage/stage_preview_capability.h>
 #include <orc/stage/triggerable_stage.h>
+#include <orc/support/logging.h>
 
 #include <atomic>
 #include <cstdio>

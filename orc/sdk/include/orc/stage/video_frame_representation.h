@@ -9,13 +9,13 @@
 
 #pragma once
 
-#include <orc/stage/audio_channel_pair.h>
-#include <orc/stage/dropout_run.h>
+#include <orc/stage/audio/audio_channel_pair.h>
+#include <orc/stage/dropout/dropout_run.h>
 #include <orc/stage/frame_descriptor.h>
 #include <orc/stage/frame_id.h>
-#include <orc/stage/frame_line_util.h>
 #include <orc/stage/orc_source_parameters.h>
 #include <orc/stage/video_metadata_types.h>
+#include <orc/support/frame_line_util.h>
 
 #include <cstddef>
 #include <cstdint>

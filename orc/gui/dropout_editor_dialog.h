@@ -13,7 +13,7 @@
 #include <orc/stage/common_types.h>
 #include <orc/stage/frame_id.h>
 #include <orc/stage/node_id.h>
-#include <orc/stage/orc_rendering.h>
+#include <orc/stage/preview/orc_rendering.h>
 
 #include <QComboBox>
 #include <QDialog>

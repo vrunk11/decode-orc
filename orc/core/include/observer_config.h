@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 
 #include <map>
 #include <string>

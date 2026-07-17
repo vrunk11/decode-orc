@@ -9,8 +9,8 @@
 
 #include "snr_analysis_sink_stage.h"
 
-#include <orc/stage/logging.h>
-#include <orc/stage/preview_helpers.h>
+#include <orc/stage/preview/preview_helpers.h>
+#include <orc/support/logging.h>
 
 #include <stdexcept>
 

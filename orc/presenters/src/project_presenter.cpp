@@ -10,10 +10,10 @@
 #include "project_presenter.h"
 
 #include <orc/stage/common_types.h>
-#include <orc/stage/logging.h>
 #include <orc/stage/orc_source_parameters.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 #include <orc/stage/triggerable_stage.h>
+#include <orc/support/logging.h>
 #include <sqlite3.h>
 
 #include <algorithm>

@@ -8,8 +8,8 @@
  */
 
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/preview_helpers.h>
+#include <orc/stage/preview/preview_helpers.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <cstddef>

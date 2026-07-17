@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <orc/stage/observation_schema.h>
+#include <orc/stage/observation/observation_schema.h>
 #include <orc/stage/stage.h>
 
 #include <set>

@@ -10,7 +10,7 @@
 #include "cvbs_sink_stage.h"
 
 #include <orc/stage/common_types.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <stdexcept>
 

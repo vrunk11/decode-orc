@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include <orc/plugin/orc_plugin_services.h>
+#include <orc/abi/orc_plugin_services.h>
 
 #include <string>
 

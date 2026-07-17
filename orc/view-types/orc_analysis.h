@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <orc/stage/parameter_types.h>
+#include <orc/stage/params/parameter_types.h>
 
 #include <cstdint>
 #include <map>

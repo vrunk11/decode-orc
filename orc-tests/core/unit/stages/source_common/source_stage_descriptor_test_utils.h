@@ -10,7 +10,7 @@
 #pragma once
 
 #include <gtest/gtest.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 
 #include <algorithm>
 #include <string>

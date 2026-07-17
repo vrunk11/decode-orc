@@ -9,7 +9,7 @@
 #include "dec_f2sectiontof1section.h"
 
 #include <fmt/core.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <cstdlib>

@@ -11,7 +11,7 @@
 #define ORC_PRESENTERS_ANALYSIS_TOOL_PRESENTER_H
 
 #include <orc/stage/node_id.h>
-#include <orc/stage/parameter_types.h>
+#include <orc/stage/params/parameter_types.h>
 #include <orc_analysis.h>
 
 #include <functional>

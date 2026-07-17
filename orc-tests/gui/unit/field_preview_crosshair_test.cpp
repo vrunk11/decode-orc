@@ -8,7 +8,7 @@
  */
 
 #include <gtest/gtest.h>
-#include <orc/stage/orc_rendering.h>
+#include <orc/stage/preview/orc_rendering.h>
 
 #include <QApplication>
 #include <QCoreApplication>

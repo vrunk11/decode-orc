@@ -11,61 +11,13 @@
 
 #pragma once
 
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 
-#if defined(__unix__) || defined(__APPLE__)
-#include <dlfcn.h>
-#elif defined(_WIN32)
-#include <windows.h>
-#endif
-
-namespace orc::plugin {
-
-// Read the instructions.md file that lives alongside the calling plugin's
-// shared library.  plugin_symbol must be an address within the calling plugin
-// (e.g. a static local variable from the get_instructions() body) so that
-// dladdr / GetModuleHandleEx can identify the correct shared library.
-//
-// Returns the UTF-8 text of the file, or an empty string if it cannot be found.
-inline std::string read_stage_instructions(const void* plugin_symbol) {
-  std::string lib_path;
-
-#if defined(__unix__) || defined(__APPLE__)
-  ::Dl_info info{};
-  if (::dladdr(plugin_symbol, &info) != 0 && info.dli_fname != nullptr) {
-    lib_path = info.dli_fname;
-  }
-#elif defined(_WIN32)
-  HMODULE hmod = nullptr;
-  if (::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                           static_cast<LPCSTR>(plugin_symbol), &hmod) &&
-      hmod != nullptr) {
-    char buf[MAX_PATH] = {};
-    if (::GetModuleFileNameA(hmod, buf, MAX_PATH) > 0) {
-      lib_path = buf;
-    }
-  }
-#endif
-
-  if (lib_path.empty()) return {};
-
-  // Replace the shared-library extension with ".md".
-  const auto dot = lib_path.rfind('.');
-  const std::string md_path =
-      (dot != std::string::npos ? lib_path.substr(0, dot) : lib_path) + ".md";
-
-  std::ifstream f(md_path);
-  if (!f.is_open()) return {};
-  std::ostringstream ss;
-  ss << f.rdbuf();
-  return ss.str();
-}
-
-}  // namespace orc::plugin
+// The runtime instructions.md loader (platform file I/O) and the
+// ORC_STAGE_INSTRUCTIONS_MD macro now live in the support tier. Included here
+// so existing users of this header keep getting both without source changes.
+#include <orc/support/stage_instructions.h>
 
 namespace orc {
 
@@ -114,26 +66,16 @@ struct AnalysisToolDescriptor {
 // Stage documentation
 // ---------------------------------------------------------------------------
 
-// Preferred form: reads instructions.md from alongside the plugin .so at
-// runtime.  No inline string needed in any source file — instructions.md is
-// the single source of truth.
+// Preferred form: ORC_STAGE_INSTRUCTIONS_MD reads instructions.md from
+// alongside the plugin .so at runtime. It is defined in the support-tier
+// header <orc/support/stage_instructions.h> (included above) because it needs
+// platform file I/O; this contract header only re-exports it.
 //
 // Usage (in the class body):
 //   class MyStage : public DAGStage {
 //    public:
 //     ORC_STAGE_INSTRUCTIONS_MD
 //   };
-//
-// The build system (orc_add_stage_plugin) automatically copies instructions.md
-// next to the plugin shared library so it can be found at runtime.
-// clang-format off
-#define ORC_STAGE_INSTRUCTIONS_MD                                        \
-  std::string get_instructions() const override {                        \
-    static const char kSentinel_ = '\0';                                 \
-    return ::orc::plugin::read_stage_instructions(                       \
-        static_cast<const void*>(&kSentinel_));                          \
-  }
-// clang-format on
 
 // Legacy form: embed instructions inline as a string literal.  Kept for
 // backward compatibility with external plugins that do not ship an

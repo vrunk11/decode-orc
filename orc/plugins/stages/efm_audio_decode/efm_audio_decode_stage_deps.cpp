@@ -9,7 +9,7 @@
 
 #include "efm_audio_decode_stage_deps.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <chrono>

@@ -12,8 +12,8 @@
 
 #include <orc/stage/field_id.h>
 #include <orc/stage/frame_id.h>
-#include <orc/stage/lru_cache.h>
 #include <orc/stage/node_id.h>
+#include <orc/support/lru_cache.h>
 
 #include <memory>
 #include <string>

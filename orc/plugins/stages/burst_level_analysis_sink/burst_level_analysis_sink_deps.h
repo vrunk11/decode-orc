@@ -10,8 +10,8 @@
 #ifndef ORC_CORE_BURST_LEVEL_ANALYSIS_SINK_DEPS_H
 #define ORC_CORE_BURST_LEVEL_ANALYSIS_SINK_DEPS_H
 
-#include <orc/stage/logging.h>
-#include <orc/stage/observers/burst_level_observer.h>
+#include <orc/stage/observation/burst_level_observer.h>
+#include <orc/support/logging.h>
 
 #include <atomic>
 #include <utility>

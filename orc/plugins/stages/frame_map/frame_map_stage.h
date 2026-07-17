@@ -13,7 +13,7 @@
 #include <orc/plugin/orc_stage_runtime.h>
 #include <orc/stage/frame_descriptor.h>
 #include <orc/stage/frame_id.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 #include <orc/stage/video_frame_representation.h>
 
 #include <cstddef>

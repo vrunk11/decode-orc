@@ -16,9 +16,9 @@
 #include <orc/stage/eia608_decoder.h>
 #include <orc/stage/field_id.h>
 #include <orc/stage/frame_id.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/observers/closed_caption_observer.h>
+#include <orc/stage/observation/closed_caption_observer.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <cmath>

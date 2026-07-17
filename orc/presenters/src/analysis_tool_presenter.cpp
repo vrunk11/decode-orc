@@ -10,7 +10,7 @@
 #include "analysis_tool_presenter.h"
 
 #include <orc/stage/artifact.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <stdexcept>

@@ -9,7 +9,7 @@
 
 #include "fieldpreviewwidget.h"
 
-#include <orc/stage/orc_rendering.h>  // For public API PreviewImage and DropoutRegion
+#include <orc/stage/preview/orc_rendering.h>  // For public API PreviewImage and DropoutRegion
 
 #include <QMouseEvent>
 #include <QPaintEvent>

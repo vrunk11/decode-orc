@@ -8,7 +8,7 @@
 
 #include "efm_processor.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
 #include <algorithm>

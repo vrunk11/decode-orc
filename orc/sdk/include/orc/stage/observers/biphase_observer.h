@@ -1,97 +1,23 @@
 /*
  * File:        biphase_observer.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     Biphase VBI data extraction observer
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2025-2026 Simon Inns
- */
-
-#ifndef ORC_CORE_BIPHASE_OBSERVER_H
-#define ORC_CORE_BIPHASE_OBSERVER_H
-
-#include <orc/stage/observers/observer.h>
-
-#include <memory>
-
-namespace orc {
-
-// Forward declarations
-class ObservationContext;
-class VideoFrameRepresentation;
-
-/**
- * @brief Observer that extracts biphase-encoded VBI data
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
  *
- * This observer reads VBI data from the video frame representation
- * and populates the observation context with raw biphase data.
- * The data can then be decoded by VBIDecoder or other analysis tools.
+ * DEPRECATED: <orc/stage/observers/biphase_observer.h> moved to
+ * <orc/stage/observation/biphase_observer.h>. This shim is retained for one
+ * release so third-party plugin source keeps compiling; include the new path
+ * directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option
+ * (default ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS
+ * for plugin targets and this shim becomes a hard compile error.
  */
-class BiphaseObserver : public Observer {
- public:
-  BiphaseObserver() = default;
-  ~BiphaseObserver() override = default;
+#pragma once
 
-  std::string observer_name() const override { return "BiphaseObserver"; }
-  std::string observer_version() const override { return "1.0.0"; }
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/observers/biphase_observer.h>; include <orc/stage/observation/biphase_observer.h> instead."
+#endif
 
-  void process_frame(const VideoFrameRepresentation& representation,
-                     FrameID frame_id, IObservationContext& context) override;
-
-  std::vector<ObservationKey> get_provided_observations() const override {
-    return {
-        {"biphase", "vbi_line_16", ObservationType::INT32,
-         "VBI line 16 raw data"},
-        {"biphase", "vbi_line_17", ObservationType::INT32,
-         "VBI line 17 raw data"},
-        {"biphase", "vbi_line_18", ObservationType::INT32,
-         "VBI line 18 raw data"},
-        {"vbi", "picture_number", ObservationType::INT32,
-         "CAV picture number (if available)"},
-        {"vbi", "chapter_number", ObservationType::INT32,
-         "Chapter number (if available)"},
-        {"vbi", "clv_timecode_hours", ObservationType::INT32,
-         "CLV timecode hours"},
-        {"vbi", "clv_timecode_minutes", ObservationType::INT32,
-         "CLV timecode minutes"},
-        {"vbi", "clv_timecode_seconds", ObservationType::INT32,
-         "CLV timecode seconds"},
-        {"vbi", "clv_timecode_picture", ObservationType::INT32,
-         "CLV timecode picture number"},
-        {"vbi", "lead_in", ObservationType::INT32, "Lead-in code present"},
-        {"vbi", "lead_out", ObservationType::INT32, "Lead-out code present"},
-        {"vbi", "stop_code_present", ObservationType::INT32,
-         "Picture stop code present"},
-        {"vbi", "user_code", ObservationType::STRING,
-         "User code (if available)"},
-        {"vbi", "programme_status_cx_enabled", ObservationType::INT32,
-         "Programme status: CX enabled"},
-        {"vbi", "programme_status_is_12_inch", ObservationType::INT32,
-         "Programme status: 12 inch disc"},
-        {"vbi", "programme_status_is_side_1", ObservationType::INT32,
-         "Programme status: side 1"},
-        {"vbi", "programme_status_has_teletext", ObservationType::INT32,
-         "Programme status: teletext present"},
-        {"vbi", "programme_status_is_digital", ObservationType::INT32,
-         "Programme status: digital video"},
-        {"vbi", "programme_status_sound_mode", ObservationType::INT32,
-         "Programme status: sound mode"},
-        {"vbi", "programme_status_is_fm_multiplex", ObservationType::INT32,
-         "Programme status: FM multiplex"},
-        {"vbi", "programme_status_is_programme_dump", ObservationType::INT32,
-         "Programme status: programme dump"},
-        {"vbi", "programme_status_parity_valid", ObservationType::INT32,
-         "Programme status: parity valid"},
-        {"vbi", "amendment2_status_copy_permitted", ObservationType::INT32,
-         "Amendment 2: copy permitted"},
-        {"vbi", "amendment2_status_is_video_standard", ObservationType::INT32,
-         "Amendment 2: video standard"},
-        {"vbi", "amendment2_status_sound_mode", ObservationType::INT32,
-         "Amendment 2: sound mode"},
-    };
-  }
-};
-
-}  // namespace orc
-
-#endif  // ORC_CORE_BIPHASE_OBSERVER_H
+#include <orc/stage/observation/biphase_observer.h>

@@ -10,7 +10,7 @@
 
 #include "ntscdecoder.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include "../video_parameter_safety.h"
 

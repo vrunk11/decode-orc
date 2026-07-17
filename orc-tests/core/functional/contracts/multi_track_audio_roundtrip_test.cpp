@@ -11,9 +11,9 @@
 
 #include <gtest/gtest.h>
 #include <orc/stage/artifact.h>
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 #include <orc/stage/video_frame_representation.h>
 
 #include <atomic>

@@ -12,7 +12,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 
 #include <algorithm>
 

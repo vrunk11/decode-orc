@@ -10,7 +10,7 @@
 #pragma once
 
 #include <orc/stage/field_id.h>
-#include <orc/stage/lru_cache.h>
+#include <orc/support/lru_cache.h>
 
 #include <memory>
 #include <string>

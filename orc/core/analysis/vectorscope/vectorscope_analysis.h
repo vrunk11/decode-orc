@@ -11,8 +11,8 @@
 #define ORC_CORE_ANALYSIS_VECTORSCOPE_ANALYSIS_H
 
 #include <orc/stage/frame_id.h>
-#include <orc/stage/orc_preview_carriers.h>
 #include <orc/stage/orc_source_parameters.h>
+#include <orc/stage/preview/orc_preview_carriers.h>
 
 #include <memory>
 #include <optional>

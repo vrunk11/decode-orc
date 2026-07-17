@@ -15,10 +15,10 @@
 #include <orc/stage/common_types.h>  // For PreviewOutputType, AspectRatioMode
 #include <orc/stage/frame_id.h>
 #include <orc/stage/node_id.h>
-#include <orc/stage/orc_rendering.h>  // For public API types (DropoutRegion, PreviewImage)
-#include <orc/stage/preview_stage_types.h>
-#include <orc/stage/stage_custom_preview_renderer.h>
-#include <orc/stage/stage_preview_capability.h>
+#include <orc/stage/preview/orc_rendering.h>  // For public API types (DropoutRegion, PreviewImage)
+#include <orc/stage/preview/preview_stage_types.h>
+#include <orc/stage/preview/stage_custom_preview_renderer.h>
+#include <orc/stage/preview/stage_preview_capability.h>
 #include <orc/stage/video_frame_representation.h>
 
 #include <cstdint>

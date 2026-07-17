@@ -7,8 +7,8 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include <orc/stage/logging.h>
 #include <orc/stage/node_type.h>
+#include <orc/support/logging.h>
 
 #include <limits>
 #include <unordered_map>

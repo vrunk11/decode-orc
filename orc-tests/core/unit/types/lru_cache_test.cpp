@@ -8,7 +8,7 @@
  */
 
 #include <gtest/gtest.h>
-#include <orc/stage/lru_cache.h>
+#include <orc/support/lru_cache.h>
 
 #include <cstdint>
 #include <vector>

@@ -8,7 +8,7 @@
 
 #include "section_metadata.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <cstdlib>
 #include <iomanip>

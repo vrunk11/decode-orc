@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 #include <orc/stage/stage.h>
 #include <orc/stage/triggerable_stage.h>
 

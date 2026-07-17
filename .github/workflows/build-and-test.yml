@@ -70,7 +70,7 @@ jobs:
 
             # --- Architecture, SDK and format hard gates ---
             ctest --test-dir build -L mvp --parallel \"\$BUILD_JOBS\" --output-on-failure --output-junit \${PWD}/build/ctest-results-mvp.xml
-            ctest --test-dir build -L sdk -R 'PluginPrivate' --parallel \"\$BUILD_JOBS\" --output-on-failure --output-junit \${PWD}/build/ctest-results-sdk.xml
+            ctest --test-dir build -L sdk --parallel \"\$BUILD_JOBS\" --output-on-failure --output-junit \${PWD}/build/ctest-results-sdk.xml
             ctest --test-dir build -L format --output-on-failure --output-junit \${PWD}/build/ctest-results-format.xml
 
             # --- Installed-package validation (out-of-tree plugin SDK) ---
@@ -90,6 +90,22 @@ jobs:
             bash build/sdk-prefix/lib/cmake/decode-orc-plugin-sdk/check_plugin_private_includes.sh orc-tests/fixtures/external-stage-plugin
             bash build/sdk-prefix/lib/cmake/decode-orc-plugin-sdk/check_plugin_private_links.sh orc-tests/fixtures/external-stage-plugin
             echo 'Installed-package validation passed'
+
+            # --- Tiered-SDK validation (deprecated pre-tier shims disabled) ---
+            # A separate build with ORC_SDK_DEPRECATED_INCLUDE_SHIMS=OFF proves
+            # no bundled plugin compiles through a deprecation shim: every
+            # pre-tier include path becomes a hard #error for SDK-linked targets.
+            # The primary build above keeps shims ON (the shipped default the
+            # installed package exports for third-party source compatibility).
+            cmake -S . -B build-noshims \
+              -DCMAKE_BUILD_TYPE=Debug \
+              -DBUILD_UNIT_TESTS=OFF \
+              -DBUILD_GUI=OFF \
+              -DORC_SDK_DEPRECATED_INCLUDE_SHIMS=OFF \
+              -DCMAKE_JOB_POOLS='link=2' \
+              -DCMAKE_JOB_POOL_LINK=link
+            cmake --build build-noshims --target orc-stage-plugins --parallel \"\$BUILD_JOBS\"
+            echo 'Bundled plugins build clean with pre-tier shims disabled'
 
             # --- CTest timing summary ---
             python3 cmake/summarize_ctest_junit.py --input build/ctest-results-unit.xml --output build/ctest-results-unit-summary.md --top 25

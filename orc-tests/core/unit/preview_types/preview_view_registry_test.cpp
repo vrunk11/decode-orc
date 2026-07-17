@@ -10,7 +10,7 @@
 #include "../../../orc/core/include/preview_view_registry.h"
 
 #include <gtest/gtest.h>
-#include <orc/stage/colour_preview_provider.h>
+#include <orc/stage/preview/colour_preview_provider.h>
 #include <orc/stage/stage.h>
 
 #include <memory>

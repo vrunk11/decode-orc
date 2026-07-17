@@ -38,7 +38,7 @@
 
 #include "crash_handler.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <csignal>
 #include <cstdlib>
