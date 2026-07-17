@@ -99,7 +99,6 @@ grouped by domain. A layout change here bumps the host ABI version.
 | `<orc/stage/artifact.h>` | Artifact implementation |
 | `<orc/stage/common_types.h>` | Common type definitions shared across all layers |
 | `<orc/stage/cvbs_signal_constants.h>` | Normative CVBS_U10_4FSC signal constants for PAL, NTSC, and |
-| `<orc/stage/eia608_decoder.h>` | EIA-608 Closed Caption Decoder for timed text conversion |
 | `<orc/stage/error_types.h>` | Shared exception types for error classification |
 | `<orc/stage/field_id.h>` | Field identifier implementation |
 | `<orc/stage/file_io_interface.h>` | Interface(s) for file I/O to make unit testing easier |
@@ -125,7 +124,6 @@ grouped by domain. A layout change here bumps the host ABI version.
 |--------|----------|
 | `<orc/stage/dropout/dropout_decision.h>` | Dropout decision management |
 | `<orc/stage/dropout/dropout_run.h>` | Frame-flat dropout descriptor for CVBS_U10_4FSC frames |
-| `<orc/stage/dropout/dropout_util.h>` | Frame-flat ↔ field/line/sample coordinate conversion utilities |
 
 **observation**
 
@@ -152,13 +150,11 @@ grouped by domain. A layout change here bumps the host ABI version.
 
 | Header | Provides |
 |--------|----------|
-| `<orc/stage/preview/colour_preview_conversion.h>` | Render-boundary conversion from colour carriers to PreviewImage. |
 | `<orc/stage/preview/colour_preview_provider.h>` | Interface for stages exposing colour-domain preview carriers. |
 | `<orc/stage/preview/orc_preview_carriers.h>` | Typed preview carriers used by the Phase 2 preview pipeline. |
 | `<orc/stage/preview/orc_preview_types.h>` | Shared preview taxonomy: video data types, colorimetric |
 | `<orc/stage/preview/orc_rendering.h>` | Public API for rendering and preview types |
 | `<orc/stage/preview/orc_vectorscope.h>` | Public API for vectorscope visualization data |
-| `<orc/stage/preview/preview_helpers.h>` | Helper functions for stage preview rendering |
 | `<orc/stage/preview/preview_stage_types.h>` | Shared lightweight types for stage preview interfaces |
 | `<orc/stage/preview/stage_custom_preview_renderer.h>` | Interface for stages with non-standard preview rendering. |
 | `<orc/stage/preview/stage_preview_capability.h>` | Capability contracts for stages that expose structured preview |
@@ -170,14 +166,18 @@ plugin at the author's convenience.
 
 | Header | Provides |
 |--------|----------|
+| `<orc/support/colour_preview_conversion.h>` | Render-boundary conversion from colour carriers to PreviewImage. |
+| `<orc/support/dropout_util.h>` | Frame-flat ↔ field/line/sample coordinate conversion utilities |
+| `<orc/support/eia608_decoder.h>` | EIA-608 Closed Caption Decoder for timed text conversion |
 | `<orc/support/frame_line_util.h>` | Per-line sample count and offset helpers for 4FSC CVBS flat |
 | `<orc/support/logging.h>` | Logging system implementation |
 | `<orc/support/lru_cache.h>` | Thread-safe least-recently-used cache |
+| `<orc/support/preview_helpers.h>` | Helper functions for stage preview rendering |
 | `<orc/support/stage_instructions.h>` | Runtime loader for a stage's instructions.md (platform file I/O) |
 
 #### Deprecated pre-tier include paths
 
-The 32 flat `<orc/plugin/...>` / `<orc/stage/...>` paths that
+The 36 flat `<orc/plugin/...>` / `<orc/stage/...>` paths that
 predate this layout are retained as forwarding shims for one release, gated
 by the `ORC_SDK_DEPRECATED_INCLUDE_SHIMS` CMake option (default ON). New
 code must use the tiered paths above; building with the option OFF turns any
@@ -242,9 +242,9 @@ private surfaces plugins must never reach into:
 The boundary is enforced twice:
 
 1. **At compile time** — the `orc::plugin-sdk` target exposes only the SDK
-   include tree (plus spdlog/fmt). Plugins link `orc-core` for symbols only
-   (`$<LINK_ONLY:...>`), so a plugin translation unit that includes a private
-   host header fails to compile.
+   include tree (plus spdlog/fmt) and the `orc::orc-sdk-support` static library
+   (support-tier helper symbols). It does **not** link the host, so a plugin
+   translation unit that includes a private host header fails to compile.
 2. **By the allowlist scan** — `check_plugin_private_includes.sh` (a hard CI
    gate, `ctest -L sdk`) fails on any include outside the allowlist even if
    it would compile.
@@ -273,8 +273,17 @@ cmake --install build --prefix /path/to/sdk-prefix
 
 The prefix then contains the CMake package
 (`lib/cmake/decode-orc-plugin-sdk/`), the public SDK headers
-(`include/decode-orc-plugin-sdk/`), the host libraries plugins link against,
-and the `orc-cli`/`orc-gui` binaries used to load and test your plugin.
+(`include/decode-orc-plugin-sdk/`), the `orc-sdk-support` static library
+(`lib/liborc-sdk-support.a`), and the `orc-cli`/`orc-gui` binaries used to load
+and test your plugin. Plugins link the SDK alone — the host libraries
+(`orc-core`, `orc-common`) are not part of the SDK package.
+
+CI also publishes the SDK on its own as
+`decode-orc-plugin-sdk-<version>-<platform>.tar.gz` (headers + static library +
+CMake config + enforcement scripts). Unpack it anywhere and point
+`CMAKE_PREFIX_PATH` at the unpacked directory — no decode-orc source tree or its
+FFmpeg / yaml-cpp / PNG / SQLite3 dependency stack is required, only spdlog and
+fmt. `FetchContent_Declare(... URL <tarball>)` works the same way.
 
 ### Out-of-tree plugin project
 
@@ -311,11 +320,15 @@ ORC_STAGE_PLUGIN_PATHS=<build-dir>/lib/orc-stage-plugins orc-cli plugins list
 
 The installed `decode-orc-plugin-sdk` CMake package provides:
 - `orc::plugin-sdk` — imported INTERFACE target with the SDK include paths,
-  spdlog/fmt, and the host link targets (`orc::orc-core`, `orc::orc-common`)
-  as link-only dependencies — never link those two directly
+  spdlog/fmt, and the `orc::orc-sdk-support` static library (support-tier
+  helper symbols). No host library is linked
+- `orc::orc-sdk-support` — the support-tier helper static library, pulled in
+  transitively by `orc::plugin-sdk`
 - `orc_add_stage_plugin()` — plugin target helper macro
-- The public SDK headers (`<orc/plugin/...>`, `<orc/stage/...>`)
+- The public SDK headers (`<orc/abi/...>`, `<orc/stage/...>`, `<orc/support/...>`)
 - `check_plugin_private_includes.sh` / `check_plugin_private_links.sh` — SDK enforcement gate scripts
+
+The package's only `find_dependency` requirements are **spdlog** and **fmt**.
 
 This exact flow is validated in decode-orc CI on every push: the fixture
 plugin `orc-tests/fixtures/external-stage-plugin/` is built against a

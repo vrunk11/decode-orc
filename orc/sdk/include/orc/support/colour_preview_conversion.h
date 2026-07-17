@@ -1,6 +1,6 @@
 /*
  * File:        colour_preview_conversion.h
- * Module:      decode-orc Plugin SDK (stage contract)
+ * Module:      decode-orc Plugin SDK (support tier)
  * Purpose:     Render-boundary conversion from colour carriers to PreviewImage.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -9,8 +9,8 @@
 
 #pragma once
 
-// SDK TIER: stage/preview — stage contract type crossing the plugin boundary.
-// A layout change here bumps the host ABI version.
+// SDK TIER: support — compiled-into-plugin utility. NOT part of the binary
+// ABI; changes never force an ABI bump (recompile the plugin at your leisure).
 
 #include <orc/stage/preview/orc_preview_carriers.h>
 #include <orc/stage/preview/orc_rendering.h>

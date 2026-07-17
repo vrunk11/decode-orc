@@ -1,13 +1,13 @@
 /*
  * File:        colour_preview_conversion.cpp
- * Module:      orc-core
+ * Module:      orc-sdk-support
  * Purpose:     Render-boundary conversion from colour carriers to PreviewImage.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#include <orc/stage/preview/colour_preview_conversion.h>
+#include <orc/support/colour_preview_conversion.h>
 
 #include <algorithm>
 #include <cmath>

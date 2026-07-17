@@ -10,11 +10,11 @@
 #include "preview_renderer.h"
 
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/preview/colour_preview_conversion.h>
 #include <orc/stage/preview/colour_preview_provider.h>
-#include <orc/stage/preview/preview_helpers.h>
 #include <orc/stage/preview/stage_custom_preview_renderer.h>
+#include <orc/support/colour_preview_conversion.h>
 #include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 #include <png.h>
 
 #include <algorithm>

@@ -10,8 +10,9 @@
 #
 #   orc::plugin-sdk   — INTERFACE imported target. Link your plugin against
 #                       this target to get the SDK include directories
-#                       (<orc/plugin/...>, <orc/stage/...>), spdlog/fmt, and
-#                       the orc-core link-only dependency.
+#                       (<orc/abi/...>, <orc/stage/...>, <orc/support/...>),
+#                       spdlog/fmt, and the orc::orc-sdk-support static library
+#                       (support-tier helper symbols). No host link required.
 #
 #   orc_add_stage_plugin()  — CMake helper macro (from DecodeOrcPluginSDKHelpers.cmake)
 #                             for creating properly configured plugin targets.
@@ -35,36 +36,16 @@ cmake_minimum_required(VERSION 3.20)
 include(CMakeFindDependencyMacro)
 
 # Dependencies referenced by the exported targets' link interfaces:
-#   orc::plugin-sdk  → spdlog, fmt (SDK logging surface)
-#   orc::orc-core    → spdlog, fmt, SQLite3, yaml-cpp, PNG, FFmpeg
-#   orc::orc-common  → spdlog
-# These must all resolve before the Targets file is included, otherwise the
-# generated import file fails with "missing referenced targets".
+#   orc::plugin-sdk      → orc::orc-sdk-support → spdlog, fmt
+#   orc::orc-sdk-support → spdlog, fmt (SDK logging surface only)
+# The host libraries (orc-core, orc-common) are no longer in the export set, so
+# their heavy transitive dependencies (SQLite3, yaml-cpp, PNG, FFmpeg) are NOT
+# required to configure a plugin against the installed SDK — spdlog and fmt are
+# the only packages that must resolve before the Targets file is included.
 find_dependency(spdlog REQUIRED)
 find_dependency(fmt REQUIRED)
-find_dependency(SQLite3 REQUIRED)
-find_dependency(yaml-cpp REQUIRED)
-find_dependency(PNG REQUIRED)
 
-# Some yaml-cpp packages export only the legacy `yaml-cpp` target; the export
-# references the namespaced `yaml-cpp::yaml-cpp` (same shim as the host build).
-if(TARGET yaml-cpp AND NOT TARGET yaml-cpp::yaml-cpp)
-    set_target_properties(yaml-cpp PROPERTIES IMPORTED_GLOBAL TRUE)
-    add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
-endif()
-
-# FFmpeg has no upstream CMake config; recreate the PkgConfig::FFMPEG imported
-# target the export references.
-find_dependency(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET GLOBAL
-    libavcodec
-    libavformat
-    libavutil
-    libswscale
-)
-
-# Import orc::plugin-sdk and its link dependencies (orc::orc-core,
-# orc::orc-common).
+# Import orc::plugin-sdk and its link dependency orc::orc-sdk-support.
 include("${CMAKE_CURRENT_LIST_DIR}/decode-orc-plugin-sdkTargets.cmake")
 
 # Load the orc_add_stage_plugin() helper macro

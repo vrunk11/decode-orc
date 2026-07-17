@@ -344,13 +344,14 @@ else in the host tree is private.
 Enforcement happens at two levels:
 
 1. **Compile time** — the `orc-plugin-sdk` / `orc::plugin-sdk` target
-   propagates only the SDK include tree plus the spdlog/fmt usage
-   requirements the SDK headers themselves need. `orc-core` is linked
-   symbols-only (`$<LINK_ONLY:...>`), so its private include directories and
-   third-party dependencies are not visible to plugin translation units;
-   including a private host header fails the plugin's compile. Third-party
-   libraries a plugin uses directly must be declared by the plugin's own
-   CMake target.
+   propagates only the SDK include tree, the spdlog/fmt usage requirements the
+   SDK headers themselves need, and the `orc-sdk-support` static library
+   (support-tier helper symbols). The host libraries are **not** linked — the
+   former `$<LINK_ONLY:orc-core>` tether was removed so plugins compile and link
+   against the SDK alone. Private host include directories and third-party
+   dependencies are therefore invisible to plugin translation units; including a
+   private host header fails the plugin's compile. Third-party libraries a
+   plugin uses directly must be declared by the plugin's own CMake target.
 2. **Scan gates** — two hard-fail CI gates (`ctest -L sdk`) run on
    `orc/plugins/stages/` and `3rd-party-plugins/`:
    `check_plugin_private_includes.sh` fails on any include that is not an

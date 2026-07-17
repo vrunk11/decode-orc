@@ -10,8 +10,8 @@
 #include "source_align_stage.h"
 
 #include <orc/stage/artifact.h>
-#include <orc/stage/preview/preview_helpers.h>
 #include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 
 #include <algorithm>
 #include <limits>

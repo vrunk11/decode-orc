@@ -1,13 +1,13 @@
 /*
  * File:        eia608_decoder.cpp
- * Module:      orc-core
+ * Module:      orc-sdk-support
  * Purpose:     EIA-608 Closed Caption Decoder implementation
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include <orc/stage/eia608_decoder.h>
+#include <orc/support/eia608_decoder.h>
 #include <orc/support/logging.h>
 
 #include <algorithm>

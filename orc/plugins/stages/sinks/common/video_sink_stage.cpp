@@ -12,10 +12,10 @@
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/observation/biphase_observer.h>
 #include <orc/stage/observation/closed_caption_observer.h>
-#include <orc/stage/preview/colour_preview_conversion.h>
-#include <orc/stage/preview/preview_helpers.h>
+#include <orc/support/colour_preview_conversion.h>
 #include <orc/support/frame_line_util.h>
 #include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 
 #include "decoders/comb.h"
 #include "decoders/componentframe.h"

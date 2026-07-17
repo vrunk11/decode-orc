@@ -9,9 +9,9 @@
 
 #include <gtest/gtest.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/preview/preview_helpers.h>
 #include <orc/stage/video_frame_representation.h>
 #include <orc/support/frame_line_util.h>
+#include <orc/support/preview_helpers.h>
 
 #include <cstdint>
 #include <memory>

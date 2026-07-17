@@ -1,6 +1,6 @@
 /*
  * File:        preview_helpers.cpp
- * Module:      orc-core
+ * Module:      orc-sdk-support
  * Purpose:     Helper functions for stage preview rendering
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -8,8 +8,8 @@
  */
 
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/preview/preview_helpers.h>
 #include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 
 #include <algorithm>
 #include <cstddef>

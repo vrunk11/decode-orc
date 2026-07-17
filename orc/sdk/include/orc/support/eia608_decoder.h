@@ -1,6 +1,6 @@
 /*
  * File:        eia608_decoder.h
- * Module:      decode-orc Plugin SDK (stage contract)
+ * Module:      decode-orc Plugin SDK (support tier)
  * Purpose:     EIA-608 Closed Caption Decoder for timed text conversion
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -9,6 +9,9 @@
 
 #ifndef ORC_EIA608_DECODER_H
 #define ORC_EIA608_DECODER_H
+
+// SDK TIER: support — compiled-into-plugin utility. NOT part of the binary
+// ABI; changes never force an ABI bump (recompile the plugin at your leisure).
 
 #include <array>
 #include <cstdint>

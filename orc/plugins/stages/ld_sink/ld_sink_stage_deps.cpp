@@ -12,8 +12,8 @@
 #include <orc/plugin/orc_stage_services.h>
 #include <orc/stage/common_types.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/dropout/dropout_util.h>
 #include <orc/stage/file_io_interface.h>
+#include <orc/support/dropout_util.h>
 #include <orc/support/frame_line_util.h>
 #include <orc/support/logging.h>
 

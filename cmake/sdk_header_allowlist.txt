@@ -84,7 +84,11 @@ orc/stage/stage_preview_capability.h
 orc/stage/triggerable_stage.h
 orc/stage/video_frame_representation.h
 orc/stage/video_metadata_types.h
+orc/support/colour_preview_conversion.h
+orc/support/dropout_util.h
+orc/support/eia608_decoder.h
 orc/support/frame_line_util.h
 orc/support/logging.h
 orc/support/lru_cache.h
+orc/support/preview_helpers.h
 orc/support/stage_instructions.h

@@ -1,6 +1,6 @@
 /*
  * File:        dropout_util.cpp
- * Module:      orc-core
+ * Module:      orc-sdk-support
  * Purpose:     Frame-flat ↔ field/line/sample coordinate conversion utilities
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -8,7 +8,7 @@
  */
 
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/dropout/dropout_util.h>
+#include <orc/support/dropout_util.h>
 #include <orc/support/frame_line_util.h>
 
 #include <algorithm>

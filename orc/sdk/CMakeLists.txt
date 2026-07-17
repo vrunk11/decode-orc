@@ -7,10 +7,11 @@
 #     propagated: a plugin TU that includes a private host header must fail
 #     to compile, matching the allowlist enforced by
 #     cmake/check_plugin_private_includes.sh.
-#   - The orc-core link target (link-only) so plugins can resolve DAGStage,
-#     ArtifactPtr, and the other contract symbols at link time.
+#   - The orc-sdk-support static library so plugins can resolve the
+#     support-tier algorithm helper symbols (eia608_decoder, dropout_util,
+#     preview_helpers, colour_preview_conversion) without linking the host.
 #   - spdlog/fmt usage requirements for the SDK logging surface
-#     (<orc/stage/logging.h>, <orc/plugin/orc_plugin_services_helpers.h>).
+#     (<orc/support/logging.h>, <orc/plugin/orc_plugin_services_helpers.h>).
 #
 # In-tree usage (plugins built inside this repository):
 #   target_link_libraries(my-plugin PRIVATE orc-plugin-sdk)
@@ -50,12 +51,45 @@ if(NOT ORC_SDK_DEPRECATED_INCLUDE_SHIMS)
         ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
 endif()
 
-# Plugins link orc-core for symbols only. $<LINK_ONLY:...> strips orc-core's
-# usage requirements (include directories, compile definitions), so private
-# host headers are not reachable from plugin TUs; third-party dependencies a
-# plugin needs beyond the SDK surface must be declared by the plugin's own
-# CMakeLists.txt.
-target_link_libraries(orc-plugin-sdk INTERFACE $<LINK_ONLY:orc-core>)
+# orc-sdk-support: the support-tier algorithm helpers (eia608_decoder,
+# dropout_util, preview_helpers, colour_preview_conversion) built as a
+# position-independent STATIC library. These were previously compiled into the
+# orc-core shared library, which forced plugins to link the whole host to
+# resolve them; shipping them as a small static lib severs that tether. Each
+# plugin gets its own copy of the objects (RTLD_LOCAL loading already isolates
+# per-plugin symbols), and orc-core links the same lib so host behaviour is
+# unchanged. Not part of the binary ABI: changing these sources never requires
+# an ABI bump, only a plugin recompile.
+add_library(orc-sdk-support STATIC
+    src/eia608_decoder.cpp
+    src/dropout_util.cpp
+    src/preview_helpers.cpp
+    src/colour_preview_conversion.cpp
+    # The support-tier logging surface (<orc/support/logging.h>): plugins and
+    # host-free test binaries reach get_logger()/init_logging() through the SDK,
+    # so the implementation must live here rather than in the host.
+    src/logging.cpp
+)
+set_target_properties(orc-sdk-support PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Compile-time spdlog verbosity for the support sources' own ORC_LOG_* sites,
+# matching orc-core: Release family filters to DEBUG; Debug/unset reaches TRACE.
+target_compile_definitions(orc-sdk-support PRIVATE
+    $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG>
+    $<$<NOT:$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE>
+)
+target_include_directories(orc-sdk-support PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/decode-orc-plugin-sdk>
+)
+# The support sources use only the SDK header surface plus the spdlog/fmt
+# logging shim (<orc/support/logging.h>). These are the sole install-time
+# dependencies the exported SDK package must resolve.
+target_link_libraries(orc-sdk-support PUBLIC spdlog::spdlog fmt::fmt)
+
+# Plugins resolve the support-tier helper symbols from orc-sdk-support (a static
+# archive), NOT from the host. This replaces the former $<LINK_ONLY:orc-core>
+# tether: plugins now compile and link against the SDK alone.
+target_link_libraries(orc-plugin-sdk INTERFACE orc-sdk-support)
 
 # The SDK headers themselves use spdlog (<orc/stage/logging.h>) and fmt
 # (<orc/plugin/orc_plugin_services_helpers.h>), so their usage requirements
@@ -73,11 +107,14 @@ install(DIRECTORY include/
 )
 
 # Exported targets for out-of-tree plugin builds. The export set collects
-# orc-plugin-sdk (this file), orc-core (orc/core/CMakeLists.txt), and
-# orc-common (orc/common/CMakeLists.txt); the generated Targets file defines
-# orc::plugin-sdk plus the orc::orc-core / orc::orc-common link targets it
-# references.
-install(TARGETS orc-plugin-sdk EXPORT decode-orc-plugin-sdkTargets)
+# orc-plugin-sdk (this file) and orc-sdk-support (the support-tier static lib);
+# the generated Targets file defines orc::plugin-sdk plus the
+# orc::orc-sdk-support link target it references. The host libraries (orc-core,
+# orc-common) are deliberately NOT exported: plugins link the SDK alone.
+install(TARGETS orc-plugin-sdk orc-sdk-support
+    EXPORT decode-orc-plugin-sdkTargets
+    ARCHIVE DESTINATION lib COMPONENT Runtime
+)
 install(EXPORT decode-orc-plugin-sdkTargets
     FILE decode-orc-plugin-sdkTargets.cmake
     NAMESPACE orc::

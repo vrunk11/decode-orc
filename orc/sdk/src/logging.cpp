@@ -1,6 +1,6 @@
 /*
  * File:        logging.cpp
- * Module:      orc-core
+ * Module:      orc-sdk-support
  * Purpose:     Logging system implementation
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -33,33 +33,25 @@ void init_logging(const std::string& level, const std::string& pattern,
     sinks.push_back(file_sink);
   }
 
-  if (!g_logger) {
-    // Create new logger with all sinks
-    g_logger =
-        std::make_shared<spdlog::logger>("core", sinks.begin(), sinks.end());
-    g_logger->set_pattern(pattern);
-
-    // Flush on every log message to ensure immediate file writing
-    g_logger->flush_on(spdlog::level::trace);
-
-    // Register with spdlog
-    spdlog::register_logger(g_logger);
-  } else {
-    // Logger already exists - need to recreate it with new sinks
-    // Unregister the old one first
+  // Drop any previously registered "core" logger before (re)creating it. The
+  // name may already be registered either by an earlier init_logging() call or
+  // by another module in the process: this translation unit is compiled into
+  // the orc-sdk-support static library, so the host, each dlopen'd plugin (via
+  // its RTLD_LOCAL copy), and standalone test binaries each hold their own
+  // g_logger, but they all share spdlog's single process-global registry.
+  // Dropping first keeps register_logger() from throwing on a duplicate name.
+  if (spdlog::get("core")) {
     spdlog::drop("core");
-
-    // Create new logger with all sinks
-    g_logger =
-        std::make_shared<spdlog::logger>("core", sinks.begin(), sinks.end());
-    g_logger->set_pattern(pattern);
-
-    // Flush on every log message to ensure immediate file writing
-    g_logger->flush_on(spdlog::level::trace);
-
-    // Register the new one
-    spdlog::register_logger(g_logger);
   }
+  g_logger =
+      std::make_shared<spdlog::logger>("core", sinks.begin(), sinks.end());
+  g_logger->set_pattern(pattern);
+
+  // Flush on every log message to ensure immediate file writing
+  g_logger->flush_on(spdlog::level::trace);
+
+  // Register with spdlog
+  spdlog::register_logger(g_logger);
 
   // Set log level
   set_log_level(level);
@@ -67,8 +59,14 @@ void init_logging(const std::string& level, const std::string& pattern,
 
 std::shared_ptr<spdlog::logger> get_logger() {
   if (!g_logger) {
-    // Auto-initialize if not done yet
-    init_logging();
+    // Reuse the shared "core" logger if another module in the process already
+    // created it (spdlog's registry is process-global even though g_logger is
+    // per-module). This keeps host, plugins, and test binaries logging through
+    // one logger instead of racing to register a duplicate "core" name.
+    g_logger = spdlog::get("core");
+    if (!g_logger) {
+      init_logging();
+    }
   }
   return g_logger;
 }

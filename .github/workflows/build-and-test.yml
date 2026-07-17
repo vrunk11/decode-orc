@@ -91,6 +91,33 @@ jobs:
             bash build/sdk-prefix/lib/cmake/decode-orc-plugin-sdk/check_plugin_private_links.sh orc-tests/fixtures/external-stage-plugin
             echo 'Installed-package validation passed'
 
+            # --- Standalone SDK package (tarball) validation ---
+            # Assemble the versioned, host-free SDK package from the install
+            # tree (headers + orc-sdk-support static archive + CMake config +
+            # enforcement scripts + allowlist) and build the fixture plugin
+            # against the UNPACKED TARBALL. This proves a third party needs only
+            # the SDK package and its two light dependencies (spdlog + fmt) —
+            # never the host or its FFmpeg / yaml-cpp / PNG / SQLite3 stack.
+            SDK_VERSION=\"\$(git describe --tags --always --dirty 2>/dev/null || echo dev)\"
+            SDK_PKG=\"decode-orc-plugin-sdk-\${SDK_VERSION}-linux-x86_64\"
+            SDK_STAGE=\"\$PWD/build/sdk-pkg/\${SDK_PKG}\"
+            rm -rf \"\$PWD/build/sdk-pkg\"
+            mkdir -p \"\${SDK_STAGE}/include\" \"\${SDK_STAGE}/lib/cmake\"
+            cp -a build/sdk-prefix/include/decode-orc-plugin-sdk \"\${SDK_STAGE}/include/\"
+            cp -a build/sdk-prefix/lib/liborc-sdk-support.a \"\${SDK_STAGE}/lib/\"
+            cp -a build/sdk-prefix/lib/cmake/decode-orc-plugin-sdk \"\${SDK_STAGE}/lib/cmake/\"
+            tar -C \"\$PWD/build/sdk-pkg\" -czf \"\$PWD/build/\${SDK_PKG}.tar.gz\" \"\${SDK_PKG}\"
+            echo \"Packaged \${SDK_PKG}.tar.gz\"
+            # Build the fixture from a freshly UNPACKED copy of the tarball
+            # (not the source tree, not the full install prefix).
+            rm -rf \"\$PWD/build/sdk-unpack\"; mkdir -p \"\$PWD/build/sdk-unpack\"
+            tar -C \"\$PWD/build/sdk-unpack\" -xzf \"\$PWD/build/\${SDK_PKG}.tar.gz\"
+            cmake -S orc-tests/fixtures/external-stage-plugin -B build/external-plugin-pkg \
+              -DCMAKE_BUILD_TYPE=Debug \
+              -DCMAKE_PREFIX_PATH=\"\$PWD/build/sdk-unpack/\${SDK_PKG}\"
+            cmake --build build/external-plugin-pkg --parallel \"\$BUILD_JOBS\"
+            echo 'Standalone SDK package validation passed'
+
             # --- Tiered-SDK validation (deprecated pre-tier shims disabled) ---
             # A separate build with ORC_SDK_DEPRECATED_INCLUDE_SHIMS=OFF proves
             # no bundled plugin compiles through a deprecation shim: every
@@ -133,3 +160,15 @@ jobs:
             build/ctest-results-unit-summary.md
             build/Testing/Temporary/LastTest.log
             build/Testing/Temporary/CTestCostData.txt
+
+      # Standalone plugin-SDK package (headers + orc-sdk-support static lib +
+      # CMake config + enforcement scripts). Third-party plugin authors consume
+      # this instead of the host source tree; the release workflow can attach it
+      # to host releases (release-from-artifact.yml, artifact_pattern glob).
+      - name: Upload Plugin SDK Package
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: decode-orc-plugin-sdk
+          if-no-files-found: warn
+          path: build/decode-orc-plugin-sdk-*-linux-x86_64.tar.gz

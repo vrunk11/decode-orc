@@ -9,7 +9,7 @@
 
 #include <gtest/gtest.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/dropout/dropout_util.h>
+#include <orc/support/dropout_util.h>
 
 using namespace orc;
 using namespace orc::dropout_util;

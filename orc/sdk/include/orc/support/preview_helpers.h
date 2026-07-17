@@ -1,6 +1,6 @@
 /*
  * File:        preview_helpers.h
- * Module:      decode-orc Plugin SDK (stage contract)
+ * Module:      decode-orc Plugin SDK (support tier)
  * Purpose:     Helper functions for stage preview rendering
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -10,8 +10,8 @@
 #ifndef PREVIEW_HELPERS_H
 #define PREVIEW_HELPERS_H
 
-// SDK TIER: stage/preview — stage contract type crossing the plugin boundary.
-// A layout change here bumps the host ABI version.
+// SDK TIER: support — compiled-into-plugin utility. NOT part of the binary
+// ABI; changes never force an ABI bump (recompile the plugin at your leisure).
 
 #include <orc/stage/preview/orc_rendering.h>
 #include <orc/stage/preview/preview_stage_types.h>

@@ -10,8 +10,8 @@
 #ifndef ORC_CORE_CC_SINK_STAGE_DEPS_H
 #define ORC_CORE_CC_SINK_STAGE_DEPS_H
 
-#include <orc/stage/eia608_decoder.h>
 #include <orc/stage/observation/closed_caption_observer.h>
+#include <orc/support/eia608_decoder.h>
 #include <orc/support/logging.h>
 
 #include <atomic>

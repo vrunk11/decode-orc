@@ -11,9 +11,9 @@
 #define ORC_CORE_FFMPEG_OUTPUT_BACKEND_H
 
 #include <orc/stage/audio/audio_channel_pair.h>
-#include <orc/stage/eia608_decoder.h>
 #include <orc/stage/field_id.h>
 #include <orc/stage/frame_id.h>
+#include <orc/support/eia608_decoder.h>
 
 #include <memory>
 #include <string>

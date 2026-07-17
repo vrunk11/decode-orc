@@ -6,18 +6,18 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  *
- * DEPRECATED: <orc/stage/colour_preview_conversion.h> moved to
- * <orc/stage/preview/colour_preview_conversion.h>. This shim is retained for
- * one release so third-party plugin source keeps compiling; include the new
- * path directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option
- * (default ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS
- * for plugin targets and this shim becomes a hard compile error.
+ * DEPRECATED: <orc/stage/colour_preview_conversion.h> moved to the support tier
+ * at <orc/support/colour_preview_conversion.h>. This shim is retained for one
+ * release so third-party plugin source keeps compiling; include the new path
+ * directly. Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option (default
+ * ON); when OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS for
+ * plugin targets and this shim becomes a hard compile error.
  */
 #pragma once
 
 #if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
 #error \
-    "Deprecated SDK include path <orc/stage/colour_preview_conversion.h>; include <orc/stage/preview/colour_preview_conversion.h> instead."
+    "Deprecated SDK include path <orc/stage/colour_preview_conversion.h>; include <orc/support/colour_preview_conversion.h> instead."
 #endif
 
-#include <orc/stage/preview/colour_preview_conversion.h>
+#include <orc/support/colour_preview_conversion.h>

@@ -11,7 +11,7 @@
 
 #include <fmt/format.h>
 #include <orc/stage/file_io_interface.h>
-#include <orc/stage/preview/colour_preview_conversion.h>
+#include <orc/support/colour_preview_conversion.h>
 // Application logging (get_app_logger): plugin log messages are routed to
 // the host application logger, not the core pipeline logger.
 #include <logging.h>

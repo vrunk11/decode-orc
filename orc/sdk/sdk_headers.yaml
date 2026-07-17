@@ -176,9 +176,9 @@ headers:
   - path: orc/stage/dropout/dropout_util.h
     tier: stage
     domain: "dropout"
-    deprecated: false
+    deprecated: true
     since_abi: ""
-    notes: "Frame-flat ↔ field/line/sample coordinate conversion utilities"
+    notes: "Deprecated include-path shim — moved to the orc/support/ tier"
   - path: orc/stage/dropout_run.h
     tier: stage
     domain: "foundation"
@@ -194,9 +194,9 @@ headers:
   - path: orc/stage/eia608_decoder.h
     tier: stage
     domain: "foundation"
-    deprecated: false
+    deprecated: true
     since_abi: ""
-    notes: "EIA-608 Closed Caption Decoder for timed text conversion"
+    notes: "Deprecated include-path shim — moved to the orc/support/ tier"
   - path: orc/stage/error_types.h
     tier: stage
     domain: "foundation"
@@ -416,9 +416,9 @@ headers:
   - path: orc/stage/preview/colour_preview_conversion.h
     tier: stage
     domain: "preview"
-    deprecated: false
+    deprecated: true
     since_abi: ""
-    notes: "Render-boundary conversion from colour carriers to PreviewImage."
+    notes: "Deprecated include-path shim — moved to the orc/support/ tier"
   - path: orc/stage/preview/colour_preview_provider.h
     tier: stage
     domain: "preview"
@@ -458,9 +458,9 @@ headers:
   - path: orc/stage/preview/preview_helpers.h
     tier: stage
     domain: "preview"
-    deprecated: false
+    deprecated: true
     since_abi: ""
-    notes: "Helper functions for stage preview rendering"
+    notes: "Deprecated include-path shim — moved to the orc/support/ tier"
   - path: orc/stage/preview/preview_stage_types.h
     tier: stage
     domain: "preview"
@@ -527,6 +527,24 @@ headers:
     deprecated: false
     since_abi: ""
     notes: "Video metadata types exposed through VFR interface"
+  - path: orc/support/colour_preview_conversion.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Render-boundary conversion from colour carriers to PreviewImage."
+  - path: orc/support/dropout_util.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Frame-flat ↔ field/line/sample coordinate conversion utilities"
+  - path: orc/support/eia608_decoder.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "EIA-608 Closed Caption Decoder for timed text conversion"
   - path: orc/support/frame_line_util.h
     tier: support
     domain: ""
@@ -545,6 +563,12 @@ headers:
     deprecated: false
     since_abi: ""
     notes: "Thread-safe least-recently-used cache"
+  - path: orc/support/preview_helpers.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Helper functions for stage preview rendering"
   - path: orc/support/stage_instructions.h
     tier: support
     domain: ""

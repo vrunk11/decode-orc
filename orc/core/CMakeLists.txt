@@ -1,23 +1,17 @@
 add_library(orc-core SHARED
     # Phase 1: Foundations
     field_id.cpp
-    dropout_util.cpp
     artifact.cpp
     dag_executor.cpp
     dag_frame_renderer.cpp
     preview_renderer.cpp
     preview_view_registry.cpp
-    preview_helpers.cpp
-    colour_preview_conversion.cpp
-    
+
     # Observation system
     observation_context.cpp
     observer_config.cpp
     pipeline_validator.cpp
     
-    # Logging
-    logging.cpp
-
     # Abstract factories
     factories.cpp
 
@@ -25,9 +19,6 @@ add_library(orc-core SHARED
     # VBI utilities
     vbi_utilities.cpp
     vbi_decoder.cpp
-    
-    # EIA-608 decoder for closed captions
-    eia608_decoder.cpp
     
     # Observers (organized in subdirectory)
     observers/observer.cpp
@@ -133,6 +124,15 @@ target_include_directories(orc-core PUBLIC
 
 # Link against common types
 target_link_libraries(orc-core PUBLIC orc-common)
+
+# Link the SDK support-tier helpers (eia608_decoder, dropout_util,
+# preview_helpers, colour_preview_conversion). These sources moved out of
+# orc-core into the standalone orc-sdk-support static library (orc/sdk/src) so
+# stage plugins can resolve them without linking the host; orc-core links the
+# same archive so host behaviour is unchanged. PUBLIC so the in-tree unit tests
+# that link orc-core also resolve these helper symbols. Defined in orc/sdk (a
+# later add_subdirectory); the reference is resolved at generate time.
+target_link_libraries(orc-core PUBLIC orc-sdk-support)
 
 # Link fmt (used by EFM decoder pipeline sources compiled directly into orc-core)
 target_link_libraries(orc-core PUBLIC fmt::fmt)
@@ -254,22 +254,22 @@ if(NOT TARGET PkgConfig::FFMPEG)
     unset(_ffmpeg_pc_libs)
 endif()
 
-# orc-core is part of the decode-orc-plugin-sdk export set: out-of-tree
-# plugins link it (via orc::plugin-sdk's $<LINK_ONLY:...>) to resolve stage
-# contract symbols. The export set is installed by orc/sdk/CMakeLists.txt.
+# orc-core is the host runtime library, installed for the app bundle. It is no
+# longer part of the decode-orc-plugin-sdk export set: out-of-tree plugins link
+# the SDK alone (orc::plugin-sdk + orc::orc-sdk-support), never the host.
 if(APPLE)
-    install(TARGETS orc-core EXPORT decode-orc-plugin-sdkTargets
+    install(TARGETS orc-core
         LIBRARY DESTINATION "orc-gui.app/Contents/Frameworks" COMPONENT Runtime
         RUNTIME DESTINATION "orc-gui.app/Contents/MacOS" COMPONENT Runtime
     )
 elseif(WIN32)
-    install(TARGETS orc-core EXPORT decode-orc-plugin-sdkTargets
+    install(TARGETS orc-core
         RUNTIME DESTINATION bin COMPONENT Runtime
         LIBRARY DESTINATION lib COMPONENT Runtime
         ARCHIVE DESTINATION lib COMPONENT Runtime
     )
 else()
-    install(TARGETS orc-core EXPORT decode-orc-plugin-sdkTargets
+    install(TARGETS orc-core
         LIBRARY DESTINATION lib COMPONENT Runtime
         RUNTIME DESTINATION bin COMPONENT Runtime
     )

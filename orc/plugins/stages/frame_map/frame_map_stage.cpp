@@ -10,8 +10,8 @@
 #include "frame_map_stage.h"
 
 #include <orc/stage/error_types.h>
-#include <orc/stage/preview/preview_helpers.h>
 #include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 
 #include <sstream>
 

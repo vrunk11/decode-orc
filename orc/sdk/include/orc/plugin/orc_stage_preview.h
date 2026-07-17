@@ -16,6 +16,6 @@
 #include <orc/stage/preview/orc_preview_carriers.h>
 #include <orc/stage/preview/orc_preview_types.h>
 #include <orc/stage/preview/orc_rendering.h>
-#include <orc/stage/preview/preview_helpers.h>
 #include <orc/stage/preview/preview_stage_types.h>
 #include <orc/stage/preview/stage_preview_capability.h>
+#include <orc/support/preview_helpers.h>

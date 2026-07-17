@@ -8,8 +8,8 @@
  */
 
 #include <gtest/gtest.h>
-#include <orc/stage/preview/colour_preview_conversion.h>
 #include <orc/stage/preview/orc_preview_carriers.h>
+#include <orc/support/colour_preview_conversion.h>
 
 namespace orc_unit_test {
 
