@@ -24,7 +24,10 @@ namespace orc {
  * - data_value (int32, optional): 20-bit FM code payload
  * - field_flag (bool, optional): field indicator bit
  */
-class FmCodeObserver : public Observer {
+class [[deprecated(
+    "Obtain observations via IObservationService::create_observer(\"fm_code\") "
+    "(<orc/stage/observation/observation_service_interface.h>); this class "
+    "leaves the plugin SDK next release.")]] FmCodeObserver : public Observer {
  public:
   FmCodeObserver() = default;
   ~FmCodeObserver() override = default;

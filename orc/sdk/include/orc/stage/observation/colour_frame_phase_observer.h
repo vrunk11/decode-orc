@@ -34,7 +34,12 @@ namespace orc {
 //
 // EBU Tech. 3280-E §1.1.1 (PAL); SMPTE 244M-2003 §3.2 (NTSC);
 // ITU-R BT.1700-1 Annex 1 Part B (PAL_M).
-class ColourFramePhaseObserver : public Observer {
+class [[deprecated(
+    "Obtain observations via "
+    "IObservationService::create_observer(\"colour_frame_phase\") "
+    "(<orc/stage/observation/observation_service_interface.h>); this class "
+    "leaves the plugin SDK next release.")]] ColourFramePhaseObserver
+    : public Observer {
  public:
   ColourFramePhaseObserver() = default;
   ~ColourFramePhaseObserver() override = default;

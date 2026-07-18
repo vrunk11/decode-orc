@@ -30,7 +30,10 @@ class VideoFrameRepresentation;
  * and populates the observation context with raw biphase data.
  * The data can then be decoded by VBIDecoder or other analysis tools.
  */
-class BiphaseObserver : public Observer {
+class [[deprecated(
+    "Obtain observations via IObservationService::create_observer(\"biphase\") "
+    "(<orc/stage/observation/observation_service_interface.h>); this class "
+    "leaves the plugin SDK next release.")]] BiphaseObserver : public Observer {
  public:
   BiphaseObserver() = default;
   ~BiphaseObserver() override = default;

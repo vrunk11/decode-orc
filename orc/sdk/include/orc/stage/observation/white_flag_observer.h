@@ -22,7 +22,12 @@ namespace orc {
  * Observations (namespace "white_flag"):
  * - present (bool, optional): true when white flag detected on the field
  */
-class WhiteFlagObserver : public Observer {
+class [[deprecated(
+    "Obtain observations via "
+    "IObservationService::create_observer(\"white_flag\") "
+    "(<orc/stage/observation/observation_service_interface.h>); this class "
+    "leaves the plugin SDK next release.")]] WhiteFlagObserver
+    : public Observer {
  public:
   WhiteFlagObserver() = default;
   ~WhiteFlagObserver() override = default;

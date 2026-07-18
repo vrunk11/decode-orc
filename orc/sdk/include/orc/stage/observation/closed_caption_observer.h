@@ -16,7 +16,12 @@
 
 namespace orc {
 
-class ClosedCaptionObserver : public Observer {
+class [[deprecated(
+    "Obtain observations via "
+    "IObservationService::create_observer(\"closed_caption\") "
+    "(<orc/stage/observation/observation_service_interface.h>); this class "
+    "leaves the plugin SDK next release.")]] ClosedCaptionObserver
+    : public Observer {
  public:
   ClosedCaptionObserver() = default;
   ~ClosedCaptionObserver() override = default;

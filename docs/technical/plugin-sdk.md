@@ -129,20 +129,11 @@ grouped by domain. A layout change here bumps the host ABI version.
 
 | Header | Provides |
 |--------|----------|
-| `<orc/stage/observation/biphase_observer.h>` | Biphase VBI data extraction observer |
-| `<orc/stage/observation/black_psnr_observer.h>` | Black PSNR (Peak Signal-to-Noise Ratio) observer |
-| `<orc/stage/observation/burst_level_observer.h>` | Color burst median IRE level observer |
-| `<orc/stage/observation/closed_caption_observer.h>` | Closed caption observer (EIA-608 line 21/22) |
-| `<orc/stage/observation/colour_frame_phase_observer.h>` | Colour-frame sequence index observer |
-| `<orc/stage/observation/field_quality_observer.h>` | Field quality metrics observer |
-| `<orc/stage/observation/fm_code_observer.h>` | FM code observer (NTSC line 10) |
 | `<orc/stage/observation/observation_context.h>` | Pipeline-scoped observation storage |
 | `<orc/stage/observation/observation_context_interface.h>` | Pipeline-scoped observation storage |
 | `<orc/stage/observation/observation_schema.h>` | Observation schema definitions |
 | `<orc/stage/observation/observation_service_interface.h>` | Host-owned observation service reached via OrcPluginServices |
 | `<orc/stage/observation/observer.h>` | Observer base class |
-| `<orc/stage/observation/white_flag_observer.h>` | White flag observer (NTSC line 11) |
-| `<orc/stage/observation/white_snr_observer.h>` | White SNR (Signal-to-Noise Ratio) observer |
 
 **params**
 
@@ -184,7 +175,7 @@ plugin at the author's convenience.
 
 #### Deprecated pre-tier include paths
 
-The 36 flat `<orc/plugin/...>` / `<orc/stage/...>` paths that
+The 45 flat `<orc/plugin/...>` / `<orc/stage/...>` paths that
 predate this layout are retained as forwarding shims for one release, gated
 by the `ORC_SDK_DEPRECATED_INCLUDE_SHIMS` CMake option (default ON). New
 code must use the tiered paths above; building with the option OFF turns any
@@ -213,12 +204,17 @@ A few allowlist entries carry rationale worth knowing:
   `orc/common/include/logging.h` (`get_app_logger()`) is unrelated and is the
   GUI/CLI surface only; the contract header lives at `<orc/support/logging.h>`
   precisely so the two can never be confused via include-path order.
-- **Observer headers are provisional.** The `<orc/stage/observation/...>`
-  observer entries exist because the analysis sinks instantiate concrete host
-  observers to (re)compute observations at trigger time. The cleaner long-term
-  design is a host-side observation service exposed through `IStageServices`;
-  if that is added, these headers return to host-only status. Do not grow new
-  dependencies on them.
+- **Observer classes are deprecated (ABI 9).** The concrete
+  `<orc/stage/observation/*_observer.h>` classes are superseded by the
+  host-owned [`IObservationService`](#observation-service-abi-9): plugins now
+  select observers by stable id instead of linking the classes. The classes
+  carry `[[deprecated]]` attributes and remain linkable through
+  `orc-sdk-support` for one release to give out-of-tree plugins a migration
+  window; they are scheduled for removal in the ABI 10 SDK release. Do not grow
+  new dependencies on them — use the service. (The remaining
+  `<orc/stage/observation/...>` entries — `observation_context*.h`,
+  `observation_schema.h`, `observation_service_interface.h`, and the `observer.h`
+  base — stay part of the contract.)
 - **`lru_cache.h`** is a self-contained generic container with no host
   coupling, allowlisted because several plugins legitimately use it for frame
   caching — preferable to each plugin vendoring a copy.
@@ -606,6 +602,11 @@ before registering any stage. The table provides:
   interface; may be `nullptr` when the capability is unavailable. Retrieve it
   with `orc::plugin::get_stage_services()` (no arguments), which returns
   `nullptr` if the services table is absent or predates the field.
+- `observation_service` — optional pointer to the `IObservationService`
+  interface (added in ABI 9). Retrieve it with
+  `orc::plugin::get_observation_service()` (no arguments), which returns
+  `nullptr` if the services table is absent or predates the field (any host on
+  ABI 8 or earlier). See [Observation service](#observation-service-abi-9).
 
 `IStageServices` currently exposes exactly three factory methods, used by sink
 stages for buffered file output:
@@ -625,6 +626,93 @@ host within the same version pair.
 Progress reporting and artifact-delivery callbacks are **not** part of the
 current services contract. If your stage needs a host capability that is
 missing, request an SDK extension rather than working around it.
+
+#### Observation service (ABI 9)
+
+`IObservationService`
+(`<orc/stage/observation/observation_service_interface.h>`) is a host-owned
+service that runs the standard observers. The observer *implementations* live
+once, in the host; a plugin selects one by **stable string id** instead of
+linking the concrete observer classes. This mirrors `render_colour_preview`:
+the capability crosses the boundary as a host-owned interface, not as object
+code compiled into every plugin.
+
+Retrieve it with `orc::plugin::get_observation_service()`, which returns
+`nullptr` on any host that predates ABI 9. A plugin **must** null-check the
+result and degrade gracefully (skip the observation, log a warning) when the
+service is absent.
+
+The interface exposes:
+
+- `available_observers()` — returns one `ObserverInfo { id, version,
+  provided_observations }` per observer the host offers, in a stable order.
+- `create_observer(observer_id)` — returns an owning
+  `std::unique_ptr<IObserverHandle>` for a **stateful** session, or `nullptr`
+  for an unknown id. Use this when observations accumulate across frames (e.g.
+  the closed-caption observer pairs successive fields). Drive it with
+  `handle->process_frame(representation, frame_id, context)`.
+- `run_observer(observer_id, representation, frame_id, context)` — a one-shot
+  convenience wrapper that creates a throwaway handle, processes exactly one
+  frame, and returns `false` for an unknown id (leaving `context` untouched).
+  Do **not** use it where cross-frame state matters.
+
+No method throws across the plugin boundary: an unknown id yields a null handle
+or `false`, never an exception. Thread-safety is documented on each interface
+method — in short, the service is safe to call concurrently, but a single
+`IObserverHandle` must be driven from one thread at a time.
+
+##### Migrating from the observer classes
+
+The concrete observer classes under `<orc/stage/observation/*_observer.h>`
+(`BiphaseObserver`, `WhiteSNRObserver`, …) are **deprecated as of ABI 9** and
+carry `[[deprecated]]` attributes naming their replacement id. They remain
+linkable through `orc-sdk-support` for **one release** so out-of-tree plugins
+can migrate, and are scheduled for **removal in the ABI 10 SDK release**, when
+the headers leave the plugin-facing SDK entirely. Replace direct construction
+with a service call keyed by the id below:
+
+| Deprecated class | Observer id | Header (removed in ABI 10) |
+|------------------|-------------|----------------------------|
+| `BiphaseObserver` | `biphase` | `<orc/stage/observation/biphase_observer.h>` |
+| `BlackPSNRObserver` | `black_psnr` | `<orc/stage/observation/black_psnr_observer.h>` |
+| `BurstLevelObserver` | `burst_level` | `<orc/stage/observation/burst_level_observer.h>` |
+| `ClosedCaptionObserver` | `closed_caption` | `<orc/stage/observation/closed_caption_observer.h>` |
+| `ColourFramePhaseObserver` | `colour_frame_phase` | `<orc/stage/observation/colour_frame_phase_observer.h>` |
+| `FieldQualityObserver` | `disc_quality` | `<orc/stage/observation/field_quality_observer.h>` |
+| `FmCodeObserver` | `fm_code` | `<orc/stage/observation/fm_code_observer.h>` |
+| `WhiteFlagObserver` | `white_flag` | `<orc/stage/observation/white_flag_observer.h>` |
+| `WhiteSNRObserver` | `white_snr` | `<orc/stage/observation/white_snr_observer.h>` |
+
+Before (linked observer class):
+
+```cpp
+#include <orc/stage/observation/closed_caption_observer.h>
+
+orc::ClosedCaptionObserver observer_;  // persistent member, stateful
+observer_.process_frame(representation, frame_id, context);
+```
+
+After (host service, id-selected):
+
+```cpp
+#include <orc/stage/observation/observation_service_interface.h>
+
+// Once, when the stage is constructed:
+orc::IObservationService* observation_service =
+    orc::plugin::get_observation_service();
+if (observation_service) {
+  observer_ = observation_service->create_observer("closed_caption");
+}
+
+// Per frame (observer_ is a std::unique_ptr<orc::IObserverHandle> member):
+if (observer_) {
+  observer_->process_frame(representation, frame_id, context);
+}
+```
+
+For a stateless one-off, skip the handle and call
+`observation_service->run_observer("closed_caption", representation, frame_id,
+context)`.
 
 ### Optional: Stage tools
 

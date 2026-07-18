@@ -28,7 +28,12 @@ namespace orc {
  * Stores observations in the "white_snr" namespace:
  * - "snr_db" (double): Signal-to-noise ratio in decibels
  */
-class WhiteSNRObserver : public Observer {
+class [[deprecated(
+    "Obtain observations via "
+    "IObservationService::create_observer(\"white_snr\") "
+    "(<orc/stage/observation/observation_service_interface.h>); this class "
+    "leaves the plugin SDK next release.")]] WhiteSNRObserver
+    : public Observer {
  public:
   WhiteSNRObserver() = default;
   ~WhiteSNRObserver() override = default;

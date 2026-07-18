@@ -1,9 +1,12 @@
 # Observation across the plugin boundary
 
-> **Status:** design proposal / rationale. This document records *why* the
-> current observer delivery is a wrinkle and *what* a service-based redesign
-> would require. It is not a committed work item — it exists so the decision to
-> do (or defer) the refactor is explicit and informed.
+> **Status:** adopted. The service-based redesign this document motivates is
+> being implemented per
+> [Observation Service Implementation Plan](plugin-observation-service-plan.md):
+> the host-owned `IObservationService` shipped in ABI 9, the bundled consumers
+> were ported to it, and the concrete observer classes are now deprecated ahead
+> of removal. This document is retained for the *why* and *how* rationale; the
+> plan tracks the phased work.
 
 ## TL;DR
 

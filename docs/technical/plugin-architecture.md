@@ -392,6 +392,12 @@ argument to `orc_register_stage_plugin()`. The table provides:
   display-ready `PreviewImage`
 - `stage_services` — optional pointer to the consolidated `IStageServices`
   interface (may be `nullptr` when the capability is unavailable)
+- `observation_service` — optional pointer to `IObservationService` (appended
+  in ABI 9, guarded by `services_size`); runs the standard observers by stable
+  string id so plugins no longer link the concrete observer classes. `nullptr`
+  on any host older than ABI 9. Obtained via
+  `orc::plugin::get_observation_service()`. See the
+  [Plugin SDK Developer Guide](plugin-sdk.md#observation-service-abi-9)
 
 The `IStageServices` contract (declared in `<orc/plugin/orc_stage_services.h>`)
 currently exposes buffered file-output factories used by sink stages:

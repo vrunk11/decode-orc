@@ -30,7 +30,12 @@ namespace orc {
  * - "median_burst_10bit" (double): Median burst peak amplitude in 10-bit
  *   sample units
  */
-class BurstLevelObserver : public Observer {
+class [[deprecated(
+    "Obtain observations via "
+    "IObservationService::create_observer(\"burst_level\") "
+    "(<orc/stage/observation/observation_service_interface.h>); this class "
+    "leaves the plugin SDK next release.")]] BurstLevelObserver
+    : public Observer {
  public:
   BurstLevelObserver() = default;
   ~BurstLevelObserver() override = default;

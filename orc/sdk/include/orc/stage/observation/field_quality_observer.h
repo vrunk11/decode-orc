@@ -33,7 +33,12 @@ class ObservationContext;
  * Used by disc mapping policy to choose best duplicate when multiple
  * fields have the same VBI frame number.
  */
-class FieldQualityObserver : public Observer {
+class [[deprecated(
+    "Obtain observations via "
+    "IObservationService::create_observer(\"disc_quality\") "
+    "(<orc/stage/observation/observation_service_interface.h>); this class "
+    "leaves the plugin SDK next release.")]] FieldQualityObserver
+    : public Observer {
  public:
   FieldQualityObserver() = default;
 

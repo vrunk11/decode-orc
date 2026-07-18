@@ -28,7 +28,12 @@ namespace orc {
  * Stores observations in the "black_psnr" namespace:
  * - "psnr_db" (double): Peak signal-to-noise ratio in decibels
  */
-class BlackPSNRObserver : public Observer {
+class [[deprecated(
+    "Obtain observations via "
+    "IObservationService::create_observer(\"black_psnr\") "
+    "(<orc/stage/observation/observation_service_interface.h>); this class "
+    "leaves the plugin SDK next release.")]] BlackPSNRObserver
+    : public Observer {
  public:
   BlackPSNRObserver() = default;
   ~BlackPSNRObserver() override = default;
