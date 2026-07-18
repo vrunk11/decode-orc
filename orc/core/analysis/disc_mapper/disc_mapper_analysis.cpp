@@ -194,7 +194,7 @@ AnalysisResult DiscMapperAnalysisTool::analyze(const AnalysisContext& ctx,
     if (!decision.success) {
       result.status = AnalysisResult::Failed;
       result.summary = decision.rationale.empty()
-                           ? "Disc mapper analysis is currently stubbed out"
+                           ? "Disc mapper analysis failed to produce a mapping"
                            : decision.rationale;
 
       for (const auto& warning : decision.warnings) {

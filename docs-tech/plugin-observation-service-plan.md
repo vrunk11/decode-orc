@@ -31,7 +31,14 @@ Consumers that construct observers today:
 - `orc/core/dag_frame_renderer.cpp` — all nine (host-internal standard observer pass)
 
 `ld_sink`, `daphne_vbi_sink`, and `dropout_analysis_sink` only read results
-from `IObservationContext` and are unaffected.
+from `IObservationContext` and are unaffected by the observer-delivery
+refactor above.
+
+**Pending consumer:** `LDSinkStage::execute()`
+(`orc/plugins/stages/ld_sink/ld_sink_stage.cpp`) accepts an
+`ObservationContext&` but does not yet consume observations. Wire it up once
+the host-owned service lands (this tracks the TODO formerly inline in that
+stage).
 
 ---
 
