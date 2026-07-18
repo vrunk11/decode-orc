@@ -14,6 +14,12 @@
 
 set -eu
 
+# Pin collation so the generated ordering is byte-for-byte reproducible
+# regardless of the caller's locale (CI runs under LC_ALL=C; developer shells
+# often use a UTF-8 locale, which sorts '_' differently). Without this the
+# SdkHeaderManifestSync gate flaps between environments.
+export LC_ALL=C
+
 REPO_ROOT="${1:-.}"
 MANIFEST="${REPO_ROOT}/orc/sdk/sdk_headers.yaml"
 OUT="${REPO_ROOT}/cmake/sdk_header_allowlist.txt"

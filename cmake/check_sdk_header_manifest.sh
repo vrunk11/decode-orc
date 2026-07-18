@@ -16,6 +16,10 @@
 
 set -u
 
+# Match the collation used by tools/gen_sdk_header_allowlist.sh so the
+# staleness comparison below is locale-independent (see that script's note).
+export LC_ALL=C
+
 REPO_ROOT="${1:-.}"
 INC="${REPO_ROOT}/orc/sdk/include"
 MANIFEST="${REPO_ROOT}/orc/sdk/sdk_headers.yaml"
