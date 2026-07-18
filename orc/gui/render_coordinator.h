@@ -677,27 +677,6 @@ class RenderCoordinator : public QObject {
                                       uint64_t output_index);
 
   /**
-   * @brief Request frame line navigation (async)
-   *
-   * Requests the core to calculate the next/previous line when navigating
-   * in frame mode with interlaced fields. Handles complex field ordering.
-   *
-   * Result emitted via frameLineNavigationReady signal.
-   *
-   * @param node_id The node being displayed
-   * @param output_type The current output type (Frame or Frame_Reversed)
-   * @param current_field The current field index
-   * @param current_line The current line within the field
-   * @param direction +1 to go down, -1 to go up
-   * @param field_height The height of a single field in lines
-   * @return Request ID for matching response
-   */
-  uint64_t requestFrameLineNavigation(const orc::NodeID& node_id,
-                                      orc::PreviewOutputType output_type,
-                                      uint64_t current_field, int current_line,
-                                      int direction, int field_height);
-
-  /**
    * @brief Map preview image coordinates to field coordinates (synchronous)
    *
    * This is a synchronous call that returns immediately with the mapping.

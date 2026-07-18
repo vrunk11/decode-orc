@@ -167,13 +167,6 @@ class AnalysisToolPresenter {
    */
   void invalidateDAG();
 
-  /**
-   * @brief Report progress to callback if set
-   * @param percentage Progress percentage (0-100)
-   * @param status Status message
-   */
-  void reportProgress(int percentage, const std::string& status);
-
  protected:
   /**
    * @brief Get project pointer for derived classes

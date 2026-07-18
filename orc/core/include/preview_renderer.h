@@ -172,55 +172,6 @@ class PreviewRenderer {
       const NodeID& node_id) const;
 
   /**
-   * @brief Convert an index from one output type to equivalent index in another
-   * type
-   *
-   * @param from_type The current output type
-   * @param from_index The current index in from_type
-   * @param to_type The target output type to convert to
-   * @return The equivalent index in to_type
-   *
-   * Examples:
-   * - Frame 50 -> Field: returns 100 (first field of frame 50)
-   * - Field 100 -> Frame: returns 50 (frame containing field 100)
-   * - Frame 50 -> Frame Reversed: returns 50 (same frame, different field
-   * order)
-   */
-  uint64_t get_equivalent_index(PreviewOutputType from_type,
-                                uint64_t from_index,
-                                PreviewOutputType to_type) const;
-
-  /**
-   * @brief Get formatted display label for current preview item
-   *
-   * @param type The output type being displayed
-   * @param index The current index (0-based)
-   * @param total_count The total number of items available
-   * @return Formatted string for display (e.g., "Frame 62 (124-125) / 250")
-   *
-   * Examples:
-   * - Field 100 / 500: "Field 101 / 500"
-   * - Frame 62 / 250: "Frame 63 (125-126) / 250"
-   * - Frame Reversed 62 / 250: "Frame (Reversed) 63 (126-125) / 250"
-   */
-  std::string get_preview_item_label(PreviewOutputType type, uint64_t index,
-                                     uint64_t total_count) const;
-
-  /**
-   * @brief Get detailed display information for current preview item
-   *
-   * @param type The output type being displayed
-   * @param index The current index (0-based)
-   * @param total_count The total number of items available
-   * @return Display info with all components for GUI to arrange
-   *
-   * This provides individual components (type, numbers, range) so the GUI
-   * can arrange labels as desired instead of using a pre-formatted string.
-   */
-  PreviewItemDisplayInfo get_preview_item_display_info(
-      PreviewOutputType type, uint64_t index, uint64_t total_count) const;
-
-  /**
    * @brief Navigate to next or previous line within a frame
    *
    * In frame mode with interlaced fields, this handles the complex logic of
@@ -306,22 +257,6 @@ class PreviewRenderer {
    */
   FrameFieldsResult get_frame_fields(const NodeID& node_id,
                                      uint64_t frame_index) const;
-
-  /**
-   * @brief Get suggested node for viewing
-   *
-   * Returns the node ID that should be displayed by default.
-   * Also provides context about why a particular node was chosen
-   * or why no node is available.
-   *
-   * Logic (in priority order):
-   * 1. First SOURCE node (most common case - view the input)
-   * 2. First node with outputs (fallback)
-   * 3. No suitable nodes (message explains why)
-   *
-   * @return Suggestion with node_id, status, and user message
-   */
-  SuggestedViewNode get_suggested_view_node() const;
 
   // ========================================================================
   // Export API

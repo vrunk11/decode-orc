@@ -200,11 +200,6 @@ class AnalysisPresenter {
    */
   void cancelAnalysis();
 
-  /**
-   * @brief Check if analysis is running
-   */
-  bool isAnalysisRunning() const;
-
   // === Data Retrieval ===
 
   /**
@@ -277,12 +272,6 @@ class AnalysisPresenter {
                    const std::string& output_path) const;
 
   // === Analysis Tool Registry (Phase 2.4) ===
-
-  /**
-   * @brief Get all available analysis tools
-   * @return Vector of all registered analysis tools
-   */
-  std::vector<orc::AnalysisToolInfo> getAvailableTools() const;
 
   /**
    * @brief Get analysis tools applicable to a specific stage type

@@ -97,12 +97,6 @@ class DAGFrameRenderer {
   // True if node_id exists in the current DAG.
   bool has_node(NodeID node_id) const;
 
-  // Returns node IDs in DAG order (source → sink).
-  std::vector<NodeID> get_renderable_nodes() const;
-
-  // Returns the DAG used by this renderer.
-  std::shared_ptr<const DAG> get_dag() const { return dag_; }
-
   // -------------------------------------------------------------------------
   // DAG Change Tracking
   // -------------------------------------------------------------------------
@@ -110,11 +104,6 @@ class DAGFrameRenderer {
   // Replace the DAG and clear all cached render results.  Increments the
   // internal DAG version so stale FrameRenderResult objects are detectable.
   void update_dag(std::shared_ptr<const DAG> new_dag);
-
-  // Monotonically increasing version number; increments on every update_dag()
-  // call.  Callers may store this to detect whether their cached results are
-  // still valid.
-  uint64_t get_dag_version() const { return dag_version_; }
 
   // Returns the observation context populated during the most recent
   // render_frame_at_node() execution.
@@ -126,9 +115,6 @@ class DAGFrameRenderer {
 
   // Discard all cached render results without incrementing the DAG version.
   void clear_cache();
-
-  // Current number of (node_id, frame_id) pairs in the cache.
-  size_t cache_size() const { return render_cache_.size(); }
 
   // Enable or disable result caching.  When disabled every call re-executes
   // the DAG.

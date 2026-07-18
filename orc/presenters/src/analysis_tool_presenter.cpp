@@ -165,17 +165,6 @@ std::vector<std::shared_ptr<void>> AnalysisToolPresenter::executeToNode(
   }
 }
 
-// =============================================================================
-// Progress Reporting
-// =============================================================================
-
-void AnalysisToolPresenter::reportProgress(int percentage,
-                                           const std::string& status) {
-  if (impl_->progress_callback_) {
-    impl_->progress_callback_(percentage, status);
-  }
-}
-
 void* AnalysisToolPresenter::getProjectPointer() const {
   return impl_->project_;
 }

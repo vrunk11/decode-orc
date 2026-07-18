@@ -35,10 +35,6 @@ DAGExecutor::DAGExecutor()
 
 void DAG::add_node(DAGNode node) { nodes_.push_back(std::move(node)); }
 
-void DAG::set_root_inputs(const std::vector<ArtifactPtr>& inputs) {
-  root_inputs_ = inputs;
-}
-
 void DAG::set_output_nodes(const std::vector<NodeID>& node_ids) {
   output_node_ids_ = node_ids;
 }

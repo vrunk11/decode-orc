@@ -79,13 +79,6 @@ class SourceAlignStage : public DAGStage,
       const std::map<std::string, ParameterValue>& params) override;
 
  private:
-  std::vector<FrameID> find_alignment_offsets(
-      const std::vector<std::shared_ptr<const VideoFrameRepresentation>>&
-          sources) const;
-
-  int32_t get_frame_number_from_vbi(const VideoFrameRepresentation& source,
-                                    FrameID frame_id) const;
-
   static std::vector<std::pair<size_t, size_t>> parse_alignment_map(
       const std::string& alignment_spec);
 

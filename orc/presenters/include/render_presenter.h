@@ -55,14 +55,6 @@ struct VBIData {
 };
 
 /**
- * @brief Observation data for debugging/analysis
- */
-struct ObservationData {
-  bool is_valid;
-  std::string json_data;  // JSON representation of observations
-};
-
-/**
  * @brief Export format options
  */
 enum class ExportFormat { PNG, TIFF, FFV1, ProRes };
@@ -168,17 +160,6 @@ class RenderPresenter {
   std::vector<orc::PreviewOutputInfo> getAvailableOutputs(NodeID node_id);
 
   /**
-   * @brief Get the count of outputs for a specific type
-   *
-   * @param node_id Node to query
-   * @param output_type Type of output
-   * @return Number of outputs (0 if not available)
-   *
-   * Thread-safe: Yes
-   */
-  uint64_t getOutputCount(NodeID node_id, orc::PreviewOutputType output_type);
-
-  /**
    * @brief Save a preview as PNG file
    *
    * @param node_id Node to render from
@@ -205,14 +186,6 @@ class RenderPresenter {
   orc::PreviewViewDataResult requestPreviewViewData(
       NodeID node_id, const std::string& view_id, orc::VideoDataType data_type,
       const orc::PreviewCoordinate& coordinate);
-
-  /**
-   * @brief Export the most recently requested data for a preview view.
-   */
-  orc::PreviewViewExportResult exportPreviewViewData(NodeID node_id,
-                                                     const std::string& view_id,
-                                                     const std::string& format,
-                                                     const std::string& path);
 
   // === VBI Data Extraction ===
 
@@ -354,12 +327,6 @@ class RenderPresenter {
    */
   void cancelTrigger();
 
-  /**
-   * @brief Check if a trigger is in progress
-   * @return true if triggering
-   */
-  bool isTriggerActive() const;
-
   // === Dropout Visualization ===
 
   /**
@@ -480,22 +447,6 @@ class RenderPresenter {
   };
 
   /**
-   * @brief Get line samples for oscilloscope display
-   *
-   * @param node_id Node to get samples from
-   * @param output_type Output type
-   * @param output_index Output index
-   * @param line_number Line number in the field/frame
-   * @param sample_x X coordinate hint (for field selection in frames)
-   * @param preview_width Width of preview image (for coordinate mapping)
-   * @return Vector of 16-bit sample values
-   */
-  std::vector<int16_t> getLineSamples(NodeID node_id,
-                                      orc::PreviewOutputType output_type,
-                                      uint64_t output_index, int line_number,
-                                      int sample_x, int preview_width);
-
-  /**
    * @brief Get line samples with Y/C separation for oscilloscope display
    *
    * For Y/C sources, returns separate Y and C samples in addition to composite.
@@ -552,43 +503,6 @@ class RenderPresenter {
    */
   std::vector<std::string> getAudioChannelPairNames(NodeID node_id);
 
-  // === Observations (for debugging) ===
-
-  /**
-   * @brief Get observation data for a field
-   *
-   * @param node_id Node to get observations from
-   * @param field_id Field to query
-   * @return Observation data as JSON
-   */
-  ObservationData getObservations(NodeID node_id, FieldID field_id);
-
-  /**
-   * @brief Render field and get quality metrics
-   *
-   * This renders the field at the specified node and extracts quality metrics
-   * from the observation context. This is the preferred method for GUI code
-   * that needs quality metrics without direct access to core types.
-   *
-   * @param node_id Node to render at
-   * @param field_id Field to render
-   * @return Quality metrics (use MetricsPresenter types)
-   */
-  QualityMetrics getFieldQualityMetrics(NodeID node_id, FieldID field_id);
-
-  /**
-   * @brief Render both fields of a frame and get combined quality metrics
-   *
-   * This renders both fields and averages their quality metrics.
-   *
-   * @param node_id Node to render at
-   * @param field1_id First field
-   * @param field2_id Second field
-   * @return Combined quality metrics
-   */
-  QualityMetrics getFrameQualityMetrics(NodeID node_id, FieldID field1_id,
-                                        FieldID field2_id);
-
   /**
    * @brief Execute DAG to a specific node and return field representation
    *
@@ -618,19 +532,6 @@ class RenderPresenter {
    * to extract quality data without GUI having direct core access.
    */
   const void* getObservationContext(NodeID node_id, FieldID field_id);
-
-  // === Cache Management ===
-
-  /**
-   * @brief Clear the preview cache
-   */
-  void clearCache();
-
-  /**
-   * @brief Get cache statistics
-   * @return String describing cache usage
-   */
-  std::string getCacheStats() const;
 
  private:
   class Impl;

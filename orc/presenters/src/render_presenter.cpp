@@ -64,24 +64,6 @@ class RenderPresenter::Impl {
   uint64_t next_request_id_;
   std::atomic<orc::TriggerableStage*> current_trigger_stage_{nullptr};
 
-  void invalidateRenderCachesForNode(const NodeID& node_id) {
-    auto dag = getConcreteDAG();
-    if (!dag) {
-      return;
-    }
-
-    if (preview_renderer_) {
-      preview_renderer_->update_dag(dag);
-    }
-    if (field_renderer_) {
-      field_renderer_->update_dag(dag);
-    }
-    if (obs_cache_) {
-      obs_cache_->update_dag(dag);
-    }
-    preview_view_registry_.clear_cache_for_node(node_id);
-  }
-
   void rebuildRenderersFromDAG() {
     auto dag = getConcreteDAG();
     if (!dag) {
@@ -219,15 +201,6 @@ std::vector<orc::PreviewOutputInfo> RenderPresenter::getAvailableOutputs(
   return result;
 }
 
-uint64_t RenderPresenter::getOutputCount(NodeID node_id,
-                                         orc::PreviewOutputType output_type) {
-  if (!impl_->preview_renderer_) {
-    return 0;
-  }
-
-  return impl_->preview_renderer_->get_output_count(node_id, output_type);
-}
-
 bool RenderPresenter::savePNG(NodeID node_id,
                               orc::PreviewOutputType output_type,
                               uint64_t output_index,
@@ -270,13 +243,6 @@ orc::PreviewViewDataResult RenderPresenter::requestPreviewViewData(
 
   return impl_->preview_view_registry_.request_data(*dag, node_id, view_id,
                                                     data_type, coordinate);
-}
-
-orc::PreviewViewExportResult RenderPresenter::exportPreviewViewData(
-    NodeID node_id, const std::string& view_id, const std::string& format,
-    const std::string& path) {
-  return impl_->preview_view_registry_.export_as(node_id, view_id, format,
-                                                 path);
 }
 
 std::optional<VBIFieldInfoView> RenderPresenter::getVBIData(NodeID node_id,
@@ -634,10 +600,6 @@ void RenderPresenter::cancelTrigger() {
   }
 }
 
-bool RenderPresenter::isTriggerActive() const {
-  return impl_->trigger_active_.load();
-}
-
 void RenderPresenter::setShowDropouts(bool show) {
   if (impl_->preview_renderer_) {
     impl_->preview_renderer_->set_show_dropouts(show);
@@ -701,58 +663,6 @@ RenderPresenter::FrameLineNavigation RenderPresenter::navigateFrameLine(
       field_height);
 
   return {result.is_valid, result.new_field_index, result.new_line_number};
-}
-
-std::vector<int16_t> RenderPresenter::getLineSamples(
-    NodeID node_id, orc::PreviewOutputType output_type, uint64_t output_index,
-    int line_number, int /*sample_x*/, int /*preview_width*/) {
-  if (!impl_->preview_renderer_) {
-    return {};
-  }
-
-  if (output_type != orc::PreviewOutputType::Frame_Field1 &&
-      output_type != orc::PreviewOutputType::Frame_Field2) {
-    return {};
-  }
-
-  try {
-    auto repr = impl_->preview_renderer_->get_representation_at_node(node_id);
-    if (!repr) {
-      return {};
-    }
-
-    orc::FrameID frame_id = static_cast<orc::FrameID>(output_index / 2);
-    int field_within_frame = static_cast<int>(output_index % 2);
-
-    auto descriptor = repr->get_frame_descriptor(frame_id);
-    if (!descriptor) {
-      return {};
-    }
-
-    size_t f1_lines = (descriptor->system == orc::VideoSystem::PAL)
-                          ? static_cast<size_t>(orc::kPalField1Lines)
-                          : static_cast<size_t>(orc::kNtscField1Lines);
-    size_t field_height =
-        (field_within_frame == 0) ? f1_lines : (descriptor->height - f1_lines);
-    size_t field_line_offset = (field_within_frame == 0) ? 0 : f1_lines;
-
-    if (line_number < 0 || static_cast<size_t>(line_number) >= field_height) {
-      return {};
-    }
-
-    size_t frame_line = field_line_offset + static_cast<size_t>(line_number);
-    const orc::VideoFrameRepresentation::sample_type* line_data =
-        repr->get_line(frame_id, frame_line);
-    if (!line_data) {
-      return {};
-    }
-
-    size_t width = descriptor->samples_per_line_nominal;
-    return std::vector<int16_t>(line_data, line_data + width);
-
-  } catch (const std::exception&) {
-    return {};
-  }
 }
 
 RenderPresenter::LineSampleData RenderPresenter::getLineSamplesWithYC(
@@ -985,43 +895,6 @@ std::vector<std::string> RenderPresenter::getAudioChannelPairNames(
   return names;
 }
 
-ObservationData RenderPresenter::getObservations(NodeID node_id,
-                                                 FieldID field_id) {
-  ObservationData result{false, ""};
-
-  if (!impl_->obs_cache_) {
-    return result;
-  }
-
-  try {
-    bool obs_ok = impl_->obs_cache_->get_field(node_id, field_id);
-    if (!obs_ok) {
-      return result;
-    }
-
-    // TODO(sdi): Serialize observations to JSON
-    result.is_valid = true;
-    result.json_data = "{}";  // Placeholder
-
-    return result;
-  } catch (const std::exception&) {
-    return result;
-  }
-}
-
-void RenderPresenter::clearCache() {
-  if (impl_->obs_cache_) {
-    impl_->obs_cache_.reset();
-    impl_->obs_cache_ =
-        std::make_shared<orc::ObservationCache>(impl_->getConcreteDAG());
-  }
-}
-
-std::string RenderPresenter::getCacheStats() const {
-  // TODO(sdi): Implement cache stats
-  return "Cache: active";
-}
-
 // === Analysis Data Access (Phase 2.4) ===
 
 bool RenderPresenter::getDropoutAnalysisData(NodeID node_id,
@@ -1130,44 +1003,6 @@ bool RenderPresenter::getBurstLevelAnalysisData(NodeID node_id,
   frame_stats.push_back(const_cast<void*>(static_cast<const void*>(&stats)));
 
   return true;
-}
-
-QualityMetrics RenderPresenter::getFieldQualityMetrics(NodeID node_id,
-                                                       FieldID field_id) {
-  if (!impl_->field_renderer_) {
-    return QualityMetrics{};
-  }
-
-  orc::FrameID frame_id = static_cast<orc::FrameID>(field_id.value() / 2);
-  auto render_result =
-      impl_->field_renderer_->render_frame_at_node(node_id, frame_id);
-  if (!render_result.is_valid) {
-    return QualityMetrics{};
-  }
-
-  const auto& obs_context = impl_->field_renderer_->get_observation_context();
-  return MetricsPresenter::extractFieldMetrics(
-      field_id, const_cast<void*>(static_cast<const void*>(&obs_context)));
-}
-
-QualityMetrics RenderPresenter::getFrameQualityMetrics(NodeID node_id,
-                                                       FieldID field1_id,
-                                                       FieldID field2_id) {
-  if (!impl_->field_renderer_) {
-    return QualityMetrics{};
-  }
-
-  orc::FrameID frame_id = static_cast<orc::FrameID>(field1_id.value() / 2);
-  auto render_result =
-      impl_->field_renderer_->render_frame_at_node(node_id, frame_id);
-  if (!render_result.is_valid) {
-    return QualityMetrics{};
-  }
-
-  const auto& obs_context = impl_->field_renderer_->get_observation_context();
-  return MetricsPresenter::extractFrameMetrics(
-      field1_id, field2_id,
-      const_cast<void*>(static_cast<const void*>(&obs_context)));
 }
 
 std::shared_ptr<const void> RenderPresenter::executeToNode(NodeID node_id) {

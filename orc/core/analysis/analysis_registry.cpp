@@ -51,15 +51,4 @@ AnalysisTool* AnalysisRegistry::findById(const std::string& id) const {
   return nullptr;
 }
 
-std::vector<AnalysisTool*> AnalysisRegistry::toolsForSource(
-    AnalysisSourceType source_type) const {
-  std::vector<AnalysisTool*> result;
-  for (const auto& tool : tools_) {
-    if (tool->canAnalyze(source_type)) {
-      result.push_back(tool.get());
-    }
-  }
-  return result;
-}
-
 }  // namespace orc

@@ -70,8 +70,6 @@ class WaveformMonitorDialog : public QDialog {
       int second_field_height,
       const std::optional<orc::presenters::VideoParametersView>& video_params);
 
-  WaveformMonitorWidget* monitorWidget() const { return monitor_widget_; }
-
   void setAmplitudeUnit(orc::AmplitudeDisplayUnit unit);
 
  private:

@@ -190,9 +190,6 @@ class StackerStage : public DAGStage,
       const std::vector<std::shared_ptr<const VideoFrameRepresentation>>&
           sources) const;
 
-  static size_t min_input_count() { return 1; }
-  static size_t max_input_count() { return 16; }
-
   // ParameterizedStage
   std::vector<ParameterDescriptor> get_parameter_descriptors(
       VideoSystem project_format, SourceType source_type) const override;

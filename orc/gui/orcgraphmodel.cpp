@@ -119,10 +119,6 @@ orc::ConfigurationStatus OrcGraphModel::getConfigurationStatus(
   return status;
 }
 
-void OrcGraphModel::invalidateConfigurationStatus(NodeId nodeId) {
-  config_status_cache_.erase(nodeId);
-}
-
 std::unordered_set<NodeId> OrcGraphModel::allNodeIds() const {
   std::unordered_set<NodeId> ids;
   for (const auto& [qt_id, orc_id] : qt_to_orc_nodes_) {

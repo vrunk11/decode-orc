@@ -58,14 +58,6 @@ bool DAGFrameRenderer::has_node(NodeID node_id) const {
   return node_index_.find(node_id) != node_index_.end();
 }
 
-std::vector<NodeID> DAGFrameRenderer::get_renderable_nodes() const {
-  std::vector<NodeID> result;
-  for (const auto& node : dag_->nodes()) {
-    result.push_back(node.node_id);
-  }
-  return result;
-}
-
 void DAGFrameRenderer::update_dag(std::shared_ptr<const DAG> new_dag) {
   if (!new_dag) {
     throw DAGFrameRenderError("Cannot update to null DAG");

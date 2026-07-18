@@ -217,14 +217,6 @@ std::optional<VBIFieldInfoView> VbiPresenter::getVbiForField(
   }
 }
 
-VbiPresenter::FrameVbiResult VbiPresenter::getVbiForFrame(
-    NodeID node_id, FieldID field1, FieldID field2) const {
-  FrameVbiResult out;
-  out.field1 = getVbiForField(node_id, field1);
-  out.field2 = getVbiForField(node_id, field2);
-  return out;
-}
-
 std::optional<VBIFieldInfoView> VbiPresenter::decodeVbiFromObservation(
     const void* observation_context_ptr, FieldID field_id) {
   if (!observation_context_ptr) return std::nullopt;

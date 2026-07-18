@@ -299,14 +299,6 @@ class VideoSinkStage : public DAGStage,
                                std::optional<int32_t> frame_phase_id,
                                orc::FrameID frame_id, bool is_first_field,
                                const orc::SourceParameters& videoParams) const;
-
-  bool writeOutputFile(
-      const std::string& output_path, const std::string& format,
-      const std::vector<::ComponentFrame>& frames, const void* videoParams,
-      const orc::VideoFrameRepresentation* vfr, uint64_t start_field_index,
-      uint64_t num_fields,
-      std::string& error_message  // Output parameter for detailed error
-  ) const;
 };
 
 }  // namespace orc

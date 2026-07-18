@@ -87,10 +87,7 @@ add_library(orc-core SHARED
     curl_http_fetcher.cpp
     plugin_index.cpp
     plugin_index_client.cpp
-    
-    # DAG serialization
-    dag_serialization.cpp
-    
+
     # Project file I/O
     project.cpp
     

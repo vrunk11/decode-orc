@@ -53,7 +53,6 @@ class FrameViewGeometry {
 
   /// Set the viewport (widget) size the display rect is centered within.
   void setViewportSize(const QSize& size);
-  QSize viewportSize() const { return viewport_size_; }
 
   /// True when a non-empty image size has been set.
   bool hasImage() const;

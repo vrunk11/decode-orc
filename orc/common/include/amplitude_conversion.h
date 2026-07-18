@@ -172,14 +172,6 @@ inline std::string amplitude_axis_title(AmplitudeDisplayUnit unit) {
   }
 }
 
-/// Input precision (decimal places): 1 for IRE, 1 for mV, 0 for 10-bit.
-inline int amplitude_input_precision(AmplitudeDisplayUnit unit) {
-  if (unit == AmplitudeDisplayUnit::Samples10Bit) {
-    return 0;
-  }
-  return 1;
-}
-
 /// Display range [min, max] in the chosen unit, covering sync_tip to peak.
 /// Requires sync_tip, blanking, white, and peak 10-bit values from
 /// SourceParameters.

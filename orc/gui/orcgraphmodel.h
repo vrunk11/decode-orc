@@ -133,12 +133,6 @@ class OrcGraphModel : public QtNodes::AbstractGraphModel {
    */
   orc::ConfigurationStatus getConfigurationStatus(NodeId nodeId) const;
 
-  /**
-   * @brief Invalidate the cached configuration status for a single node so
-   * that the next paint call re-derives it from the presenter.
-   */
-  void invalidateConfigurationStatus(NodeId nodeId);
-
  private:
   orc::presenters::IProjectPresenter& presenter_;
 

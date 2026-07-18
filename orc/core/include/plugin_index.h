@@ -82,9 +82,4 @@ struct PluginIndexParseResult {
  */
 PluginIndexParseResult parse_plugin_index_yaml(const std::string& yaml_text);
 
-/**
- * @brief Serialize an index back to YAML (used to persist the local cache).
- */
-std::string serialize_plugin_index_yaml(const PluginIndex& index);
-
 }  // namespace orc
