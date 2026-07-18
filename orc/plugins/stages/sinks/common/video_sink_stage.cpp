@@ -1072,8 +1072,8 @@ bool VideoSinkStage::trigger(
   }
   embed_cc = embed_cc && ffmpeg_output;
 
-  // If closed caption embedding is enabled, instantiate ClosedCaptionObserver
-  // to populate the observation context before running the export
+  // If closed caption embedding is enabled, run the host "closed_caption"
+  // observer to populate the observation context before running the export
   if (embed_cc) {
     ORC_LOG_DEBUG(
         "VideoSink: Closed caption embedding enabled, extracting CC "
