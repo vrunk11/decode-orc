@@ -44,7 +44,15 @@ jobs:
       - name: Install build dependencies
         shell: bash
         run: |
-          brew update
+          # brew update only refreshes formula metadata; a flaky download of the
+          # Homebrew API index should not abort the whole build. Retry a few times
+          # and fall back to the existing metadata if it still fails.
+          for i in 1 2 3; do
+            brew update && break
+            echo "brew update failed (attempt $i), retrying..."
+            sleep 15
+          done || echo "brew update failed after retries; continuing with existing metadata"
+
           DEPS=(cmake ninja pkg-config qt@6 spdlog yaml-cpp sqlite libpng fftw ffmpeg libsoxr dylibbundler)
           MISSING=()
 
