@@ -10,7 +10,7 @@
 #ifndef ORC_CORE_DROPOUT_EDITOR_TOOL_H
 #define ORC_CORE_DROPOUT_EDITOR_TOOL_H
 
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 
 #include <string>
 #include <vector>

@@ -1,0 +1,505 @@
+# SDK header manifest — single source of truth for the tiered stage-plugin SDK
+# surface (orc/sdk/include).
+#
+# Tiers:
+#   abi        — frozen binary contract: descriptor, entrypoints, registration,
+#                service tables. Any change bumps the host ABI version.
+#   plugin-api — plugin-facing stage API / host-services surface that has not
+#                yet been relocated under a tier subdirectory (orc/plugin/).
+#                Treated as ABI: layout changes bump the host ABI.
+#   stage      — stage contract types crossing the plugin boundary, grouped by
+#                domain (preview/observation/dropout/audio/params) with the
+#                foundation types at the tier root. Layout changes bump the ABI.
+#   support    — compiled-into-plugin utilities. NOT part of the binary ABI;
+#                changes never force a bump (recompile at the author's leisure).
+#
+# Deprecated entries are pre-tier include-path shims retained for one release.
+#
+# Consumers (kept in sync by the SdkHeaderManifestSync CTest, label "sdk"):
+#   - cmake/sdk_header_allowlist.txt   (tools/gen_sdk_header_allowlist.sh)
+#   - docs/technical/plugin-sdk.md     header tables
+#
+# Adding or removing an SDK header is a single edit here; the drift CTest fails
+# until this manifest matches the on-disk header set.
+schema: 1
+headers:
+  - path: orc/abi/orc_plugin_abi.h
+    tier: abi
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Host ABI contract for decode-orc stage plugins"
+  - path: orc/abi/orc_plugin_registration.h
+    tier: abi
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Descriptor and entrypoint boilerplate helpers for stage plugins"
+  - path: orc/abi/orc_plugin_sdk.h
+    tier: abi
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Umbrella include for the decode-orc stage plugin SDK"
+  - path: orc/abi/orc_plugin_services.h
+    tier: abi
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Host service table injected into plugins at registration time."
+  - path: orc/plugin/orc_plugin_abi.h
+    tier: plugin-api
+    domain: ""
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/plugin/orc_plugin_registration.h
+    tier: plugin-api
+    domain: ""
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/plugin/orc_plugin_sdk.h
+    tier: plugin-api
+    domain: ""
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/plugin/orc_plugin_services.h
+    tier: plugin-api
+    domain: ""
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/plugin/orc_plugin_services_helpers.h
+    tier: plugin-api
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Helper macros for using OrcPluginServices."
+  - path: orc/plugin/orc_stage_api.h
+    tier: plugin-api
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Stage API — stable types and interfaces for stage plugin"
+  - path: orc/plugin/orc_stage_preview.h
+    tier: plugin-api
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Public preview capability include surface for plugin stage"
+  - path: orc/plugin/orc_stage_runtime.h
+    tier: plugin-api
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Public stage runtime include surface for plugin stage"
+  - path: orc/plugin/orc_stage_services.h
+    tier: plugin-api
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Stable stage service interfaces exposed via OrcPluginServices"
+  - path: orc/plugin/orc_stage_tooling.h
+    tier: plugin-api
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Canonical stage helper/tooling contracts for plugin stages"
+  - path: orc/stage/analysis_sink_results.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Interfaces for accessing analysis sink stage results across"
+  - path: orc/stage/artifact.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Artifact implementation"
+  - path: orc/stage/audio/audio_channel_pair.h
+    tier: stage
+    domain: "audio"
+    deprecated: false
+    since_abi: ""
+    notes: "Audio channel-pair model shared by all"
+  - path: orc/stage/audio_channel_pair.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/colour_preview_conversion.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/colour_preview_provider.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/common_types.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Common type definitions shared across all layers"
+  - path: orc/stage/cvbs_signal_constants.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Normative CVBS_U10_4FSC signal constants for PAL, NTSC, and"
+  - path: orc/stage/dropout_decision.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/dropout/dropout_decision.h
+    tier: stage
+    domain: "dropout"
+    deprecated: false
+    since_abi: ""
+    notes: "Dropout decision management"
+  - path: orc/stage/dropout/dropout_run.h
+    tier: stage
+    domain: "dropout"
+    deprecated: false
+    since_abi: ""
+    notes: "Frame-flat dropout descriptor for CVBS_U10_4FSC frames"
+  - path: orc/stage/dropout/dropout_util.h
+    tier: stage
+    domain: "dropout"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — moved to the orc/support/ tier"
+  - path: orc/stage/dropout_run.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/dropout_util.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/eia608_decoder.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — moved to the orc/support/ tier"
+  - path: orc/stage/error_types.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Shared exception types for error classification"
+  - path: orc/stage/field_id.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Field identifier implementation"
+  - path: orc/stage/file_io_interface.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Interface(s) for file I/O to make unit testing easier"
+  - path: orc/stage/frame_descriptor.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Per-frame metadata descriptor for CVBS_U10_4FSC frames"
+  - path: orc/stage/frame_id.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Frame identifier types for CVBS_U10_4FSC frame-based pipeline"
+  - path: orc/stage/frame_line_util.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/logging.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/lru_cache.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/node_id.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "NodeID type definition for DAG nodes"
+  - path: orc/stage/node_type.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Node type registry"
+  - path: orc/stage/observation/observation_context.h
+    tier: stage
+    domain: "observation"
+    deprecated: false
+    since_abi: ""
+    notes: "Pipeline-scoped observation storage"
+  - path: orc/stage/observation/observation_context_interface.h
+    tier: stage
+    domain: "observation"
+    deprecated: false
+    since_abi: ""
+    notes: "Pipeline-scoped observation storage"
+  - path: orc/stage/observation/observation_schema.h
+    tier: stage
+    domain: "observation"
+    deprecated: false
+    since_abi: ""
+    notes: "Observation schema definitions"
+  - path: orc/stage/observation/observation_service_interface.h
+    tier: stage
+    domain: "observation"
+    deprecated: false
+    since_abi: 9
+    notes: "Host-owned observation service reached via OrcPluginServices"
+  - path: orc/stage/orc_preview_carriers.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/orc_preview_types.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/orc_rendering.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/orc_source_parameters.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Source metadata types"
+  - path: orc/stage/orc_vectorscope.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/parameter_types.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/params/parameter_types.h
+    tier: stage
+    domain: "params"
+    deprecated: false
+    since_abi: ""
+    notes: "Stage parameter type definitions shared across all layers"
+  - path: orc/stage/params/stage_parameter.h
+    tier: stage
+    domain: "params"
+    deprecated: false
+    since_abi: ""
+    notes: "Stage Parameter"
+  - path: orc/stage/preview/colour_preview_conversion.h
+    tier: stage
+    domain: "preview"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — moved to the orc/support/ tier"
+  - path: orc/stage/preview/colour_preview_provider.h
+    tier: stage
+    domain: "preview"
+    deprecated: false
+    since_abi: ""
+    notes: "Interface for stages exposing colour-domain preview carriers."
+  - path: orc/stage/preview_helpers.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/preview/orc_preview_carriers.h
+    tier: stage
+    domain: "preview"
+    deprecated: false
+    since_abi: ""
+    notes: "Typed preview carriers used by the Phase 2 preview pipeline."
+  - path: orc/stage/preview/orc_preview_types.h
+    tier: stage
+    domain: "preview"
+    deprecated: false
+    since_abi: ""
+    notes: "Shared preview taxonomy: video data types, colorimetric"
+  - path: orc/stage/preview/orc_rendering.h
+    tier: stage
+    domain: "preview"
+    deprecated: false
+    since_abi: ""
+    notes: "Public API for rendering and preview types"
+  - path: orc/stage/preview/orc_vectorscope.h
+    tier: stage
+    domain: "preview"
+    deprecated: false
+    since_abi: ""
+    notes: "Public API for vectorscope visualization data"
+  - path: orc/stage/preview/preview_helpers.h
+    tier: stage
+    domain: "preview"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — moved to the orc/support/ tier"
+  - path: orc/stage/preview/preview_stage_types.h
+    tier: stage
+    domain: "preview"
+    deprecated: false
+    since_abi: ""
+    notes: "Shared lightweight types for stage preview interfaces"
+  - path: orc/stage/preview/stage_custom_preview_renderer.h
+    tier: stage
+    domain: "preview"
+    deprecated: false
+    since_abi: ""
+    notes: "Interface for stages with non-standard preview rendering."
+  - path: orc/stage/preview/stage_preview_capability.h
+    tier: stage
+    domain: "preview"
+    deprecated: false
+    since_abi: ""
+    notes: "Capability contracts for stages that expose structured preview"
+  - path: orc/stage/preview_stage_types.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/stage_custom_preview_renderer.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/stage.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Base interface for all stage types"
+  - path: orc/stage/stage_parameter.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/stage_preview_capability.h
+    tier: stage
+    domain: "foundation"
+    deprecated: true
+    since_abi: ""
+    notes: "Deprecated include-path shim — forwards to the tiered SDK layout"
+  - path: orc/stage/triggerable_stage.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Triggerable interface for stages that can be manually executed"
+  - path: orc/stage/video_frame_representation.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "VideoFrameRepresentation interface for CVBS_U10_4FSC frames"
+  - path: orc/stage/video_metadata_types.h
+    tier: stage
+    domain: "foundation"
+    deprecated: false
+    since_abi: ""
+    notes: "Video metadata types exposed through VFR interface"
+  - path: orc/support/colour_preview_conversion.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Render-boundary conversion from colour carriers to PreviewImage."
+  - path: orc/support/dropout_util.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Frame-flat ↔ field/line/sample coordinate conversion utilities"
+  - path: orc/support/eia608_decoder.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "EIA-608 Closed Caption Decoder for timed text conversion"
+  - path: orc/support/frame_line_util.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Per-line sample count and offset helpers for 4FSC CVBS flat"
+  - path: orc/support/logging.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Logging system implementation"
+  - path: orc/support/lru_cache.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Thread-safe least-recently-used cache"
+  - path: orc/support/preview_helpers.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Helper functions for stage preview rendering"
+  - path: orc/support/stage_instructions.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "Runtime loader for a stage's instructions.md (platform file I/O)"
+  - path: orc/support/vbi_types.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "VBI line data structures shared by the VBI decoder and observers"
+  - path: orc/support/vbi_utilities.h
+    tier: support
+    domain: ""
+    deprecated: false
+    since_abi: ""
+    notes: "VBI bit-extraction and manchester/biphase decode helpers"

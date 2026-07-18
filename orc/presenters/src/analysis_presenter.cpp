@@ -9,7 +9,7 @@
 
 #include "analysis_presenter.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <iostream>
@@ -128,8 +128,6 @@ bool AnalysisPresenter::runQualityAnalysis(
 
 void AnalysisPresenter::cancelAnalysis() { impl_->is_running_ = false; }
 
-bool AnalysisPresenter::isAnalysisRunning() const { return impl_->is_running_; }
-
 SNRAnalysisData AnalysisPresenter::getSNRAnalysis(orc::NodeID node_id) const {
   return SNRAnalysisData{};
 }
@@ -169,32 +167,6 @@ bool AnalysisPresenter::exportToCSV(orc::NodeID node_id, AnalysisType type,
 }
 
 // === Analysis Tool Registry (Phase 2.4) ===
-
-std::vector<orc::AnalysisToolInfo> AnalysisPresenter::getAvailableTools()
-    const {
-  std::vector<orc::AnalysisToolInfo> result;
-
-  auto& registry = orc::AnalysisRegistry::instance();
-  auto all_tools = registry.tools();
-
-  for (const auto* tool : all_tools) {
-    if (!tool) continue;
-
-    orc::AnalysisToolInfo info;
-    info.id = tool->id();
-    info.name = tool->name();
-    info.description = tool->description();
-    info.category = tool->category();
-    info.priority = tool->priority();
-    applyLegacyToolMetadata(info);
-    // Note: applicable_stages not directly available from AnalysisTool
-    // interface Would need to enumerate all stage types and test
-    // isApplicableToStage()
-    result.push_back(std::move(info));
-  }
-
-  return result;
-}
 
 std::vector<orc::AnalysisToolInfo> AnalysisPresenter::getToolsForStage(
     const std::string& stage_name) const {

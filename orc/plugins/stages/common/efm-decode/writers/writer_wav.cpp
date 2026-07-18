@@ -8,7 +8,7 @@
 
 #include "writer_wav.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 // This writer class writes audio data to a file in WAV format
 // This is used when the output is stereo audio data

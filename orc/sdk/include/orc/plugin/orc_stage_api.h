@@ -12,7 +12,7 @@
  *            compatibility guarantee (see orc_plugin_abi.h).
  *
  * USAGE:
- *   Plugin implementors should include <orc/plugin/orc_plugin_sdk.h> (the
+ *   Plugin implementors should include <orc/abi/orc_plugin_sdk.h> (the
  *   umbrella header) rather than including this file directly.
  *
  * WHAT THIS HEADER PROVIDES:
@@ -40,7 +40,7 @@
 
 // Parameter schema types: ParameterValue, ParameterType, ParameterConstraints,
 // ParameterDescriptor, ParameterDependency.
-#include <orc/stage/parameter_types.h>
+#include <orc/stage/params/parameter_types.h>
 
 // Common enumeration types: VideoSystem, SourceType.
 #include <orc/stage/common_types.h>
@@ -52,7 +52,7 @@
 // ParameterizedStage mixin interface: get_parameter_descriptors(),
 // get_parameters(), set_parameters(). Include this when your stage exposes
 // configurable parameters.
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 
 // TriggerableStage mixin interface: trigger(), get_trigger_status(), etc.
 // Include-guarded; only defines the interface; no MVP enforcement on plugin

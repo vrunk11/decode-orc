@@ -128,25 +128,29 @@ compatibility mechanism.
 
 Two version numbers plus the toolchain tag govern compatibility. All three
 are checked before a plugin is accepted; a mismatch causes the plugin to be
-skipped with a logged diagnostic.
+skipped with a logged diagnostic. For guidance on which changes force a
+`host_abi_version` bump, see the
+[ABI impact decision table](plugin-sdk.md#abi-impact-decision-table).
 
 ### `host_abi_version`
 
 Controls the binary ABI: the layout of `StagePluginDescriptor`, the entrypoint
 signatures, and the `register_stage` callback contract.
 
-**Current value:** `7` (channel-pair audio per SMPTE 272M-1994: the
-track-indexed audio API was replaced by the channel-pair API declared in
-`<orc/stage/audio_channel_pair.h>` and
-`<orc/stage/video_frame_representation.h>` — 48 kHz frame-locked
-24-bit-in-int32 stereo pairs only, free-running stream accessors removed —
-changing the vtable layout; all plugins must be rebuilt)
+**Current value:** `10` (the concrete observer classes and the `Observer` base
+were removed from the plugin SDK — they are host-internal and reached through
+the `IObservationService` added in ABI 9. The deprecated pre-tier observation
+include-path shims were removed with them). The authoritative per-version change
+log is `orc/sdk/abi_history.yaml`, rendered as the version-history table in
+[plugin-sdk.md](plugin-sdk.md#version-history).
 
 Bumped when any of the following change:
 - `StagePluginDescriptor` field order or alignment
 - Entrypoint function signatures
 - Callback calling convention
+- `OrcPluginServices` gains or loses a field
 - `IStageServices` gains or loses methods
+- A public SDK contract header or class is removed
 - The vtable layout of a contract type crossing the boundary (e.g.
   `VideoFrameRepresentation`) changes
 
@@ -200,10 +204,10 @@ Each entry records:
 | `target_platform` | Optional platform hint for cache selection |
 | `local_dev_path` | Optional development override used before remote download |
 | `enabled` | Whether the plugin is loaded at startup |
-| `trust_state` | Trust level, enforced before loading: entries other than `trusted` are neither downloaded nor `dlopen`ed unless `is_core_plugin` is set. Adding a plugin through the GUI Plugin Manager grants trust immediately (adding is the consent step); entries that arrive from outside the application (e.g. a hand-edited registry file) default to `untrusted` and can be trusted by enabling them in the Plugin Manager or with `orc-cli plugins trust <id>` / `untrust <id>` |
+| `trust_state` | Trust level, enforced before loading: entries other than `trusted` are neither downloaded nor `dlopen`ed unless `is_core_plugin` is set. Trust is a distinct decision from adding or enabling: adding a plugin (local file, URL, or from the curated index) records the entry but leaves it `untrusted` unless the user confirms trust in the explicit confirmation dialog, and toggling the **Enabled** checkbox never changes trust. Trust is granted through the Plugin Manager's **Trusted** column (with a confirmation dialog) or `orc-cli plugins trust <id>` / `untrust <id>`; entries that arrive from outside the application (e.g. a hand-edited registry file) also default to `untrusted` |
 | `license_spdx` | SPDX license identifier |
 | `is_core_plugin` | Marks entries supplied by Decode-Orc itself; implicitly trusted |
-| `required_host_abi` | Expected host ABI version |
+| `required_host_abi` | Host ABI the plugin was built for. Enforced before download and load: a non-zero value that does not equal the host's `host_abi_version` means the entry is neither downloaded nor `dlopen`ed — it stays visible with a "needs a rebuild for Orc ABI N" message in `orc-cli plugins list` and the GUI Plugin Manager. `0` means unspecified (not gated); `is_core_plugin` entries are exempt |
 | `sha256` | Optional SHA-256 digest (64 hex chars) of the plugin binary for `github_release_asset` entries; verified after download and on cache hits |
 
 Entries with `artifact_source: github_release_asset` and an absent or empty
@@ -217,6 +221,54 @@ reported as an error, and a mismatching cache hit triggers one fresh
 download attempt. When no `sha256` is recorded, the host loads the artifact
 but emits a warning that its integrity could not be verified.
 
+## Curated plugin index
+
+Alongside manual URL entry, the host offers a **curated index** of third-party
+plugins for discovery and one-click install. The index is a versioned YAML
+document read from a configurable URL (default: the `orc-plugin-registry/`
+`index.yaml` on the Decode-Orc default branch; override with the
+`ORC_PLUGIN_INDEX_URL` environment variable). Because the host reads the branch
+head over plain HTTPS, a merged registry change publishes immediately — no host
+release and no registry tag are required.
+
+The host refreshes the index on demand — when the Plugin Manager's **Browse
+Plugins…** dialog opens or a `orc-cli plugins search / info / install` command
+runs — asynchronously, falling back to the last-good cached copy
+(`<config>/plugin-index-cache.yaml`) when offline.
+
+Schema (`registry_schema: 1`):
+
+| Field | Description |
+|-------|-------------|
+| `registry_schema` | Index schema **major** version. Hosts ignore unknown fields, so additions within a major are non-breaking; a newer major is parsed best-effort so an older host still resolves compatible builds |
+| `plugins[].id` | Unique plugin identifier |
+| `plugins[].display_name` | Human-readable name |
+| `plugins[].description` | Short description |
+| `plugins[].tags` | Search tags |
+| `plugins[].maintainer` | Maintainer name |
+| `plugins[].license_spdx` | SPDX license identifier (mandatory) |
+| `plugins[].source_repo_url` | Plugin source repository |
+| `plugins[].artifacts[]` | One build per (platform, host ABI) |
+| `artifacts[].platform` | `linux`, `macos`, or `windows` (a more specific value such as `linux-x86_64` is matched by prefix) |
+| `artifacts[].host_abi` | Host ABI this build targets |
+| `artifacts[].url` | Direct release-asset download URL |
+| `artifacts[].sha256` | Mandatory 64-hex digest, carried into the local registry on install |
+| `artifacts[].plugin_version` | Plugin release version |
+| `artifacts[].min_host_app_version` | Minimum host application version (optional) |
+
+Artifacts are resolved by **(platform, host ABI)** using the same compatibility
+gating as the registry ([Compatibility Gating](#compatibility-gating)): an
+older host that finds no matching build reports "no build for this host" before
+downloading anything, instead of failing at `dlopen`. Installing from the index
+records a registry entry carrying the index's `sha256`, left **untrusted**
+until the user confirms trust.
+
+Contribution model: plugin authors open a pull request adding their entry;
+repository CI validates every PR (schema conformance, artifact naming including
+the ABI token, URL reachability, digest match, and a present SPDX license), and
+a maintainer's merge is the curation and trust decision. See
+[`orc-plugin-registry/README.md`](../../orc-plugin-registry/README.md).
+
 ### Distribution integrity
 
 What the host verifies before running plugin code, and what it does not:
@@ -229,14 +281,38 @@ What the host verifies before running plugin code, and what it does not:
   the registry digest when one is recorded (`plugin_remote_loader.cpp`).
 - `host_abi_version` and `plugin_api_version` — exact-match at load time
   (`stage_plugin_loader.cpp`).
+- `required_host_abi` — a non-zero registry value that does not match the
+  host ABI blocks download and load early, before any bytes are fetched
+  (`stage_plugin_registry.cpp`).
 - `toolchain_tag` — exact-match against the host's compiler/stdlib/build
   configuration tag (ABI v5).
 
+**What the curated index adds:**
+
+- **Mandatory digests.** Every index artifact must carry a `sha256`, enforced
+  by the registry PR validation before merge; installing from the index copies
+  that digest into the local registry so the download is always integrity-
+  checked (unlike a hand-entered URL, where a digest is optional).
+- **Curated review.** A human maintainer's merge is the trust decision for a
+  listed plugin: the PR workflow verifies the artifact URL resolves and its
+  bytes hash to the declared digest before the entry can go live.
+
 **Not verified (future work):**
 
-- Code signing. Plugin binaries carry no cryptographic signature and the
-  registry itself is not signed; the `sha256` field authenticates the
-  artifact only as strongly as the registry file that records it.
+- **Signed index.** The index itself is fetched over HTTPS but is not
+  cryptographically signed, so its authenticity rests on transport security and
+  repository access control. Signing the index (e.g. minisign/sigstore) is a
+  documented follow-on.
+- **Code signing.** Plugin binaries carry no cryptographic signature; the
+  `sha256` authenticates an artifact only as strongly as the index or registry
+  entry that records it.
+- **Unsigned local registry.** The on-disk registry
+  (`stage-plugins.yaml`) and the cached index copy are plain files with no
+  signature. An attacker who can write to the user's config directory could
+  flip `trust_state` or point an entry at a malicious binary with a matching
+  digest; the host trusts the local registry as much as the filesystem it lives
+  on. Confining that directory's permissions is the user's responsibility until
+  registry signing lands.
 
 ## Project-Level Plugin Metadata
 
@@ -284,13 +360,21 @@ install/build locations relative to the executable:
 All plugin release artifacts follow a consistent naming scheme:
 
 ```
-orc-plugin_<stage-name>_<platform>.<ext>
+orc-plugin_<stage-name>_<platform>[_abi<N>].<ext>
 ```
 
+The optional `_abi<N>` token records the host ABI version the binary targets,
+so one release can carry builds for several host ABIs. The host prefers the
+asset tagged for its own ABI, falls back to a legacy (untagged) name — which
+the load-time gate still validates — and reports "needs a rebuild" rather than
+downloading an asset tagged for an incompatible ABI. Untagged names remain
+valid.
+
 Examples:
-- `orc-plugin_skeleton_passthrough_linux.so`
-- `orc-plugin_skeleton_passthrough_macos.dylib`
-- `orc-plugin_skeleton_passthrough_windows.dll`
+- `orc-plugin_skeleton_passthrough_linux.so` (legacy, untagged)
+- `orc-plugin_skeleton_passthrough_linux_abi8.so` (ABI-tagged)
+- `orc-plugin_skeleton_passthrough_macos_abi8.dylib`
+- `orc-plugin_skeleton_passthrough_windows_abi8.dll`
 
 External plugin repository names follow the same prefix convention
 (`orc-plugin_<name>`), both for official decode-orc organization repositories
@@ -309,6 +393,12 @@ argument to `orc_register_stage_plugin()`. The table provides:
   display-ready `PreviewImage`
 - `stage_services` — optional pointer to the consolidated `IStageServices`
   interface (may be `nullptr` when the capability is unavailable)
+- `observation_service` — optional pointer to `IObservationService` (appended
+  in ABI 9, guarded by `services_size`); runs the standard observers by stable
+  string id so plugins no longer link the concrete observer classes. `nullptr`
+  on any host older than ABI 9. Obtained via
+  `orc::plugin::get_observation_service()`. See the
+  [Plugin SDK Developer Guide](plugin-sdk.md#observation-service-abi-9)
 
 The `IStageServices` contract (declared in `<orc/plugin/orc_stage_services.h>`)
 currently exposes buffered file-output factories used by sink stages:
@@ -344,20 +434,23 @@ else in the host tree is private.
 Enforcement happens at two levels:
 
 1. **Compile time** — the `orc-plugin-sdk` / `orc::plugin-sdk` target
-   propagates only the SDK include tree plus the spdlog/fmt usage
-   requirements the SDK headers themselves need. `orc-core` is linked
-   symbols-only (`$<LINK_ONLY:...>`), so its private include directories and
-   third-party dependencies are not visible to plugin translation units;
-   including a private host header fails the plugin's compile. Third-party
-   libraries a plugin uses directly must be declared by the plugin's own
-   CMake target.
-2. **Scan gates** — two hard-fail CI gates (`ctest -L sdk`) run on
-   `orc/plugins/stages/` and `3rd-party-plugins/`:
+   propagates only the SDK include tree, the spdlog/fmt usage requirements the
+   SDK headers themselves need, and the `orc-sdk-support` static library
+   (support-tier helper symbols). The host libraries are **not** linked — the
+   former `$<LINK_ONLY:orc-core>` tether was removed so plugins compile and link
+   against the SDK alone. Private host include directories and third-party
+   dependencies are therefore invisible to plugin translation units; including a
+   private host header fails the plugin's compile. Third-party libraries a
+   plugin uses directly must be declared by the plugin's own CMake target.
+2. **Scan gates** — two hard-fail CI gates (`ctest -L sdk`) run on the
+   in-tree plugin tree `orc/plugins/stages/`:
    `check_plugin_private_includes.sh` fails on any include that is not an
    allowlisted SDK header, a plugin-local header, a standard-library or
    platform header, or a permitted third-party header;
    `check_plugin_private_links.sh` fails on plugin build files that link
-   private host targets directly.
+   private host targets directly. Third-party authors run the same scripts
+   in standalone mode against their own repository (see
+   [Publishing a plugin](../technical/plugin-publishing.md)).
 
 ## Third-Party Plugin Repositories
 
@@ -371,4 +464,8 @@ It provides:
 - Packaging conventions
 - SPDX / licensing guidance
 
-Use it as the starting point for any new out-of-tree plugin.
+Use it as the starting point for any new out-of-tree plugin. For a
+step-by-step walkthrough from an empty directory to a loaded plugin, see the
+[Plugin Author Guide](../technical/plugin-author-guide.md); for release and
+registry submission, see the
+[Plugin Publishing Guide](../technical/plugin-publishing.md).

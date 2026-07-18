@@ -36,3 +36,25 @@ orc_add_core_integration_tests(
     orc-core-integration-tests-sinks
     stages/chroma_sink/pal_m_integration_test.cpp
 )
+
+# CC sink end-to-end output test. Compiles the real CCSinkStageDeps (which
+# writes files directly) so the integration tier can exercise SCC / plain-text
+# output against a mocked observation service.
+add_executable(orc-core-integration-tests-cc-sink
+    stages/cc_sink/cc_sink_output_integration_test.cpp
+    ${CMAKE_SOURCE_DIR}/orc/plugins/stages/cc_sink/cc_sink_stage_deps.cpp
+)
+target_include_directories(orc-core-integration-tests-cc-sink PRIVATE
+    ${CMAKE_SOURCE_DIR}/orc/sdk/include
+    ${CMAKE_SOURCE_DIR}/orc/plugins/stages/cc_sink
+    ${CMAKE_SOURCE_DIR}/orc-tests/core/unit/include
+    ${CMAKE_SOURCE_DIR}/orc-tests/core/unit/mocks
+)
+target_link_libraries(orc-core-integration-tests-cc-sink
+    orc-core
+    GTest::gmock_main
+)
+gtest_discover_tests(orc-core-integration-tests-cc-sink
+    DISCOVERY_MODE POST_BUILD
+    DISCOVERY_TIMEOUT 30
+    PROPERTIES LABELS "integration")

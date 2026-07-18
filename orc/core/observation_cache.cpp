@@ -9,7 +9,7 @@
 
 #include "include/observation_cache.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 
@@ -18,7 +18,7 @@
 namespace orc {
 
 ObservationCache::ObservationCache(std::shared_ptr<const DAG> dag)
-    : dag_(dag), cache_(500), frame_count_cache_(100) {
+    : dag_(dag), cache_(500) {
   if (!dag_) {
     throw std::invalid_argument("ObservationCache: DAG cannot be null");
   }
@@ -38,40 +38,7 @@ void ObservationCache::update_dag(std::shared_ptr<const DAG> dag) {
 
 void ObservationCache::clear() {
   cache_.clear();
-  frame_count_cache_.clear();
   ORC_LOG_DEBUG("ObservationCache: All cached observations cleared");
-}
-
-void ObservationCache::clear_node([[maybe_unused]] NodeID node_id) {
-  cache_.clear();
-  frame_count_cache_.clear();
-  ORC_LOG_DEBUG(
-      "ObservationCache: Cleared all observations (requested for node '{}')",
-      node_id.to_string());
-}
-
-size_t ObservationCache::get_frame_count(NodeID node_id) {
-  auto cached_count = frame_count_cache_.get(node_id);
-  if (cached_count.has_value()) {
-    return cached_count.value();
-  }
-
-  // Render frame 0 to get the representation and read frame_count() from it
-  if (!render_and_cache(node_id, FrameID{0})) {
-    ORC_LOG_WARN("ObservationCache: Failed to get frame count for node '{}'",
-                 node_id.to_string());
-    return 0;
-  }
-
-  // Ask the renderer for the cached representation to read frame_count
-  auto result = renderer_->render_frame_at_node(node_id, FrameID{0});
-  if (!result.is_valid || !result.representation) {
-    return 0;
-  }
-
-  size_t count = result.representation->frame_count();
-  frame_count_cache_.put(node_id, count);
-  return count;
 }
 
 bool ObservationCache::render_and_cache(NodeID node_id, FrameID frame_id) {

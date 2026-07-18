@@ -9,6 +9,7 @@
 
 #include "command_plugins.h"
 
+#include <cctype>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -36,6 +37,12 @@ void print_plugins_usage(const char* program_name) {
                "trusted (allows download and loading)\n";
   std::cerr << "  untrust <id>                   Mark a registered plugin as "
                "untrusted (blocks download and loading)\n";
+  std::cerr << "  search <term>                  Search the curated plugin "
+               "index\n";
+  std::cerr << "  info <id>                      Show details for an indexed "
+               "plugin\n";
+  std::cerr << "  install <id>                   Install a plugin from the "
+               "curated index (untrusted until confirmed)\n";
   std::cerr << "\n";
   std::cerr << "Options for 'add':\n";
   std::cerr << "  --id ID                        Plugin identifier (e.g. "
@@ -80,6 +87,14 @@ int cmd_plugins_list() {
       std::cout << "  core:     " << (e.is_core_plugin ? "yes" : "no") << "\n";
       std::cout << "  exists:   " << (e.path_exists ? "yes" : "no") << "\n";
       std::cout << "  loaded:   " << (e.is_loaded ? "yes" : "no") << "\n";
+      if (e.required_host_abi != 0) {
+        std::cout << "  host ABI: requires " << e.required_host_abi << " (host "
+                  << e.host_abi_version << ")";
+        if (!e.abi_compatible) {
+          std::cout << " — needs rebuild for ABI " << e.host_abi_version;
+        }
+        std::cout << "\n";
+      }
       std::cout << "\n";
     }
   }
@@ -209,6 +224,173 @@ int cmd_plugins_set_trusted(int argc, char* argv[], bool trusted) {
   return 0;
 }
 
+// Print a one-line note about how the index was sourced (live vs cache) so the
+// user understands staleness when offline.
+void print_index_status(const orc::presenters::PluginIndexInfo& index) {
+  if (index.offline && index.from_cache) {
+    std::cout << "(offline — showing the last cached index)\n\n";
+  } else if (index.offline) {
+    std::cout << "(offline — no cached index available)\n\n";
+  }
+}
+
+int cmd_plugins_search(int argc, char* argv[]) {
+  if (argc < 2) {
+    std::cerr << "Error: 'search' requires a search term\n";
+    std::cerr << "Usage: orc-cli plugins search <term>\n";
+    return 1;
+  }
+  const std::string term = argv[1];
+  const auto index = orc::presenters::ProjectPresenter::readPluginIndex();
+  if (!index.available) {
+    std::cerr << "Error: "
+              << (index.error_message.empty()
+                      ? "the plugin index could not be loaded"
+                      : index.error_message)
+              << "\n";
+    return 1;
+  }
+
+  print_index_status(index);
+
+  size_t matches = 0;
+  const std::string needle = [&term]() {
+    std::string lower = term;
+    for (char& ch : lower) {
+      ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return lower;
+  }();
+  auto contains_ci = [&needle](const std::string& text) {
+    std::string lower = text;
+    for (char& ch : lower) {
+      ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return lower.find(needle) != std::string::npos;
+  };
+
+  for (const auto& e : index.entries) {
+    bool hit = contains_ci(e.id) || contains_ci(e.display_name) ||
+               contains_ci(e.description);
+    for (const auto& tag : e.tags) {
+      hit = hit || contains_ci(tag);
+    }
+    if (!hit) {
+      continue;
+    }
+    ++matches;
+    std::cout << e.id << "  " << e.display_name << "\n";
+    if (!e.description.empty()) {
+      std::cout << "    " << e.description << "\n";
+    }
+    std::cout << "    "
+              << (e.has_compatible_build
+                      ? "compatible with this host"
+                      : (e.compatibility_message.empty()
+                             ? "no compatible build for this host"
+                             : e.compatibility_message))
+              << (e.already_installed ? "; already installed" : "") << "\n";
+  }
+
+  if (matches == 0) {
+    std::cout << "No plugins matched '" << term << "'.\n";
+  }
+  return 0;
+}
+
+int cmd_plugins_info(int argc, char* argv[]) {
+  if (argc < 2) {
+    std::cerr << "Error: 'info' requires a plugin id\n";
+    std::cerr << "Usage: orc-cli plugins info <id>\n";
+    return 1;
+  }
+  const std::string plugin_id = argv[1];
+  const auto index = orc::presenters::ProjectPresenter::readPluginIndex();
+  if (!index.available) {
+    std::cerr << "Error: "
+              << (index.error_message.empty()
+                      ? "the plugin index could not be loaded"
+                      : index.error_message)
+              << "\n";
+    return 1;
+  }
+
+  const orc::presenters::PluginIndexEntryInfo* entry = nullptr;
+  for (const auto& e : index.entries) {
+    if (e.id == plugin_id) {
+      entry = &e;
+      break;
+    }
+  }
+  if (entry == nullptr) {
+    std::cerr << "Error: no plugin with id '" << plugin_id
+              << "' is listed in the index\n";
+    return 1;
+  }
+
+  print_index_status(index);
+
+  std::cout << "id:          " << entry->id << "\n";
+  std::cout << "name:        " << entry->display_name << "\n";
+  if (!entry->description.empty()) {
+    std::cout << "description: " << entry->description << "\n";
+  }
+  if (!entry->maintainer.empty()) {
+    std::cout << "maintainer:  " << entry->maintainer << "\n";
+  }
+  if (!entry->license_spdx.empty()) {
+    std::cout << "license:     " << entry->license_spdx << "\n";
+  }
+  if (!entry->source_repo_url.empty()) {
+    std::cout << "source:      " << entry->source_repo_url << "\n";
+  }
+  if (!entry->tags.empty()) {
+    std::cout << "tags:        ";
+    for (size_t i = 0; i < entry->tags.size(); ++i) {
+      std::cout << (i == 0 ? "" : ", ") << entry->tags[i];
+    }
+    std::cout << "\n";
+  }
+  std::cout << "compatible:  "
+            << (entry->has_compatible_build
+                    ? "yes"
+                    : (entry->compatibility_message.empty()
+                           ? "no"
+                           : "no — " + entry->compatibility_message))
+            << "\n";
+  std::cout << "installed:   " << (entry->already_installed ? "yes" : "no")
+            << "\n";
+  std::cout << "builds (" << entry->artifacts.size() << "):\n";
+  for (const auto& a : entry->artifacts) {
+    std::cout << "  - platform: " << a.platform << ", ABI " << a.host_abi
+              << ", version " << a.plugin_version << "\n";
+  }
+  return 0;
+}
+
+int cmd_plugins_install(int argc, char* argv[]) {
+  if (argc < 2) {
+    std::cerr << "Error: 'install' requires a plugin id\n";
+    std::cerr << "Usage: orc-cli plugins install <id>\n";
+    return 1;
+  }
+  const std::string plugin_id = argv[1];
+  const auto result =
+      orc::presenters::ProjectPresenter::installIndexedPlugin(plugin_id);
+
+  if (!result.success) {
+    std::cerr << "Error: " << result.error_message << "\n";
+    return 1;
+  }
+
+  std::cout << "Plugin '" << plugin_id
+            << "' added to the registry (untrusted).\n";
+  std::cout << "Trust it before it will be downloaded and loaded:\n";
+  std::cout << "  orc-cli plugins trust " << plugin_id << "\n";
+  std::cout << "Note: Changes take effect on the next application launch.\n";
+  return 0;
+}
+
 }  // namespace
 
 int plugins_command(int argc, char* argv[]) {
@@ -252,6 +434,18 @@ int plugins_command(int argc, char* argv[]) {
 
   if (subcommand == "untrust") {
     return cmd_plugins_set_trusted(argc - 1, argv + 1, false);
+  }
+
+  if (subcommand == "search") {
+    return cmd_plugins_search(argc - 1, argv + 1);
+  }
+
+  if (subcommand == "info") {
+    return cmd_plugins_info(argc - 1, argv + 1);
+  }
+
+  if (subcommand == "install") {
+    return cmd_plugins_install(argc - 1, argv + 1);
   }
 
   std::cerr << "Error: Unknown plugins subcommand: " << subcommand << "\n\n";

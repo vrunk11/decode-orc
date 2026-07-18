@@ -360,17 +360,6 @@ uint64_t RenderCoordinator::requestSavePNG(const orc::NodeID& node_id,
   return id;
 }
 
-uint64_t RenderCoordinator::requestFrameLineNavigation(
-    const orc::NodeID& node_id, orc::PreviewOutputType output_type,
-    uint64_t current_field, int current_line, int direction, int field_height) {
-  uint64_t id = nextRequestId();
-  auto req = std::make_unique<NavigateFrameLineRequest>(
-      id, node_id, output_type, current_field, current_line, direction,
-      field_height);
-  enqueueRequest(std::move(req));
-  return id;
-}
-
 orc::ImageToFieldMappingResult RenderCoordinator::mapImageToField(
     const orc::NodeID& node_id, orc::PreviewOutputType output_type,
     uint64_t output_index, int image_y, int image_height) {

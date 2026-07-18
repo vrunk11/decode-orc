@@ -9,7 +9,7 @@
 
 #include "../include/video_parameter_observation_presenter.h"
 
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 #include <orc/stage/orc_source_parameters.h>
 
 #include <variant>

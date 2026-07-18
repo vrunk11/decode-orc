@@ -8,7 +8,7 @@
 
 #include "interleave.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <cstdlib>
 #include <utility>

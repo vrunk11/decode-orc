@@ -9,9 +9,10 @@
 
 #include "vbi_presenter.h"
 
+#include <orc/support/vbi_types.h>
+
 #include "../core/include/dag_frame_renderer.h"
 #include "../core/include/vbi_decoder.h"
-#include "../core/include/vbi_types.h"
 #include "vbi_view_models.h"
 
 namespace orc::presenters {
@@ -214,14 +215,6 @@ std::optional<VBIFieldInfoView> VbiPresenter::getVbiForField(
   } catch (...) {
     return std::nullopt;
   }
-}
-
-VbiPresenter::FrameVbiResult VbiPresenter::getVbiForFrame(
-    NodeID node_id, FieldID field1, FieldID field2) const {
-  FrameVbiResult out;
-  out.field1 = getVbiForField(node_id, field1);
-  out.field2 = getVbiForField(node_id, field2);
-  return out;
 }
 
 std::optional<VBIFieldInfoView> VbiPresenter::decodeVbiFromObservation(

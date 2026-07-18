@@ -7,14 +7,13 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
+#include <closed_caption_observer.h>
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/field_id.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/observation_context.h>
-#include <orc/stage/observers/closed_caption_observer.h>
+#include <orc/stage/observation/observation_context.h>
 #include <orc/stage/video_frame_representation.h>
-
-#include "vbi_utilities.h"
+#include <orc/support/logging.h>
+#include <orc/support/vbi_utilities.h>
 
 namespace orc {
 

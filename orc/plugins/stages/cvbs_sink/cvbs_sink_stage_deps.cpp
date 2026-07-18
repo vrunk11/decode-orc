@@ -9,10 +9,10 @@
 
 #include "cvbs_sink_stage_deps.h"
 
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/frame_descriptor.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 #include <sqlite3.h>
 
 #include <algorithm>

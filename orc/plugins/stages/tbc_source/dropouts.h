@@ -36,7 +36,7 @@
 
 // Re-export the new frame-flat dropout descriptor so consumers that include
 // this header also get DropoutRun without an additional include.
-#include <orc/stage/dropout_run.h>
+#include <orc/stage/dropout/dropout_run.h>
 
 #ifndef DROPOUTS_H
 #define DROPOUTS_H

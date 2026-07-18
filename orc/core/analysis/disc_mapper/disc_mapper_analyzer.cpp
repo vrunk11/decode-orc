@@ -9,8 +9,8 @@
 
 #include "disc_mapper_analyzer.h"
 
-#include <orc/stage/logging.h>
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <cmath>

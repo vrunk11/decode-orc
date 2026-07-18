@@ -19,7 +19,7 @@
 #endif
 
 #include <orc/stage/node_id.h>
-#include <orc/stage/stage_preview_capability.h>
+#include <orc/stage/preview/stage_preview_capability.h>
 
 #include <functional>
 #include <memory>

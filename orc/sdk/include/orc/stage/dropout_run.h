@@ -1,37 +1,23 @@
 /*
  * File:        dropout_run.h
- * Module:      decode-orc Plugin SDK (stage contract)
- * Purpose:     Frame-flat dropout descriptor for CVBS_U10_4FSC frames
+ * Module:      decode-orc Plugin SDK
+ * Purpose:     Deprecated include-path shim — forwards to the tiered SDK layout
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2026 Simon Inns
+ * SPDX-FileCopyrightText: 2026 decode-orc contributors
+ *
+ * DEPRECATED: <orc/stage/dropout_run.h> moved to
+ * <orc/stage/dropout/dropout_run.h>. This shim is retained for one release so
+ * third-party plugin source keeps compiling; include the new path directly.
+ * Gated by the ORC_SDK_DEPRECATED_INCLUDE_SHIMS CMake option (default ON); when
+ * OFF, the host defines ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS for plugin targets
+ * and this shim becomes a hard compile error.
  */
-
 #pragma once
 
-#include <orc/stage/frame_id.h>
+#if defined(ORC_SDK_NO_DEPRECATED_INCLUDE_SHIMS)
+#error \
+    "Deprecated SDK include path <orc/stage/dropout_run.h>; include <orc/stage/dropout/dropout_run.h> instead."
+#endif
 
-#include <cstdint>
-
-namespace orc {
-
-// Describes a contiguous run of defective samples within a flat frame buffer.
-//
-// Coordinates are frame-flat: sample_start is a 0-based byte offset from the
-// beginning of the frame's sample buffer as returned by
-// VideoFrameRepresentation::get_frame(). Use dropout_util functions to convert
-// to/from (field, line, sample-within-line) coordinates.
-struct DropoutRun {
-  FrameID frame_id = 0;
-
-  // 0-based sample offset from the start of the flat frame buffer.
-  uint64_t sample_start = 0;
-
-  // Number of consecutive defective samples.
-  uint32_t sample_count = 0;
-
-  // Severity on a 0–100 scale (0 = mild signal glitch; 100 = complete loss).
-  uint8_t severity = 0;
-};
-
-}  // namespace orc
+#include <orc/stage/dropout/dropout_run.h>

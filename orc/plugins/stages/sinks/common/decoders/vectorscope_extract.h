@@ -11,7 +11,7 @@
 #define CHROMA_DECODER_VECTORSCOPE_EXTRACT_H
 
 #include <orc/stage/orc_source_parameters.h>
-#include <orc/stage/orc_vectorscope.h>
+#include <orc/stage/preview/orc_vectorscope.h>
 
 #include <cstdint>
 

@@ -12,7 +12,7 @@
 #include "audio-resample/audio_resampler.h"
 
 #include <gtest/gtest.h>
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 #include <orc/stage/common_types.h>
 
 #include <cmath>

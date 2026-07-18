@@ -13,7 +13,7 @@
 #include <orc/plugin/orc_stage_runtime.h>
 #include <orc/stage/frame_descriptor.h>
 #include <orc/stage/frame_id.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 #include <orc/stage/video_frame_representation.h>
 
 #include <cstddef>
@@ -140,8 +140,8 @@ class FrameMappedRepresentation : public VideoFrameRepresentationWrapper,
 //                        colour_frame_index are deduplicated
 //   pad_gaps           — when true, detected sequence gaps are filled with
 //                        synthetic padding frames
-//   pad_strategy       — "nearest" (clone nearest real frame colour index)
-//                        or "black" (insert blank padding frames)
+//   pad_strategy       — "black" (insert blank padding frames). The legacy
+//                        "nearest" value is accepted and treated as "black".
 //
 // Observations emitted:
 //   frame_map.frames_removed  — count of frames removed by deduplication
@@ -208,11 +208,11 @@ class FrameMapStage : public DAGStage,
 
   // Detect gaps in the colour_frame_index sequence and insert padding frames.
   // Returns number of padding frames inserted; fills padding_descriptors_out.
+  // Padding frames always render black.
   static size_t apply_pad_gaps(
       std::vector<FrameID>& mapping,
       std::vector<FrameMappedRepresentation::PaddingDescriptor>& pads,
-      const VideoFrameRepresentation& source, const std::string& pad_strategy,
-      std::string& gap_positions_out);
+      const VideoFrameRepresentation& source, std::string& gap_positions_out);
 
   // Expected next colour_frame_index after 'current' for the given system.
   static int next_colour_index(int current, VideoSystem sys);
@@ -221,7 +221,7 @@ class FrameMapStage : public DAGStage,
   std::string range_spec_;
   bool remove_duplicates_ = false;
   bool pad_gaps_ = false;
-  std::string pad_strategy_ = "nearest";
+  std::string pad_strategy_ = "black";
 
   // Cached parsed ranges
   std::vector<std::pair<uint64_t, uint64_t>> cached_ranges_;

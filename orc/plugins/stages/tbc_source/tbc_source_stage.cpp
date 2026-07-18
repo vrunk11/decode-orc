@@ -9,14 +9,14 @@
 
 #include "tbc_source_stage.h"
 
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/dropout_util.h>
 #include <orc/stage/error_types.h>
-#include <orc/stage/frame_line_util.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/lru_cache.h>
-#include <orc/stage/preview_helpers.h>
+#include <orc/support/dropout_util.h>
+#include <orc/support/frame_line_util.h>
+#include <orc/support/logging.h>
+#include <orc/support/lru_cache.h>
+#include <orc/support/preview_helpers.h>
 
 #include <algorithm>
 #include <cmath>

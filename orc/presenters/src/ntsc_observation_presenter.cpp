@@ -9,7 +9,7 @@
 
 #include "../include/ntsc_observation_presenter.h"
 
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 
 #include <variant>
 

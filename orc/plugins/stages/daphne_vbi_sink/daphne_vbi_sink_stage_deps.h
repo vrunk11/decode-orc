@@ -10,7 +10,7 @@
 #ifndef DECODE_ORC_ROOT_DAPHNE_VBI_SINK_STAGE_DEPS_H
 #define DECODE_ORC_ROOT_DAPHNE_VBI_SINK_STAGE_DEPS_H
 
-#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/observation/observation_context_interface.h>
 #include <orc/stage/triggerable_stage.h>
 
 #include <atomic>

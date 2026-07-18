@@ -10,7 +10,7 @@
 #include "tbc_metadata_reader.h"
 
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 #include <sqlite3.h>
 
 #include <cstring>
@@ -47,24 +47,6 @@ class TBCMetadataSqliteReader::Impl {
     }
   }
 
-  bool execute_query(const char* sql,
-                     std::function<bool(sqlite3_stmt*)> callback) {
-    sqlite3_stmt* stmt = nullptr;
-    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) return false;
-
-    bool success = true;
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-      if (!callback(stmt)) {
-        success = false;
-        break;
-      }
-    }
-
-    sqlite3_finalize(stmt);
-    return success && (rc == SQLITE_DONE || rc == SQLITE_ROW);
-  }
-
   int get_int(sqlite3_stmt* stmt, int col, int default_val = -1) {
     if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return default_val;
     return sqlite3_column_int(stmt, col);
@@ -73,11 +55,6 @@ class TBCMetadataSqliteReader::Impl {
   std::optional<int> get_optional_int(sqlite3_stmt* stmt, int col) {
     if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return std::nullopt;
     return sqlite3_column_int(stmt, col);
-  }
-
-  int64_t get_int64(sqlite3_stmt* stmt, int col, int64_t default_val = -1) {
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) return default_val;
-    return sqlite3_column_int64(stmt, col);
   }
 
   std::optional<int64_t> get_optional_int64(sqlite3_stmt* stmt, int col) {

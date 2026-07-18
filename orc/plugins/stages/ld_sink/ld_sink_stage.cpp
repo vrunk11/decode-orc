@@ -9,8 +9,8 @@
 
 #include "ld_sink_stage.h"
 
-#include <orc/stage/logging.h>
-#include <orc/stage/preview_helpers.h>
+#include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 
 #include <memory>
 
@@ -44,7 +44,10 @@ std::vector<ArtifactPtr> LDSinkStage::execute(
     const std::vector<ArtifactPtr>& inputs,
     const std::map<std::string, ParameterValue>& parameters [[maybe_unused]],
     ObservationContext& observation_context) {
-  (void)observation_context;  // TODO(sdi): Use for observations
+  // Observations are not consumed here yet; wiring is tracked in the
+  // Observation Service Implementation Plan (docs-tech/
+  // plugin-observation-service-plan.md) as a pending consumer.
+  (void)observation_context;
   // Cache input for preview rendering
   if (!inputs.empty()) {
     cached_input_ =

@@ -1,0 +1,39 @@
+name: Validate Plugin Index
+
+# Validates the curated plugin index. On pull requests that touch the index it
+# runs the full online validation (schema, artifact naming, URL reachability,
+# and digest match); on the default branch it re-validates after merge. This is
+# the "merge is the curation/trust decision" gate for the registry — when the
+# index moves to its own repository, this workflow moves with it unchanged.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'orc-plugin-registry/**'
+      - '.github/workflows/validate-plugin-index.yml'
+  pull_request:
+    paths:
+      - 'orc-plugin-registry/**'
+      - '.github/workflows/validate-plugin-index.yml'
+
+jobs:
+  validate:
+    name: Validate curated index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PyYAML
+        run: python3 -m pip install --upgrade pyyaml
+
+      - name: Validate fixtures (offline failure classes)
+        run: bash cmake/check_plugin_index.sh .
+
+      - name: Validate live index (online — URL reachability + digests)
+        run: python3 orc-plugin-registry/tools/validate_index.py --online orc-plugin-registry/index.yaml

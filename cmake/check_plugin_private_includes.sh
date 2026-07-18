@@ -7,8 +7,8 @@
 #
 # Usage:       check_plugin_private_includes.sh [<root>]
 #              In-tree mode (<root> is a decode-orc checkout): scans
-#              <root>/orc/plugins/stages and <root>/3rd-party-plugins.
-#              Standalone mode (neither directory exists under <root>):
+#              <root>/orc/plugins/stages.
+#              Standalone mode (that directory does not exist under <root>):
 #              scans <root> itself as a single external plugin tree — this
 #              is how third-party plugin authors run the gate against their
 #              own repository.
@@ -24,81 +24,51 @@ set -u
 
 REPO_ROOT="${1:-.}"
 PLUGIN_STAGES_DIR="${REPO_ROOT}/orc/plugins/stages"
-THIRD_PARTY_DIR="${REPO_ROOT}/3rd-party-plugins"
 
 # Standalone mode: <root> is a single external plugin tree, not a decode-orc
 # checkout. The whole tree is one plugin owner.
 STANDALONE_TREE=0
-if [ ! -d "$PLUGIN_STAGES_DIR" ] && [ ! -d "$THIRD_PARTY_DIR" ]; then
+if [ ! -d "$PLUGIN_STAGES_DIR" ]; then
     STANDALONE_TREE=1
 fi
 
 # ---------------------------------------------------------------------------
-# Allowlisted SDK contract headers (<orc/plugin/...> and <orc/stage/...>)
+# Allowlisted SDK contract headers (<orc/abi/...>, <orc/stage/...>,
+# <orc/support/...>, and the retained pre-tier <orc/plugin/...> / flat
+# <orc/stage/...> shim paths).
+#
+# The list is NOT hand-maintained here: it is generated from the single-source
+# manifest orc/sdk/sdk_headers.yaml into cmake/sdk_header_allowlist.txt by
+# tools/gen_sdk_header_allowlist.sh, and installed alongside this script for
+# standalone third-party use. The SdkHeaderManifestSync gate fails if the
+# manifest, the generated allowlist, and the on-disk header set diverge.
 # ---------------------------------------------------------------------------
-SDK_ALLOWLIST=(
-    # Plugin ABI / services surface
-    "orc/plugin/orc_plugin_abi.h"
-    "orc/plugin/orc_plugin_registration.h"
-    "orc/plugin/orc_plugin_sdk.h"
-    "orc/plugin/orc_plugin_services.h"
-    "orc/plugin/orc_plugin_services_helpers.h"
-    "orc/plugin/orc_stage_api.h"
-    "orc/plugin/orc_stage_preview.h"
-    "orc/plugin/orc_stage_runtime.h"
-    "orc/plugin/orc_stage_services.h"
-    "orc/plugin/orc_stage_tooling.h"
-    # Stage model
-    "orc/stage/stage.h"
-    "orc/stage/triggerable_stage.h"
-    "orc/stage/stage_parameter.h"
-    "orc/stage/parameter_types.h"
-    "orc/stage/node_type.h"
-    "orc/stage/node_id.h"
-    "orc/stage/artifact.h"
-    "orc/stage/analysis_sink_results.h"
-    # Frame / signal model
-    "orc/stage/audio_channel_pair.h"
-    "orc/stage/video_frame_representation.h"
-    "orc/stage/video_metadata_types.h"
-    "orc/stage/frame_descriptor.h"
-    "orc/stage/frame_id.h"
-    "orc/stage/field_id.h"
-    "orc/stage/frame_line_util.h"
-    "orc/stage/common_types.h"
-    "orc/stage/cvbs_signal_constants.h"
-    "orc/stage/orc_source_parameters.h"
-    "orc/stage/dropout_run.h"
-    "orc/stage/dropout_util.h"
-    "orc/stage/dropout_decision.h"
-    # Observation model
-    "orc/stage/observation_context.h"
-    "orc/stage/observation_context_interface.h"
-    "orc/stage/observation_schema.h"
-    "orc/stage/observers/observer.h"
-    "orc/stage/observers/biphase_observer.h"
-    "orc/stage/observers/black_psnr_observer.h"
-    "orc/stage/observers/burst_level_observer.h"
-    "orc/stage/observers/closed_caption_observer.h"
-    "orc/stage/observers/white_snr_observer.h"
-    # Preview contract
-    "orc/stage/stage_preview_capability.h"
-    "orc/stage/stage_custom_preview_renderer.h"
-    "orc/stage/colour_preview_provider.h"
-    "orc/stage/colour_preview_conversion.h"
-    "orc/stage/preview_helpers.h"
-    "orc/stage/preview_stage_types.h"
-    "orc/stage/orc_preview_types.h"
-    "orc/stage/orc_preview_carriers.h"
-    "orc/stage/orc_rendering.h"
-    "orc/stage/orc_vectorscope.h"
-    # Utilities
-    "orc/stage/logging.h"
-    "orc/stage/lru_cache.h"
-    "orc/stage/file_io_interface.h"
-    "orc/stage/eia608_decoder.h"
-    "orc/stage/error_types.h"
-)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ALLOWLIST_FILE="${ORC_SDK_HEADER_ALLOWLIST:-}"
+if [ -z "$ALLOWLIST_FILE" ]; then
+    for _cand in \
+        "$SCRIPT_DIR/sdk_header_allowlist.txt" \
+        "$REPO_ROOT/cmake/sdk_header_allowlist.txt"; do
+        if [ -f "$_cand" ]; then
+            ALLOWLIST_FILE="$_cand"
+            break
+        fi
+    done
+fi
+if [ -z "$ALLOWLIST_FILE" ] || [ ! -f "$ALLOWLIST_FILE" ]; then
+    echo "❌ SDK header allowlist not found (sdk_header_allowlist.txt)." >&2
+    echo "   Generate it with tools/gen_sdk_header_allowlist.sh, or set" >&2
+    echo "   ORC_SDK_HEADER_ALLOWLIST to its path." >&2
+    exit 1
+fi
+
+SDK_ALLOWLIST=()
+while IFS= read -r _entry; do
+    case "$_entry" in
+        ''|\#*) continue ;;
+    esac
+    SDK_ALLOWLIST+=("$_entry")
+done < "$ALLOWLIST_FILE"
 
 # C standard-library headers (C++ headers are matched by pattern: no '.'
 # and no '/' in an angle include, e.g. <vector>, <filesystem>).
@@ -223,7 +193,7 @@ check_include() {
     local root_dir="$4"
 
     case "$include_path" in
-        orc/plugin/*|orc/stage/*)
+        orc/abi/*|orc/support/*|orc/plugin/*|orc/stage/*)
             if in_list "$include_path" "${SDK_ALLOWLIST[@]}"; then
                 return 0
             fi
@@ -295,7 +265,29 @@ scan_tree() {
 
     [ -d "$root_dir" ] || return 0
 
+    # Collect the source file list up front so the find(1) process substitution
+    # is fully drained and closed before the scan body runs. The body calls
+    # check_include() → resolves_in_tree() for every #include, each forking
+    # realpath/find; keeping the outer process substitution live across that
+    # subprocess storm triggers an intermittent bash abort ("Abort trap: 6",
+    # SIGABRT with no diagnostic) — observed with bash 5.x on macOS. Draining
+    # find first, then iterating a plain array, keeps at most one short-lived
+    # descriptor open at a time and is equally correct. (No bash-4 features:
+    # array += and a for-loop work on macOS's bash 3.2 for standalone authors.)
+    local src_files=()
     while IFS= read -r src_file; do
+        src_files+=("$src_file")
+    done < <(find "$root_dir" \
+        -type f \
+        \( -name '*.h' -o -name '*.hpp' -o -name '*.hh' -o -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) \
+        ! -path '*/tests/*' \
+        ! -path '*/build/*' \
+        ! -path '*/.git/*')
+
+    [ "${#src_files[@]}" -eq 0 ] && return 0
+
+    local src_file
+    for src_file in "${src_files[@]}"; do
         local src_violation_count=0
         local rel_file="${src_file#"$REPO_ROOT"/}"
         local including_dir
@@ -307,6 +299,13 @@ scan_tree() {
             # Standalone tree: owner is the root itself; report its basename.
             owner="$(basename "$owner_dir")"
         fi
+
+        # Capture the file's include directives before the resolve loop, so no
+        # process substitution is live while check_include() forks below.
+        local includes
+        includes="$(grep -hoE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"][^">]+[">]' \
+            "$src_file" 2>/dev/null \
+            | sed -E 's/^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"]([^">]+)[">]/\1/')"
 
         while IFS= read -r include_path; do
             [ -n "$include_path" ] || continue
@@ -321,15 +320,8 @@ scan_tree() {
                 VIOLATIONS=$((VIOLATIONS + 1))
                 STAGE_VIOLATIONS+=("$owner")
             fi
-        done < <(grep -hoE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"][^">]+[">]' \
-            "$src_file" 2>/dev/null \
-            | sed -E 's/^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"]([^">]+)[">]/\1/')
-    done < <(find "$root_dir" \
-        -type f \
-        \( -name '*.h' -o -name '*.hpp' -o -name '*.hh' -o -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' \) \
-        ! -path '*/tests/*' \
-        ! -path '*/build/*' \
-        ! -path '*/.git/*')
+        done <<< "$includes"
+    done
 }
 
 if [ "$STANDALONE_TREE" = "1" ]; then
@@ -340,11 +332,6 @@ else
     echo "Scanning in-tree plugin code against the SDK include allowlist..."
     echo
     scan_tree "$PLUGIN_STAGES_DIR" ""
-
-    echo
-    echo "Scanning third-party plugin code against the SDK include allowlist..."
-    echo
-    scan_tree "$THIRD_PARTY_DIR" " (3rd-party)"
 fi
 
 echo

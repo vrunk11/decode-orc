@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#include <orc/plugin/orc_plugin_sdk.h>
+#include <orc/abi/orc_plugin_sdk.h>
 
 #include "mask_line_stage.h"
 

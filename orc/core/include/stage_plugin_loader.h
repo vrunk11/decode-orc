@@ -21,14 +21,14 @@
 // The public plugin SDK header is the canonical source for the ABI contract
 // (StagePluginDescriptor, versioning constants, OrcStageFactoryFn, etc.).
 // Internal orc-core code includes it via relative path; plugin authors use
-// <orc/plugin/orc_plugin_abi.h> or the umbrella <orc/plugin/orc_plugin_sdk.h>.
+// <orc/abi/orc_plugin_abi.h> or the umbrella <orc/abi/orc_plugin_sdk.h>.
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "../../sdk/include/orc/plugin/orc_plugin_abi.h"
+#include "../../sdk/include/orc/abi/orc_plugin_abi.h"
 #include "dag_executor.h"
 
 namespace orc {

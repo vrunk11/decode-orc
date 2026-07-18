@@ -9,8 +9,9 @@
 
 #include "snr_analysis_sink_stage.h"
 
-#include <orc/stage/logging.h>
-#include <orc/stage/preview_helpers.h>
+#include <orc/abi/orc_plugin_services.h>
+#include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 
 #include <stdexcept>
 
@@ -172,7 +173,8 @@ bool SNRAnalysisSinkStage::trigger(
 
     std::shared_ptr<ISNRAnalysisSinkStageDeps> deps = deps_override_;
     if (!deps) {
-      deps = std::make_shared<SNRAnalysisSinkStageDeps>();
+      deps = std::make_shared<SNRAnalysisSinkStageDeps>(
+          orc::plugin::get_observation_service());
     }
 
     deps->init(progress_callback_, &cancel_requested_);

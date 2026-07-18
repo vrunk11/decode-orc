@@ -153,25 +153,10 @@ class StageRegistry {
   const std::vector<std::string>& get_plugin_search_paths() const;
 
   /**
-   * @brief Get plugin registry path used during initialization
-   */
-  const std::string& get_plugin_registry_path() const;
-
-  /**
    * @brief Get parsed plugin registry entries used during initialization
    */
   const std::vector<StagePluginRegistryEntry>& get_plugin_registry_entries()
       const;
-
-  /**
-   * @brief Get default transform stage name
-   *
-   * Returns a simple, neutral stage suitable as a default when
-   * adding new nodes. This stage can be changed by the user afterward.
-   *
-   * @return Stage name for default transform (currently "passthrough")
-   */
-  static std::string get_default_transform_stage();
 
   /**
    * @brief Clear all registered stages (primarily for testing)

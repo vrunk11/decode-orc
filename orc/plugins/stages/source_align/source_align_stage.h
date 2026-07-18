@@ -11,8 +11,8 @@
 
 #include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
-#include <orc/stage/stage_custom_preview_renderer.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
+#include <orc/stage/preview/stage_custom_preview_renderer.h>
 #include <orc/stage/video_frame_representation.h>
 
 #include <memory>
@@ -79,13 +79,6 @@ class SourceAlignStage : public DAGStage,
       const std::map<std::string, ParameterValue>& params) override;
 
  private:
-  std::vector<FrameID> find_alignment_offsets(
-      const std::vector<std::shared_ptr<const VideoFrameRepresentation>>&
-          sources) const;
-
-  int32_t get_frame_number_from_vbi(const VideoFrameRepresentation& source,
-                                    FrameID frame_id) const;
-
   static std::vector<std::pair<size_t, size_t>> parse_alignment_map(
       const std::string& alignment_spec);
 

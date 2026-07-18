@@ -7,12 +7,11 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include "white_flag_observer.h"
-
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/field_id.h>
-#include <orc/stage/logging.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/logging.h>
+#include <white_flag_observer.h>
 
 namespace orc {
 

@@ -10,10 +10,10 @@
 
 #include "disc_mapper_analysis.h"
 
+#include <biphase_observer.h>
 #include <frame_numbering.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/observers/biphase_observer.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -194,7 +194,7 @@ AnalysisResult DiscMapperAnalysisTool::analyze(const AnalysisContext& ctx,
     if (!decision.success) {
       result.status = AnalysisResult::Failed;
       result.summary = decision.rationale.empty()
-                           ? "Disc mapper analysis is currently stubbed out"
+                           ? "Disc mapper analysis failed to produce a mapping"
                            : decision.rationale;
 
       for (const auto& warning : decision.warnings) {

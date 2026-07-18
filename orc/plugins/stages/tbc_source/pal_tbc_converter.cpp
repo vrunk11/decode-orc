@@ -35,14 +35,6 @@ int16_t PalTBCConverter::tbc_to_cvbs(uint16_t tbc_sample, int32_t tbc_blanking,
 // Private helpers: linear interpolation of extra PAL samples
 // ---------------------------------------------------------------------------
 
-int16_t PalTBCConverter::interpolate_extra_sample(int16_t last_on_line,
-                                                  int16_t first_on_next_line) {
-  // Midpoint interpolation (avoids signed overflow).
-  return static_cast<int16_t>((static_cast<int32_t>(last_on_line) +
-                               static_cast<int32_t>(first_on_next_line)) /
-                              2);
-}
-
 // Append 2 linearly-interpolated bridge samples at t=1/3 and t=2/3.
 // EBU Tech. 3280-E §1.3.1: the two extra samples on lines 312 and 624 bridge
 // the signal from the last nominal sample to the first sample of the next line.

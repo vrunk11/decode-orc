@@ -9,7 +9,7 @@
 
 #include "dropout_editor_tool.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include "analysis_registry.h"
 

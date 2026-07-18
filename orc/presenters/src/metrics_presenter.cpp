@@ -9,7 +9,7 @@
 
 #include "metrics_presenter.h"
 
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 
 #include <cmath>
 #include <variant>

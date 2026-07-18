@@ -31,9 +31,9 @@
 #include "project.h"
 
 #include <orc/stage/common_types.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 #include <orc/stage/triggerable_stage.h>
+#include <orc/support/logging.h>
 #include <sqlite3.h>
 #include <yaml-cpp/yaml.h>
 

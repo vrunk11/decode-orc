@@ -20,9 +20,9 @@
 #include <orc/plugin/orc_stage_tooling.h>
 #include <orc/stage/frame_id.h>
 #include <orc/stage/node_type.h>
-#include <orc/stage/orc_rendering.h>  // For PreviewImage definition
 #include <orc/stage/orc_source_parameters.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
+#include <orc/stage/preview/orc_rendering.h>  // For PreviewImage definition
 #include <orc/stage/video_frame_representation.h>
 
 #include <atomic>
@@ -299,14 +299,6 @@ class VideoSinkStage : public DAGStage,
                                std::optional<int32_t> frame_phase_id,
                                orc::FrameID frame_id, bool is_first_field,
                                const orc::SourceParameters& videoParams) const;
-
-  bool writeOutputFile(
-      const std::string& output_path, const std::string& format,
-      const std::vector<::ComponentFrame>& frames, const void* videoParams,
-      const orc::VideoFrameRepresentation* vfr, uint64_t start_field_index,
-      uint64_t num_fields,
-      std::string& error_message  // Output parameter for detailed error
-  ) const;
 };
 
 }  // namespace orc

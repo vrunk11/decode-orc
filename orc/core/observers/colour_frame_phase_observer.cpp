@@ -7,14 +7,13 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include "colour_frame_phase_observer.h"
-
+#include <colour_frame_phase_observer.h>
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/field_id.h>
-#include <orc/stage/frame_line_util.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/frame_line_util.h>
+#include <orc/support/logging.h>
 
 #include <cmath>
 #include <utility>

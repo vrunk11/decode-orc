@@ -10,7 +10,7 @@
 #pragma once
 
 #include <orc/stage/field_id.h>
-#include <orc/stage/lru_cache.h>
+#include <orc/support/lru_cache.h>
 
 #include <memory>
 #include <string>
@@ -36,9 +36,6 @@ class TBCReader {
   void close();
 
   bool is_open() const { return is_open_; }
-  size_t get_field_count() const { return field_count_; }
-  size_t get_field_length() const { return field_length_; }
-  size_t get_line_length() const { return line_length_; }
 
   std::vector<sample_type> read_field(FieldID field_id);
   std::vector<sample_type> read_field_lines(FieldID field_id, size_t start_line,

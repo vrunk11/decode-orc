@@ -14,24 +14,32 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QTableWidget>
+#include <memory>
 #include <string>
 #include <unordered_set>
 
 namespace orc {
+namespace presenters {
+class ProjectPresenter;
+}  // namespace presenters
+
+class PluginManagerModel;
 
 /**
  * @brief Dialog for managing the persistent plugin registry.
  *
  * Shows registered plugins and their load/filesystem status, and allows the
- * user to add, remove, enable, and disable plugins via the ProjectPresenter
- * mutation API.  Registry changes take effect on the next application launch.
+ * user to add, remove, enable, disable, trust and untrust plugins through a
+ * mockable presenter-boundary model.  Enabling a plugin does not grant trust:
+ * trust is a separate, explicitly confirmed decision.  Registry changes take
+ * effect on the next application launch.
  */
 class PluginManagerDialog : public QDialog {
   Q_OBJECT
 
  public:
   explicit PluginManagerDialog(QWidget* parent = nullptr);
-  ~PluginManagerDialog() override = default;
+  ~PluginManagerDialog() override;
 
  protected:
   void accept() override;
@@ -39,6 +47,7 @@ class PluginManagerDialog : public QDialog {
 
  private slots:
   void onAddPlugin();
+  void onBrowsePlugins();
   void onRemovePlugin();
   void onSelectionChanged();
   void onTableItemChanged(QTableWidgetItem* item);
@@ -48,10 +57,16 @@ class PluginManagerDialog : public QDialog {
   void refresh();
   void captureInitialRegistrySnapshot();
   bool restoreInitialRegistrySnapshot(QString* error_message);
+  // Handle a toggle of the Trusted checkbox with explicit confirmation.
+  void handleTrustToggle(const std::string& plugin_id, bool trusted);
+
+  std::unique_ptr<orc::presenters::ProjectPresenter> presenter_;
+  std::unique_ptr<PluginManagerModel> model_;
 
   QLabel* registry_path_label_;
   QTableWidget* table_;
   QPushButton* add_button_;
+  QPushButton* browse_button_;
   QPushButton* remove_button_;
   bool refreshing_table_ = false;
   bool plugin_changes_made_ = false;

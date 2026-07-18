@@ -11,9 +11,9 @@
 
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/error_types.h>
-#include <orc/stage/frame_line_util.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/preview_helpers.h>
+#include <orc/support/frame_line_util.h>
+#include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 
 #include <algorithm>
 #include <cmath>

@@ -10,9 +10,9 @@
 #ifndef ORC_CORE_CC_SINK_STAGE_DEPS_H
 #define ORC_CORE_CC_SINK_STAGE_DEPS_H
 
-#include <orc/stage/eia608_decoder.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/observers/closed_caption_observer.h>
+#include <orc/stage/observation/observation_service_interface.h>
+#include <orc/support/eia608_decoder.h>
+#include <orc/support/logging.h>
 
 #include <atomic>
 #include <cstdint>
@@ -24,7 +24,12 @@
 namespace orc {
 class CCSinkStageDeps : public ICCSinkStageDeps {
  public:
-  CCSinkStageDeps() = default;
+  // observation_service may be null (e.g. an older host, or direct in-process
+  // construction in tests); export_cc() then falls back to whatever closed
+  // caption observations are already present in the context (none on an older
+  // host), producing an empty file rather than crashing.
+  explicit CCSinkStageDeps(IObservationService* observation_service = nullptr)
+      : observation_service_(observation_service) {}
 
   void init(TriggerProgressCallback progress_callback,
             std::atomic<bool>* cancel_requested) override;
@@ -36,12 +41,13 @@ class CCSinkStageDeps : public ICCSinkStageDeps {
  private:
   bool export_scc(const VideoFrameRepresentation* representation,
                   const std::string& output_path, VideoFormat format,
-                  const IObservationContext& observation_context,
-                  int32_t& cc_frames_exported);
+                  IObservationContext& observation_context,
+                  IObserverHandle* cc_observer, int32_t& cc_frames_exported);
 
   bool export_plain_text(const VideoFrameRepresentation* representation,
                          const std::string& output_path, VideoFormat format,
-                         const IObservationContext& observation_context,
+                         IObservationContext& observation_context,
+                         IObserverHandle* cc_observer,
                          int32_t& cc_frames_exported);
 
   std::string generate_timestamp(int32_t field_index, VideoFormat format) const;
@@ -78,9 +84,9 @@ class CCSinkStageDeps : public ICCSinkStageDeps {
     }
   };
 
+  IObservationService* observation_service_{nullptr};
   TriggerProgressCallback progress_callback_;
   std::atomic<bool>* cancel_requested_{nullptr};
-  ClosedCaptionObserver closed_caption_observer_;
   EIA608Decoder eia608_decoder_;
   SpdlogLoggerAdapter logger_;
 };

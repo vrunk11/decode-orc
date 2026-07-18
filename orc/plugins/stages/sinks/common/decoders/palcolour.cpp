@@ -31,7 +31,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#include <orc/stage/logging.h>  // ORC logging
+#include <orc/support/logging.h>  // ORC logging
 
 #include "../video_parameter_safety.h"
 

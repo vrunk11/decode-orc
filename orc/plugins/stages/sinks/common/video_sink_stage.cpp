@@ -9,13 +9,13 @@
 
 #include "video_sink_stage.h"
 
-#include <orc/stage/colour_preview_conversion.h>
+#include <orc/abi/orc_plugin_services.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/frame_line_util.h>
-#include <orc/stage/logging.h>
-#include <orc/stage/observers/biphase_observer.h>
-#include <orc/stage/observers/closed_caption_observer.h>
-#include <orc/stage/preview_helpers.h>
+#include <orc/stage/observation/observation_service_interface.h>
+#include <orc/support/colour_preview_conversion.h>
+#include <orc/support/frame_line_util.h>
+#include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 
 #include "decoders/comb.h"
 #include "decoders/componentframe.h"
@@ -535,7 +535,8 @@ std::vector<ParameterDescriptor> VideoSinkStage::get_parameter_descriptors(
           "embed_chapter_metadata",
           "Embed Chapter Metadata",
           "Write chapter markers from VBI data to output file (MKV/MP4/MOV "
-          "only; requires chapter numbers decoded by BiphaseObserver)",
+          "only; requires chapter numbers decoded by the \"biphase\" "
+          "observer)",
           ParameterType::BOOL,
           {{},
            {},
@@ -1071,8 +1072,8 @@ bool VideoSinkStage::trigger(
   }
   embed_cc = embed_cc && ffmpeg_output;
 
-  // If closed caption embedding is enabled, instantiate ClosedCaptionObserver
-  // to populate the observation context before running the export
+  // If closed caption embedding is enabled, run the host "closed_caption"
+  // observer to populate the observation context before running the export
   if (embed_cc) {
     ORC_LOG_DEBUG(
         "VideoSink: Closed caption embedding enabled, extracting CC "
@@ -1082,8 +1083,19 @@ bool VideoSinkStage::trigger(
     if (!inputs.empty()) {
       auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
       if (vfr) {
-        // Create and run ClosedCaptionObserver to populate observations
-        auto cc_observer = std::make_shared<ClosedCaptionObserver>();
+        // Obtain a "closed_caption" observer session from the host service. The
+        // handle is reused across every frame so its cross-field pairing state
+        // accumulates. A null service (older host) skips CC collection.
+        IObservationService* obs_service =
+            orc::plugin::get_observation_service();
+        std::unique_ptr<IObserverHandle> cc_observer =
+            obs_service ? obs_service->create_observer("closed_caption")
+                        : nullptr;
+        if (!cc_observer) {
+          ORC_LOG_WARN(
+              "VideoSink: observation service unavailable; closed caption data "
+              "not collected");
+        }
 
         auto frame_range = vfr->frame_range();
         const size_t total_cc_frames = frame_range.count();
@@ -1096,7 +1108,7 @@ bool VideoSinkStage::trigger(
         size_t cc_frames_processed = 0;
         for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
              ++frame_id) {
-          if (vfr->has_frame(frame_id)) {
+          if (cc_observer && vfr->has_frame(frame_id)) {
             cc_observer->process_frame(*vfr, frame_id, observation_context);
           }
           ++cc_frames_processed;
@@ -1139,7 +1151,17 @@ bool VideoSinkStage::trigger(
     if (!inputs.empty()) {
       auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
       if (vfr) {
-        BiphaseObserver biphase_observer;
+        // Obtain a "biphase" observer session from the host service to decode
+        // VBI chapter numbers. A null service (older host) skips collection.
+        IObservationService* obs_service =
+            orc::plugin::get_observation_service();
+        std::unique_ptr<IObserverHandle> biphase_observer =
+            obs_service ? obs_service->create_observer("biphase") : nullptr;
+        if (!biphase_observer) {
+          ORC_LOG_WARN(
+              "VideoSink: observation service unavailable; VBI chapter data "
+              "not collected");
+        }
         auto frame_range = vfr->frame_range();
         const size_t total_frames = frame_range.count();
 
@@ -1150,8 +1172,9 @@ bool VideoSinkStage::trigger(
         size_t frames_processed = 0;
         for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
              ++frame_id) {
-          if (vfr->has_frame(frame_id)) {
-            biphase_observer.process_frame(*vfr, frame_id, observation_context);
+          if (biphase_observer && vfr->has_frame(frame_id)) {
+            biphase_observer->process_frame(*vfr, frame_id,
+                                            observation_context);
           }
           ++frames_processed;
           if (progress_callback_) {
@@ -2238,99 +2261,6 @@ SourceField VideoSinkStage::buildSourceField(
       sf.samples_per_line, sf.is_yc, sf.line_ptrs.size());
 
   return sf;
-}
-
-// Helper method: Write output frames to file
-bool VideoSinkStage::writeOutputFile(
-    const std::string& output_path, const std::string& format,
-    const std::vector<::ComponentFrame>& frames, const void* videoParamsPtr,
-    const orc::VideoFrameRepresentation* vfr, uint64_t start_field_index,
-    uint64_t num_fields, std::string& error_message) const {
-  const auto& videoParams =
-      *static_cast<const orc::SourceParameters*>(videoParamsPtr);
-  if (frames.empty()) {
-    ORC_LOG_ERROR("VideoSink: No frames to write");
-    error_message = "Error: No frames to write";
-    return false;
-  }
-
-  // Create appropriate output backend
-  auto backend = OutputBackendFactory::create(format);
-  if (!backend) {
-    ORC_LOG_ERROR("VideoSink: Unknown or unsupported output format: {}",
-                  format);
-    ORC_LOG_ERROR(
-        "VideoSink: Available formats: rgb, yuv, y4m, mp4-h264, mp4-h265, "
-        "mkv-ffv1");
-    error_message = "Error: Unknown format '" + format +
-                    "' - use rgb, yuv, y4m, or mp4-h264";
-    return false;
-  }
-
-  // Configure backend
-  OutputBackend::Configuration config;
-  config.output_path = output_path;
-  config.video_params = videoParams;
-  config.padding_amount = output_padding_;
-  config.options["format"] = format;
-
-  // Pass encoder quality settings
-  config.encoder_preset = encoder_preset_;
-  config.encoder_crf = encoder_crf_;
-  config.encoder_bitrate = encoder_bitrate_;
-
-  // Pass audio information if embedding is enabled
-  config.embed_audio = embed_audio_;
-  config.options["audio_channel_pairs"] = audio_channel_pairs_;
-  config.embed_closed_captions = embed_closed_captions_;
-  if (embed_audio_ && vfr && vfr->has_audio()) {
-    config.vfr = vfr;
-    config.start_field_index = start_field_index;
-    config.num_fields = num_fields;
-    ORC_LOG_DEBUG("VideoSink: Audio embedding enabled for output");
-  } else if (embed_audio_) {
-    ORC_LOG_WARN("VideoSink: Audio embedding requested but no audio available");
-  }
-
-  // Initialize backend
-  if (!backend->initialize(config)) {
-    ORC_LOG_ERROR("VideoSink: Failed to initialize {} output backend", format);
-    ORC_LOG_ERROR("VideoSink: Check log messages above for details");
-
-    // Provide helpful error message based on format
-    if (format.find("mp4-") == 0 || format.find("mkv-") == 0) {
-      error_message =
-          "Error: MP4/MKV encoder not installed - see logs. Use rgb/yuv/y4m "
-          "instead.";
-    } else {
-      error_message =
-          "Error: Failed to initialize " + format + " output - check logs";
-    }
-    return false;
-  }
-
-  ORC_LOG_DEBUG("VideoSink: Writing {} frames as {}", frames.size(),
-                backend->getFormatInfo());
-
-  // Write all frames
-  for (const auto& frame : frames) {
-    if (!backend->writeFrame(frame)) {
-      ORC_LOG_ERROR("VideoSink: Failed to write frame");
-      backend->finalize();  // Try to close cleanly
-      error_message = "Error: Failed to write frame data - check logs";
-      return false;
-    }
-  }
-
-  // Finalize output
-  if (!backend->finalize()) {
-    ORC_LOG_ERROR("VideoSink: Failed to finalize output");
-    error_message = "Error: Failed to finalize output file - check logs";
-    return false;
-  }
-
-  ORC_LOG_DEBUG("VideoSink: Wrote {} frames to {}", frames.size(), output_path);
-  return true;
 }
 
 StagePreviewCapability VideoSinkStage::get_preview_capability() const {

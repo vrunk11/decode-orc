@@ -10,8 +10,8 @@
 #pragma once
 
 #include <orc/stage/artifact.h>
-#include <orc/stage/observation_context_interface.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/observation/observation_context_interface.h>
+#include <orc/stage/params/stage_parameter.h>
 
 #include <map>
 #include <memory>

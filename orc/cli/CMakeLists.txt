@@ -140,6 +140,42 @@ if(BUILD_UNIT_TESTS)
     )
 
     add_test(
+        NAME CLI.PluginsSearchMissingTermFails
+        COMMAND $<TARGET_FILE:orc-cli> plugins search
+    )
+    set_tests_properties(CLI.PluginsSearchMissingTermFails PROPERTIES
+        LABELS "unit;cli"
+        WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME CLI.PluginsInfoMissingIdFails
+        COMMAND $<TARGET_FILE:orc-cli> plugins info
+    )
+    set_tests_properties(CLI.PluginsInfoMissingIdFails PROPERTIES
+        LABELS "unit;cli"
+        WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME CLI.PluginsInstallMissingIdFails
+        COMMAND $<TARGET_FILE:orc-cli> plugins install
+    )
+    set_tests_properties(CLI.PluginsInstallMissingIdFails PROPERTIES
+        LABELS "unit;cli"
+        WILL_FAIL TRUE
+    )
+
+    add_test(
+        NAME CLI.PluginsHelpShowsDiscoverySubcommands
+        COMMAND $<TARGET_FILE:orc-cli> plugins --help
+    )
+    set_tests_properties(CLI.PluginsHelpShowsDiscoverySubcommands PROPERTIES
+        LABELS "unit;cli"
+        PASS_REGULAR_EXPRESSION "search"
+    )
+
+    add_test(
         NAME CLI.PluginsUnknownSubcommandFails
         COMMAND $<TARGET_FILE:orc-cli> plugins frobnicate
     )
@@ -150,7 +186,7 @@ if(BUILD_UNIT_TESTS)
 
     add_test(
         NAME CLI.RejectsPreviewExportOption
-        COMMAND $<TARGET_FILE:orc-cli> ${CMAKE_SOURCE_DIR}/test-projects/ntsc-stacking-comp.orcprj --preview-export
+        COMMAND $<TARGET_FILE:orc-cli> --preview-export
     )
     set_tests_properties(CLI.RejectsPreviewExportOption PROPERTIES
         LABELS "unit;cli"

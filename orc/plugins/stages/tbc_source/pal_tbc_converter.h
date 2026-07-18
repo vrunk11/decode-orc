@@ -87,13 +87,6 @@ class PalTBCConverter {
   // Returns -1 when field_phase_id is absent or out of range.
   static int map_field_phase_to_colour_frame_index(
       std::optional<int32_t> field_phase_id);
-
- private:
-  // Insert one linearly-interpolated extra sample at the end of a line buffer.
-  // EBU Tech. 3280-E §1.3.1: the extra sample is the midpoint between the
-  // last sample of this line and the first sample of the next line.
-  static int16_t interpolate_extra_sample(int16_t last_on_line,
-                                          int16_t first_on_next_line);
 };
 
 }  // namespace orc

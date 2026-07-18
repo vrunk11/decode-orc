@@ -58,12 +58,6 @@ class AnalysisRegistry {
    */
   AnalysisTool* findById(const std::string& id) const;
 
-  /**
-   * @brief Get tools that can analyze the given source type
-   */
-  std::vector<AnalysisTool*> toolsForSource(
-      AnalysisSourceType source_type) const;
-
  private:
   AnalysisRegistry() = default;
   ~AnalysisRegistry() = default;

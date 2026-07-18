@@ -11,7 +11,7 @@
  * SPDX-FileCopyrightText: 2026 decode-orc contributors
  */
 
-#include <orc/plugin/orc_plugin_abi.h>
+#include <orc/abi/orc_plugin_abi.h>
 
 namespace {
 

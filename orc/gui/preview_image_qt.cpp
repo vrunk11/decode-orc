@@ -9,7 +9,7 @@
 
 #include "preview_image_qt.h"
 
-#include <orc/stage/orc_rendering.h>
+#include <orc/stage/preview/orc_rendering.h>
 
 #include <cstring>
 

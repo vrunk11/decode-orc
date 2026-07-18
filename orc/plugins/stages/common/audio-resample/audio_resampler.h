@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 #include <orc/stage/common_types.h>
 
 #include <cstddef>

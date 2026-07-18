@@ -18,9 +18,9 @@
 #include <orc/stage/common_types.h>
 #include <orc/stage/field_id.h>
 #include <orc/stage/node_id.h>
-#include <orc/stage/orc_rendering.h>  // Public API rendering types (includes mapping result types)
-#include <orc/stage/orc_source_parameters.h>  // Public API VideoParameters
-#include <orc/stage/parameter_types.h>        // ParameterValue
+#include <orc/stage/orc_source_parameters.h>   // Public API VideoParameters
+#include <orc/stage/params/parameter_types.h>  // ParameterValue
+#include <orc/stage/preview/orc_rendering.h>  // Public API rendering types (includes mapping result types)
 #include <orc_preview_views.h>
 
 #include <QObject>
@@ -675,27 +675,6 @@ class RenderCoordinator : public QObject {
   uint64_t requestWaveformMonitorData(const orc::NodeID& node_id,
                                       orc::PreviewOutputType output_type,
                                       uint64_t output_index);
-
-  /**
-   * @brief Request frame line navigation (async)
-   *
-   * Requests the core to calculate the next/previous line when navigating
-   * in frame mode with interlaced fields. Handles complex field ordering.
-   *
-   * Result emitted via frameLineNavigationReady signal.
-   *
-   * @param node_id The node being displayed
-   * @param output_type The current output type (Frame or Frame_Reversed)
-   * @param current_field The current field index
-   * @param current_line The current line within the field
-   * @param direction +1 to go down, -1 to go up
-   * @param field_height The height of a single field in lines
-   * @return Request ID for matching response
-   */
-  uint64_t requestFrameLineNavigation(const orc::NodeID& node_id,
-                                      orc::PreviewOutputType output_type,
-                                      uint64_t current_field, int current_line,
-                                      int direction, int field_height);
 
   /**
    * @brief Map preview image coordinates to field coordinates (synchronous)

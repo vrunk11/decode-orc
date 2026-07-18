@@ -11,12 +11,12 @@
 
 #include <orc/plugin/orc_stage_preview.h>
 #include <orc/plugin/orc_stage_runtime.h>
-#include <orc/stage/dropout_run.h>
+#include <orc/stage/dropout/dropout_run.h>
 #include <orc/stage/frame_descriptor.h>
 #include <orc/stage/frame_id.h>
-#include <orc/stage/lru_cache.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/lru_cache.h>
 
 #include <memory>
 #include <mutex>
@@ -189,9 +189,6 @@ class StackerStage : public DAGStage,
   std::shared_ptr<const VideoFrameRepresentation> process(
       const std::vector<std::shared_ptr<const VideoFrameRepresentation>>&
           sources) const;
-
-  static size_t min_input_count() { return 1; }
-  static size_t max_input_count() { return 16; }
 
   // ParameterizedStage
   std::vector<ParameterDescriptor> get_parameter_descriptors(

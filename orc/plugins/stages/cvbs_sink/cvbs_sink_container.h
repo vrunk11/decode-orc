@@ -11,7 +11,7 @@
 #ifndef ORC_CORE_CVBS_SINK_CONTAINER_H
 #define ORC_CORE_CVBS_SINK_CONTAINER_H
 
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 
 #include <algorithm>
 #include <cstdint>

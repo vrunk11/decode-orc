@@ -9,20 +9,10 @@
 
 #include "dag_frame_renderer.h"
 
-#include <orc/stage/logging.h>
-#include <orc/stage/observers/biphase_observer.h>
-#include <orc/stage/observers/black_psnr_observer.h>
-#include <orc/stage/observers/burst_level_observer.h>
-#include <orc/stage/observers/closed_caption_observer.h>
-#include <orc/stage/observers/white_snr_observer.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <sstream>
-
-#include "observers/colour_frame_phase_observer.h"
-#include "observers/field_quality_observer.h"
-#include "observers/fm_code_observer.h"
-#include "observers/white_flag_observer.h"
 
 namespace orc {
 
@@ -48,6 +38,12 @@ DAGFrameRenderer::DAGFrameRenderer(std::shared_ptr<const DAG> dag)
 
   executor_ = std::make_unique<DAGExecutor>();
   executor_->set_cache_enabled(true);
+
+  // Cache the observer id enumeration once; the registry is fixed at build
+  // time, so update_dag() need not recompute it.
+  for (const auto& info : observation_service_.available_observers()) {
+    observer_ids_.push_back(info.id);
+  }
 }
 
 void DAGFrameRenderer::ensure_node_index() const {
@@ -60,14 +56,6 @@ void DAGFrameRenderer::ensure_node_index() const {
 bool DAGFrameRenderer::has_node(NodeID node_id) const {
   ensure_node_index();
   return node_index_.find(node_id) != node_index_.end();
-}
-
-std::vector<NodeID> DAGFrameRenderer::get_renderable_nodes() const {
-  std::vector<NodeID> result;
-  for (const auto& node : dag_->nodes()) {
-    result.push_back(node.node_id);
-  }
-  return result;
 }
 
 void DAGFrameRenderer::update_dag(std::shared_ptr<const DAG> new_dag) {
@@ -229,35 +217,15 @@ FrameRenderResult DAGFrameRenderer::execute_to_node(NodeID node_id,
     result.is_valid = true;
     result.representation = vfr;
 
-    // Run all observers to populate observation context for both fields of this
-    // frame.
+    // Run every registered observer to populate the observation context for
+    // both fields of this frame. The observer inventory comes from the shared
+    // registry (CoreObservationService), so host and plugins stay in lockstep;
+    // each frame render is independent, so a one-shot run_observer() per id is
+    // equivalent to the former fresh-per-frame observer instances.
     auto& obs_ctx = executor_->get_observation_context();
-    ColourFramePhaseObserver colour_frame_phase_observer;
-    colour_frame_phase_observer.process_frame(*vfr, frame_id, obs_ctx);
-
-    BiphaseObserver biphase_observer;
-    biphase_observer.process_frame(*vfr, frame_id, obs_ctx);
-
-    FmCodeObserver fm_code_observer;
-    fm_code_observer.process_frame(*vfr, frame_id, obs_ctx);
-
-    WhiteFlagObserver white_flag_observer;
-    white_flag_observer.process_frame(*vfr, frame_id, obs_ctx);
-
-    FieldQualityObserver field_quality_observer;
-    field_quality_observer.process_frame(*vfr, frame_id, obs_ctx);
-
-    BurstLevelObserver burst_level_observer;
-    burst_level_observer.process_frame(*vfr, frame_id, obs_ctx);
-
-    WhiteSNRObserver white_snr_observer;
-    white_snr_observer.process_frame(*vfr, frame_id, obs_ctx);
-
-    BlackPSNRObserver black_psnr_observer;
-    black_psnr_observer.process_frame(*vfr, frame_id, obs_ctx);
-
-    ClosedCaptionObserver closed_caption_observer;
-    closed_caption_observer.process_frame(*vfr, frame_id, obs_ctx);
+    for (const auto& observer_id : observer_ids_) {
+      observation_service_.run_observer(observer_id, *vfr, frame_id, obs_ctx);
+    }
 
     ORC_LOG_DEBUG("DAGFrameRenderer: node '{}' frame {} rendered successfully",
                   node_id.to_string(), frame_id);

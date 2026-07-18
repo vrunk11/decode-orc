@@ -25,7 +25,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <cstddef>
 #include <memory>

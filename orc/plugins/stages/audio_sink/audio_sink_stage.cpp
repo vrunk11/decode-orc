@@ -9,10 +9,10 @@
 
 #include "audio_sink_stage.h"
 
-#include <orc/plugin/orc_plugin_services.h>
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/abi/orc_plugin_services.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 #include <orc/stage/common_types.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <optional>
 #include <stdexcept>

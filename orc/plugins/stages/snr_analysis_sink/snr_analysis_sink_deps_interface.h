@@ -10,7 +10,7 @@
 #ifndef ORC_CORE_SNR_ANALYSIS_SINK_DEPS_INTERFACE_H
 #define ORC_CORE_SNR_ANALYSIS_SINK_DEPS_INTERFACE_H
 
-#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/observation/observation_context_interface.h>
 #include <orc/stage/triggerable_stage.h>
 #include <orc/stage/video_frame_representation.h>
 
@@ -35,6 +35,13 @@ struct SNRAnalysisComputeResult {
   int32_t total_frames{0};
 };
 
+// Dependency seam for SNRAnalysisSinkStage. The concrete implementation
+// (SNRAnalysisSinkStageDeps) obtains the standard observers through the host
+// IObservationService injected at construction — the stage passes
+// orc::plugin::get_observation_service(); unit tests either inject a mock of
+// this interface or construct the concrete deps with a mock service. A null
+// service (older host / direct construction) degrades gracefully: observation
+// is skipped rather than crashing.
 class ISNRAnalysisSinkStageDeps {
  public:
   virtual ~ISNRAnalysisSinkStageDeps() = default;

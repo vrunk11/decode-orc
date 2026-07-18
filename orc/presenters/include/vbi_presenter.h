@@ -39,15 +39,6 @@ class VbiPresenter {
   std::optional<VBIFieldInfoView> getVbiForField(NodeID node_id,
                                                  FieldID field_id) const;
 
-  // Fetch VBI for both fields of a frame; if only one available, returns the
-  // available ones
-  struct FrameVbiResult {
-    std::optional<VBIFieldInfoView> field1;
-    std::optional<VBIFieldInfoView> field2;
-  };
-  FrameVbiResult getVbiForFrame(NodeID node_id, FieldID field1,
-                                FieldID field2) const;
-
   // Public helper for sound mode conversion (for use in callbacks)
   static VbiSoundModeView mapSoundMode(orc::VbiSoundMode mode);
 

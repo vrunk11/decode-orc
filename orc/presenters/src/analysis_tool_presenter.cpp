@@ -10,7 +10,7 @@
 #include "analysis_tool_presenter.h"
 
 #include <orc/stage/artifact.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <stdexcept>
@@ -162,17 +162,6 @@ std::vector<std::shared_ptr<void>> AnalysisToolPresenter::executeToNode(
   } catch (const std::exception& e) {
     ORC_LOG_ERROR("AnalysisToolPresenter: DAG execution failed: {}", e.what());
     throw std::runtime_error(std::string("Failed to execute DAG: ") + e.what());
-  }
-}
-
-// =============================================================================
-// Progress Reporting
-// =============================================================================
-
-void AnalysisToolPresenter::reportProgress(int percentage,
-                                           const std::string& status) {
-  if (impl_->progress_callback_) {
-    impl_->progress_callback_(percentage, status);
   }
 }
 

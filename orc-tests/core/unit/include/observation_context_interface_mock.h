@@ -11,7 +11,7 @@
 #define DECODE_ORC_ROOT_OBSERVATION_CONTEXT_INTERFACE_MOCK_H
 
 #include <gmock/gmock.h>
-#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/observation/observation_context_interface.h>
 
 // using different namespace from module-under-test so that we can use the same
 // class names in the tests as in the module-under-test

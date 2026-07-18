@@ -176,11 +176,6 @@ class BufferedFileWriter : public IFileWriter<T> {
   uint64_t bytes_written() const override { return bytes_written_; }
 
   /**
-   * @brief Get number of bytes currently in buffer
-   */
-  size_t buffered_bytes() const { return buffer_.size() * sizeof(T); }
-
-  /**
    * @brief Check if file is open
    */
   bool is_open() const override { return is_open_; }

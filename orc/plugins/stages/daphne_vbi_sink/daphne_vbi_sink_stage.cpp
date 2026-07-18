@@ -9,8 +9,8 @@
 
 #include "daphne_vbi_sink_stage.h"
 
-#include <orc/stage/logging.h>
-#include <orc/stage/preview_helpers.h>
+#include <orc/support/logging.h>
+#include <orc/support/preview_helpers.h>
 
 #include <filesystem>
 #include <memory>

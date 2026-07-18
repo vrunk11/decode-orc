@@ -18,14 +18,14 @@
 #include "../../../../orc/plugins/stages/cvbs_source/cvbs_source_stage.h"
 
 #include <gtest/gtest.h>
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 #include <orc/stage/common_types.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/dropout_run.h>
+#include <orc/stage/dropout/dropout_run.h>
 #include <orc/stage/error_types.h>
 #include <orc/stage/node_type.h>
-#include <orc/stage/observation_context.h>
-#include <orc/stage/parameter_types.h>
+#include <orc/stage/observation/observation_context.h>
+#include <orc/stage/params/parameter_types.h>
 #include <orc/stage/video_frame_representation.h>
 
 #include <algorithm>

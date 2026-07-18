@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <orc/stage/parameter_types.h>
+#include <orc/stage/params/parameter_types.h>
 
 #include <QCheckBox>
 #include <QComboBox>

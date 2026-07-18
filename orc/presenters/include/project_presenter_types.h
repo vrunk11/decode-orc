@@ -60,6 +60,9 @@ struct PluginRegistryEntryInfo {
   std::string license_spdx;
   bool is_core_plugin = false;
   uint32_t required_host_abi = 0;
+  uint32_t host_abi_version = 0;  ///< The running host's ABI version.
+  bool abi_compatible = true;     ///< false when required_host_abi is set and
+                                  ///< does not match host_abi_version.
   std::string sha256;
   bool is_loaded = false;
   bool path_exists = false;
@@ -73,6 +76,44 @@ struct PluginRegistryInfo {
 struct PluginRegistryMutationResult {
   bool success = false;
   std::string error_message;
+};
+
+/// One downloadable build advertised by the curated plugin index.
+struct PluginIndexArtifactInfo {
+  std::string platform;
+  uint32_t host_abi = 0;
+  std::string url;
+  std::string sha256;
+  std::string plugin_version;
+  std::string min_host_app_version;
+};
+
+/// One plugin advertised by the curated index, with host-compatibility
+/// resolved against the running host's platform and ABI.
+struct PluginIndexEntryInfo {
+  std::string id;
+  std::string display_name;
+  std::string description;
+  std::string maintainer;
+  std::string license_spdx;
+  std::string source_repo_url;
+  std::vector<std::string> tags;
+  std::vector<PluginIndexArtifactInfo> artifacts;
+  bool has_compatible_build = false;  ///< A build exists for this host.
+  bool already_installed = false;     ///< Present in the local registry.
+  std::string compatibility_message;  ///< Set when no compatible build exists.
+};
+
+/// Result of fetching the curated plugin index, including offline/cache state.
+struct PluginIndexInfo {
+  int schema_version = 0;
+  bool available = false;   ///< An index (fresh or cached) was loaded.
+  bool from_cache = false;  ///< The list came from the last-good cache.
+  bool offline = false;     ///< The network fetch failed.
+  uint32_t host_abi_version = 0;
+  std::string source_url;
+  std::string error_message;
+  std::vector<PluginIndexEntryInfo> entries;
 };
 
 /**

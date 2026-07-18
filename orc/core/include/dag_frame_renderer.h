@@ -10,10 +10,10 @@
 #pragma once
 
 #include <orc/stage/frame_id.h>
-#include <orc/stage/lru_cache.h>
 #include <orc/stage/node_id.h>
-#include <orc/stage/observation_context.h>
+#include <orc/stage/observation/observation_context.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/lru_cache.h>
 
 #include <functional>
 #include <map>
@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "core_observation_service.h"
 #include "dag_executor.h"
 
 namespace orc {
@@ -96,12 +97,6 @@ class DAGFrameRenderer {
   // True if node_id exists in the current DAG.
   bool has_node(NodeID node_id) const;
 
-  // Returns node IDs in DAG order (source → sink).
-  std::vector<NodeID> get_renderable_nodes() const;
-
-  // Returns the DAG used by this renderer.
-  std::shared_ptr<const DAG> get_dag() const { return dag_; }
-
   // -------------------------------------------------------------------------
   // DAG Change Tracking
   // -------------------------------------------------------------------------
@@ -109,11 +104,6 @@ class DAGFrameRenderer {
   // Replace the DAG and clear all cached render results.  Increments the
   // internal DAG version so stale FrameRenderResult objects are detectable.
   void update_dag(std::shared_ptr<const DAG> new_dag);
-
-  // Monotonically increasing version number; increments on every update_dag()
-  // call.  Callers may store this to detect whether their cached results are
-  // still valid.
-  uint64_t get_dag_version() const { return dag_version_; }
 
   // Returns the observation context populated during the most recent
   // render_frame_at_node() execution.
@@ -125,9 +115,6 @@ class DAGFrameRenderer {
 
   // Discard all cached render results without incrementing the DAG version.
   void clear_cache();
-
-  // Current number of (node_id, frame_id) pairs in the cache.
-  size_t cache_size() const { return render_cache_.size(); }
 
   // Enable or disable result caching.  When disabled every call re-executes
   // the DAG.
@@ -164,6 +151,15 @@ class DAGFrameRenderer {
   LRUCache<CacheKey, FrameRenderResult, CacheKeyHash> render_cache_;
 
   std::unique_ptr<DAGExecutor> executor_;
+
+  // Host-owned observation service backing the standard observer pass. The
+  // registry it enumerates (see CoreObservationService) is the single source
+  // of truth for observer identity, so adding an observer to the registry
+  // extends the frame-render pass with no edit here. observer_ids_ caches the
+  // enumeration so available_observers() (which constructs each observer) runs
+  // once rather than per rendered frame.
+  CoreObservationService observation_service_;
+  std::vector<std::string> observer_ids_;
 
   mutable std::map<NodeID, size_t> node_index_;
   mutable bool node_index_valid_;

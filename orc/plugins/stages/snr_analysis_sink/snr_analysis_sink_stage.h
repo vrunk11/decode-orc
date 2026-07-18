@@ -16,7 +16,7 @@
 #include <orc/plugin/orc_stage_tooling.h>
 #include <orc/stage/analysis_sink_results.h>
 #include <orc/stage/node_type.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 #include <orc/stage/triggerable_stage.h>
 
 #include <atomic>

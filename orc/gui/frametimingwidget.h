@@ -65,11 +65,6 @@ class FrameTimingWidget : public QWidget {
   void setChannelMode(ChannelMode mode);
 
   /**
-   * @brief Get the horizontal scroll bar
-   */
-  QScrollBar* scrollBar() const { return scroll_bar_; }
-
-  /**
    * @brief Scroll the view to center on the marker position
    */
   void scrollToMarker();

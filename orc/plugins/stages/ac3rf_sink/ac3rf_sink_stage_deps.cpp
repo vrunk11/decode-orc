@@ -10,7 +10,7 @@
 #include "ac3rf_sink_stage_deps.h"
 
 #include <ac3/Ac3Decoder.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <fstream>

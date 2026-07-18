@@ -47,8 +47,18 @@ struct FieldMappingDecision {
 /**
  * @brief Field mapping analyzer
  *
- * Stubbed analyzer. Currently returns a failure result explaining that
- * disc mapping is disabled.
+ * Maps decoded fields onto a coherent frame sequence using the VBI data
+ * populated in the observation context. The analysis runs a six-stage
+ * pipeline:
+ *   1. Per-field VBI normalization (with sequence-based resolution of CAV
+ *      VBI line disagreements).
+ *   2. Field pairing into candidate frames.
+ *   3. Frame validation and filtering (lead-in/out, phase, unmappable).
+ *   4. Deduplication by picture number.
+ *   5. Sort by picture number and gap detection.
+ *   6. Mapping-specification generation with range notation.
+ * Returns a FieldMappingDecision describing the resulting mapping, the
+ * per-stage statistics, and any warnings.
  */
 class DiscMapperAnalyzer {
  public:

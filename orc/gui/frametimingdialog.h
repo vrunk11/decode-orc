@@ -89,13 +89,6 @@ class FrameTimingDialog : public QDialog {
   uint64_t currentFieldIndex() const { return current_field_index_; }
 
   /**
-   * @brief Get the current second field index (if showing frame mode)
-   */
-  std::optional<uint64_t> currentFieldIndex2() const {
-    return current_field_index_2_;
-  }
-
-  /**
    * @brief Get the actual height of the first field from VFR descriptor
    */
   int firstFieldHeight() const { return current_first_field_height_; }

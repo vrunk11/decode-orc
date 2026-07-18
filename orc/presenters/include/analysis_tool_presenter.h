@@ -11,7 +11,7 @@
 #define ORC_PRESENTERS_ANALYSIS_TOOL_PRESENTER_H
 
 #include <orc/stage/node_id.h>
-#include <orc/stage/parameter_types.h>
+#include <orc/stage/params/parameter_types.h>
 #include <orc_analysis.h>
 
 #include <functional>
@@ -166,13 +166,6 @@ class AnalysisToolPresenter {
    * to force DAG rebuild on next getOrBuildDAG() call.
    */
   void invalidateDAG();
-
-  /**
-   * @brief Report progress to callback if set
-   * @param percentage Progress percentage (0-100)
-   * @param status Status message
-   */
-  void reportProgress(int percentage, const std::string& status);
 
  protected:
   /**

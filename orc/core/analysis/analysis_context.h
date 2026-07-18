@@ -16,7 +16,7 @@
 #endif
 
 #include <orc/stage/node_id.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 #include <orc_analysis.h>  // For AnalysisSourceType
 
 #include <map>

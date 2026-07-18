@@ -10,7 +10,7 @@
 #include "audio_sink_stage_deps.h"
 
 #include <gtest/gtest.h>
-#include <orc/stage/audio_channel_pair.h>
+#include <orc/stage/audio/audio_channel_pair.h>
 
 #include "../../include/video_frame_representation_artifact_mock.h"
 #include "../../stage_services_mock.h"

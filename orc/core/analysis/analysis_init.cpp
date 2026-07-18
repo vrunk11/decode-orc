@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2025-2026 Simon Inns
  */
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <memory>
 

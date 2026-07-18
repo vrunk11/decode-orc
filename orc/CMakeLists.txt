@@ -63,12 +63,12 @@ message(STATUS "Decode Orc Version: ${ORC_VERSION}")
 
 # ---------------------------------------------------------------------------
 # Plugin ABI version — parsed directly from kStagePluginHostAbiVersion in
-# orc/sdk/include/orc/plugin/orc_plugin_abi.h so there is a single source of
+# orc/sdk/include/orc/abi/orc_plugin_abi.h so there is a single source of
 # truth.  CI/CD and packaging scripts can consume this CMake variable without
 # parsing C++ headers.  Do NOT hardcode the number here; bump it in the header.
 # ---------------------------------------------------------------------------
 set(ORC_PLUGIN_ABI_HEADER
-    "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include/orc/plugin/orc_plugin_abi.h")
+    "${CMAKE_CURRENT_SOURCE_DIR}/sdk/include/orc/abi/orc_plugin_abi.h")
 file(STRINGS "${ORC_PLUGIN_ABI_HEADER}" _orc_abi_line
     REGEX "kStagePluginHostAbiVersion[ \t]*=[ \t]*[0-9]+")
 string(REGEX MATCH "kStagePluginHostAbiVersion[ \t]*=[ \t]*([0-9]+)"

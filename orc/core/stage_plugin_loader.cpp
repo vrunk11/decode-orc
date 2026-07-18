@@ -10,8 +10,8 @@
 #include "include/stage_plugin_loader.h"
 
 #include <fmt/format.h>
-#include <orc/stage/colour_preview_conversion.h>
 #include <orc/stage/file_io_interface.h>
+#include <orc/support/colour_preview_conversion.h>
 // Application logging (get_app_logger): plugin log messages are routed to
 // the host application logger, not the core pipeline logger.
 #include <logging.h>
@@ -19,8 +19,9 @@
 #include <cstring>
 #include <utility>
 
-#include "../../sdk/include/orc/plugin/orc_plugin_services.h"
+#include "../../sdk/include/orc/abi/orc_plugin_services.h"
 #include "../../sdk/include/orc/plugin/orc_stage_services.h"
+#include "core_observation_service.h"
 #include "factories.h"
 #include "include/plugin_safe_call.h"
 
@@ -431,6 +432,10 @@ StagePluginLoader::LoadResult StagePluginLoader::load_plugin(
     return render_preview_from_colour_carrier(*carrier);
   };
   services.stage_services = &stage_services_adapter;
+  // Host-owned observation service (ABI 9). Stateless, so a single shared
+  // instance backs every plugin; its lifetime spans the whole process.
+  static CoreObservationService observation_service;
+  services.observation_service = &observation_service;
 
   std::string last_error;
   RegisterContext context{&register_stage_callback, &entry.plugin, &last_error,

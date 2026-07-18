@@ -164,7 +164,19 @@ orc_add_core_unit_tests(
         contracts/plugin_safe_call_test.cpp
         contracts/video_frame_representation_wrapper_contract_test.cpp
         contracts/audio_channel_pair_contract_test.cpp
+        contracts/observation_service_accessor_test.cpp
+        contracts/observation_service_identity_contract_test.cpp
 )
+
+# Presenter-layer unit tests. These link orc-presenters in addition to the
+# core/plugin libraries provided by orc_add_core_unit_tests().
+orc_add_core_unit_tests(
+        orc-core-unit-tests-presenters
+        "unit;presenters"
+
+        presenters/project_presenter_validation_test.cpp
+)
+target_link_libraries(orc-core-unit-tests-presenters orc-presenters)
 
 # ---------------------------------------------------------------------------
 # Test-fixture plugin shared libraries for loader version rejection tests
@@ -246,6 +258,8 @@ orc_add_core_unit_tests(
         metadata/stage_plugin_registry_test.cpp
         metadata/stage_registry_trust_test.cpp
         metadata/plugin_remote_loader_test.cpp
+        metadata/plugin_artifact_name_test.cpp
+        metadata/plugin_index_client_test.cpp
         metadata/sha256_hash_test.cpp
         metadata/skeleton_plugin_registry_test.cpp
         metadata/dropout_util_test.cpp
@@ -277,6 +291,7 @@ orc_add_core_unit_tests(
         "unit"
 
         observers/colour_frame_phase_observer_test.cpp
+        observers/core_observation_service_test.cpp
 )
 
         orc_add_core_unit_tests(

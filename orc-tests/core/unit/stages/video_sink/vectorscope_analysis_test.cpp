@@ -10,7 +10,7 @@
 #include "../../../../orc/core/analysis/vectorscope/vectorscope_analysis.h"
 
 #include <gtest/gtest.h>
-#include <orc/stage/orc_preview_carriers.h>
+#include <orc/stage/preview/orc_preview_carriers.h>
 
 #include "../../../../orc/plugins/stages/sinks/common/decoders/componentframe.h"
 #include "../../../../orc/plugins/stages/sinks/common/decoders/vectorscope_extract.h"

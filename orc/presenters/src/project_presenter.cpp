@@ -9,19 +9,26 @@
 
 #include "project_presenter.h"
 
+#include <orc/abi/orc_plugin_abi.h>
 #include <orc/stage/common_types.h>
-#include <orc/stage/logging.h>
 #include <orc/stage/orc_source_parameters.h>
-#include <orc/stage/stage_parameter.h>
+#include <orc/stage/params/stage_parameter.h>
 #include <orc/stage/triggerable_stage.h>
+#include <orc/support/logging.h>
 #include <sqlite3.h>
 
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <memory>
+#include <optional>
 #include <set>
 #include <stdexcept>
 
+#include "../core/include/curl_http_fetcher.h"
+#include "../core/include/plugin_index_client.h"
 #include "../core/include/plugin_remote_loader.h"
 #include "../core/include/project.h"
 #include "../core/include/project_to_dag.h"
@@ -780,6 +787,9 @@ PluginRegistryInfo ProjectPresenter::readPluginRegistry() {
     info.license_spdx = entry.license_spdx;
     info.is_core_plugin = entry.is_core_plugin;
     info.required_host_abi = entry.required_host_abi;
+    info.host_abi_version = kStagePluginHostAbiVersion;
+    info.abi_compatible = entry.required_host_abi == 0 ||
+                          entry.required_host_abi == kStagePluginHostAbiVersion;
     info.sha256 = entry.sha256;
     info.is_loaded = loaded_paths.count(entry.path) > 0 ||
                      (!entry.plugin_id.empty() &&
@@ -908,7 +918,7 @@ PluginRegistryMutationResult ProjectPresenter::addPluginRegistryEntry(
 }
 
 PluginRegistryMutationResult ProjectPresenter::addPluginFromReleasesUrl(
-    const std::string& releases_url) {
+    const std::string& releases_url, bool trusted) {
   PluginRegistryMutationResult result;
 
   if (releases_url.empty()) {
@@ -942,11 +952,11 @@ PluginRegistryMutationResult ProjectPresenter::addPluginFromReleasesUrl(
   entry_info.release_asset_name = resolved.release_asset_name;
   entry_info.target_platform = target_platform;
   entry_info.enabled = true;
-  // Adding a plugin is the user's explicit consent to run it, so entries
-  // created through this flow are trusted immediately. The trust gate still
-  // guards entries that arrive from outside the application (hand-edited or
-  // copied registry files), which default to untrusted on load.
-  entry_info.trust_state = "trusted";
+  // Adding a URL and trusting the binary it points at are distinct decisions:
+  // the entry is recorded untrusted unless the caller has obtained explicit
+  // trust confirmation from the user. The trust gate blocks download and load
+  // of untrusted entries until they are trusted.
+  entry_info.trust_state = trusted ? "trusted" : "untrusted";
 
   auto add_result = addPluginRegistryEntry(entry_info);
   if (!add_result.success) {
@@ -958,6 +968,180 @@ PluginRegistryMutationResult ProjectPresenter::addPluginFromReleasesUrl(
   }
 
   return add_result;
+}
+
+namespace {
+
+// Host platform token used to resolve index artifacts. Mirrors the tokens the
+// index advertises ("linux"/"macos"/"windows").
+std::string host_platform_token() {
+#if defined(_WIN32)
+  return "windows";
+#elif defined(__APPLE__)
+  return "macos";
+#else
+  return "linux";
+#endif
+}
+
+// Last path component of a URL, used as the release asset filename.
+std::string asset_name_from_url(const std::string& url) {
+  const auto slash = url.find_last_of('/');
+  std::string name = slash == std::string::npos ? url : url.substr(slash + 1);
+  const auto query = name.find_first_of("?#");
+  if (query != std::string::npos) {
+    name = name.substr(0, query);
+  }
+  return name;
+}
+
+PluginIndexArtifactInfo to_artifact_info(const orc::PluginIndexArtifact& a) {
+  PluginIndexArtifactInfo info;
+  info.platform = a.platform;
+  info.host_abi = a.host_abi;
+  info.url = a.url;
+  info.sha256 = a.sha256;
+  info.plugin_version = a.plugin_version;
+  info.min_host_app_version = a.min_host_app_version;
+  return info;
+}
+
+// Build a PluginIndexClient wired to the on-disk last-good cache.
+orc::PluginIndexClient::RefreshResult refresh_plugin_index(
+    const orc::IHttpFetcher& fetcher) {
+  // Capture the path through a shared_ptr so the cache-callback closures are
+  // nothrow-copy/move-constructible: a by-value std::string capture makes the
+  // closure's (std::function-required) copy constructor potentially-throwing,
+  // which bugprone-exception-escape flags as an error under -Werror.
+  const auto cache_path = std::make_shared<std::string>(
+      orc::PluginIndexClient::default_cache_path());
+  orc::PluginIndexClient client(
+      fetcher,
+      [cache_path]() -> std::optional<std::string> {
+        std::ifstream in(*cache_path, std::ios::binary);
+        if (!in) {
+          return std::nullopt;
+        }
+        std::string body((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+        return body;
+      },
+      [cache_path](const std::string& body) {
+        std::error_code ec;
+        std::filesystem::create_directories(
+            std::filesystem::path(*cache_path).parent_path(), ec);
+        std::ofstream out(*cache_path, std::ios::binary | std::ios::trunc);
+        if (out) {
+          out << body;
+        }
+      });
+  return client.refresh(orc::PluginIndexClient::default_index_url());
+}
+
+}  // namespace
+
+PluginIndexInfo ProjectPresenter::readPluginIndex() {
+  PluginIndexInfo result;
+  result.source_url = orc::PluginIndexClient::default_index_url();
+  result.host_abi_version = kStagePluginHostAbiVersion;
+
+  const orc::CurlHttpFetcher fetcher;
+  const auto refreshed = refresh_plugin_index(fetcher);
+
+  result.available = refreshed.success;
+  result.from_cache = refreshed.from_cache;
+  result.offline = refreshed.offline;
+  result.schema_version = refreshed.index.schema_version;
+  if (!refreshed.success) {
+    result.error_message = refreshed.error_message;
+    return result;
+  }
+
+  // Known locally-installed ids so the UI can mark entries already present.
+  std::set<std::string> installed_ids;
+  const auto persisted = orc::StagePluginRegistry::load_default();
+  for (const auto& entry : persisted.entries) {
+    if (!entry.plugin_id.empty()) {
+      installed_ids.insert(entry.plugin_id);
+    }
+  }
+
+  const std::string platform = host_platform_token();
+  for (const auto& entry : refreshed.index.entries) {
+    PluginIndexEntryInfo info;
+    info.id = entry.id;
+    info.display_name = entry.display_name;
+    info.description = entry.description;
+    info.maintainer = entry.maintainer;
+    info.license_spdx = entry.license_spdx;
+    info.source_repo_url = entry.source_repo_url;
+    info.tags = entry.tags;
+    for (const auto& artifact : entry.artifacts) {
+      info.artifacts.push_back(to_artifact_info(artifact));
+    }
+    const auto resolution = orc::PluginIndexClient::resolve_artifact(
+        entry, platform, kStagePluginHostAbiVersion);
+    info.has_compatible_build = resolution.found;
+    if (!resolution.found) {
+      info.compatibility_message = resolution.message;
+    }
+    info.already_installed = installed_ids.count(entry.id) > 0;
+    result.entries.push_back(std::move(info));
+  }
+
+  return result;
+}
+
+PluginRegistryMutationResult ProjectPresenter::installIndexedPlugin(
+    const std::string& plugin_id) {
+  PluginRegistryMutationResult result;
+  if (plugin_id.empty()) {
+    result.error_message = "Plugin id cannot be empty";
+    return result;
+  }
+
+  const orc::CurlHttpFetcher fetcher;
+  const auto refreshed = refresh_plugin_index(fetcher);
+  if (!refreshed.success) {
+    result.error_message = refreshed.error_message.empty()
+                               ? "The plugin index could not be loaded"
+                               : refreshed.error_message;
+    return result;
+  }
+
+  const orc::PluginIndexEntry* entry =
+      orc::PluginIndexClient::find(refreshed.index, plugin_id);
+  if (entry == nullptr) {
+    result.error_message =
+        "No plugin with id '" + plugin_id + "' is listed in the index";
+    return result;
+  }
+
+  const auto resolution = orc::PluginIndexClient::resolve_artifact(
+      *entry, host_platform_token(), kStagePluginHostAbiVersion);
+  if (!resolution.found) {
+    result.error_message = resolution.message;
+    return result;
+  }
+
+  PluginRegistryEntryInfo entry_info;
+  entry_info.plugin_id = entry->id;
+  entry_info.plugin_version = resolution.artifact.plugin_version;
+  entry_info.artifact_source = "github_release_asset";
+  entry_info.source_repo_url = entry->source_repo_url;
+  entry_info.release_asset_url = resolution.artifact.url;
+  entry_info.release_asset_name = asset_name_from_url(resolution.artifact.url);
+  entry_info.target_platform = host_platform_token();
+  entry_info.license_spdx = entry->license_spdx;
+  entry_info.required_host_abi = resolution.artifact.host_abi;
+  entry_info.sha256 = resolution.artifact.sha256;
+  entry_info.enabled = true;
+  // Installing from the index records the entry but does not grant trust:
+  // the user confirms trust explicitly before the binary is downloaded or
+  // loaded, consistent with the URL-add and hand-edited-registry paths.
+  entry_info.trust_state = "untrusted";
+
+  return addPluginRegistryEntry(entry_info);
 }
 
 PluginRegistryMutationResult ProjectPresenter::removePluginFromRegistry(
@@ -1249,19 +1433,24 @@ bool ProjectPresenter::triggerAllSinks(ProgressCallback progress_callback) {
 }
 
 bool ProjectPresenter::validateProject() const {
-  // Basic validation - could be expanded
-  if (project_.get()->get_nodes().empty()) {
+  const orc::Project* project = getProject();
+  if (!project || project->get_nodes().empty()) {
     return false;
   }
 
-  // Check for at least one source and one sink
+  // A valid project needs at least one source node and one sink node.
+  // Classify each node by its stored connectivity type; ANALYSIS_SINK counts
+  // as a sink (mirrors dag_executor / observation_cache).
   bool has_source = false;
   bool has_sink = false;
 
-  for (const auto& node : project_.get()->get_nodes()) {
-    // For now, skip detailed validation - just check we have nodes
-    has_source = true;  // Placeholder
-    has_sink = true;    // Placeholder
+  for (const auto& node : project->get_nodes()) {
+    if (node.node_type == orc::NodeType::SOURCE) {
+      has_source = true;
+    } else if (node.node_type == orc::NodeType::SINK ||
+               node.node_type == orc::NodeType::ANALYSIS_SINK) {
+      has_sink = true;
+    }
   }
 
   return has_source && has_sink;
@@ -1270,17 +1459,24 @@ bool ProjectPresenter::validateProject() const {
 std::vector<std::string> ProjectPresenter::getValidationErrors() const {
   std::vector<std::string> errors;
 
-  if (project_.get()->get_nodes().empty()) {
+  const orc::Project* project = getProject();
+  if (!project || project->get_nodes().empty()) {
     errors.push_back("Project has no nodes");
+    return errors;
   }
 
+  // Classify nodes the same way validateProject() does so the reported errors
+  // reflect real graph content.
   bool has_source = false;
   bool has_sink = false;
 
-  for (const auto& node : project_.get()->get_nodes()) {
-    // Placeholder validation
-    has_source = true;
-    has_sink = true;
+  for (const auto& node : project->get_nodes()) {
+    if (node.node_type == orc::NodeType::SOURCE) {
+      has_source = true;
+    } else if (node.node_type == orc::NodeType::SINK ||
+               node.node_type == orc::NodeType::ANALYSIS_SINK) {
+      has_sink = true;
+    }
   }
 
   if (!has_source) {

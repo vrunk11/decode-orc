@@ -10,10 +10,11 @@
 #include "burst_level_analysis_sink_deps.h"
 
 #include <orc/stage/field_id.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <cmath>
 #include <fstream>
+#include <memory>
 #include <utility>
 #include <variant>
 
@@ -44,6 +45,19 @@ BurstAnalysisComputeResult BurstLevelAnalysisSinkStageDeps::compute_and_analyze(
     logger_.warn("BurstLevelAnalysisSinkDeps: No frames available");
     result.total_frames = 0;
     return result;
+  }
+
+  // A single observer session is reused across every sampled frame (the burst
+  // level observer holds no cross-frame state; its observation field is read
+  // and cleared each iteration). A null service — e.g. an older host — leaves
+  // the handle null and the per-frame observation is skipped.
+  std::unique_ptr<IObserverHandle> burst_level_handle;
+  if (observation_service_) {
+    burst_level_handle = observation_service_->create_observer("burst_level");
+  } else {
+    logger_.warn(
+        "BurstLevelAnalysisSinkDeps: observation service unavailable; burst "
+        "level observations skipped");
   }
 
   // Bucket-sampled analysis: divide the recording into at most kDefaultBuckets
@@ -94,8 +108,10 @@ BurstAnalysisComputeResult BurstLevelAnalysisSinkStageDeps::compute_and_analyze(
               ? bucket_start
               : bucket_start + (s * (bucket_size - 1U)) / (n_samples - 1U);
 
-      burst_level_observer_.process_frame(*representation, fid,
+      if (burst_level_handle) {
+        burst_level_handle->process_frame(*representation, fid,
                                           observation_context);
+      }
 
       const FieldID frame_fid(fid * 2U);
       auto val = observation_context.get(frame_fid, "burst_level",

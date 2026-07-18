@@ -8,7 +8,7 @@
 
 #include "dec_rawsectortosector.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <utility>
 #include <vector>

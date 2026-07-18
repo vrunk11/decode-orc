@@ -9,7 +9,7 @@
 
 #include "stage_registry.h"
 
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -333,17 +333,9 @@ const std::vector<std::string>& StageRegistry::get_plugin_search_paths() const {
   return plugin_search_paths_;
 }
 
-const std::string& StageRegistry::get_plugin_registry_path() const {
-  return plugin_registry_path_;
-}
-
 const std::vector<StagePluginRegistryEntry>&
 StageRegistry::get_plugin_registry_entries() const {
   return plugin_registry_entries_;
-}
-
-std::string StageRegistry::get_default_transform_stage() {
-  return "dropout_correct";
 }
 
 void StageRegistry::clear() {

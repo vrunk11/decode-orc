@@ -12,8 +12,8 @@
 
 #include <orc/stage/field_id.h>
 #include <orc/stage/frame_id.h>
-#include <orc/stage/lru_cache.h>
 #include <orc/stage/node_id.h>
+#include <orc/support/lru_cache.h>
 
 #include <memory>
 #include <string>
@@ -60,16 +60,6 @@ class ObservationCache {
   bool get_field(NodeID node_id, FieldID field_id);
 
   /**
-   * @brief Get the total frame count at a node
-   *
-   * Renders frame 0 if necessary to determine count.
-   *
-   * @param node_id The node to query
-   * @return Frame count, or 0 if node cannot be rendered
-   */
-  size_t get_frame_count(NodeID node_id);
-
-  /**
    * @brief Update the DAG reference and clear cache
    * @param dag New DAG to use
    */
@@ -79,12 +69,6 @@ class ObservationCache {
    * @brief Clear all cached observations
    */
   void clear();
-
-  /**
-   * @brief Clear cached observations for a specific node
-   * @param node_id The node to clear
-   */
-  void clear_node(NodeID node_id);
 
   /**
    * @brief Get the observation context from the renderer
@@ -120,9 +104,6 @@ class ObservationCache {
 
   // LRU cache of successfully rendered frame IDs (max 500 entries)
   mutable LRUCache<CacheKey, bool, CacheKeyHash> cache_;
-
-  // LRU cache of frame counts per node (max 100 entries)
-  mutable LRUCache<NodeID, size_t> frame_count_cache_;
 
   // Render a single frame and cache it
   bool render_and_cache(NodeID node_id, FrameID frame_id);

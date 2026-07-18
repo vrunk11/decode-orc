@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <orc/stage/observers/observer.h>
+#include <observer.h>
 
 #include <vector>
 

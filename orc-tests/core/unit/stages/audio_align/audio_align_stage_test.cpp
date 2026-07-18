@@ -12,8 +12,8 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include <orc/stage/audio_channel_pair.h>
-#include <orc/stage/observation_context.h>
+#include <orc/stage/audio/audio_channel_pair.h>
+#include <orc/stage/observation/observation_context.h>
 
 #include <algorithm>
 #include <cstdint>

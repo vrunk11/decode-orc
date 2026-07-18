@@ -64,7 +64,6 @@ class WaveformMonitorWidget : public QWidget {
   // channel.  Must be called before setData() to take effect on the current
   // frame.
   void setYOnlyMode(bool y_only);
-  bool yOnlyMode() const { return y_only_mode_; }
 
   void setAmplitudeUnit(orc::AmplitudeDisplayUnit unit);
 

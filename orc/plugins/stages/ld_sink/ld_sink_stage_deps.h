@@ -10,7 +10,7 @@
 #ifndef ORC_CORE_LD_SINK_STAGE_DEPS_H
 #define ORC_CORE_LD_SINK_STAGE_DEPS_H
 
-#include <orc/stage/observation_context_interface.h>
+#include <orc/stage/observation/observation_context_interface.h>
 #include <orc/stage/triggerable_stage.h>
 #include <orc/stage/video_frame_representation.h>
 

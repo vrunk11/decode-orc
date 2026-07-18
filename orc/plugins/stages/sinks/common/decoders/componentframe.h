@@ -11,8 +11,8 @@
 #ifndef COMPONENTFRAME_H
 #define COMPONENTFRAME_H
 
-#include <orc/stage/logging.h>
 #include <orc/stage/orc_source_parameters.h>
+#include <orc/support/logging.h>
 
 #include <cassert>
 #include <cstdint>

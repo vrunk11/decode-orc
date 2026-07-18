@@ -10,8 +10,8 @@
 #include "frame_corruption_analysis.h"
 
 #include <frame_numbering.h>
-#include <orc/stage/logging.h>
 #include <orc/stage/video_frame_representation.h>
+#include <orc/support/logging.h>
 
 #include <algorithm>
 #include <cstdint>

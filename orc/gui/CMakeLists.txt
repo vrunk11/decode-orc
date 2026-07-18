@@ -149,6 +149,19 @@ set(ORC_GUI_LIB_SOURCES
     pluginmanagerdialog.cpp
     pluginmanagerdialog.h
 
+    # Plugin registry management model (presenter-boundary seam)
+    pluginmanagermodel.h
+
+    # Curated plugin index browse dialog and model
+    pluginbrowsemodel.cpp
+    pluginbrowsemodel.h
+    pluginbrowsedialog.cpp
+    pluginbrowsedialog.h
+
+    # Plugin trust confirmation dialog
+    plugintrustdialog.cpp
+    plugintrustdialog.h
+
     # Stage help dialog
     stage_help_dialog.cpp
     stage_help_dialog.h

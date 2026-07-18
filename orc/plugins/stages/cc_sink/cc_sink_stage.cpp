@@ -9,8 +9,9 @@
 
 #include "cc_sink_stage.h"
 
+#include <orc/abi/orc_plugin_services.h>
 #include <orc/plugin/orc_stage_runtime.h>
-#include <orc/stage/logging.h>
+#include <orc/support/logging.h>
 
 #include <memory>
 #include <stdexcept>
@@ -153,7 +154,8 @@ bool CCSinkStage::trigger(
 
     std::shared_ptr<ICCSinkStageDeps> deps = deps_override_;
     if (!deps) {
-      deps = std::make_shared<CCSinkStageDeps>();
+      deps = std::make_shared<CCSinkStageDeps>(
+          orc::plugin::get_observation_service());
     }
 
     deps->init(progress_callback_, &cancel_requested_);
