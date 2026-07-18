@@ -9,9 +9,9 @@
 
 #include "video_sink_stage.h"
 
+#include <orc/abi/orc_plugin_services.h>
 #include <orc/stage/cvbs_signal_constants.h>
-#include <orc/stage/observation/biphase_observer.h>
-#include <orc/stage/observation/closed_caption_observer.h>
+#include <orc/stage/observation/observation_service_interface.h>
 #include <orc/support/colour_preview_conversion.h>
 #include <orc/support/frame_line_util.h>
 #include <orc/support/logging.h>
@@ -535,7 +535,8 @@ std::vector<ParameterDescriptor> VideoSinkStage::get_parameter_descriptors(
           "embed_chapter_metadata",
           "Embed Chapter Metadata",
           "Write chapter markers from VBI data to output file (MKV/MP4/MOV "
-          "only; requires chapter numbers decoded by BiphaseObserver)",
+          "only; requires chapter numbers decoded by the \"biphase\" "
+          "observer)",
           ParameterType::BOOL,
           {{},
            {},
@@ -1082,8 +1083,19 @@ bool VideoSinkStage::trigger(
     if (!inputs.empty()) {
       auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
       if (vfr) {
-        // Create and run ClosedCaptionObserver to populate observations
-        auto cc_observer = std::make_shared<ClosedCaptionObserver>();
+        // Obtain a "closed_caption" observer session from the host service. The
+        // handle is reused across every frame so its cross-field pairing state
+        // accumulates. A null service (older host) skips CC collection.
+        IObservationService* obs_service =
+            orc::plugin::get_observation_service();
+        std::unique_ptr<IObserverHandle> cc_observer =
+            obs_service ? obs_service->create_observer("closed_caption")
+                        : nullptr;
+        if (!cc_observer) {
+          ORC_LOG_WARN(
+              "VideoSink: observation service unavailable; closed caption data "
+              "not collected");
+        }
 
         auto frame_range = vfr->frame_range();
         const size_t total_cc_frames = frame_range.count();
@@ -1096,7 +1108,7 @@ bool VideoSinkStage::trigger(
         size_t cc_frames_processed = 0;
         for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
              ++frame_id) {
-          if (vfr->has_frame(frame_id)) {
+          if (cc_observer && vfr->has_frame(frame_id)) {
             cc_observer->process_frame(*vfr, frame_id, observation_context);
           }
           ++cc_frames_processed;
@@ -1139,7 +1151,17 @@ bool VideoSinkStage::trigger(
     if (!inputs.empty()) {
       auto vfr = std::dynamic_pointer_cast<VideoFrameRepresentation>(inputs[0]);
       if (vfr) {
-        BiphaseObserver biphase_observer;
+        // Obtain a "biphase" observer session from the host service to decode
+        // VBI chapter numbers. A null service (older host) skips collection.
+        IObservationService* obs_service =
+            orc::plugin::get_observation_service();
+        std::unique_ptr<IObserverHandle> biphase_observer =
+            obs_service ? obs_service->create_observer("biphase") : nullptr;
+        if (!biphase_observer) {
+          ORC_LOG_WARN(
+              "VideoSink: observation service unavailable; VBI chapter data "
+              "not collected");
+        }
         auto frame_range = vfr->frame_range();
         const size_t total_frames = frame_range.count();
 
@@ -1150,8 +1172,9 @@ bool VideoSinkStage::trigger(
         size_t frames_processed = 0;
         for (FrameID frame_id = frame_range.first; frame_id <= frame_range.last;
              ++frame_id) {
-          if (vfr->has_frame(frame_id)) {
-            biphase_observer.process_frame(*vfr, frame_id, observation_context);
+          if (biphase_observer && vfr->has_frame(frame_id)) {
+            biphase_observer->process_frame(*vfr, frame_id,
+                                            observation_context);
           }
           ++frames_processed;
           if (progress_callback_) {

@@ -9,6 +9,7 @@
 
 #include "burst_level_analysis_sink_stage.h"
 
+#include <orc/abi/orc_plugin_services.h>
 #include <orc/support/logging.h>
 #include <orc/support/preview_helpers.h>
 
@@ -150,7 +151,8 @@ bool BurstLevelAnalysisSinkStage::trigger(
     ParsedConfig cfg = parse_config(parameters);
     std::shared_ptr<IBurstLevelAnalysisSinkStageDeps> deps = deps_override_;
     if (!deps) {
-      deps = std::make_shared<BurstLevelAnalysisSinkStageDeps>();
+      deps = std::make_shared<BurstLevelAnalysisSinkStageDeps>(
+          orc::plugin::get_observation_service());
     }
 
     deps->init(progress_callback_, &cancel_requested_);

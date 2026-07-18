@@ -15,7 +15,7 @@
 #include <orc/stage/cvbs_signal_constants.h>
 #include <orc/stage/field_id.h>
 #include <orc/stage/frame_id.h>
-#include <orc/stage/observation/closed_caption_observer.h>
+#include <orc/stage/observation/observation_context_interface.h>
 #include <orc/stage/video_frame_representation.h>
 #include <orc/support/eia608_decoder.h>
 #include <orc/support/logging.h>

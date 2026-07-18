@@ -10,7 +10,6 @@
 #ifndef ORC_CORE_CC_SINK_STAGE_DEPS_H
 #define ORC_CORE_CC_SINK_STAGE_DEPS_H
 
-#include <orc/stage/observation/closed_caption_observer.h>
 #include <orc/support/eia608_decoder.h>
 #include <orc/support/logging.h>
 
@@ -80,7 +79,6 @@ class CCSinkStageDeps : public ICCSinkStageDeps {
 
   TriggerProgressCallback progress_callback_;
   std::atomic<bool>* cancel_requested_{nullptr};
-  ClosedCaptionObserver closed_caption_observer_;
   EIA608Decoder eia608_decoder_;
   SpdlogLoggerAdapter logger_;
 };

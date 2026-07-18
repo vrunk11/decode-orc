@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "core_observation_service.h"
 #include "dag_executor.h"
 
 namespace orc {
@@ -164,6 +165,15 @@ class DAGFrameRenderer {
   LRUCache<CacheKey, FrameRenderResult, CacheKeyHash> render_cache_;
 
   std::unique_ptr<DAGExecutor> executor_;
+
+  // Host-owned observation service backing the standard observer pass. The
+  // registry it enumerates (see CoreObservationService) is the single source
+  // of truth for observer identity, so adding an observer to the registry
+  // extends the frame-render pass with no edit here. observer_ids_ caches the
+  // enumeration so available_observers() (which constructs each observer) runs
+  // once rather than per rendered frame.
+  CoreObservationService observation_service_;
+  std::vector<std::string> observer_ids_;
 
   mutable std::map<NodeID, size_t> node_index_;
   mutable bool node_index_valid_;

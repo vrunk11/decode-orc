@@ -10,11 +10,11 @@
 #ifndef ORC_CORE_SNR_ANALYSIS_SINK_DEPS_H
 #define ORC_CORE_SNR_ANALYSIS_SINK_DEPS_H
 
-#include <orc/stage/observation/black_psnr_observer.h>
-#include <orc/stage/observation/white_snr_observer.h>
+#include <orc/stage/observation/observation_service_interface.h>
 #include <orc/support/logging.h>
 
 #include <atomic>
+#include <memory>
 #include <utility>
 
 #include "snr_analysis_sink_deps_interface.h"
@@ -22,7 +22,11 @@
 namespace orc {
 class SNRAnalysisSinkStageDeps : public ISNRAnalysisSinkStageDeps {
  public:
-  SNRAnalysisSinkStageDeps() = default;
+  // observation_service may be null (e.g. an older host, or direct in-process
+  // construction in tests); compute_and_analyze() then skips observation and
+  // reports empty SNR statistics.
+  explicit SNRAnalysisSinkStageDeps(IObservationService* observation_service)
+      : observation_service_(observation_service) {}
 
   void init(TriggerProgressCallback progress_callback,
             std::atomic<bool>* cancel_requested) override;
@@ -64,10 +68,9 @@ class SNRAnalysisSinkStageDeps : public ISNRAnalysisSinkStageDeps {
     }
   };
 
+  IObservationService* observation_service_{nullptr};
   TriggerProgressCallback progress_callback_;
   std::atomic<bool>* cancel_requested_{nullptr};
-  WhiteSNRObserver white_snr_observer_;
-  BlackPSNRObserver black_psnr_observer_;
   SpdlogLoggerAdapter logger_;
 };
 }  // namespace orc

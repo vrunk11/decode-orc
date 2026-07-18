@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <memory>
 #include <utility>
 #include <variant>
 
@@ -45,6 +46,21 @@ SNRAnalysisComputeResult SNRAnalysisSinkStageDeps::compute_and_analyze(
     logger_.warn("SNRAnalysisSinkDeps: No frames available");
     result.total_frames = 0;
     return result;
+  }
+
+  // Observer sessions are created once and reused across every sampled frame
+  // (these observers hold no cross-frame state; the observation field is read
+  // and cleared each iteration). A null service — e.g. an older host — leaves
+  // the handles null and the per-frame observation is skipped.
+  std::unique_ptr<IObserverHandle> white_snr_handle;
+  std::unique_ptr<IObserverHandle> black_psnr_handle;
+  if (observation_service_) {
+    white_snr_handle = observation_service_->create_observer("white_snr");
+    black_psnr_handle = observation_service_->create_observer("black_psnr");
+  } else {
+    logger_.warn(
+        "SNRAnalysisSinkDeps: observation service unavailable; SNR "
+        "observations skipped");
   }
 
   // Bucket-sampled analysis: divide the recording into at most kDefaultBuckets
@@ -96,15 +112,15 @@ SNRAnalysisComputeResult SNRAnalysisSinkStageDeps::compute_and_analyze(
               ? bucket_start
               : bucket_start + (s * (bucket_size - 1U)) / (n_samples - 1U);
 
-      if (options.snr_mode == SNRAnalysisMode::WHITE ||
-          options.snr_mode == SNRAnalysisMode::BOTH) {
-        white_snr_observer_.process_frame(*representation, fid,
-                                          observation_context);
+      if (white_snr_handle && (options.snr_mode == SNRAnalysisMode::WHITE ||
+                               options.snr_mode == SNRAnalysisMode::BOTH)) {
+        white_snr_handle->process_frame(*representation, fid,
+                                        observation_context);
       }
-      if (options.snr_mode == SNRAnalysisMode::BLACK ||
-          options.snr_mode == SNRAnalysisMode::BOTH) {
-        black_psnr_observer_.process_frame(*representation, fid,
-                                           observation_context);
+      if (black_psnr_handle && (options.snr_mode == SNRAnalysisMode::BLACK ||
+                                options.snr_mode == SNRAnalysisMode::BOTH)) {
+        black_psnr_handle->process_frame(*representation, fid,
+                                         observation_context);
       }
 
       const FieldID frame_fid(fid * 2U);
