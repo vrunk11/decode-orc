@@ -26,10 +26,10 @@ namespace cli {
  * name, its key=value parameters, and an optional set of output link labels.
  */
 struct FilterStage {
-  std::string stage_name;                       ///< e.g. "tbc_source"
-  std::map<std::string, std::string> params;    ///< key -> value
-  std::vector<std::string> input_labels;        ///< leading [labels]
-  std::vector<std::string> output_labels;       ///< trailing [labels]
+  std::string stage_name;                     ///< e.g. "tbc_source"
+  std::map<std::string, std::string> params;  ///< key -> value
+  std::vector<std::string> input_labels;      ///< leading [labels]
+  std::vector<std::string> output_labels;     ///< trailing [labels]
 };
 
 /**

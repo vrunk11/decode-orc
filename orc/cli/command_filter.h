@@ -38,10 +38,10 @@ namespace cli {
  * used, in which case it becomes the saved project's name.
  */
 struct FilterOptions {
-  std::string filtergraph;    ///< Graph-string mode: full filtergraph.
-  std::string input_stages;   ///< Triad mode: input (source) stage(s).
+  std::string filtergraph;     ///< Graph-string mode: full filtergraph.
+  std::string input_stages;    ///< Triad mode: input (source) stage(s).
   std::string filters_stages;  ///< Triad mode: processing stage(s).
-  std::string output_stages;  ///< Triad mode: output (sink) stage(s).
+  std::string output_stages;   ///< Triad mode: output (sink) stage(s).
 
   /// When non-empty, save the assembled project to this .orcprj path
   /// instead of running it (e.g. for later editing in the GUI, or reuse
