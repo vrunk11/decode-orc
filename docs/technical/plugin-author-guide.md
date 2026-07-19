@@ -223,6 +223,33 @@ None.
 ```
 
 Keep this file in sync with your stage whenever parameters, tools, or behaviour
+
+### Optional: `## Examples`
+
+If your stage's `instructions.md` includes a section headed exactly
+`## Examples`, `orc-cli plugins describe <stage>` renders it separately from
+the rest of the text, as a numbered list of ready-to-run command lines —
+similar to `ffmpeg -h filter=NAME`. Each fenced code block in the section
+becomes one example; the paragraph of text immediately before the fence
+becomes its one-line description:
+
+````markdown
+## Examples
+
+Decode a composite capture to MP4:
+
+```bash
+orc-cli --input "my_filter=input_path=capture.tbc" --output "video_sink=output_path=out.mp4"
+```
+````
+
+This is a pure documentation convention with no SDK or ABI involvement —
+`get_instructions()` already returns arbitrary Markdown, so existing plugins
+are unaffected whether or not they add this section. Multiple fenced blocks
+under the same heading become multiple numbered examples. Anything outside
+the fenced blocks is prose and is not parsed further, so feel free to write
+normal explanatory text alongside the commands.
+
 change — this is the same non-negotiable rule bundled stages follow
 (AGENTS.md §9.1).
 

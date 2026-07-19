@@ -9,12 +9,16 @@
 
 #include "command_plugins.h"
 
+#include <algorithm>
 #include <cctype>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "markdown_examples.h"
 #include "project_presenter.h"
+#include "stage_category.h"
 
 namespace orc {
 namespace cli {
@@ -27,6 +31,18 @@ void print_plugins_usage(const char* program_name) {
   std::cerr << "Subcommands:\n";
   std::cerr << "  list                           Show registry entries and "
                "loaded plugins\n";
+  std::cerr << "  stages [--full]                List all available stages "
+               "(core + loaded plugins), by role\n";
+  std::cerr << "  inputs [--full]                List only input (source) "
+               "stages\n";
+  std::cerr << "  outputs [--full]               List only output (sink) "
+               "stages\n";
+  std::cerr << "  filters [--full]               List only processing "
+               "stages\n";
+  std::cerr << "                                 (--full shows every "
+               "parameter inline, like 'describe')\n";
+  std::cerr << "  describe <stage name>          Show one stage's parameters "
+               "in detail\n";
   std::cerr << "  add <path> [options]           Add a plugin to the "
                "persistent registry\n";
   std::cerr << "  remove <id>                    Remove a plugin from the "
@@ -108,6 +124,245 @@ int cmd_plugins_list() {
     }
   }
 
+  return 0;
+}
+
+/// Print one stage's summary line (label, role, stage name, category, owning
+/// plugin). Used by both the brief and --full listings.
+void print_stage_line(const orc::presenters::StageInfo& stage) {
+  std::cout << "  " << stage.display_name << "  ["
+            << category_label(category_of(stage)) << "]\n";
+  std::cout << "    stage name: " << stage.name
+            << "   (use this in --input/--filters/--output/--filter)\n";
+  if (!stage.category.empty()) {
+    std::cout << "    category:   " << stage.category << "\n";
+  }
+  std::cout << "    plugin:     "
+            << (stage.is_runtime_plugin_stage
+                    ? (stage.owning_plugin_id.empty() ? "<unknown>"
+                                                      : stage.owning_plugin_id)
+                    : "<core>")
+            << "\n";
+}
+
+/// Print one stage's parameters, compactly (one line per parameter). Used
+/// under --full listings and shares its formatting logic with `describe`,
+/// which prints the same information at greater length for a single stage.
+void print_stage_parameters_compact(orc::presenters::ProjectPresenter& presenter,
+                                   const std::string& stage_name) {
+  const auto params = presenter.getStageParameters(stage_name);
+  if (params.empty()) {
+    std::cout << "    (no parameters)\n";
+    return;
+  }
+  for (const auto& param : params) {
+    std::cout << "    - " << param.name;
+    if (!param.display_name.empty() && param.display_name != param.name) {
+      std::cout << " (" << param.display_name << ")";
+    }
+    std::cout << ": " << orc::parameter_util::type_name(param.type)
+              << (param.constraints.required ? ", required" : ", optional");
+    if (param.constraints.default_value.has_value()) {
+      std::cout << ", default="
+                << orc::parameter_util::value_to_string(
+                       *param.constraints.default_value);
+    }
+    std::cout << "\n";
+  }
+}
+
+/// Print a stage's "## Examples" section (if it has one) in a consistent,
+/// prominently formatted way: a numbered list of description + copy-pasteable
+/// command. Authored by whoever maintains the stage — core maintainer or
+/// third-party plugin author — as plain Markdown in instructions.md; see
+/// markdown_examples.h for the exact convention. Prints nothing if the
+/// stage's instructions have no such section.
+void print_examples(const MarkdownExamplesResult& examples) {
+  if (!examples.found || examples.examples.empty()) {
+    return;
+  }
+  std::cout << "\nExamples:\n";
+  for (size_t i = 0; i < examples.examples.size(); ++i) {
+    const auto& example = examples.examples[i];
+    std::cout << "\n  " << (i + 1) << ". ";
+    if (!example.description.empty()) {
+      std::cout << example.description << "\n";
+      std::cout << "     ";
+    }
+    // Indent every line of a multi-line command so it stays visually
+    // attached to its description under the numbered entry.
+    std::string indented;
+    for (char c : example.command) {
+      indented += c;
+      if (c == '\n') {
+        indented += "     ";
+      }
+    }
+    std::cout << "$ " << indented << "\n";
+  }
+}
+
+
+/// `filters`: list every stage (optionally restricted to one category),
+/// either as a brief summary or, with `full`, with every parameter inlined
+/// (like `describe`, but for every listed stage at once).
+int list_stages(std::optional<StageCategory> filter_category, bool full) {
+  auto stages = orc::presenters::ProjectPresenter::getAllStages();
+
+  if (filter_category) {
+    stages.erase(std::remove_if(stages.begin(), stages.end(),
+                                [&](const auto& s) {
+                                  return category_of(s) != *filter_category;
+                                }),
+                 stages.end());
+  }
+
+  if (stages.empty()) {
+    std::cout << "No stages"
+              << (filter_category ? std::string(" in category '") +
+                                        category_label(*filter_category) + "'"
+                                  : "")
+              << ".\n";
+    return 0;
+  }
+
+  std::sort(stages.begin(), stages.end(), [](const auto& a, const auto& b) {
+    auto role_rank = [](const auto& s) {
+      if (s.is_source) return 0;
+      if (s.is_sink) return 1;
+      return 2;
+    };
+    if (role_rank(a) != role_rank(b)) return role_rank(a) < role_rank(b);
+    return a.display_name < b.display_name;
+  });
+
+  const std::string noun = filter_category ? category_label(*filter_category)
+                                           : std::string("stages");
+  std::cout << "Available " << noun << " (" << stages.size() << "):\n\n";
+
+  orc::presenters::ProjectPresenter presenter;  // only needed for --full
+  for (const auto& stage : stages) {
+    print_stage_line(stage);
+    if (full) {
+      print_stage_parameters_compact(presenter, stage.name);
+    }
+    std::cout << "\n";
+  }
+
+  if (!full) {
+    std::cout << "Run 'orc-cli plugins describe <stage name>' for parameter "
+                 "details on one stage, or add --full to this command to "
+                 "show every stage's parameters inline.\n";
+  }
+  return 0;
+}
+
+/// Parse a bare "--full" flag from a subcommand's own argv (argv[0] is the
+/// subcommand name itself, e.g. "stages").
+bool parse_full_flag(int argc, char* argv[]) {
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "--full") {
+      return true;
+    }
+  }
+  return false;
+}
+
+int cmd_plugins_stages(int argc, char* argv[]) {
+  return list_stages(std::nullopt, parse_full_flag(argc, argv));
+}
+
+int cmd_plugins_inputs(int argc, char* argv[]) {
+  return list_stages(StageCategory::kInput, parse_full_flag(argc, argv));
+}
+
+int cmd_plugins_outputs(int argc, char* argv[]) {
+  return list_stages(StageCategory::kOutput, parse_full_flag(argc, argv));
+}
+
+int cmd_plugins_filters(int argc, char* argv[]) {
+  return list_stages(StageCategory::kFilters, parse_full_flag(argc, argv));
+}
+
+int cmd_plugins_describe(int argc, char* argv[]) {
+  // argv[0] == "describe"
+  if (argc < 2) {
+    std::cerr << "Usage: orc-cli plugins describe <stage name>\n";
+    std::cerr << "Run 'orc-cli plugins stages' to see stage names.\n";
+    return 1;
+  }
+  const std::string stage_name = argv[1];
+
+  orc::presenters::ProjectPresenter presenter;
+  if (!presenter.stageExists(stage_name)) {
+    std::cerr << "Error: Unknown stage '" << stage_name << "'\n";
+    std::cerr << "Run 'orc-cli plugins stages' to see available stages.\n";
+    return 1;
+  }
+
+  // Find this stage's StageInfo for its label and role.
+  const auto all_stages = orc::presenters::ProjectPresenter::getAllStages();
+  const auto info_it =
+      std::find_if(all_stages.begin(), all_stages.end(),
+                   [&](const auto& s) { return s.name == stage_name; });
+
+  if (info_it != all_stages.end()) {
+    std::cout << info_it->display_name << "  ["
+              << category_label(category_of(*info_it)) << "]\n";
+    std::cout << "stage name: " << stage_name << "\n";
+  } else {
+    std::cout << "Stage: " << stage_name << "\n";
+  }
+
+  const std::string instructions = presenter.getStageInstructions(stage_name);
+  const MarkdownExamplesResult examples = extract_examples_section(instructions);
+  if (!instructions.empty()) {
+    // The "## Examples" section (if any) is rendered separately, below, in a
+    // consistent numbered format rather than as raw Markdown — remove it
+    // here so it isn't shown twice.
+    const std::string prose = examples.found
+                                  ? remove_examples_section(instructions)
+                                  : instructions;
+    std::cout << "\n" << prose << "\n";
+  }
+  print_examples(examples);
+
+  const auto params = presenter.getStageParameters(stage_name);
+  if (params.empty()) {
+    std::cout << "\nThis stage takes no parameters.\n";
+    return 0;
+  }
+
+  std::cout << "\nParameters (" << params.size() << "):\n\n";
+  for (const auto& param : params) {
+    std::cout << "  " << param.name;
+    if (!param.display_name.empty() && param.display_name != param.name) {
+      std::cout << " (" << param.display_name << ")";
+    }
+    std::cout << "\n";
+    std::cout << "    type:     " << orc::parameter_util::type_name(param.type)
+              << "\n";
+    std::cout << "    required: " << (param.constraints.required ? "yes" : "no")
+              << "\n";
+    if (param.constraints.default_value.has_value()) {
+      std::cout << "    default:  "
+                << orc::parameter_util::value_to_string(
+                       *param.constraints.default_value)
+                << "\n";
+    }
+    if (!param.constraints.allowed_strings.empty()) {
+      std::cout << "    allowed:  ";
+      for (size_t i = 0; i < param.constraints.allowed_strings.size(); ++i) {
+        if (i > 0) std::cout << ", ";
+        std::cout << param.constraints.allowed_strings[i];
+      }
+      std::cout << "\n";
+    }
+    if (!param.description.empty()) {
+      std::cout << "    " << param.description << "\n";
+    }
+    std::cout << "\n";
+  }
   return 0;
 }
 
@@ -409,6 +664,26 @@ int plugins_command(int argc, char* argv[]) {
 
   if (subcommand == "list") {
     return cmd_plugins_list();
+  }
+
+  if (subcommand == "stages") {
+    return cmd_plugins_stages(argc - 1, argv + 1);
+  }
+
+  if (subcommand == "inputs") {
+    return cmd_plugins_inputs(argc - 1, argv + 1);
+  }
+
+  if (subcommand == "outputs") {
+    return cmd_plugins_outputs(argc - 1, argv + 1);
+  }
+
+  if (subcommand == "filters") {
+    return cmd_plugins_filters(argc - 1, argv + 1);
+  }
+
+  if (subcommand == "describe") {
+    return cmd_plugins_describe(argc - 1, argv + 1);
   }
 
   if (subcommand == "add") {

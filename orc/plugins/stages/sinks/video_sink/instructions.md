@@ -110,6 +110,28 @@ FFmpeg mode only. Embed closed captions as mov_text subtitles. MP4/MOV output on
 ### embed_chapter_metadata (bool)
 FFmpeg mode only. Write chapter markers derived from VBI data into the output file. Default: `false`.
 
+## Examples
+
+Decode a TBC capture to H.264 MP4 with default settings:
+
+```bash
+orc-cli --input "tbc_source=input_path=capture.tbc" --output "video_sink=output_path=capture.mp4"
+```
+
+Export a PAL capture as lossless FFV1 in an MKV container:
+
+```bash
+orc-cli --input "tbc_source=input_path=capture.tbc" \
+        --output "video_sink=output_path=capture.mkv:ffmpeg_format=mkv-ffv1"
+```
+
+Export raw 16-bit planar YUV for an external tool:
+
+```bash
+orc-cli --input "tbc_source=input_path=capture.tbc" \
+        --output "video_sink=output_path=capture.yuv:output_mode=raw:raw_format=yuv"
+```
+
 ## Tools
 
 ### FFmpeg Preset Config

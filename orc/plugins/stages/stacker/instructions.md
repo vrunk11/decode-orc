@@ -41,6 +41,16 @@ Method used to combine audio samples from multiple sources. Values: `Disabled`, 
 ### efm_stacking (string)
 Method used to combine EFM t-values from multiple sources. Values: `Disabled`, `Mean`, `Median`. Default: `Mean`. When `Disabled`, EFM from the source with the fewest dropouts is used.
 
+## Examples
+
+Combine three aligned captures of the same disc, using the default Auto stacking mode:
+
+```bash
+orc-cli --input "tbc_source=input_path=a.tbc[a]; tbc_source=input_path=b.tbc[b]; tbc_source=input_path=c.tbc[c]" \
+        --filters "[a][b][c] stacker" \
+        --output video_sink
+```
+
 ## Tools
 
 This stage has no interactive tools. A Stacker Configuration stage report is generated automatically after execution.

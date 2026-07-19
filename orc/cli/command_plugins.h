@@ -17,6 +17,9 @@ namespace cli {
  *
  * Handles plugin registry management commands:
  *   list               - Print all registry entries and loaded plugins
+ *   stages             - List all available stages (core + loaded plugins)
+ *   describe <stage>   - Show a stage's parameters (name, type, required,
+ *                        default, allowed values)
  *   add <path> ...     - Register a new plugin in the persistent registry
  *   remove <id>        - Remove a plugin from the persistent registry
  *   enable <id>        - Enable a registered plugin

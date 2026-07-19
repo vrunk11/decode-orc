@@ -11,14 +11,17 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "command_filter.h"
 #include "command_plugins.h"
 #include "command_process.h"
 #include "crash_handler.h"
+#include "filtergraph_export.h"
 #include "logging.h"
 #include "project_presenter.h"
 #include "version.h"
@@ -37,15 +40,60 @@ using namespace orc;  // NOLINT(google-build-using-namespace)
  */
 void print_usage(const char* program_name) {
   std::cerr << "Usage: " << program_name << " <project-file> [options]\n";
+  std::cerr << "       " << program_name
+            << " --filter <graph> | --input/--filters/--output <...>\n";
   std::cerr << "       " << program_name << " plugins <subcommand> [options]\n";
   std::cerr << "\n";
   std::cerr << "Commands:\n";
   std::cerr << "  --process                      Process the whole DAG chain "
                "(trigger all sinks)\n";
+  std::cerr << "  --filter GRAPH                 Build and process a DAG from "
+               "an ffmpeg-style\n";
+  std::cerr << "                                 filtergraph string (no "
+               ".orcprj file)\n";
+  std::cerr << "  --filter-file FILE             Read the filtergraph from "
+               "FILE ('-' for stdin)\n";
+  std::cerr << "  --input GRAPH                  Input (source) stage(s), for "
+               "the input/filters/\n";
+  std::cerr << "                                 output triad — an "
+               "alternative to --filter\n";
+  std::cerr << "  --filters GRAPH                Processing stage(s), for the "
+               "triad\n";
+  std::cerr << "  --output GRAPH                 Output (sink) stage(s), for "
+               "the triad\n";
+  std::cerr << "\n";
+  std::cerr << "Export (instead of running):\n";
+  std::cerr << "  --export-project FILE          Save the assembled filtergraph "
+               "as a .orcprj\n";
+  std::cerr << "                                 file instead of running it "
+               "(for the GUI, or\n";
+  std::cerr << "                                 later reuse with --process). "
+               "With --filter/\n";
+  std::cerr << "                                 --input/--filters/--output "
+               "only.\n";
+  std::cerr << "  --to-filter                    Print the equivalent "
+               "--filter command instead\n";
+  std::cerr << "                                 of running. Works with a "
+               "project file too (to\n";
+  std::cerr << "                                 get the CLI command for an "
+               "existing .orcprj).\n";
+  std::cerr << "Note: video format and source signal type are detected "
+               "automatically\n";
+  std::cerr << "from the stage modules used, and never need to be specified.\n";
   std::cerr << "\n";
   std::cerr << "Plugin Management:\n";
   std::cerr << "  plugins list                   List registry entries and "
                "loaded plugins\n";
+  std::cerr << "  plugins stages [--full]        List all available stages, "
+               "by role\n";
+  std::cerr << "  plugins inputs [--full]        List only input (source) "
+               "stages\n";
+  std::cerr << "  plugins outputs [--full]       List only output (sink) "
+               "stages\n";
+  std::cerr << "  plugins filters [--full]       List only processing "
+               "stages\n";
+  std::cerr << "  plugins describe <stage>       Show one stage's parameters "
+               "in detail\n";
   std::cerr << "  plugins add <path> [options]   Add a plugin to the "
                "persistent registry\n";
   std::cerr << "  plugins remove <id>            Remove a plugin from the "
@@ -75,6 +123,20 @@ void print_usage(const char* program_name) {
   std::cerr << "  " << program_name << " project.orcprj --process\n";
   std::cerr << "  " << program_name
             << " project.orcprj --process --log-level debug\n";
+  std::cerr << "  " << program_name
+            << " --filter \"tbc_source=input_path=a.tbc, video_sink\"\n";
+  std::cerr << "  " << program_name
+            << " --input tbc_source=input_path=a.tbc \\\n";
+  std::cerr << "      --filters hvd_chroma_decoder --output "
+               "video_sink=output_path=a.mp4\n";
+  std::cerr << "  " << program_name
+            << " --input tbc_source=input_path=a.tbc --output video_sink "
+               "--export-project a.orcprj\n";
+  std::cerr << "  " << program_name << " project.orcprj --to-filter\n";
+  std::cerr << "  " << program_name << " plugins stages\n";
+  std::cerr << "  " << program_name << " plugins inputs\n";
+  std::cerr << "  " << program_name << " plugins outputs --full\n";
+  std::cerr << "  " << program_name << " plugins describe tbc_source\n";
   std::cerr << "  " << program_name << " plugins list\n";
   std::cerr << "  " << program_name
             << " plugins add /path/to/libmyplugin.so --id com.example.my "
@@ -99,6 +161,23 @@ int main(int argc, char* argv[]) {
     std::string log_level = "info";
     std::string log_file;
     bool safe_core_plugins = false;
+
+    // Filtergraph mode: either a full graph string, or the input/filters/
+    // output triad. Mutually exclusive with each other and with a project
+    // file. There is deliberately no video-format/source-format/project-name
+    // option here — those are auto-detected from the stages used.
+    std::string filtergraph;
+    std::string filtergraph_file;
+    std::string input_stages;
+    std::string filters_stages;
+    std::string output_stages;
+    bool graph_string_provided = false;  // --filter / --filter-file
+    bool triad_provided = false;         // --input / --filters / --output
+
+    // Export options: instead of running the assembled filtergraph, save
+    // it as a project file, or print its canonical --filter form.
+    std::string export_project_path;
+    bool print_as_filter = false;
 
     // Command flags
     bool do_process = false;
@@ -179,6 +258,25 @@ int main(int argc, char* argv[]) {
         // Handled before dispatch.
       } else if (arg == "--process") {
         do_process = true;
+      } else if (arg == "--filter" && i + 1 < argc) {
+        filtergraph = argv[++i];
+        graph_string_provided = true;
+      } else if (arg == "--filter-file" && i + 1 < argc) {
+        filtergraph_file = argv[++i];
+        graph_string_provided = true;
+      } else if (arg == "--input" && i + 1 < argc) {
+        input_stages = argv[++i];
+        triad_provided = true;
+      } else if (arg == "--filters" && i + 1 < argc) {
+        filters_stages = argv[++i];
+        triad_provided = true;
+      } else if (arg == "--output" && i + 1 < argc) {
+        output_stages = argv[++i];
+        triad_provided = true;
+      } else if (arg == "--export-project" && i + 1 < argc) {
+        export_project_path = argv[++i];
+      } else if (arg == "--to-filter") {
+        print_as_filter = true;
       } else if (arg[0] != '-') {
         // Positional argument - project file
         if (project_path.empty()) {
@@ -195,18 +293,73 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    // Check if project file was provided
-    if (project_path.empty()) {
-      std::cerr << "Error: No project file specified\n\n";
-      print_usage(argv[0]);
-      return 1;
-    }
+    const bool filtergraph_mode = graph_string_provided || triad_provided;
 
-    // Check if at least one command was specified
-    if (!do_process) {
-      std::cerr << "Error: No command specified. You must use --process\n\n";
-      print_usage(argv[0]);
-      return 1;
+    if (filtergraph_mode) {
+      if (graph_string_provided && triad_provided) {
+        std::cerr << "Error: --filter/--filter-file cannot be combined with "
+                     "--input/--filters/--output\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
+      if (!project_path.empty()) {
+        std::cerr << "Error: --filter/--input/--filters/--output cannot be "
+                     "combined with a project file\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
+      if (do_process) {
+        std::cerr << "Error: --process is only for a project file and "
+                     "cannot be combined with --filter/--input/--filters/"
+                     "--output\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
+      if (graph_string_provided && !filtergraph.empty() &&
+          !filtergraph_file.empty()) {
+        std::cerr << "Error: use either --filter or --filter-file, not both\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
+      if (triad_provided && input_stages.empty() && filters_stages.empty() &&
+          output_stages.empty()) {
+        std::cerr << "Error: --input, --filters and --output were all empty\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
+      if (print_as_filter && !export_project_path.empty()) {
+        std::cerr << "Error: --to-filter and --export-project cannot be "
+                     "combined\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
+    } else {
+      // Check if project file was provided
+      if (project_path.empty()) {
+        std::cerr << "Error: No project file specified\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
+      if (!export_project_path.empty()) {
+        std::cerr << "Error: --export-project only makes sense with "
+                     "--filter/--input/--filters/--output (a project file is "
+                     "already a project)\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
+      if (do_process && print_as_filter) {
+        std::cerr << "Error: --process and --to-filter cannot be combined\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
+
+      // Check if at least one command was specified
+      if (!do_process && !print_as_filter) {
+        std::cerr << "Error: No command specified. You must use --process "
+                     "or --to-filter\n\n";
+        print_usage(argv[0]);
+        return 1;
+      }
     }
 
     // Initialize logging - both app logger and core logger
@@ -231,9 +384,14 @@ int main(int argc, char* argv[]) {
     crash_config.auto_upload_info = true;
 
     // Add callback for custom application state
-    crash_config.custom_info_callback = [&project_path]() -> std::string {
+    crash_config.custom_info_callback = [&project_path,
+                                         filtergraph_mode]() -> std::string {
       std::ostringstream info;
-      info << "Project file: " << project_path << "\n";
+      if (filtergraph_mode) {
+        info << "Mode: filtergraph\n";
+      } else {
+        info << "Project file: " << project_path << "\n";
+      }
       info << "Working directory: " << fs::current_path().string() << "\n";
       return info.str();
     };
@@ -246,10 +404,59 @@ int main(int argc, char* argv[]) {
     int exit_code = 0;
 
     try {
-      cli::ProcessOptions options;
-      options.project_path = project_path;
+      if (filtergraph_mode) {
+        cli::FilterOptions options;
 
-      exit_code = cli::process_command(options);
+        if (graph_string_provided) {
+          // Resolve the filtergraph source (inline string, file, or stdin).
+          std::string graph = filtergraph;
+          if (!filtergraph_file.empty()) {
+            if (filtergraph_file == "-") {
+              std::ostringstream buffer;
+              buffer << std::cin.rdbuf();
+              graph = buffer.str();
+            } else {
+              std::ifstream in(filtergraph_file);
+              if (!in) {
+                ORC_LOG_ERROR("Cannot open filtergraph file: {}",
+                              filtergraph_file);
+                cleanup_crash_handler();
+                return 1;
+              }
+              std::ostringstream buffer;
+              buffer << in.rdbuf();
+              graph = buffer.str();
+            }
+          }
+          options.filtergraph = graph;
+        } else {
+          options.input_stages = input_stages;
+          options.filters_stages = filters_stages;
+          options.output_stages = output_stages;
+        }
+        options.export_project_path = export_project_path;
+        options.print_as_filter = print_as_filter;
+
+        exit_code = cli::filter_command(options);
+      } else if (print_as_filter) {
+        // --to-filter on an existing .orcprj: load it and print its
+        // canonical --filter equivalent, using the same serializer a GUI
+        // "copy as CLI command" feature would use.
+        presenters::ProjectPresenter presenter;
+        if (!presenter.loadProject(project_path)) {
+          ORC_LOG_ERROR("Failed to load project: {}", project_path);
+          exit_code = 1;
+        } else {
+          std::cout << presenters::export_project_as_filtergraph(presenter)
+                    << "\n";
+          exit_code = 0;
+        }
+      } else {
+        cli::ProcessOptions options;
+        options.project_path = project_path;
+
+        exit_code = cli::process_command(options);
+      }
     } catch (const UserDataError& e) {
       ORC_LOG_WARN("Processing failed: {}", e.what());
       std::cerr << "\nWARNING: " << e.what() << "\n";

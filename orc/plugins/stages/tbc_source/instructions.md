@@ -18,6 +18,20 @@ Add TBC Source as the first stage in any pipeline that starts from ld-decode or 
 | EFM Data File Path (`efm_path`) | Path to the EFM t-value `.efm` sidecar. |
 | AC3 RF Symbols File Path (`ac3rf_path`) | Path to the AC3 RF symbols `.ac3sym` sidecar. |
 
+## Examples
+
+Composite capture:
+
+```bash
+orc-cli --input "tbc_source=input_path=capture.tbc" --output video_sink
+```
+
+Y/C (S-Video) capture, luma and chroma files together:
+
+```bash
+orc-cli --input "tbc_source=y_path=capture.tbcy:c_path=capture.tbcc" --output video_sink
+```
+
 ## What it does
 
 At execute time the stage opens the `.tbc.db` metadata database (falling back to legacy `.tbc.json` metadata produced by older ld-decode/vhs-decode versions) and reads the video system, field dimensions, and signal levels. It then selects the correct converter (PAL composite, PAL Y/C, NTSC composite, NTSC Y/C, or PAL-M composite) and reads each pair of TBC fields, remapping the 16-bit ld-decode levels to the 10-bit CVBS domain. The resulting full-frame buffers are assembled in order and returned as a VideoFrameRepresentation.
