@@ -514,4 +514,24 @@ if(BUILD_UNIT_TESTS)
     set_tests_properties(CLI.MarkdownExamplesUnit PROPERTIES
         LABELS "unit;cli"
     )
+
+    # Pure unit test for the pasted-CLI-command extractor (no orc-core
+    # dependency; the .cpp lives in orc/presenters so orc-gui can share it).
+    add_executable(orc-cli-command-extractor-test
+        cli_command_extractor_test.cpp
+        ${CMAKE_SOURCE_DIR}/orc/presenters/src/cli_command_extractor.cpp
+    )
+    target_include_directories(orc-cli-command-extractor-test PRIVATE
+        ${CMAKE_SOURCE_DIR}/orc/presenters/include
+    )
+    target_link_libraries(orc-cli-command-extractor-test PRIVATE
+        GTest::gtest_main
+    )
+    add_test(
+        NAME CLI.CommandExtractorUnit
+        COMMAND $<TARGET_FILE:orc-cli-command-extractor-test>
+    )
+    set_tests_properties(CLI.CommandExtractorUnit PROPERTIES
+        LABELS "unit;cli"
+    )
 endif()

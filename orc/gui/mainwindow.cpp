@@ -29,6 +29,9 @@
 #include "orcgraphicsview.h"
 #include "pluginmanagerdialog.h"
 #include "presenters/include/analysis_presenter.h"
+#include "presenters/include/cli_command_extractor.h"
+#include "presenters/include/filtergraph_export.h"
+#include "presenters/include/filtergraph_import.h"
 #include "presenters/include/ntsc_observation_presenter.h"
 #include "presenters/include/project_presenter.h"
 #include "presenters/include/render_presenter.h"
@@ -58,6 +61,7 @@ class ObservationContext;
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QClipboard>
 #include <QCloseEvent>
 #include <QColor>
 #include <QComboBox>
@@ -846,6 +850,17 @@ void MainWindow::setupMenus() {
 
   file_menu->addSeparator();
 
+  copy_as_cli_action_ = file_menu->addAction("Copy as CLI &Command");
+  copy_as_cli_action_->setEnabled(false);
+  connect(copy_as_cli_action_, &QAction::triggered, this,
+          &MainWindow::onCopyAsCliCommand);
+
+  paste_cli_action_ = file_menu->addAction("&Paste CLI Command...");
+  connect(paste_cli_action_, &QAction::triggered, this,
+          &MainWindow::onPasteCliCommand);
+
+  file_menu->addSeparator();
+
   auto* quit_action = file_menu->addAction("&Quit");
   quit_action->setShortcut(QKeySequence::Quit);
   connect(quit_action, &QAction::triggered, this, &QWidget::close);
@@ -1168,6 +1183,111 @@ void MainWindow::onEditProject() {
 
     statusBar()->showMessage("Project properties updated", 3000);
   }
+}
+
+void MainWindow::onCopyAsCliCommand() {
+  const std::string command =
+      orc::presenters::export_project_as_filtergraph(*project_.presenter());
+
+  if (command.empty()) {
+    QMessageBox::information(this, "Copy as CLI Command",
+                             "The project has no stages to export yet.");
+    return;
+  }
+
+  QApplication::clipboard()->setText(
+      QString("orc-cli --filter \"%1\"").arg(QString::fromStdString(command)));
+
+  ORC_LOG_INFO("Copied project as CLI command ({} stage(s) worth, {} chars)",
+               project_.presenter()->getNodes().size(), command.size());
+  statusBar()->showMessage("Copied as CLI command", 3000);
+}
+
+void MainWindow::onPasteCliCommand() {
+  bool ok = false;
+  const QString text = QInputDialog::getMultiLineText(
+      this, "Paste CLI Command",
+      "Paste a filtergraph, or a full orc-cli command "
+      "(--filter/--input/--filters/--output — the program name and quoting "
+      "are handled automatically). If no project is open, one is created "
+      "automatically.",
+      QString(), &ok);
+  if (!ok || text.trimmed().isEmpty()) {
+    return;
+  }
+
+  // No project open yet: create a minimal one first. Video format and
+  // source type don't need to be asked for here — import_filtergraph_into_
+  // project() auto-detects them from the stages actually used, the same way
+  // --input/--filters/--output does on the CLI.
+  const bool creating_new_project = project_.projectName().isEmpty();
+  if (creating_new_project) {
+    if (!checkUnsavedChanges()) {
+      return;
+    }
+    closeAllDialogs();
+    project_.clear();
+    project_.presenter()->setProjectName("Untitled");
+    render_coordinator_->setProject(
+        project_.presenter()->getCoreProjectHandle());
+  }
+
+  const std::string filtergraph =
+      orc::presenters::extract_filtergraph_from_pasted_command(
+          text.toStdString());
+
+  const auto result = orc::presenters::import_filtergraph_into_project(
+      *project_.presenter(), filtergraph);
+
+  for (const auto& warning : result.warnings) {
+    ORC_LOG_WARN("Paste CLI command: {}", warning);
+  }
+
+  if (!result.ok) {
+    QString message;
+    for (const auto& error : result.errors) {
+      message += QString::fromStdString(error) + "\n";
+    }
+    QMessageBox::warning(this, "Paste CLI Command Failed", message.trimmed());
+    if (creating_new_project) {
+      // Nothing was actually built into the just-created project; leave
+      // things back in a clean "no project open" state rather than an
+      // empty-but-named one.
+      project_.clear();
+      updateUIState();
+    }
+    return;
+  }
+
+  // Same refresh sequence quickProject() uses after building nodes
+  // programmatically: rebuild the DAG, recreate the model/scene, then
+  // refresh every dependent view.
+  project_.rebuildDAG();
+  if (dag_model_) {
+    recreateDAGModelScene();
+  }
+
+  updateUIState();
+  updatePreviewRenderer();
+  reportPluginRuntimeDiagnostics(false);
+  loadProjectDAG();
+  propagateAmplitudeUnit();
+  selectLowestSourceStage();
+
+  if (!result.warnings.empty()) {
+    QString message = "Added to the project, but with warnings:\n\n";
+    for (const auto& warning : result.warnings) {
+      message += QString::fromStdString(warning) + "\n";
+    }
+    QMessageBox::information(this, "Paste CLI Command", message.trimmed());
+  }
+
+  ORC_LOG_INFO("Pasted CLI command into project ({} node(s) now present)",
+               project_.presenter()->getNodes().size());
+  statusBar()->showMessage(creating_new_project
+                               ? "Created project from pasted CLI command"
+                               : "Pasted CLI command into project",
+                           3000);
 }
 
 void MainWindow::onQuickProject() {
@@ -2104,6 +2224,11 @@ void MainWindow::updateUIState() {
   if (edit_project_action_) {
     edit_project_action_->setEnabled(has_project);
   }
+  if (copy_as_cli_action_) {
+    copy_as_cli_action_->setEnabled(has_project);
+  }
+  // paste_cli_action_ is intentionally always enabled: with no project open
+  // it creates one automatically (see onPasteCliCommand()).
   if (plugin_manager_action_) {
     plugin_manager_action_->setEnabled(!has_project);
   }

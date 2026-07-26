@@ -111,6 +111,9 @@ class MainWindow : public QMainWindow {
   void onSaveProject();
   void onSaveProjectAs();
   void onEditProject();
+  void
+  onCopyAsCliCommand();  // Copy the current project as a --filter CLI command
+  void onPasteCliCommand();  // Parse a pasted CLI filtergraph into the project
   void onPreviewIndexChanged(int index);
   void onNavigatePreview(int delta);
   void onPreviewModeChanged(int index);
@@ -319,6 +322,8 @@ class MainWindow : public QMainWindow {
   QAction* save_project_action_;
   QAction* save_project_as_action_;
   QAction* edit_project_action_;
+  QAction* copy_as_cli_action_ = nullptr;
+  QAction* paste_cli_action_ = nullptr;
   QAction* plugin_manager_action_ = nullptr;
   QAction* show_preview_action_;
   QAction* auto_show_preview_action_;
